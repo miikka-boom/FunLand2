@@ -52,8 +52,8 @@ horde catches you), and below 40 HP you limp at 80% speed.
 | Mode | **Dynamic** | Same reasons as the move stick. |
 | Aim dead zone | 12% | Below this the thumb's direction is too noisy to trust. |
 | **Fire ring** | **45%** | Inside the dashed ring you only aim (the laser shows where). Push past it to fire. This gives you "aim first, then commit" with no extra button. A 6% hysteresis stops the trigger from flickering on the ring. |
-| Aim smoothing | 0.02 s | The time constant is divided by deflection: angle noise from a thumb is about *pixel jitter ÷ deflection*, so small deflections get smoothed more and full deflection is nearly raw. A fresh touch snaps instantly with no lag. |
-| Keep aim after release | 0.5 s | You keep facing where you shot, so the flashlight doesn't swing to your walking direction mid-fight. |
+| Aim smoothing | 0.02 s | The time constant is divided by deflection: angle noise from a thumb is about *pixel jitter ÷ deflection*, so small deflections get smoothed more and full deflection is nearly raw. Every new contact (even a quick re-aim during the hold) snaps instantly with no lag. |
+| Keep aim after release | 0.5 s | You keep facing where you shot (including the aim-assist correction), so the flashlight doesn't swing to your walking direction mid-fight. |
 | Aim assist | 45%, 10° cone | Pulls the shot toward the best target in the cone. The cone widens for close (big) targets, the pull fades out at the cone edge, the target is sticky so it doesn't flicker in crowds, and it needs line of sight. The laser shows the assisted aim, so what you see is what you shoot. |
 | Laser sight | on | Your thumb covers the action, so the laser does the precise aiming. The shotgun also shows its spread cone. |
 
@@ -63,6 +63,10 @@ The knob turns orange while firing, and the fire ring brightens.
 
 - **Tap the aim side** (≤ 220 ms, ≤ 14 px of travel, never reached the fire
   ring) = shove. Your thumb is already there, so it costs nothing to reach.
+  While a touch could still be a tap, it doesn't aim yet, so a tap that rolls
+  a few pixels shoves without first turning you. A real aim moves past 14 px
+  (or lasts longer than 220 ms) and engages immediately. Turning tap-shove off
+  removes even that tiny wait.
 - A **second finger tapping** the aim side while you aim also shoves (for claw
   grip).
 - There's also a **SHOVE button** for comparison (you can hide it in the panel).
@@ -95,18 +99,23 @@ The knob turns orange while firing, and the fire ring brightens.
 3. All sticks are reset on pause, blur, tab hide, orientation change and
    restart.
 4. `touchcancel` releases without triggering a tap-shove.
-5. The layout (`src/layout.js`) is shared by the HUD drawing and the hit
+5. A touch id that starts again while a stick still owns it (its end event
+   was lost) resets that stick first.
+6. The layout (`src/layout.js`) is shared by the HUD drawing and the hit
    testing, so what you see is exactly what you can press.
-6. Safe-area insets (notches, home indicator) are read from CSS `env()` and
+7. Safe-area insets (notches, home indicator) are read from CSS `env()` and
    respected by the HUD and the fixed stick positions.
+
+`tests/touch-controls.test.js` pins these rules down: `npm test`.
 
 ## Fallbacks
 
 - **Desktop:** WASD/arrows to move, mouse to aim, click to fire, Space / F /
   right-click to shove, R to reload, Q/E/wheel to swap, Esc for the panel.
 - **Gamepad** (standard mapping): left stick moves; the right stick aims and
-  auto-fires past the ring (or hold RT); RB/B shove, X reload, Y swap, Start
-  opens the panel. It's useful as a reference for how twin-stick should feel.
+  auto-fires past the ring, and RT fires along your facing even with the stick
+  centred. RB/B shove, X reload, Y swap, Start opens the panel, A starts or
+  plays again. It's useful as a reference for how twin-stick should feel.
 
 ## Presets (tuning panel)
 

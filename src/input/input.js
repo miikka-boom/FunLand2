@@ -9,7 +9,12 @@ export class Input {
   constructor(canvas, settings, getLayout) {
     this.settings = settings;
     this.touch = new TouchControls(canvas, settings, getLayout);
-    this.desktop = new DesktopControls(canvas, getLayout);
+    // Ignore compatibility mouse events that trail a touch.
+    this.desktop = new DesktopControls(
+      canvas,
+      getLayout,
+      () => this.touch.lastUsed > 0 && performance.now() - this.touch.lastUsed < 800,
+    );
     this.pad = new GamepadControls();
     this.source = this.touch.supportsTouch ? 'touch' : 'mouse';
     this.frame = {
@@ -48,7 +53,7 @@ export class Input {
       const a = this.touch.aim;
       f.move.x = m.active ? m.out.x : 0;
       f.move.y = m.active ? m.out.y : 0;
-      f.aimActive = a.active && a.out.raw > S.aimDeadzone;
+      f.aimActive = a.active && a.out.raw > S.aimDeadzone && !a.tapCandidate;
       if (f.aimActive) {
         f.aimX = a.out.nx;
         f.aimY = a.out.ny;

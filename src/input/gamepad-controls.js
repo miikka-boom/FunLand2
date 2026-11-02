@@ -47,6 +47,7 @@ export class GamepadControls {
     edge(BTN.X, 'reload');
     edge(BTN.Y, 'swap');
     edge(BTN.START, 'pause');
+    edge(BTN.A, 'confirm'); // start / play again
 
     const rt = pressed(BTN.RT);
     if (move.mag > 0 || aim.raw > 0.3 || rt || events.length) this.lastUsed = performance.now();

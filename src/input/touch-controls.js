@@ -31,6 +31,7 @@ class Stick {
     this.travel = 0;
     this.firing = false;
     this.crossedFire = false;
+    this.tapCandidate = false;
     this.out = { x: 0, y: 0, mag: 0, raw: 0, nx: 0, ny: 0 };
   }
 }
@@ -106,6 +107,13 @@ export class TouchControls {
   }
 
   _start(id, x, y, now) {
+    // A reused id means we missed its end event: drop whatever it still owns.
+    for (const s of [this.move, this.aim]) if (s.touchId === id) s.release();
+    if (this.buttonTouches.has(id)) {
+      this.pressed.delete(this.buttonTouches.get(id));
+      this.buttonTouches.delete(id);
+    }
+    this.extraTaps.delete(id);
     const L = this.getLayout();
     for (const b of L.buttons) {
       if (hitButton(b, x, y)) {
@@ -205,6 +213,8 @@ export class TouchControls {
       a.out = shapeStick(a.pos.x - a.base.x, a.pos.y - a.base.y, R, S.aimDeadzone, 1, 1);
       a.firing = a.out.raw > S.aimDeadzone && fireState(a.firing, a.out.raw, S.fireThreshold, S.aimDeadzone);
       if (a.firing) a.crossedFire = true;
+      // Still short and small enough to become a shove-tap: don't aim yet.
+      a.tapCandidate = S.tapShove && !a.crossedFire && a.travel <= S.tapMaxPx && performance.now() - a.t0 <= S.tapMaxMs;
     }
   }
 

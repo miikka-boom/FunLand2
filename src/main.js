@@ -147,6 +147,14 @@ window.addEventListener('blur', () => input.reset());
 // iOS Safari: block pinch-zoom gesture events outright.
 for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault());
 
+// Re-unlock audio on later interactions (pad-started runs, iOS interruptions).
+const kickAudio = () => {
+  if (state !== 'title' && (!audio.ctx || audio.ctx.state !== 'running')) audio.unlock();
+};
+canvas.addEventListener('touchend', kickAudio, { passive: true });
+canvas.addEventListener('mousedown', kickAudio);
+window.addEventListener('keydown', kickAudio);
+
 // Tap anywhere to play again after an ending.
 let restartQueued = false;
 const maybeRestart = () => {
@@ -177,10 +185,15 @@ function frame(now) {
   }
 
   const f = input.sample();
-  if (f.events.includes('pause')) {
+  const padPress = input.source === 'gamepad' && f.events.length > 0;
+  if (state === 'title') {
+    if (padPress) start(); // sound unlocks on the next tap/click (pads aren't a user gesture)
+    f.events = [];
+  } else if (f.events.includes('pause')) {
     if (state === 'play') pause();
     else if (state === 'paused') resume();
   }
+  if (padPress) maybeRestart();
 
   if (state === 'play') {
     if (restartQueued) {

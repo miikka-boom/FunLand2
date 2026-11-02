@@ -63,7 +63,7 @@ src/world/                 seeded city generator, collision, ray casts, flow fie
 src/game/                  player, weapons, zombies, director, effects, game state
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX
-tests/                     node --test unit tests (stick math)
+tests/                     node --test unit tests (stick math, touch controller rules)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

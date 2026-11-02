@@ -12,15 +12,22 @@ const MOVE_KEYS = {
 };
 
 export class DesktopControls {
-  constructor(canvas, getLayout) {
+  constructor(canvas, getLayout, isGhost = () => false) {
     this.getLayout = getLayout;
+    this.isGhost = isGhost;
     this.keys = new Set();
     this.mouse = { x: 0, y: 0, down: false, seen: false };
     this.events = [];
     this.lastUsed = 0;
 
     window.addEventListener('keydown', (e) => {
-      if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+      if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) {
+        if (e.code === 'Escape') {
+          this.events.push('pause');
+          e.target.blur();
+        }
+        return;
+      }
       const now = performance.now();
       if (MOVE_KEYS[e.code]) {
         this.keys.add(e.code);
@@ -44,30 +51,49 @@ export class DesktopControls {
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
 
-    canvas.addEventListener('pointerdown', (e) => {
-      if (e.pointerType !== 'mouse') return;
+    // mousedown/mouseup fire per button, so chorded clicks (fire + right-click
+    // shove) work; pointerdown/up only report the first press / last release.
+    canvas.addEventListener('mousedown', (e) => {
+      if (this.isGhost()) return;
       this._mouseAt(e);
-      const L = this.getLayout();
-      for (const b of L.buttons) {
-        if (hitButton(b, e.clientX, e.clientY, 0)) {
-          this.events.push(b.id);
-          return;
+      if (e.button === 0) {
+        const L = this.getLayout();
+        for (const b of L.buttons) {
+          if (hitButton(b, e.clientX, e.clientY, 0)) {
+            this.events.push(b.id);
+            return;
+          }
         }
+        this.mouse.down = true;
+      } else if (e.button === 2) {
+        this.events.push('shove');
       }
-      if (e.button === 0) this.mouse.down = true;
-      if (e.button === 2) this.events.push('shove');
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.mouse.down = false;
     });
     window.addEventListener('pointermove', (e) => {
-      if (e.pointerType === 'mouse') this._mouseAt(e);
-    });
-    window.addEventListener('pointerup', (e) => {
-      if (e.pointerType === 'mouse' && e.button === 0) this.mouse.down = false;
+      if (e.pointerType !== 'mouse') return;
+      this._mouseAt(e);
+      if (this.mouse.down && !(e.buttons & 1)) this.mouse.down = false; // released outside the window
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    let wheelAcc = 0;
+    let wheelLast = 0;
+    let wheelSwap = 0;
     canvas.addEventListener(
       'wheel',
       (e) => {
-        if (Math.abs(e.deltaY) > 4) this.events.push('swap');
+        const now = performance.now();
+        if (now - wheelLast > 250) wheelAcc = 0;
+        wheelLast = now;
+        wheelAcc += e.deltaY;
+        // One swap per notch / flick, not one per trackpad event.
+        if (Math.abs(wheelAcc) > 40 && now - wheelSwap > 300) {
+          this.events.push('swap');
+          wheelSwap = now;
+          wheelAcc = 0;
+        }
       },
       { passive: true },
     );

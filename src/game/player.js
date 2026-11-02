@@ -96,11 +96,12 @@ export function updatePlayer(game, dt, input) {
   }
 
   if (aimActive) {
-    if (!p.aimActive && p.aimHoldT <= 0) p.aimAngle = targetAngle; // fresh touch: snap, no lag
+    if (!p.aimActive) p.aimAngle = targetAngle; // new contact (even inside the hold window): snap, no lag
     else if (input.source === 'touch') p.aimAngle = smoothAngle(p.aimAngle, targetAngle, dt, aimTau(S.aimSmoothing, input.aimRaw));
     else p.aimAngle = targetAngle;
     p.aimHoldT = S.aimHold;
   } else {
+    if (p.aimActive) p.aimAngle = p.fireAngle; // release: hold the assisted angle, no jump
     p.aimHoldT -= dt;
   }
   p.aimActive = aimActive;
@@ -141,7 +142,7 @@ export function updatePlayer(game, dt, input) {
     }
   }
 
-  p.firing = input.fire && aimActive;
+  p.firing = input.fire && (aimActive || input.source === 'gamepad');
   if (p.firing) {
     p.cooldown -= dt;
     let guard = 0;
