@@ -1,0 +1,81 @@
+name: Deploy to GitHub Pages
+
+on:
+  # Runs on every push; the job below only deploys from the default branch.
+  push:
+  # Allows running the deployment manually from the Actions tab.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one deployment at a time; don't cancel a deployment that is in progress.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Detect Node build
+        id: detect
+        run: |
+          if [ -f package.json ] && node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then
+            echo "node=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "node=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        if: steps.detect.outputs.node == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+
+      - name: Build site (Node project)
+        if: steps.detect.outputs.node == 'true'
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          npm run build
+          for dir in dist build out public; do
+            if [ -f "$dir/index.html" ]; then
+              mkdir -p _site && cp -r "$dir"/. _site/
+              echo "Publishing build output from $dir/"
+              exit 0
+            fi
+          done
+          echo "::error::Build finished but no index.html was found in dist/, build/, out/ or public/"
+          exit 1
+
+      - name: Stage static files
+        if: steps.detect.outputs.node == 'false'
+        run: |
+          mkdir -p _site
+          rsync -a --exclude '.git' --exclude '.github' --exclude '_site' ./ _site/
+          echo "Publishing repository files as a static site"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
