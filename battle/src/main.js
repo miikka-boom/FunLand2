@@ -479,7 +479,9 @@ const input = new Input(canvas, {
     const b = game.battle;
     if (game.erase && b.phase === 'place') return false;
     const [wx, wy] = camera.toWorld(sx, sy);
-    const hit = b.unitAt(wx, wy);
+    // Generous finger-sized target while placing; in battle only the body itself (so drags still pan)
+    const slack = b.phase === 'place' ? Math.max(8, 22 / camera.zoom - 13) : 3;
+    const hit = b.unitAt(wx, wy, null, slack);
     if (!hit) return false;
     if (!canGrab(hit)) {
       if (!game.grabNoticeShown && b.phase !== 'place') {
@@ -489,7 +491,7 @@ const input = new Input(canvas, {
       return false;
     }
     audio.unlock();
-    const u = b.grabAt(wx, wy, canGrab);
+    const u = b.grabAt(wx, wy, canGrab, slack);
     return !!u;
   },
   grabMove(sx, sy) {
@@ -735,6 +737,41 @@ function followFight(b) {
   camera.frame(cx - span / 2, cx + span / 2, false, camera.h / 260);
 }
 
+/**
+ * Draw between the last two sim steps (alpha = leftover time / DT) so slow
+ * motion is smooth instead of juddering. Positions are swapped in for the
+ * draw and restored right after, so the sim never sees them.
+ */
+const lerped = [];
+function lerpIn(b, alpha) {
+  lerped.length = 0;
+  const k = 1 - alpha;
+  if (k <= 0.001) return;
+  const add = (p) => {
+    lerped.push(p, p.x, p.y);
+    p.x -= (p.x - p.px) * k;
+    p.y -= (p.y - p.py) * k;
+  };
+  for (const u of b.units) if (!u.asleep) for (const p of u.parts) add(p);
+  for (const it of b.items) {
+    add(it.a);
+    add(it.b);
+  }
+  for (const a of b.arrows) {
+    if (a.state !== 'fly') continue;
+    lerped.push(a, a.x, a.y);
+    a.x -= a.vx * DT * k;
+    a.y -= a.vy * DT * k;
+  }
+}
+function lerpOut() {
+  for (let i = 0; i < lerped.length; i += 3) {
+    lerped[i].x = lerped[i + 1];
+    lerped[i].y = lerped[i + 2];
+  }
+  lerped.length = 0;
+}
+
 function render() {
   const b = game.battle;
   const v = camera.view();
@@ -743,11 +780,13 @@ function render() {
   camera.apply(ctx, dpr);
   if (b.phase === 'place') drawZones();
   fx.drawBack(ctx);
+  lerpIn(b, clamp(acc / DT, 0, 1));
   unitsGfx.drawShadows(ctx, b);
   unitsGfx.drawGroundArrows(ctx, b);
   unitsGfx.drawItems(ctx, b);
   unitsGfx.drawUnits(ctx, b, b.time);
   unitsGfx.drawFlyingArrows(ctx, b);
+  lerpOut();
   if (b.phase === 'place') drawGhost();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   bg.drawFront(ctx, { w: W, h: H, dpr, cam: v, t: game.realTime });

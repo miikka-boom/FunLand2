@@ -76,8 +76,9 @@ export class Unit {
     this.lane = lane; // 0..1, depth in the crowd
     this.ground = WORLD.groundY + lane * WORLD.laneDepth;
     this.f = team === 'blue' ? 1 : -1; // facing
-    this.R = type.radius;
-    this.L = type.bodyLen;
+    const size = this.rng.range(0.95, 1.06); // every bean is a little different
+    this.R = type.radius * size;
+    this.L = type.bodyLen * size;
     this.hp = type.hp;
     this.maxHp = type.hp;
     this.alive = true;
@@ -97,6 +98,12 @@ export class Unit {
     this.held = false;
     this.walkTo = null;
     this.guardT = 0; // squire: shield raised against arrows
+    this.wobbleT = 0; // near-fall: weak balance + windmilling arms
+    this.charging = false;
+    this.hopAt = -1; // battle-cry hop time (set by Battle.start)
+    this.hopped = false;
+    this.asleep = false; // resting corpse: skipped by the physics
+    this.stillT = 0;
     this.preferRange = type.range ? this.rng.range(type.range[0], type.range[1]) : 0;
 
     // Face / feel state (read by the renderer)
@@ -160,6 +167,7 @@ export class Unit {
     this.chest = P(x, hipY - L * cf, 2.5, R * 0.95, 0.1);
     this.head = P(x, hipY - L, 2, R * 0.95, 0.1);
     this.body = [this.hip, this.chest, this.head];
+    for (const p of this.body) p.bounce = 0.32; // one comic bounce on a hard landing
 
     // Legs (0 = far side, 1 = near side). Near foot a touch forward.
     this.footOff = [-3, 4];
@@ -258,8 +266,13 @@ export class Unit {
       this.wantVx = 0;
       return;
     }
+    if (b.battleTime < this.hopAt + 0.12) {
+      this.wantVx = 0; // battle cry first
+      return;
+    }
     const t = b.findTarget(this);
     this.target = t;
+    this.charging = false;
     if (!t) {
       this.wantVx = 0;
       return;
@@ -274,12 +287,25 @@ export class Unit {
       this.wantVx = dist > this.preferRange ? toward * this.speed : 0;
       if (dist <= this.preferRange + 40 && !this.act && this.cooldown <= 0) this.startAttack(b);
     } else {
-      const reach = this.type.reach + (t.R - 13);
-      // Close in to ~80% of reach; plant the feet while swinging; turtle under a raised shield
-      const spd = this.guardT > 0 ? this.speed * 0.65 : this.speed;
-      this.wantVx = dist > reach * 0.8 && !this.act ? toward * spd : 0;
+      const grow = t.R - 13;
+      const engage = this.type.engage + grow;
+      const reach = this.type.reach + grow;
+      // Walk in to duel distance, plant the feet while swinging, step back if crowded.
+      // Squires turtle under a raised shield; clubbers break into a yelling charge.
+      let spd = this.guardT > 0 ? this.speed * 0.65 : this.speed;
+      if (this.type.charge && dist < 240 && dist > engage + 10) {
+        spd *= 1.45;
+        this.charging = true;
+        this.mouth = Math.max(this.mouth, 0.2);
+        this.mouthKind = 'o';
+      }
+      if (this.act) this.wantVx = 0;
+      else if (dist > engage) this.wantVx = toward * spd;
+      else if (dist < engage - 14) this.wantVx = -toward * this.speed * 0.45;
+      else this.wantVx = 0;
       if (dist <= reach && !this.act && this.cooldown <= 0 && this.groundF > 0.6) this.startAttack(b);
     }
+    if (this.dizzy > 0) this.wantVx += Math.sin(this.time * 6) * 35; // staggering about
     this.state = this.wantVx ? 'move' : 'idle';
   }
 
@@ -317,6 +343,15 @@ export class Unit {
       }
       const rate = this.conscious < this.wake ? (this.dizzy > 0 ? 1.3 : 2.2) : 7;
       this.conscious += (this.wake - this.conscious) * Math.min(1, rate * dt);
+    } else if (this.conscious > 0) {
+      this.conscious = this.conscious < 0.01 ? 0 : this.conscious * Math.exp(-dt * 4); // last wobble, then limp
+    }
+    if (this.wobbleT > 0) this.wobbleT -= dt;
+    // Battle-cry hop at the start of the fight
+    if (this.alive && !this.hopped && this.hopAt >= 0 && b.phase === 'battle' && b.battleTime >= this.hopAt) {
+      this.hopped = true;
+      if (this.groundF > 0.8) for (const p of this.parts) p.addVel(0, -this.rng.range(200, 290), dt);
+      this.mouth = Math.max(this.mouth, 0.6);
     }
     const m = this.conscious;
 
@@ -355,11 +390,12 @@ export class Unit {
     hip.fy += fy * m * gF;
 
     // Keep the head over the hips at the pose's lean (an internal torque pair)
-    const lean = pose.lean + this.waddle + clamp((hipVx * f) / 90, -1, 1) * 0.1 + (this.dizzy > 0 ? Math.sin(this.time * 7) * 0.12 * Math.min(1, this.dizzy) : 0);
+    const lean = pose.lean + this.waddle + clamp((hipVx * f) / 90, -1, 1) * 0.1 + (this.charging ? 0.22 : 0) + (this.dizzy > 0 ? Math.sin(this.time * 7) * 0.12 * Math.min(1, this.dizzy) : 0);
     const sx = Math.sin(lean) * f;
     const sy = -Math.cos(lean);
-    this.uprightPull(this.head, this.L, sx, sy, m, dt);
-    this.uprightPull(this.chest, this.L * BODY.chestFrac, sx, sy, m, dt);
+    const bal = this.wobbleT > 0 ? m * 0.35 : m; // near-fall: balance gives way for a moment
+    this.uprightPull(this.head, this.L, sx, sy, bal, dt);
+    this.uprightPull(this.chest, this.L * BODY.chestFrac, sx, sy, bal, dt);
 
     // Walk
     if (gF > 0) {
@@ -528,12 +564,13 @@ export class Unit {
     const hand = this.hand[mi];
     const off = this.hand[oi];
     const hk = pose.hk || 1;
-    const flail = this.groundF < 0.2 && this.alive ? 1 : 0;
+    const flail = (this.groundF < 0.2 || this.wobbleT > 0) && this.alive ? 1 : 0;
+    const walkSwing = this.groundF > 0.8 ? Math.sin(this.time * 11) * clamp(Math.abs(this.hip.vx(dt)) / 60, 0, 1) * 3.5 : 0;
 
     let mx;
     let my;
     if (pose.mainWorld) [mx, my] = pose.mainWorld;
-    else [mx, my] = this.toWorld(pose.main[0], pose.main[1]);
+    else [mx, my] = this.toWorld(pose.main[0] + walkSwing, pose.main[1]);
     if (flail) {
       // Windmill when flying
       const a = this.time * 14;
@@ -555,8 +592,10 @@ export class Unit {
       const Fy = tip.mass * (TIP_K * wk * (ty - tip.y) - TIP_C * Math.sqrt(wk) * rvy) * m;
       tip.fx += Fx;
       tip.fy += Fy;
-      hand.fx -= Fx;
-      hand.fy -= Fy;
+      hand.fx -= Fx * 0.3;
+      hand.fy -= Fy * 0.3;
+      this.chest.fx -= Fx * 0.7;
+      this.chest.fy -= Fy * 0.7;
     }
 
     let ox;
@@ -568,7 +607,7 @@ export class Unit {
       const l = Math.hypot(dx, dy) || 1;
       ox = hand.x + (dx / l) * W.grip;
       oy = hand.y + (dy / l) * W.grip;
-    } else if (Array.isArray(pose.off)) [ox, oy] = this.toWorld(pose.off[0], pose.off[1]);
+    } else if (Array.isArray(pose.off)) [ox, oy] = this.toWorld(pose.off[0] - walkSwing * (this.type.shield ? 0.3 : 1), pose.off[1]);
     else [ox, oy] = this.toWorld(pose.main[0] - 4, pose.main[1] - 2);
     if (flail) {
       const a = this.time * 14 + 2.4;
@@ -612,7 +651,12 @@ export class Unit {
     const wind = a.variant ? P.windup2 : P.windup;
     const strike = a.variant ? P.strike2 : P.strike;
     if (a.phase === 'windup') {
-      if (a.t >= A.windup) {
+      const hold = A.hold || 0;
+      if (a.t >= A.windup && a.t < A.windup + hold) {
+        // Trembling at the top: the "here it comes" beat
+        return { ...wind, ang: wind.ang + Math.sin(a.t * 113) * 3, crouch: wind.crouch + 1 };
+      }
+      if (a.t >= A.windup + hold) {
         a.phase = 'strike';
         a.t = 0;
         // Lunge into the swing
@@ -621,7 +665,7 @@ export class Unit {
         this.chest.addVel(this.f * lunge, 0, dt);
         b.emit('whoosh', this.hip.x, this.hip.y, { unit: this, power: this.type.weapon === 'club' ? 1 : 0.6 });
         this.mouth = Math.max(this.mouth, 0.3);
-        return strike;
+        return wind; // the strike sweeps from here next substep (no one-frame pop)
       }
       return blendPose(P.rest, wind, easeOut(a.t / A.windup));
     }
@@ -728,8 +772,8 @@ export class Unit {
    * part gets extra so the bean spins.
    */
   takeHit(b, hit) {
-    const heft = this.type.heft || 1;
-    this.knock(hit.dvx * heft, hit.dvy * heft, hit.x, hit.y, hit.spin == null ? 0.7 : hit.spin, b.dt);
+    const heft = this.type.heft || 1; // heavy beans slide less, but still fly
+    this.knock(hit.dvx * heft, hit.dvy, hit.x, hit.y, hit.spin == null ? 0.7 : hit.spin, b.dt, hit.flip || 0, hit.from ? hit.from.f : 0);
     this.sqv += 6 * Math.min(1.5, Math.hypot(hit.dvx, hit.dvy) / 300);
     if (!this.alive) return;
     this.hp -= hit.damage;
@@ -748,10 +792,13 @@ export class Unit {
       this.mouth = 0.8;
       this.mouthKind = 'o';
       b.emit('knockdown', this.head.x, this.head.y, { unit: this });
-    } else if (stun >= 0.5 && this.act && this.act.phase !== 'recover') {
-      this.act = null; // interrupted
-      this.bowDraw = 0;
-      this.cooldown = Math.max(this.cooldown, 0.25);
+    } else {
+      if (stun >= 0.5 && this.act && this.act.phase !== 'recover') {
+        this.act = null; // interrupted
+        this.bowDraw = 0;
+        this.cooldown = Math.max(this.cooldown, 0.25);
+      }
+      if (stun >= 0.25) this.wobbleT = 0.45; // whoa-whoa-whoa
     }
     if (hit.damage >= 12) {
       this.mouth = Math.max(this.mouth, 0.35);
@@ -760,8 +807,15 @@ export class Unit {
     }
   }
 
-  knock(dvx, dvy, x, y, spin, dt) {
+  knock(dvx, dvy, x, y, spin, dt, flip = 0, dir = 0) {
+    this.asleep = false;
+    this.stillT = 0;
     for (const p of this.parts) p.addVel(dvx * 0.85, dvy * 0.85, dt);
+    if (flip && dir) {
+      // Head forward, feet back: a cartwheel
+      this.head.addVel(dir * flip, 0, dt);
+      this.hip.addVel(-dir * flip * 0.6, 0, dt);
+    }
     // Extra on the body particle nearest the hit -> spin
     let best = this.hip;
     let bd = Infinity;
@@ -778,7 +832,7 @@ export class Unit {
   die(b, hit) {
     this.alive = false;
     this.hp = 0;
-    this.conscious = 0;
+    this.conscious = Math.min(this.conscious, 0.3); // fades out in control(): a last wobble
     this.wake = 0;
     this.act = null;
     this.striking = false;
@@ -805,7 +859,12 @@ export class Unit {
     const ay = (vy - this.lastHipVy) / dt;
     this.lastHipVy = vy;
     this.accY += (ay - this.accY) * Math.min(1, dt * 25);
-    const target = clamp((-this.accY / G) * 0.045, -0.09, 0.22);
+    let target = clamp((-this.accY / G) * 0.045, -0.09, 0.22);
+    if (this.groundF < 0.1) {
+      // Flying fast: stretch into a sausage
+      const sp = Math.hypot(hip.vx(dt), vy);
+      target -= clamp((sp - 350) / 1600, 0, 0.17);
+    }
     this.sqv += ((target - this.sq) * 420 - this.sqv * 11) * dt;
     this.sq = clamp(this.sq + this.sqv * dt, -0.2, 0.28);
 
@@ -898,7 +957,20 @@ export class Unit {
     if (this.dizzy > 0) this.dizzy -= dt;
     if (this.guardT > 0) this.guardT -= dt;
     if (!this.act && this.brow > 0) this.brow = Math.max(0, this.brow - dt * 3);
-    if (!this.alive) this.deadT += dt;
+    if (!this.alive) {
+      this.deadT += dt;
+      // Resting corpses go to sleep (skipped by the physics) until something hits them
+      let moving = false;
+      for (const p of this.parts) if (Math.abs(p.x - p.px) + Math.abs(p.y - p.py) > 5 * dt) moving = true;
+      this.stillT = moving || this.deadT < 1 ? 0 : this.stillT + dt;
+      if (this.stillT > 0.6 && !this.held) {
+        this.asleep = true;
+        for (const p of this.parts) {
+          p.px = p.x;
+          p.py = p.y;
+        }
+      }
+    }
     this.blinkT -= dt;
     if (this.blinkT < -0.13) this.blinkT = this.rng.range(1.5, 5);
     if (this.alive && !this.target && b.phase !== 'battle') {

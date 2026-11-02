@@ -38,7 +38,11 @@ export class UnitRenderer {
   }
 
   drawGroundArrows(ctx, battle) {
-    for (const a of battle.arrows) if (a.state === 'ground') drawArrow(ctx, a.x, a.y, a.ang, a.team, a.alpha ?? 1, 0);
+    for (const a of battle.arrows) {
+      if (a.state !== 'ground') continue;
+      const pz = battle.arrowPose(a);
+      drawArrow(ctx, pz.x, pz.y, pz.ang, a.team, a.alpha ?? 1, 0);
+    }
   }
 
   drawFlyingArrows(ctx, battle) {
@@ -126,6 +130,8 @@ export class UnitRenderer {
       drawSword(ctx, u.hand[mi].x, u.hand[mi].y, u.tip.x, u.tip.y);
     }
 
+    if (u.type.weapon === 'bow') drawQuiver(ctx, u, T);
+
     // Arrows stuck in the body (drawn behind it so the buried part is hidden)
     for (const a of u.arrows) {
       const pz = battle.arrowPose(a);
@@ -134,6 +140,7 @@ export class UnitRenderer {
 
     // --- body -------------------------------------------------------------------
     this.drawBean(ctx, u, T);
+    if (u.type.shield) drawHelmet(ctx, u);
     this.drawFace(ctx, u, T, time);
 
     // --- near side: arm + held item ---------------------------------------------
@@ -261,7 +268,8 @@ export class UnitRenderer {
       { p: P(R * 0.22, R * 0.14), r: er * 0.9 },
       { p: P(R * 0.74, R * 0.04), r: er },
     ];
-    const blink = u.alive ? (u.blinkT < 0 ? 1 : 0) : 0.55;
+    // Dead: eyes stay open in shock for a beat, then the lids droop
+    const blink = u.alive ? (u.blinkT < 0 ? 1 : 0) : u.deadT > 0.45 ? 0.55 : 0;
     for (let i = 0; i < 2; i++) {
       const { p, r } = eyes[i];
       const e = u.eyes[i];
@@ -403,6 +411,80 @@ function drawLid(ctx, x, y, r, ux, uy, k, col) {
   ctx.lineTo(r, edge);
   ctx.stroke();
   ctx.restore();
+}
+
+/** Squire: a steel cap with a little plume (the googly eyes are glued on over the rim). */
+function drawHelmet(ctx, u) {
+  const R = u.R;
+  const h = u.head;
+  const a = Math.atan2(u.uy, u.ux);
+  const span = 1.08;
+  ctx.beginPath();
+  ctx.arc(h.x, h.y, R + 0.6, a - span, a + span);
+  ctx.closePath();
+  ctx.fillStyle = '#aeb7c2';
+  ctx.fill();
+  ctx.strokeStyle = '#5f6b78';
+  ctx.lineWidth = Math.max(1, R * 0.09);
+  ctx.stroke();
+  // Shine
+  ctx.beginPath();
+  ctx.arc(h.x, h.y, R * 0.72, a - span * 0.85, a - span * 0.25);
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = R * 0.14;
+  ctx.stroke();
+  // Plume
+  const tx = h.x + u.ux * (R + 0.5);
+  const ty = h.y + u.uy * (R + 0.5);
+  ctx.beginPath();
+  ctx.moveTo(tx, ty);
+  ctx.quadraticCurveTo(tx + u.ux * 7 - u.fwx * 3, ty + u.uy * 7 - u.fwy * 3, tx - u.fwx * 9 + u.ux * 3, ty - u.fwy * 9 + u.uy * 3);
+  ctx.strokeStyle = '#f2c94c';
+  ctx.lineWidth = R * 0.32;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+}
+
+/** Archer: a quiver peeking out behind the back. */
+function drawQuiver(ctx, u, T) {
+  const c = u.chest;
+  const bx = c.x - u.fwx * u.R * 0.75;
+  const by = c.y - u.fwy * u.R * 0.75;
+  // Tilted back along the spine
+  const ax = u.ux - u.fwx * 0.45;
+  const ay = u.uy - u.fwy * 0.45;
+  const l = Math.hypot(ax, ay) || 1;
+  const dx = ax / l;
+  const dy = ay / l;
+  const x0 = bx - dx * 4;
+  const y0 = by - dy * 4;
+  const x1 = bx + dx * 17;
+  const y1 = by + dy * 17;
+  // Fletchings sticking out of the top
+  for (let i = -1; i <= 1; i++) {
+    const ox = -dy * i * 2.6;
+    const oy = dx * i * 2.6;
+    ctx.strokeStyle = '#c9a06a';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(x1 + ox, y1 + oy);
+    ctx.lineTo(x1 + ox + dx * 7, y1 + oy + dy * 7);
+    ctx.stroke();
+    ctx.fillStyle = i ? T.light : '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(x1 + ox + dx * 7, y1 + oy + dy * 7, 1.6, 3, Math.atan2(dy, dx) + Math.PI / 2, 0, TAU);
+    ctx.fill();
+  }
+  ctx.strokeStyle = '#5a3415';
+  ctx.lineWidth = 7;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
+  ctx.stroke();
+  ctx.strokeStyle = '#8f5a2c';
+  ctx.lineWidth = 4.6;
+  ctx.stroke();
 }
 
 function drawDizzy(ctx, u, time) {

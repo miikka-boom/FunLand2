@@ -54,7 +54,7 @@ const CONFETTI_COLS = ['#ffd84a', '#ffffff', '#2b6be0', '#e4433b'];
 const BURST = 0; // comic starburst
 const LINES = 1; // radial speed lines
 const SLASH = 2; // crescent sword streak
-const RING = 3; // expanding ring (flat when d > 0: ground shock ring)
+const RING = 3; // expanding shock ring
 const GLINT = 4; // four-point twinkle
 const SPARK = 5; // hot streak with a short trail
 const SPECK = 6; // tiny debris chip
@@ -287,7 +287,7 @@ export class Effects {
       const ring = this.add(RING, true, x, y, 0.14);
       ring.a = R * 0.6;
       ring.b = R * 1.9;
-      ring.c = 4 + 3 * P;
+      ring.c = 3 + 2 * P;
       ring.col = '#fffbea';
     }
 
@@ -426,9 +426,9 @@ export class Effects {
     for (let i = 0; i < n; i++) {
       const k = this.add(SPARK, true, x, y, this.r(0.22, 0.45));
       const a = ang + this.r(-1.1, 1.1);
-      const sp = this.r(220, 600) * (0.6 + 0.5 * P);
+      const sp = this.r(200, 470) * (0.6 + 0.5 * P);
       k.vx = Math.cos(a) * sp;
-      k.vy = Math.sin(a) * sp - this.r(60, 180);
+      k.vy = Math.sin(a) * sp - this.r(40, 140);
       k.grav = G;
       k.drag = 1.2;
       k.ground = this.groundFor(-1);
@@ -762,14 +762,17 @@ function drawBurst(ctx, p, fx) {
   // Crackle: the spikes flick between two poses every 1/30 s
   const rot = p.rot + (((p.age * 30) | 0) & 1) * (TAU / n) * 0.18;
   ctx.globalAlpha = 1;
-  ctx.lineJoin = 'round';
+  // Keyline: the same star a little bigger in the edge colour (a fill is
+  // much cheaper than stroking all those sharp joins)
+  const e = Math.max(R * 0.07, 1.3 * fx.px);
+  ctx.beginPath();
+  starPath(ctx, p.x, p.y, n, R + e, R * 0.5 + e, rot, p.seed, p.a, 0.4);
+  ctx.fillStyle = pal.edge;
+  ctx.fill();
   ctx.beginPath();
   starPath(ctx, p.x, p.y, n, R, R * 0.5, rot, p.seed, p.a, 0.4);
   ctx.fillStyle = pal.rim;
   ctx.fill();
-  ctx.lineWidth = Math.max(R * 0.05, 1.2 * fx.px);
-  ctx.strokeStyle = pal.edge;
-  ctx.stroke();
   // Same star, smaller: white-hot core that cools into a thicker yellow rim
   const k = lerp(0.8, 0.6, Math.min(1, t * 2.5));
   ctx.beginPath();
@@ -781,32 +784,40 @@ function drawBurst(ctx, p, fx) {
 function drawLines(ctx, p, fx) {
   const t = p.age / p.life;
   const R = p.size * fx.boost;
-  const n = p.b;
   // Each line's head races outward and its tail catches up, so the lines
   // zip away instead of lingering
   const head = R * (1.0 + 1.3 * easeOut(Math.min(1, t * 1.6)));
   const tail = R * (0.8 + 1.5 * Math.min(1, t * 1.25) ** 1.3);
   if (head - tail < 0.5) return;
+  const w = Math.max(R * 0.035, 0.8 * fx.px);
+  const e = Math.max(R * 0.03, 0.8 * fx.px);
   ctx.globalAlpha = 1;
+  // Orange keyline first, then the white line on top (fills, not strokes)
+  linesPath(ctx, p, head, tail, w + e, e);
+  ctx.fillStyle = '#e9781c';
+  ctx.fill();
+  linesPath(ctx, p, head, tail, w, 0);
+  ctx.fillStyle = '#fffbea';
+  ctx.fill();
+}
+
+/** Thin quads radiating from the centre, slimmer at the inner end. */
+function linesPath(ctx, p, head, tail, hw, grow) {
   ctx.beginPath();
-  for (let i = 0; i < n; i++) {
-    const a = p.rot + (i / n) * TAU + (hash(p.seed, i) - 0.5) * 0.9;
+  for (let i = 0; i < p.b; i++) {
+    const a = p.rot + (i / p.b) * TAU + (hash(p.seed, i) - 0.5) * 0.9;
     const l = 0.8 + 0.3 * hash(p.seed, i + 20);
     const c = Math.cos(a);
     const s = Math.sin(a);
-    const h = head * l;
-    const tl = Math.min(tail * l, h - 0.5);
-    ctx.moveTo(p.x + c * tl, p.y + s * tl);
-    ctx.lineTo(p.x + c * h, p.y + s * h);
+    const h = head * l + grow;
+    const tl = Math.min(tail * l, h - 0.5) - grow;
+    const tw = hw * 0.45;
+    ctx.moveTo(p.x + c * tl - s * tw, p.y + s * tl + c * tw);
+    ctx.lineTo(p.x + c * h - s * hw, p.y + s * h + c * hw);
+    ctx.lineTo(p.x + c * h + s * hw, p.y + s * h - c * hw);
+    ctx.lineTo(p.x + c * tl + s * tw, p.y + s * tl - c * tw);
+    ctx.closePath();
   }
-  const w = Math.max(R * 0.07, 1.6 * fx.px);
-  ctx.lineCap = 'round';
-  ctx.lineWidth = w + Math.max(R * 0.06, 1.6 * fx.px);
-  ctx.strokeStyle = '#e9781c';
-  ctx.stroke();
-  ctx.lineWidth = w;
-  ctx.strokeStyle = '#fffbea';
-  ctx.stroke();
 }
 
 function drawSlash(ctx, p, fx) {
@@ -841,8 +852,8 @@ function drawSlash(ctx, p, fx) {
         const tx = dx * L + nx * h * 4 * (1 - 2 * u);
         const ty = dy * L + ny * h * 4 * (1 - 2 * u);
         const tl = Math.hypot(tx, ty) || 1;
-        // Fat at the leading end, needle thin at the tail
-        const half = ww * 0.5 * Math.sin(Math.PI * (0.15 + 0.7 * v)) * v ** 0.6 * side;
+        // Needle thin at the tail, fattest near the front, pointed tip
+        const half = ww * 0.5 * Math.sin(Math.PI * v ** 1.6) * side;
         const px = cx - (ty / tl) * half;
         const py = cy + (tx / tl) * half;
         if (side > 0 && k === 0) ctx.moveTo(px, py);
@@ -862,8 +873,7 @@ function drawRing(ctx, p, fx) {
   ctx.lineWidth = Math.max(p.c * (1 - t), 1 * fx.px);
   ctx.strokeStyle = p.col;
   ctx.beginPath();
-  if (p.d > 0) ctx.ellipse(p.x, p.y, r, r * p.d, 0, 0, TAU);
-  else ctx.arc(p.x, p.y, r, 0, TAU);
+  ctx.arc(p.x, p.y, r, 0, TAU);
   ctx.stroke();
 }
 

@@ -224,28 +224,29 @@ const DIRT = {
 // f: horizontal/vertical follow factor (1 = moves with the world).
 // d: how strongly the layer scales with zoom (0 = not at all, 1 = like the world).
 // top: tallest content above the layer baseline (layer units).
+// maxPx: cache size cap; far layers may go soft when zoomed in (reads as depth of field).
 
 const LAYERS = [
   {
-    kind: 'mountains', f: 0.12, d: 0.25, period: 2300, top: 360, count: 7, hMin: 190, hMax: 330,
+    kind: 'mountains', f: 0.12, d: 0.25, maxPx: 1.2e6, period: 2300, top: 360, count: 7, hMin: 190, hMax: 330,
     base: '#afc1df', lit: '#c2d1e9', gully: '#a1b5d8', haze: '#cbdcee', hazeH: 230,
   },
   {
-    kind: 'mountains', f: 0.2, d: 0.33, period: 1900, top: 290, count: 7, hMin: 130, hMax: 260,
+    kind: 'mountains', f: 0.2, d: 0.33, maxPx: 1.5e6, period: 1900, top: 290, count: 7, hMin: 130, hMax: 260,
     base: '#8aa2ce', lit: '#a0b5de', gully: '#7d95c5', haze: '#b2c7e3', hazeH: 170,
   },
   {
-    kind: 'hills', f: 0.32, d: 0.43, period: 1700, top: 230, count: 9, hMin: 100, hMax: 190,
+    kind: 'hills', f: 0.32, d: 0.43, maxPx: 2e6, period: 1700, top: 230, count: 9, hMin: 100, hMax: 190,
     light: '#d3e8b2', mid: '#b9d79c', base: '#a8cc98', fadeH: 80,
     trees: { gap: 30, h: [13, 24], density: 1.7, dark: '#86b07e', mid: '#9cc28a', light: '#b3d39d', trunk: '#8d8a70' },
   },
   {
-    kind: 'hills', f: 0.46, d: 0.56, period: 2100, top: 210, count: 9, hMin: 70, hMax: 150,
+    kind: 'hills', f: 0.46, d: 0.56, maxPx: 2e6, period: 2100, top: 210, count: 9, hMin: 70, hMax: 150,
     light: '#c6e48b', mid: '#a8d272', base: '#95c46a', fadeH: 60,
     trees: { gap: 28, h: [22, 40], density: 1.4, dark: '#5f9a4b', mid: '#76b058', light: '#93c86a', trunk: '#7d6a4c' },
   },
   {
-    kind: 'hills', f: 0.64, d: 0.7, period: 2500, top: 200, count: 8, hMin: 40, hMax: 110,
+    kind: 'hills', f: 0.64, d: 0.7, maxPx: 2e6, period: 2500, top: 200, count: 8, hMin: 40, hMax: 110,
     light: '#b8e070', mid: '#9acd58', base: '#86bd4c', fadeH: 40,
     trees: { gap: 26, h: [42, 82], density: 1.0, dark: '#468636', mid: '#5c9e40', light: '#7fbd52', trunk: '#7a5232' },
   },
@@ -279,7 +280,7 @@ function makeLayer(cfg, seed) {
     y: -cfg.top,
     w: cfg.period,
     h: cfg.top + 8,
-    maxPx: 3e6,
+    maxPx: cfg.maxPx,
     repeat: 'repeat-x',
     slack: 0.72,
     paint: (g) => paint(g, cfg, geo),
@@ -1165,7 +1166,7 @@ function makeDirt(seed) {
   for (let i = 0; i < 320; i++) specks.push([rnd() * DIRT_W, rnd() * DIRT_H, 0.8 + rnd() * 1.6, rnd() < 0.6]);
 
   const D = { plates, rocks, specks };
-  D.cache = new Cached({ w: DIRT_W, h: DIRT_H, maxPx: 3e6, repeat: 'repeat', paint: (g) => paintDirtTile(g, D) });
+  D.cache = new Cached({ w: DIRT_W, h: DIRT_H, maxPx: 3e6, repeat: 'repeat', slack: 0.85, paint: (g) => paintDirtTile(g, D) });
   return D;
 }
 
@@ -1708,7 +1709,7 @@ function makeCastle(team, seed) {
     team,
     seed,
     x: WORLD.castleX[team],
-    cache: new Cached({ ...CASTLE_BOX, maxPx: 2.6e6, paint: (g) => drawCastle(g, team, seed) }),
+    cache: new Cached({ ...CASTLE_BOX, maxPx: 2.6e6, slack: 0.88, paint: (g) => drawCastle(g, team, seed) }),
     phase: team === 'blue' ? 0 : 2.1,
   };
 }
@@ -1798,8 +1799,9 @@ export function createBackground(opts = {}) {
     y: GRASS_Y0,
     w: GRASS_W,
     h: GRASS_Y1 - GRASS_Y0,
-    maxPx: 4e6,
+    maxPx: 3e6,
     repeat: 'repeat-x',
+    slack: 0.85,
     paint: (g) => paintGrass(g, mulberry32(seed + 13)),
   });
   const front = new Cached({
@@ -1807,8 +1809,9 @@ export function createBackground(opts = {}) {
     y: FRONT_Y0,
     w: FRONT_W,
     h: FRONT_Y1 - FRONT_Y0,
-    maxPx: 3e6,
+    maxPx: 1.5e6,
     repeat: 'repeat-x',
+    slack: 0.85,
     paint: (g) => paintFront(g, mulberry32(seed + 19)),
   });
   const dirt = makeDirt(seed + 17);

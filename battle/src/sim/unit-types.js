@@ -18,22 +18,26 @@ export const UNIT_TYPES = {
     bodyLen: 25,
     speed: 64,
     weapon: 'club',
-    reach: 50,
+    engage: 50, // walks in to this distance (hip to hip)...
+    reach: 60, // ...and swings at anything this close
+    charge: true, // breaks into a yelling charge when close
     attack: {
-      windup: 0.46,
-      strike: 0.14,
+      windup: 0.42,
+      hold: 0.1, // trembling pause at the top of the windup
+      strike: 0.13,
       recover: 0.4,
       cooldown: 0.25,
       damage: 31,
-      knock: 370, // px/s launch speed at a full-speed hit
+      knock: 370,
+      launch: [240, 500], // px/s (away, up) given to the whole bean at a full-speed hit
       stun: 1.0, // consciousness knocked out (>= ~0.9 knocks the target down)
       shieldPierce: 0.45, // share of damage that still goes through a shield
       cleave: true, // can bonk several beans with one swing
     },
     poses: {
       rest: { main: [4, -3], off: 'shaft', ang: -132, lean: 0.04, crouch: 0, wk: 1 },
-      windup: { main: [-3, 15], off: 'shaft', ang: -116, lean: -0.36, crouch: 6, wk: 1.6 },
-      strike: { main: [17, -2], off: 'shaft', ang: 42, lean: 0.45, crouch: -3, wk: 3.4, hk: 2.2 },
+      windup: { main: [-6, 18], off: 'shaft', ang: -200, lean: -0.42, crouch: 8, wk: 1.6 },
+      strike: { main: [17, -2], off: 'shaft', ang: 55, lean: 0.45, crouch: -3, wk: 3.4, hk: 2.2 },
       cheer: { main: [3, 17], off: 'shaft', ang: -80, lean: -0.05, crouch: 0, wk: 1 },
     },
   },
@@ -49,7 +53,8 @@ export const UNIT_TYPES = {
     speed: 54,
     weapon: 'sword',
     shield: true,
-    reach: 40,
+    engage: 40,
+    reach: 48,
     attack: {
       windup: 0.22,
       strike: 0.1,
@@ -66,7 +71,7 @@ export const UNIT_TYPES = {
     poses: {
       rest: { main: [7, -7], off: [13, 1], ang: -38, lean: 0.03, crouch: 1, wk: 1, shieldTilt: 0.12 },
       // Variant 0: stab
-      windup: { main: [-5, -4], off: [13, 2], ang: -8, lean: -0.14, crouch: 3, wk: 1.4, shieldTilt: 0.05 },
+      windup: { main: [-6, -4], off: [13, 2], ang: -8, lean: -0.2, crouch: 3, wk: 1.4, shieldTilt: 0.05 },
       strike: { main: [22, -3], off: [12, 2], ang: 2, lean: 0.24, crouch: -1, wk: 2.6, hk: 2.2, shieldTilt: 0.15 },
       // Variant 1: overhead slash
       windup2: { main: [1, 12], off: [13, 0], ang: -118, lean: -0.18, crouch: 3, wk: 1.4, shieldTilt: 0.05 },
@@ -95,7 +100,7 @@ export const UNIT_TYPES = {
       knock: 150,
       stun: 0.16,
       maxSpeed: 980, // arrow launch speed cap
-      spread: 0.035, // aim noise (radians)
+      spread: 0.075, // aim noise (radians): misses that stick in the dirt are part of the fun
     },
     poses: {
       rest: { main: [9, -4], off: [3, -3], ang: -90, lean: 0.03, crouch: 0, wk: 1 },

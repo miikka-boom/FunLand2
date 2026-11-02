@@ -106,6 +106,7 @@ export class Battle {
     this.release();
     for (const u of this.units) {
       u.homeX = u.homeX ?? u.hip.x;
+      u.hopAt = this.rng.range(0, 0.35); // the army leaps up yelling in a ripple, then charges
       u.mouth = this.rng.range(0.5, 0.9);
       u.mouthKind = 'o';
       u.brow = 1;
@@ -133,6 +134,7 @@ export class Battle {
 
     // Muscles
     for (const u of units) {
+      if (u.asleep) continue;
       u.control(dt, this);
       u.shieldTilt = u.type.shield ? this.shieldTiltOf(u) : 0;
     }
@@ -145,6 +147,7 @@ export class Battle {
 
     // Integrate + ground
     for (const u of units) {
+      if (u.asleep) continue;
       for (const p of u.parts) {
         integrate(p, dt, G, DRAG);
         collideGround(p, dt);
@@ -160,6 +163,7 @@ export class Battle {
     // Constraints
     for (let k = 0; k < ITER; k++) {
       for (const u of units) {
+        if (u.asleep) continue;
         const cons = u.cons;
         for (let i = 0; i < cons.length; i++) cons[i].solve();
         const side = -u.f;
@@ -310,28 +314,44 @@ export class Battle {
       u.act.hits.add(e.id);
       if (!A.cleave) u.act.done = true;
       const dmg = A.damage * (0.55 + 0.45 * sf) * this.rng.range(0.9, 1.1);
-      const knock = A.knock * sf;
-      // Mostly "away and up" so hits launch beans instead of burying them
+      const lethal = e.hp - dmg <= 0;
       const tl = tipSpeed || 1;
-      const kx = u.f * 0.82 + (tvx / tl) * 0.25;
-      const ky = -0.6 + Math.min(0, tvy / tl) * 0.2;
-      const kl = Math.hypot(kx, ky);
+      let dvx;
+      let dvy;
+      if (A.launch) {
+        // The star of the show: up, away and cartwheeling. Killing blows go further.
+        const k = clamp(sf, 0.6, 1.15) * (lethal ? 1.25 : 1) * this.rng.range(0.9, 1.1);
+        dvx = u.f * A.launch[0] * k;
+        dvy = -A.launch[1] * k;
+      } else {
+        // Mostly "away and up" so hits shove beans instead of burying them
+        const knock = A.knock * sf * (lethal ? 1.3 : 1);
+        const kx = u.f * 0.82 + (tvx / tl) * 0.25;
+        const ky = -0.6 + Math.min(0, tvy / tl) * 0.2;
+        const kl = Math.hypot(kx, ky);
+        dvx = (kx / kl) * knock;
+        dvy = (ky / kl) * knock;
+      }
+      const dl = Math.hypot(dvx, dvy) || 1;
+      const kx = dvx / dl;
+      const ky = dvy / dl;
       e.takeHit(this, {
         damage: dmg,
-        dvx: (kx / kl) * knock,
-        dvy: (ky / kl) * knock,
+        dvx,
+        dvy,
         x: hx,
         y: hy,
         stun: A.stun * (0.6 + 0.4 * sf),
         kind: u.type.weapon,
         from: u,
-        spin: u.type.weapon === 'club' ? 0.9 : 0.5,
+        spin: A.launch ? 0.35 : 0.5,
+        flip: A.launch ? 150 * clamp(sf, 0.6, 1.15) : 0,
       });
       // Follow-through: the weapon slows down on impact
       t.addVel(-tvx * 0.35, -tvy * 0.35, this.dt);
       this.stats.hits++;
       const power = clamp((dmg / 40) * sf, 0.15, 1.5);
-      this.emit('hit', hx, hy, { kind: u.type.weapon === 'club' ? 'bonk' : 'slash', power, dirX: kx / kl, dirY: ky / kl, unit: e, from: u, killed: !e.alive });
+      this.emit('hit', hx, hy, { kind: u.type.weapon === 'club' ? 'bonk' : 'slash', power, dirX: kx, dirY: ky, unit: e, from: u, killed: !e.alive });
       if (!A.cleave) return;
     }
   }
@@ -404,7 +424,7 @@ export class Battle {
   fireArrow(u, sol) {
     const A = u.type.attack;
     const ang = sol.ang + u.rng.gauss() * A.spread;
-    const sp = sol.speed * (1 + u.rng.gauss() * 0.025);
+    const sp = sol.speed * (1 + u.rng.gauss() * 0.04);
     const bh = u.hand[1];
     const vx = Math.cos(ang) * sp;
     const vy = Math.sin(ang) * sp;
@@ -483,6 +503,7 @@ export class Battle {
         a.x += (nx - a.x) * clamp(k, 0, 1) + Math.cos(a.ang) * 5;
         a.y = a.ground + Math.sin(a.ang) * 5;
         a.state = 'ground';
+        a.stuckAt = this.time;
         this.emit('arrowGround', a.x, a.ground, { dirX: Math.sign(a.vx) });
         continue;
       }
@@ -506,6 +527,7 @@ export class Battle {
     perp = clamp(perp, -e.R * 0.55, e.R * 0.55);
     along = clamp(along, -0.2, 1.2);
     a.state = 'body';
+    a.stuckAt = this.time;
     a.host = e;
     a.seg = seg;
     a.along = along;
@@ -538,6 +560,7 @@ export class Battle {
     const rx = x + Math.cos(a.ang) * 4 - sh.x;
     const ry = y + Math.sin(a.ang) * 4 - sh.y;
     a.state = 'shield';
+    a.stuckAt = this.time;
     a.host = e;
     a.along = rx * sh.ax + ry * sh.ay;
     a.out = rx * -sh.ay + ry * sh.ax;
@@ -557,6 +580,16 @@ export class Battle {
 
   /** World transform of an arrow that's stuck in something (for drawing). */
   arrowPose(a) {
+    const p = this.arrowPoseRaw(a);
+    if (p && a.stuckAt != null) {
+      // Twang: a stuck arrow quivers for a moment
+      const t = this.time - a.stuckAt;
+      if (t < 0.6) p.ang += Math.sin(t * 82) * 0.16 * Math.exp(-t * 7);
+    }
+    return p;
+  }
+
+  arrowPoseRaw(a) {
     if (a.state === 'body') {
       const e = a.host;
       const p = a.seg === 0 ? e.hip : e.chest;
@@ -625,14 +658,15 @@ export class Battle {
 
   // --- hand of god -------------------------------------------------------------
 
-  unitAt(x, y, filter) {
+  /** The unit under (x, y); `slack` = extra world px around the body. */
+  unitAt(x, y, filter, slack = 10) {
     let best = null;
     let bd = Infinity;
     for (const u of this.units) {
       if (filter && !filter(u)) continue;
       for (const p of u.body) {
         const d = Math.hypot(p.x - x, p.y - y);
-        if (d < u.R + 10 && d < bd) {
+        if (d < u.R + slack && d < bd) {
           bd = d;
           best = u;
         }
@@ -641,9 +675,11 @@ export class Battle {
     return best;
   }
 
-  grabAt(x, y, filter) {
-    const u = this.unitAt(x, y, filter);
+  grabAt(x, y, filter, slack = 10) {
+    const u = this.unitAt(x, y, filter, slack);
     if (!u) return null;
+    u.asleep = false;
+    u.stillT = 0;
     // Grab whichever body part is closest (head = dangling by the head)
     let p = u.head;
     let bd = Infinity;
