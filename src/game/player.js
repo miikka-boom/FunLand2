@@ -1,0 +1,373 @@
+// The survivor: movement, aim (+assist), firing, reload, swap, shove.
+
+import { WEAPONS } from './weapons.js';
+import { aimTau, smoothAngle } from '../input/stick-math.js';
+import { DEG, clamp, rand, randSpread, rayCircle, smoothstep, wrapAngle } from '../util.js';
+import { damageZombie, alertZombie } from './zombies.js';
+
+const SHOVE_REACH = 52;
+const SHOVE_HALF_ANGLE = 65 * DEG;
+
+export class Player {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.vx = 0;
+    this.vy = 0;
+    this.r = 12;
+    this.hp = 100;
+    this.maxHp = 100;
+    this.alive = true;
+    this.facing = -Math.PI / 2;
+    this.aimAngle = this.facing;
+    this.fireAngle = this.facing;
+    this.aimActive = false;
+    this.aimHoldT = 0;
+    this.aimRaw = 0;
+    this.weapons = WEAPONS.map((def) => ({ def, mag: def.mag, reloading: false, reloadT: 0 }));
+    this.wi = 0;
+    this.cooldown = 0;
+    this.bloom = 0;
+    this.swapT = 0;
+    this.shoveCd = 0;
+    this.shoveCdMax = 0.5;
+    this.shoveFatigue = 0;
+    this.lastShove = -10;
+    this.slowT = 0;
+    this.hurtT = 0;
+    this.recoil = 0;
+    this.firing = false;
+    this.walk = 0;
+    this.assist = null; // current aim-assist target
+  }
+
+  get weapon() {
+    return this.weapons[this.wi];
+  }
+}
+
+export function updatePlayer(game, dt, input) {
+  const p = game.player;
+  const S = game.settings;
+  if (!p.alive) return;
+
+  p.slowT -= dt;
+  p.hurtT -= dt;
+  p.swapT -= dt;
+  p.shoveCd -= dt;
+  p.recoil *= Math.exp(-14 * dt);
+  p.shoveFatigue = Math.max(0, p.shoveFatigue - dt * 0.35);
+
+  // --- Movement ------------------------------------------------------------------
+  let speed = S.moveSpeed;
+  if (p.hp < 40) speed *= 0.8; // limping
+  if (p.slowT > 0) speed *= 0.55; // tagged by a hit
+  const tx = input.move.x * speed;
+  const ty = input.move.y * speed;
+  // Accelerate toward the target velocity; brake harder when reversing/stopping.
+  const dvx = tx - p.vx;
+  const dvy = ty - p.vy;
+  const dv = Math.hypot(dvx, dvy);
+  if (dv > 1e-6) {
+    const braking = p.vx * tx + p.vy * ty < 0 || tx * tx + ty * ty < p.vx * p.vx + p.vy * p.vy;
+    const rate = (braking ? S.decel : S.accel) * dt;
+    const k = Math.min(1, rate / dv);
+    p.vx += dvx * k;
+    p.vy += dvy * k;
+  }
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+  game.world.collide(p, p.r);
+  game.world.collide(p, p.r);
+  const spd = Math.hypot(p.vx, p.vy);
+  p.walk += spd * dt * 0.06;
+
+  // --- Aim ---------------------------------------------------------------------------
+  let aimActive = input.aimActive;
+  let targetAngle = p.aimAngle;
+  if (input.aimScreen) {
+    const s = game.worldToScreen(p.x, p.y);
+    const ax = input.aimScreen.x - s.x;
+    const ay = input.aimScreen.y - s.y;
+    aimActive = Math.hypot(ax, ay) > 6;
+    if (aimActive) targetAngle = Math.atan2(ay, ax);
+  } else if (aimActive) {
+    targetAngle = Math.atan2(input.aimY, input.aimX);
+  }
+
+  if (aimActive) {
+    if (!p.aimActive && p.aimHoldT <= 0) p.aimAngle = targetAngle; // fresh touch: snap, no lag
+    else if (input.source === 'touch') p.aimAngle = smoothAngle(p.aimAngle, targetAngle, dt, aimTau(S.aimSmoothing, input.aimRaw));
+    else p.aimAngle = targetAngle;
+    p.aimHoldT = S.aimHold;
+  } else {
+    p.aimHoldT -= dt;
+  }
+  p.aimActive = aimActive;
+  p.aimRaw = input.aimRaw;
+
+  p.fireAngle = p.aimAngle;
+  p.assist = null;
+  if (aimActive && input.assist && S.aimAssist > 0) applyAimAssist(game, p);
+
+  // Facing: aim while aiming (and briefly after), otherwise turn toward travel.
+  if (aimActive || p.aimHoldT > 0) {
+    p.facing = p.fireAngle;
+  } else if (spd > 20) {
+    const mv = Math.atan2(p.vy, p.vx);
+    p.facing += wrapAngle(mv - p.facing) * Math.min(1, dt * 10);
+    p.aimAngle = p.facing;
+    p.fireAngle = p.facing;
+  }
+
+  // --- Weapon -----------------------------------------------------------------------
+  const w = p.weapon;
+  const def = w.def;
+  if (w.reloading) {
+    w.reloadT -= dt;
+    if (w.reloadT <= 0) {
+      if (def.reloadType === 'shell') {
+        w.mag++;
+        game.audio.shell();
+        if (w.mag >= def.mag) {
+          w.reloading = false;
+          game.audio.pump();
+        } else w.reloadT += def.reload;
+      } else {
+        w.mag = def.mag;
+        w.reloading = false;
+        game.audio.reloadDone();
+      }
+    }
+  }
+
+  p.firing = input.fire && aimActive;
+  if (p.firing) {
+    p.cooldown -= dt;
+    let guard = 0;
+    while (p.cooldown <= 0 && guard++ < 4) {
+      if (!fire(game, p)) {
+        p.cooldown = Math.max(p.cooldown, 0);
+        break;
+      }
+    }
+  } else {
+    p.cooldown = Math.max(0, p.cooldown - dt);
+    p.bloom = Math.max(0, p.bloom - def.bloomDecay * dt);
+  }
+}
+
+function applyAimAssist(game, p) {
+  const S = game.settings;
+  const cone = S.aimAssistCone * DEG;
+  const range = p.weapon.def.range;
+  let best = null;
+  let bestScore = Infinity;
+  let bestAng = 0;
+  for (const z of game.zombies) {
+    if (!z.alive) continue;
+    const dx = z.x - p.x;
+    const dy = z.y - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d > range || d < 1) continue;
+    const a = Math.atan2(dy, dx);
+    const diff = Math.abs(wrapAngle(a - p.aimAngle));
+    // Close targets are big: widen the cone by their angular size.
+    const allowed = cone + Math.asin(Math.min(1, (z.r * 1.2) / d));
+    if (diff > allowed) continue;
+    let score = diff / allowed + 0.35 * (d / range);
+    if (z === p.lastAssist) score -= 0.15; // sticky: no flicker in crowds
+    if (score < bestScore) {
+      if (!game.world.segmentClear(p.x, p.y, z.x, z.y, game.world.shotBlockers)) continue;
+      bestScore = score;
+      best = z;
+      bestAng = a;
+    }
+  }
+  p.lastAssist = best;
+  if (!best) return;
+  const diff = wrapAngle(bestAng - p.aimAngle);
+  const allowed = cone + Math.asin(Math.min(1, (best.r * 1.2) / Math.hypot(best.x - p.x, best.y - p.y)));
+  // Full pull near the centre of the cone, fading out at its edge.
+  const pull = S.aimAssist * (1 - smoothstep(0.55, 1, Math.abs(diff) / allowed));
+  p.fireAngle = p.aimAngle + diff * pull;
+  p.assist = best;
+}
+
+export function startReload(game, p) {
+  const w = p.weapon;
+  if (w.reloading || w.mag >= w.def.mag) return;
+  w.reloading = true;
+  w.reloadT = w.def.reloadType === 'shell' ? w.def.reload + 0.15 : w.def.reload;
+  game.audio.reloadStart();
+}
+
+export function swapWeapon(game, p) {
+  p.weapon.reloading = false;
+  p.wi = (p.wi + 1) % p.weapons.length;
+  p.swapT = 0.35;
+  p.bloom = 0;
+  p.cooldown = Math.max(p.cooldown, 0);
+  game.audio.swap();
+  game.announce(p.weapon.def.name.toUpperCase(), '#cfd8dc', 0.9, 'small');
+  if (p.weapon.mag === 0) startReload(game, p);
+}
+
+function fire(game, p) {
+  const S = game.settings;
+  const w = p.weapon;
+  const def = w.def;
+  if (p.swapT > 0) return false;
+  if (w.reloading) {
+    if (def.reloadType === 'shell' && w.mag > 0) w.reloading = false; // pump: firing interrupts loading
+    else return false;
+  }
+  if (w.mag <= 0) {
+    startReload(game, p);
+    game.audio.dryFire();
+    return false;
+  }
+  p.cooldown += 1 / def.rate;
+  w.mag--;
+  game.stats.shots++;
+
+  const spd = Math.hypot(p.vx, p.vy);
+  const moveFrac = clamp(spd / S.moveSpeed, 0, 1);
+  const spread = (def.spread + p.bloom + def.moveSpread * moveFrac) * DEG;
+  const ca = Math.cos(p.fireAngle);
+  const sa = Math.sin(p.fireAngle);
+  const mx = p.x + ca * (p.r + 12);
+  const my = p.y + sa * (p.r + 12);
+
+  let anyHit = false;
+  for (let i = 0; i < def.pellets; i++) {
+    let ang;
+    if (def.pellets > 1) {
+      // Even pattern + a little noise: reliable, readable shotgun cone.
+      const f = i / (def.pellets - 1) - 0.5;
+      ang = p.fireAngle + f * 2 * spread * 0.85 + randSpread() * spread * 0.25;
+    } else {
+      ang = p.fireAngle + randSpread() * spread;
+    }
+    if (hitscan(game, p, mx, my, ang, def)) anyHit = true;
+  }
+  if (anyHit) game.stats.hits++;
+  p.bloom = Math.min(def.bloomMax, p.bloom + def.bloom);
+  p.recoil = Math.min(1, p.recoil + def.kick / 10);
+
+  const fx = game.effects;
+  fx.muzzle(mx, my, p.fireAngle, def.pellets > 1 ? 1.4 : def.id === 'hunting' ? 1.2 : 0.9);
+  fx.casing(p.x + ca * 6, p.y + sa * 6, p.fireAngle, def.pellets > 1);
+  game.addTrauma(def.trauma);
+  game.kickCamera(-ca * def.kick, -sa * def.kick);
+  game.audio.shot(def.sound);
+  game.haptic(def.pellets > 1 ? 18 : 7, true);
+  game.noise(p.x, p.y, def.noise);
+  if (w.mag === 0) startReload(game, p);
+  return true;
+}
+
+const hitList = [];
+
+function hitscan(game, p, mx, my, ang, def) {
+  const world = game.world;
+  const dx = Math.cos(ang);
+  const dy = Math.sin(ang);
+  // Trace from the body (not the muzzle) so hugging a wall can't shoot through it.
+  const wall = world.raycast(p.x, p.y, dx, dy, def.range, world.shotBlockers);
+  const maxT = wall.t;
+  hitList.length = 0;
+  for (const z of game.zombies) {
+    if (!z.alive) continue;
+    const fx = z.x - p.x;
+    const fy = z.y - p.y;
+    const along = fx * dx + fy * dy;
+    if (along < -z.r || along > maxT + z.r) continue;
+    if (Math.abs(fx * dy - fy * dx) > z.r + 2) continue;
+    const t = rayCircle(p.x, p.y, dx, dy, z.x, z.y, z.r + 2);
+    if (t < maxT) hitList.push({ z, t });
+  }
+  hitList.sort((a, b) => a.t - b.t);
+
+  let endT = maxT;
+  let stopped = false;
+  const n = Math.min(def.pierce, hitList.length);
+  for (let i = 0; i < n; i++) {
+    const { z, t } = hitList[i];
+    let dmg = def.dmg;
+    if (def.falloff) dmg *= clamp(1.25 - t / def.range, 0.3, 1);
+    if (i > 0) dmg *= 0.8; // each body soaks a bit
+    damageZombie(game, z, dmg, dx, dy, def.knock, def.stagger);
+    if (i === n - 1 && hitList.length >= def.pierce) {
+      endT = t;
+      stopped = true;
+    }
+  }
+
+  const startT = Math.min(p.r + 12, endT);
+  const x0 = p.x + dx * startT;
+  const y0 = p.y + dy * startT;
+  const x1 = p.x + dx * endT;
+  const y1 = p.y + dy * endT;
+  game.effects.tracer(x0, y0, x1, y1, def.tracer, def.pellets > 1 ? 1.1 : def.id === 'hunting' ? 2.4 : 1.6);
+
+  if (!stopped && wall.obstacle) {
+    // Spark off the surface, facing back toward the shooter.
+    game.effects.sparks(x1 - dx * 2, y1 - dy * 2, -dx, -dy, def.pellets > 1 ? 2 : 4);
+    if (wall.obstacle.alarm) game.director.triggerAlarm(wall.obstacle);
+  }
+  return n > 0;
+}
+
+export function shove(game) {
+  const p = game.player;
+  if (!p.alive || p.shoveCd > 0) return;
+  const now = game.time;
+  // Rapid shoves tire you out (L4D-style), so it can't be spammed forever.
+  p.shoveFatigue = now - p.lastShove < 1.1 ? Math.min(p.shoveFatigue + 0.14, 0.75) : p.shoveFatigue;
+  p.lastShove = now;
+  p.shoveCdMax = 0.42 + p.shoveFatigue;
+  p.shoveCd = p.shoveCdMax;
+
+  // Shove where you face, but swing toward a zombie that's on you from the side.
+  let ang = p.facing;
+  let nearest = null;
+  let nd = Infinity;
+  game.zhash.query(p.x, p.y, SHOVE_REACH + 20, (z) => {
+    if (!z.alive) return;
+    const d = Math.hypot(z.x - p.x, z.y - p.y) - z.r;
+    if (d < nd) {
+      nd = d;
+      nearest = z;
+    }
+  });
+  if (nearest && nd < SHOVE_REACH) {
+    const a = Math.atan2(nearest.y - p.y, nearest.x - p.x);
+    if (Math.abs(wrapAngle(a - ang)) > SHOVE_HALF_ANGLE * 0.8) ang = a;
+  }
+  p.facing = ang;
+  p.aimAngle = ang;
+  p.fireAngle = ang;
+  p.aimHoldT = Math.max(p.aimHoldT, 0.35);
+
+  let hits = 0;
+  game.zhash.query(p.x, p.y, SHOVE_REACH + 20, (z) => {
+    if (!z.alive) return;
+    const dx = z.x - p.x;
+    const dy = z.y - p.y;
+    const d = Math.hypot(dx, dy) || 1;
+    if (d - z.r > SHOVE_REACH) return;
+    const diff = Math.abs(wrapAngle(Math.atan2(dy, dx) - ang));
+    if (diff > SHOVE_HALF_ANGLE && d > p.r + z.r + 4) return;
+    hits++;
+    z.windup = 0;
+    z.attackCd = Math.max(z.attackCd, 0.5);
+    damageZombie(game, z, 8, dx / d, dy / d, 340, rand(0.75, 0.95), false);
+    alertZombie(game, z, 0);
+  });
+  game.stats.shoves++;
+  game.effects.shoveArc(p.x, p.y, ang, SHOVE_REACH + p.r);
+  game.audio.shove(hits > 0);
+  game.addTrauma(hits ? 0.16 : 0.05);
+  game.haptic(hits ? 22 : 10);
+}

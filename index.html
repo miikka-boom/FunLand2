@@ -2,29 +2,69 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FunLand2</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      font-family: system-ui, sans-serif;
-      background: #fafafa;
-      color: #222;
-    }
-    @media (prefers-color-scheme: dark) {
-      body { background: #111; color: #eee; }
-    }
-    main { text-align: center; padding: 16px; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#060709">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Horde P0">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <title>FunLand2 · Prototype 0</title>
+  <link rel="stylesheet" href="style.css">
+  <script>
+    (function () {
+      var d = document.documentElement;
+      if ('ontouchstart' in window || navigator.maxTouchPoints > 0) d.classList.add('is-touch');
+      if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) d.classList.add('is-ios');
+      // Phones have no console: surface the first error on screen.
+      function show(msg) {
+        var el = document.getElementById('boot-error');
+        if (!el || el.dataset.shown) return;
+        el.dataset.shown = '1';
+        el.textContent = msg;
+        el.style.display = 'block';
+      }
+      window.addEventListener('error', function (e) { show('Error: ' + (e.message || e) + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+      window.addEventListener('unhandledrejection', function (e) { show('Error: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)); });
+      setTimeout(function () {
+        if (!d.classList.contains('booted')) {
+          show(location.protocol === 'file:'
+            ? 'The game did not start: browsers block ES modules on file://. Serve the folder instead, e.g. "python3 -m http.server", or use the GitHub Pages URL.'
+            : 'The game did not start. Try a hard refresh.');
+        }
+      }, 4000);
+    })();
+  </script>
 </head>
 <body>
-  <main>
-    <h1>FunLand2</h1>
-    <p>Deployed automatically to GitHub Pages.</p>
-  </main>
+  <canvas id="game" aria-label="Game"></canvas>
+  <div id="safe-probe" aria-hidden="true"></div>
+
+  <div id="title" class="overlay">
+    <div class="card">
+      <div class="kicker">FUNLAND2 · PROTOTYPE 0</div>
+      <h1>HORDE</h1>
+      <p class="sub">Top-down zombie horde survival · twin-stick feel test</p>
+      <div class="howto">
+        <div><b>Left thumb</b><span>Move. The stick appears where you touch and follows your thumb.</span></div>
+        <div><b>Right thumb</b><span>Aim. Push past the dashed ring to fire.</span></div>
+        <div><b>Tap right side</b><span>Shove. Knocks zombies back: your get-off-me move.</span></div>
+        <div><b>Goal</b><span>Cross town to the green safe room. Don't shoot cars with a blinking red light.</span></div>
+      </div>
+      <button id="start" class="btn primary big" type="button">Tap to start</button>
+      <p class="hint desktop-only">Desktop: WASD move · mouse aim · click fire · Space shove · R reload · Q swap · Esc tuning · gamepad works too</p>
+      <p class="hint ios-only">iPhone: Share → Add to Home Screen for true full screen.</p>
+      <p class="hint">The sliders button (top right) pauses and opens live feel tuning.</p>
+    </div>
+  </div>
+
+  <div id="panel" class="panel" aria-label="Tuning"></div>
+  <div id="rotate">Rotate to landscape for the best feel</div>
+  <div id="boot-error"></div>
+
+  <script type="module" src="src/main.js"></script>
 </body>
 </html>

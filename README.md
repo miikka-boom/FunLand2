@@ -1,25 +1,83 @@
-# FunLand2
+# FunLand2: Prototype 0, "HORDE"
 
-This site is deployed automatically to GitHub Pages by
-[`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml).
+A top-down 2D zombie horde survival game for mobile browsers, going for a
+Left 4 Dead feel. **Prototype 0** is about nailing down the **twin-stick touch
+controls** and how fighting a horde feels in single player.
 
-## One-time setup
+Play it on a phone in landscape. It runs as a static site with no build step
+and no dependencies.
 
-In the repository on GitHub, open **Settings → Pages** and under
-**Build and deployment → Source** choose **GitHub Actions**.
+## What's in it
 
-After that, every push to the default branch publishes the site. You can also
-run the workflow by hand from the **Actions** tab ("Deploy to GitHub Pages" → "Run workflow").
+- **Twin virtual sticks**: the left thumb moves and the right thumb aims.
+  Push past the dashed fire ring to shoot; tap the aim side to **shove**. The
+  full spec and the reasoning are in [docs/CONTROLS.md](docs/CONTROLS.md).
+- **Live feel tuning**: the sliders button (top right) pauses the game and
+  opens every feel parameter: stick modes and size, dead zones, fire ring, aim
+  assist, smoothing, camera, speed, horde size and so on. There are presets
+  for A/B testing, and **Copy tuning JSON** copies only what you changed.
+- **A run across a dark city**: start in a safe room (bottom left) and reach
+  the green safe room across town. A green arrow at the screen edge points to
+  it.
+- **An AI Director**: build-up, peak and relax phases, wanderers, small groups,
+  and mobs ("HERE THEY COME!") that spawn out of sight and come round corners.
+  Shooting a car with a blinking red light sets off the **alarm**, which brings
+  a three-wave panic event.
+- **Common infected** that shamble, notice you, sprint in packs, path around
+  buildings with a flow field, crowd you and claw. Getting hit slows you down,
+  and under 40 HP you limp.
+- **Four guns** to compare feel: SMG, assault rifle (pierces 2), pump shotgun
+  (loads shell by shell; firing interrupts the reload) and hunting rifle
+  (pierces lines of zombies). Reloading is automatic when empty.
+- **Night**: a flashlight cone, street lamps, burning wrecks and
+  line-of-sight shadows, so zombies behind buildings stay hidden until you
+  round the corner. You can turn it off in the panel.
+- **Feedback**: synthesized sound (no audio files), haptics on Android, blood
+  decals that stay, casings, tracers, screen shake and recoil, off-screen
+  threat arrows.
 
-## What gets published
+## Run it
 
-- **Static site (default):** the files in the repository (except `.git` and `.github`)
-  are published as they are. `index.html` at the repository root is the home page.
-- **Node project:** if a `package.json` with a `build` script is present, the workflow
-  runs `npm ci` (or `npm install`) and `npm run build`, then publishes the first of
-  `dist/`, `build/`, `out/` or `public/` that contains an `index.html`.
+- **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` once this is on
+  the default branch (the Pages workflow only deploys from there).
+- **Locally:** `npm start` (or `python3 -m http.server 8080`), then open
+  `http://localhost:8080`. To try it on a phone, open
+  `http://<your-computer-ip>:8080` on the same network. Opening `index.html`
+  straight from disk doesn't work, because browsers block ES modules on
+  `file://`.
+- **iPhone:** use Share → Add to Home Screen for true full screen. Android
+  goes full screen when you tap Start.
+- **Desktop:** WASD to move, the mouse to aim, click to fire, Space to shove,
+  R to reload, Q to swap, Esc for tuning. A gamepad works too.
 
-If you use a bundler such as Vite, set its base path to `/FunLand2/` (for example
-`base: '/FunLand2/'` in `vite.config.js`) so assets load from the project's Pages URL.
+## Code map
 
-The site will be at `https://miikka-boom.github.io/FunLand2/`.
+```
+index.html, style.css      page shell, title card, tuning panel styles
+src/main.js                boot, resize/safe areas, pause, frame loop
+src/settings.js            every tunable value + panel schema + presets
+src/settings-panel.js      tuning panel UI
+src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
+src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
+src/world/                 seeded city generator, collision, ray casts, flow field
+src/game/                  player, weapons, zombies, director, effects, game state
+src/render/                renderer, lighting (night + LOS), HUD
+src/audio.js               WebAudio synth SFX
+tests/                     node --test unit tests (stick math)
+```
+
+`window.__p0` exposes the game, settings and input in the browser console.
+
+## Tests
+
+```
+npm test
+```
+
+## Deployment
+
+[`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml)
+publishes the repository as a static site from the default branch. To set it
+up once, go to **Settings → Pages → Source** and choose **GitHub Actions**.
+`package.json` has no `build` script, so the workflow serves the files as they
+are.
