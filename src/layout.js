@@ -16,7 +16,8 @@ export function computeLayout(w, h, safe, s) {
     id: 'reload',
     shape: 'circle',
     x: w - safe.r - 18 - btnR,
-    y: h - safe.b - Math.max(188, R * 2 + 72),
+    // Scales with height so tablets keep the buttons above the resting thumb.
+    y: h - safe.b - Math.max(188, R * 2 + 72, h * 0.45),
     r: btnR,
   };
   const shove = {
@@ -28,7 +29,7 @@ export function computeLayout(w, h, safe, s) {
     hidden: !s.shoveButton,
   };
 
-  const stickY = h - safe.b - Math.max(104, R + 44);
+  const stickY = h - safe.b - Math.max(104, R + 44, h * 0.2);
   const fixedMove = { x: safe.l + Math.max(112, R + 54), y: stickY };
   const fixedAim = { x: w - safe.r - Math.max(124, R + 66), y: stickY };
 
