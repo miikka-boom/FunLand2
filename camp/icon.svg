@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <defs>
+    <linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#151a33"/><stop offset=".7" stop-color="#3a2a44"/><stop offset="1" stop-color="#9a5a3c"/></linearGradient>
+    <radialGradient id="f"><stop offset="0" stop-color="rgba(255,160,70,.7)"/><stop offset="1" stop-color="rgba(255,160,70,0)"/></radialGradient>
+  </defs>
+  <rect width="180" height="180" rx="36" fill="url(#s)"/>
+  <rect y="120" width="180" height="60" rx="0" fill="#2e251e"/>
+  <path d="M0 180V156h180v24z" fill="#241d17"/>
+  <ellipse cx="90" cy="134" rx="70" ry="40" fill="url(#f)"/>
+  <path d="M38 126L90 58l52 68z" fill="#8f8466" stroke="#1b140f" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M78 126l12-30 12 30z" fill="#2a241e" stroke="#1b140f" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M90 58V36l20 8-20 8" fill="#ff6b4a" stroke="#1b140f" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M120 142c-2-12 8-14 6-26 10 8 14 16 12 26z" fill="#ffb347" stroke="#1b140f" stroke-width="2.5" stroke-linejoin="round"/>
+</svg>
