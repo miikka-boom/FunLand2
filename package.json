@@ -2,11 +2,12 @@
   "name": "funland2",
   "private": true,
   "version": "0.0.0",
-  "description": "Prototype 0: top-down twin-stick zombie horde survival (mobile web), plus the survivor camp metagame prototype",
+  "description": "Prototype 0: top-down twin-stick zombie horde survival (mobile web), plus two metagame prototypes: the survivor camp and the Safehouse",
   "type": "module",
   "scripts": {
     "start": "python3 -m http.server 8080",
     "test": "node --test tests/*.test.js",
-    "camp:balance": "node camp/tools/balance-sim.mjs"
+    "camp:balance": "node camp/tools/balance-sim.mjs",
+    "safehouse:balance": "node safehouse/tools/balance-sim.mjs"
   }
 }
