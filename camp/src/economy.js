@@ -36,6 +36,11 @@ import { niceRound, randInt } from './util.js';
 const HOUR_MS = 3600 * 1000;
 const fail = (reason, extra = {}) => ({ ok: false, reason, ...extra });
 
+/** Entry for a level in a per-level table, holding the last value past its end. */
+export function scaleAt(table, level) {
+  return table[Math.max(0, Math.min(level, table.length - 1))];
+}
+
 // --- Pricing -------------------------------------------------------------------------------
 
 /** Gems to rush `sec` seconds: piecewise linear through GEM_ANCHORS, at least 1. */
@@ -197,6 +202,7 @@ export class Camp {
 
   /** Timers that occupy a builder: building upgrades and rubble clearing. */
   jobs() {
+    if (this._jobsRev === this.rev && this._jobs) return this._jobs;
     const out = [];
     for (const id of BUILDING_ORDER) {
       const up = this.s.buildings[id].up;
@@ -206,7 +212,9 @@ export class Camp {
       const up = this.s.rubble[id].up;
       if (up) out.push({ kind: 'rubble', id, name: RUBBLE[id].name, start: up.start, end: up.end });
     }
-    return out.sort((a, b) => a.end - b.end);
+    this._jobs = out.sort((a, b) => a.end - b.end);
+    this._jobsRev = this.rev;
+    return this._jobs;
   }
 
   freeBuilders() {
@@ -407,11 +415,20 @@ export class Camp {
     const def = BUILDINGS[id];
     const b = this.s.buildings[id];
     const now = this.now();
-    // Upgrading pauses production: bank what's stored first.
-    if (def.kind === 'producer' && b.level > 0) this.collect(id, { silent: true });
+    // Upgrading pauses production: bank what's stored first, and keep
+    // whatever doesn't fit in storage in the building until it reopens.
+    let held = 0;
+    if (def.kind === 'producer' && b.level > 0) {
+      const before = this.pending(id);
+      const r = this.collect(id, { silent: true });
+      held = Math.max(0, before - (r.ok ? r.got : 0));
+    }
     const end = now + info.time * 1000;
     b.up = { to: b.level + 1, start: now, end };
-    if (def.kind === 'producer') b.at = end;
+    if (def.kind === 'producer') {
+      b.at = end;
+      b.held = held;
+    }
     this.s.seen[id] = true;
     this.emit({ type: 'buildStart', id, level: b.up.to, first: b.level === 0 });
     this.changed();
@@ -444,9 +461,11 @@ export class Camp {
     b.up = null;
     const row = this.row(id);
     if (def.kind === 'producer') {
-      b.at = t;
       const rate = this.rate(id);
-      if (from === 0 && rate > 0) b.at = t - ((FIRST_FILL * row.store) / rate) * HOUR_MS;
+      // A new producer starts partly full; an upgraded one gets back what it held.
+      const startWith = from === 0 ? FIRST_FILL * row.store : Math.min(row.store, b.held || 0);
+      b.at = rate > 0 ? t - (startWith / rate) * HOUR_MS : t;
+      b.held = 0;
     }
     this.emit({ type: 'built', id, level: b.level, first: from === 0, t });
     if (id === 'hq') {
@@ -563,9 +582,14 @@ export class Camp {
     this.changed();
   }
 
+  /** Wait-reward size at the current Command Post level. */
+  rewardScale() {
+    return scaleAt(REWARD_SCALE, this.hq);
+  }
+
   rollReward(kind) {
     const def = REWARDS[kind];
-    const scale = REWARD_SCALE[this.hq] || REWARD_SCALE[REWARD_SCALE.length - 1];
+    const scale = this.rewardScale();
     const loot = {};
     for (const r of RESOURCES) loot[r] = niceRound((def.loot[r] || 0) * scale * (0.8 + this.rng() * 0.4));
     loot.gems = this.rng() < def.gemChance ? randInt(this.rng, def.gems[0], def.gems[1]) : 0;
@@ -713,7 +737,7 @@ export class Camp {
 
   expeditionTypes() {
     const lvl = this.level('garage');
-    const scale = EXPEDITION_SCALE[this.hq] || 1;
+    const scale = scaleAt(EXPEDITION_SCALE, this.hq);
     return EXPEDITIONS.map((e) => ({ ...e, unlocked: lvl >= e.garage, time: this.scaledTime(e.time), scale }));
   }
 

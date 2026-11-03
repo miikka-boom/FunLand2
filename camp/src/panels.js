@@ -13,7 +13,6 @@ import {
   RECIPES,
   ZONES,
   REWARDS,
-  REWARD_SCALE,
   EXPEDITIONS,
   POWER,
   CARRY_PER_ITEM,
@@ -228,7 +227,7 @@ function buildingPanel(camp, id, ctx) {
     const room = camp.storageCap() - Math.floor(camp.s.res[res]);
     right +=
       `<div class="collect" style="--c:${RES_INFO[res].color}">${icon(res)}<div><b>${fmtNum(p)}</b><small> / ${fmtNum(row.store)} waiting</small>` +
-      `<div class="cl-sub">${full > 0 ? `Full in ${fmtTime(full)}` : 'Full: production has stopped'}${room <= 0 ? ' · Storage is full' : ''}</div></div>` +
+      `<div class="cl-sub">${full > 0 ? `Full in ${countdown(Math.ceil(camp.now() / 1000 + full) * 1000)}` : 'Full: production has stopped'}${room <= 0 ? ' · Storage is full' : ''}</div></div>` +
       `${btn('Collect', 'collect', { id }, p >= 1 && room > 0 ? 'primary' : 'disabled')}</div>`;
   }
   // Level 0 previews what the first level does; otherwise current -> next.
@@ -517,7 +516,8 @@ export function resultsPanel(camp, r) {
   if (g.survivorsLost) notes.push(`${icon('survivor')}You found a survivor, but there was no bed for them. Upgrade the Bunkhouse.`);
   const used = Object.entries(r.itemsUsed || {});
   if (used.length) notes.push(`${icon('medkit')}Used ${used.map(([k, n]) => `${n}× ${RECIPES.find((x) => x.id === k).name}`).join(', ')}`);
-  if (!r.won) notes.push(`${icon('info')}You kept ${Math.round((0.2 + 0.5 * r.progress) * 100)}% of what you found. Upgrade the Armory and Infirmary for more run power.`);
+  const kept = r.kept ?? 0.2 + 0.5 * r.progress;
+  if (!r.won) notes.push(`${icon('info')}You kept ${Math.round(kept * 100)}% of what you found. Upgrade the Armory and Infirmary for more run power.`);
   return (
     `<div class="results ${r.won ? 'won' : 'lost'}">` +
     `<div class="res-title">${r.won ? 'SURVIVED' : 'YOU DIED'}</div>` +
@@ -534,7 +534,7 @@ export function resultsPanel(camp, r) {
 export function rewardPanel(camp, kind, opened) {
   const def = REWARDS[kind];
   const info = camp.rewardInfo(kind);
-  const scale = REWARD_SCALE[camp.hq] || 1;
+  const scale = camp.rewardScale();
   if (opened) {
     return (
       `<div class="reward-open ${kind}"><div class="ro-art">${icon(kind === 'short' ? 'crate' : 'airdrop')}</div>` +
@@ -576,6 +576,9 @@ export function welcomePanel(camp, sum) {
     else if (e.type === 'cleared') items.push(`${icon('hammer')}${esc(RUBBLE[e.area].name)} cleared`);
     else if (e.type === 'crafted') items.push(`${icon(e.recipe)}${esc(e.name)} crafted`);
     else if (e.type === 'expeditionBack') items.push(`${icon('truck')}${esc(EXPEDITIONS.find((x) => x.id === e.kind).name)} is back`);
+    else if (e.type === 'weapon') items.push(`${icon(e.weapon)}New gun for your runs: ${esc(e.name)}`);
+    else if (e.type === 'zone') items.push(`${icon('map')}New zone revealed: ${esc(e.name)}`);
+    else if (e.type === 'recipe') items.push(`${icon(e.recipe)}New recipe: ${esc(e.name)}`);
   }
   for (const kind of ['short', 'long']) if (camp.rewardInfo(kind).ready) items.push(`${icon(kind === 'short' ? 'crate' : 'airdrop')}${REWARDS[kind].name} is ready`);
   const waiting = {};

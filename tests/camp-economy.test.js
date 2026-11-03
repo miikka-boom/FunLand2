@@ -135,6 +135,50 @@ test('upgrading a producer banks its store, pauses production, and resumes at th
   assert.ok(Math.abs(camp.pending('garden') - rate2 * 0.25) < 1e-6);
 });
 
+test('stock that does not fit in storage is kept through an upgrade, not destroyed', () => {
+  const { camp, clock, state } = makeCamp((s) => {
+    rich(s);
+    s.buildings.hq.level = 3;
+  });
+  finish(camp, clock, 'lumber');
+  clock.warp(10 * HOUR * S); // full: 150 wood
+  const store = BUILDINGS.lumber.levels[0].store;
+  state.res.wood = camp.storageCap() - 40; // room for 40 only
+  const r = camp.startUpgrade('lumber');
+  assert.ok(r.ok);
+  assert.equal(state.res.wood, camp.storageCap(), 'the 40 that fit were banked (the upgrade costs food)');
+  assert.equal(camp.pending('lumber'), 0, 'paused while upgrading');
+  clock.t = r.end;
+  camp.tick();
+  assert.equal(camp.level('lumber'), 2);
+  assert.ok(Math.abs(camp.pending('lumber') - (store - 40)) < 1e-6, 'the 110 that did not fit come back');
+  // Storage completely full: nothing banked, everything kept.
+  const c2 = makeCamp((s) => {
+    rich(s);
+    s.buildings.hq.level = 3;
+  });
+  finish(c2.camp, c2.clock, 'garden');
+  c2.clock.warp(10 * HOUR * S);
+  c2.state.res.food = c2.camp.storageCap();
+  const r2 = c2.camp.startUpgrade('garden');
+  assert.ok(r2.ok);
+  c2.clock.t = r2.end;
+  c2.camp.tick();
+  assert.ok(Math.abs(c2.camp.pending('garden') - BUILDINGS.garden.levels[0].store) < 1e-6);
+});
+
+test('builder jobs stay correct across changes (memoised by revision)', () => {
+  const { camp, clock } = makeCamp(rich);
+  assert.equal(camp.jobs().length, 0);
+  assert.ok(camp.startUpgrade('garden').ok);
+  assert.equal(camp.jobs().length, 1);
+  assert.equal(camp.freeBuilders(), 0);
+  clock.warp(BUILDINGS.garden.levels[0].time * S);
+  camp.tick();
+  assert.equal(camp.jobs().length, 0);
+  assert.equal(camp.freeBuilders(), 1);
+});
+
 test('building levels are gated by the Command Post level', () => {
   const { camp, clock } = makeCamp(rich);
   finish(camp, clock, 'garden');
@@ -392,6 +436,16 @@ test('build-time tuning scales new timers', () => {
   camp.tuning.buildTime = 0;
   assert.ok(camp.startUpgrade('garden').ok);
   assert.equal(camp.level('garden'), 1, 'zero-length timers finish at once');
+});
+
+test('fields a newer build adds are filled in at the save\'s camp time, not real time', () => {
+  const offset = 2 * 24 * HOUR * S;
+  const saved = { clockOffset: offset, buildings: { hq: { level: 2, at: 0, up: null } } };
+  const before = Date.now() + offset;
+  const m = migrate(saved);
+  // The short reward was missing: it should be due `first` seconds after camp-now, not real-now.
+  assert.ok(m.rewards.short.readyAt >= before + REWARDS.short.first * S - 5);
+  assert.ok(m.buildings.garden.at >= before - 5);
 });
 
 test('old or partial saves are filled in, garbage starts fresh', () => {

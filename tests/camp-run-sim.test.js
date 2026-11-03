@@ -52,6 +52,16 @@ test('wins pay more than deaths and first clears pay gems once', () => {
   assert.ok(first.gems >= zone.firstGems);
 });
 
+test('the result says how much of the loot was kept', () => {
+  for (let seed = 0; seed < 50; seed++) {
+    const w = simulateRun({ zone, loadout, outcome: 'win', seed });
+    const l = simulateRun({ zone, loadout, outcome: 'lose', seed });
+    assert.equal(w.kept, 1);
+    assert.ok(l.kept >= 0.2 && l.kept <= 0.7);
+    assert.ok(Math.abs(l.kept - (0.2 + 0.5 * l.progress)) < 1e-9);
+  }
+});
+
 test('higher power wins more often', () => {
   const rate = (power) => {
     let w = 0;

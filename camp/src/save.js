@@ -7,10 +7,10 @@ import { TUNING_DEFAULTS } from './config.js';
 const SAVE_KEY = 'funland2.camp.save.v1';
 const TUNING_KEY = 'funland2.camp.tuning.v1';
 
-export function loadState(now) {
+export function loadState() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) return migrate(JSON.parse(raw), now);
+    if (raw) return migrate(JSON.parse(raw));
   } catch {
     // Corrupt or blocked storage: start fresh.
   }
@@ -34,11 +34,15 @@ export function clearState() {
   }
 }
 
-/** Bring a parsed save up to the current shape. */
+/**
+ * Bring a parsed save up to the current shape. Missing fields are filled in
+ * at the save's own camp time (real time + its warp offset), so a field a
+ * newer build adds doesn't start out days in the past.
+ */
 export function migrate(saved, now) {
-  const fresh = newState(now);
-  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return fresh;
-  return fillMissing(saved, fresh);
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return newState(now ?? Date.now());
+  const offset = Number(saved.clockOffset) || 0;
+  return fillMissing(saved, newState(now ?? Date.now() + offset));
 }
 
 function isObj(v) {

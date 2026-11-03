@@ -20,7 +20,7 @@ import { fmtNum, fmtTime } from './format.js';
 // --- State -----------------------------------------------------------------------------------
 
 const tuning = loadTuning();
-let state = loadState(Date.now());
+let state = loadState();
 const firstVisit = !state;
 if (!state) state = newState(Date.now());
 const clock = new Clock(state.clockOffset || 0);
@@ -88,7 +88,7 @@ const dev = new DevPanel($('dev'), {
   onExport: () => JSON.stringify(save(), null, 0),
   onImport: (json) => {
     try {
-      const s = migrate(JSON.parse(json), Date.now());
+      const s = migrate(JSON.parse(json));
       clock.offset = s.clockOffset || 0;
       rebind(s);
       save();
@@ -332,21 +332,13 @@ function act(name, d = {}, el = null) {
       doCollect(d.id, rect);
       break;
     case 'collectAll': {
-      const got = {};
-      let any = false;
-      for (const id of Object.keys(BUILDINGS)) {
-        if (BUILDINGS[id].kind !== 'producer') continue;
-        const res = camp.collect(id);
-        if (res.ok) {
-          got[res.res] = (got[res.res] || 0) + res.got;
-          any = true;
-        }
-      }
+      const all = camp.collectAll();
       modals.close();
-      if (any) {
+      if (all.ok) {
         sfx.play('collect');
-        flyLoot(got, rect || { x: innerWidth / 2, y: innerHeight / 2, width: 0, height: 0 });
+        flyLoot(all.got, rect || { x: innerWidth / 2, y: innerHeight / 2, width: 0, height: 0 });
       }
+      if (all.full) toasts.show('Storage is full: upgrade the Warehouse', 'warn');
       break;
     }
     case 'clear':
@@ -378,10 +370,11 @@ function act(name, d = {}, el = null) {
       if (q.done) {
         const qr = camp.claimQuest();
         if (qr.ok) {
+          const from = rect || hud.el.quest.getBoundingClientRect();
           sfx.play('quest');
           haptic(20);
-          flyLoot(qr.loot, rect);
-          fx.burst(rect.x + rect.width / 2, rect.y, undefined, 12);
+          flyLoot(qr.loot, from);
+          fx.burst(from.x + from.width / 2, from.y, undefined, 12);
         }
       } else focusQuest(q.def.focus);
       break;
@@ -494,9 +487,13 @@ function startRun(zoneId) {
     ctx.lastRun = r.result;
     const result = r.result;
     modals.open(() => P.resultsPanel(camp, result), { cls: `m-results ${result.won ? 'won' : 'lost'}`, onClose: () => flyFromModal(result.granted, '.res-loot') });
+    for (const e of deferredLevelUps.splice(0)) modals.enqueue(() => showLevelUp(e));
     save();
   });
 }
+
+/** Camp level-ups that finished while a run was playing. */
+const deferredLevelUps = [];
 
 // --- Events from the economy -------------------------------------------------------------------------
 
@@ -512,7 +509,9 @@ function onEvent(e) {
       break;
     }
     case 'hqUp':
-      modals.interrupt(() => showLevelUp(e));
+      // During a run the level-up waits for the results screen.
+      if (runView.busy) deferredLevelUps.push(e);
+      else modals.interrupt(() => showLevelUp(e));
       break;
     case 'weapon':
       toasts.show(`${icon(e.weapon)}New gun for your runs: ${esc(e.name)}`, 'good', 3600);

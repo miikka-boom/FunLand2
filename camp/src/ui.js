@@ -110,6 +110,7 @@ export class Modals {
         c.body.innerHTML = html;
         const s2 = c.body.querySelector('.scroll');
         if (s2) s2.scrollTop = top;
+        reapplyArmed(c.body);
       }
     }
     tickLive(c.body, this.now());
@@ -141,26 +142,63 @@ export class Modals {
   }
 }
 
-/**
- * Bigger gem spends need a second tap: the first one arms the button for a
- * few seconds. Returns true when the action should go ahead.
- */
+// Bigger gem spends need a second tap: the first one arms the action for a
+// few seconds. The arming is keyed by the action (not the DOM node), so it
+// survives a panel re-rendering in between, e.g. when a rush price ticks down.
+let armed = null; // { key, until }
+let armTimer = 0;
+const ARM_MS = 2600;
+
+function armKey(el) {
+  const d = { ...el.dataset };
+  delete d.gems;
+  return `${d.act}|${JSON.stringify(d)}`;
+}
+
+function showArmed(el) {
+  el.classList.add('armed');
+  const label = el.querySelector('.lbl');
+  if (label && el._lbl === undefined) {
+    el._lbl = label.innerHTML;
+    label.textContent = 'Tap again';
+  }
+}
+
+function disarmAll() {
+  armed = null;
+  for (const el of document.querySelectorAll('.armed[data-gems]')) {
+    el.classList.remove('armed');
+    const label = el.querySelector('.lbl');
+    if (label && el._lbl !== undefined) label.innerHTML = el._lbl;
+    el._lbl = undefined;
+  }
+}
+
+/** Re-arm the matching button after its panel re-rendered. */
+export function reapplyArmed(root) {
+  if (!armed) return;
+  if (performance.now() >= armed.until) {
+    disarmAll();
+    return;
+  }
+  for (const el of root.querySelectorAll('[data-gems]')) if (armKey(el) === armed.key) showArmed(el);
+}
+
+/** Returns true when the action should go ahead. */
 export function confirmGems(el) {
   const gems = Number(el.dataset.gems || 0);
   if (gems < CONFIRM_GEMS) return true;
-  if (el.classList.contains('armed')) {
-    el.classList.remove('armed');
+  const key = armKey(el);
+  if (armed && armed.key === key && performance.now() < armed.until) {
+    clearTimeout(armTimer);
+    disarmAll();
     return true;
   }
-  el.classList.add('armed');
-  const label = el.querySelector('.lbl');
-  const old = label ? label.innerHTML : '';
-  if (label) label.textContent = 'Tap again';
-  clearTimeout(el._disarm);
-  el._disarm = setTimeout(() => {
-    el.classList.remove('armed');
-    if (label) label.innerHTML = old;
-  }, 2600);
+  disarmAll();
+  armed = { key, until: performance.now() + ARM_MS };
+  showArmed(el);
+  clearTimeout(armTimer);
+  armTimer = setTimeout(disarmAll, ARM_MS);
   return false;
 }
 

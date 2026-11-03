@@ -66,6 +66,7 @@ export function simulateRun({ zone, loadout, outcome = 'auto', seed, firstClear 
     loot,
     gems,
     firstClear: cleared,
+    kept: keep,
     rescued,
     itemsUsed,
     events,
