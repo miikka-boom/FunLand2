@@ -16,9 +16,19 @@ and no dependencies.
   opens every feel parameter: stick modes and size, dead zones, fire ring, aim
   assist, smoothing, camera, speed, horde size and so on. There are presets
   for A/B testing, and **Copy tuning JSON** copies only what you changed.
-- **A run across a dark city**: start in a safe room (bottom left) and reach
-  the green safe room across town. A green arrow at the screen edge points to
-  it.
+- **Two levels**, picked on the title card or in the tuning panel:
+  - **Streets:** a run across a dark city, from a safe room (bottom left) to
+    the green safe room across town.
+  - **Building:** one dark floor of an office/hospital-style building:
+    corridors, offices, wards, cafeterias, lobbies, warehouse aisles and
+    restrooms, all furnished. Hallways are blocked by barricades of piled
+    furniture, so the route winds through rooms and doorways. Some offices
+    have glass fronts, so you see the horde before it reaches the door, and
+    some rooms are pitch dark. A shootable fire alarm is the indoor version
+    of the car alarm.
+
+  On both levels, a green arrow at the screen edge points to the safe room
+  and shows the walking distance.
 - **An AI Director**: build-up, peak and relax phases, wanderers, small groups,
   and mobs ("HERE THEY COME!") that spawn out of sight and come round corners.
   Shooting a car with a blinking red light sets off the **alarm**, which brings
@@ -68,7 +78,7 @@ src/settings.js            every tunable value + panel schema + presets
 src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
-src/world/                 seeded city generator, collision, ray casts, flow field
+src/world/                 seeded city + building generators, collision, ray casts, flow field
 src/game/                  player, weapons, zombies, director, effects, game state
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX

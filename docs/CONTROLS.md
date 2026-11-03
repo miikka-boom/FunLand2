@@ -186,3 +186,6 @@ Hunter** and **Spawn Tank** buttons for testing on demand.
 - Does mashing to break a pin feel fair at 5 taps, or panicky?
 - Can you kite the Tank while shooting backwards without the move stick
   drifting? Can you read the rock throws in time to strafe?
+- **Building level:** in tight corridors and doorways, does the look-ahead
+  show enough of what's round the corner? Is shoving at a doorway (a
+  chokepoint) reliable when the horde funnels in?

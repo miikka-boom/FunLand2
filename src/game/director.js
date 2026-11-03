@@ -50,7 +50,7 @@ export class Director {
   /** Initial wanderers spread over the whole route, none near the start. */
   populate() {
     const g = this.game;
-    const density = (g.world.w * g.world.h) / (4200 * 2800);
+    const density = ((g.world.w * g.world.h) / (4200 * 2800)) * (g.world.map.wanderDensity || 1);
     const n = Math.min(MAX_ZOMBIES - 50, Math.round(70 * density * g.settings.wanderers));
     const { start, startRoom, endRoom } = g.world.map;
     let placed = 0;
@@ -305,8 +305,9 @@ export class Director {
     car.alarmOn = true;
     this.alarm = { car, t: 0, wave: 0 };
     if (this.phase === 'calm' || this.phase === 'relax') this.phase = 'build';
-    g.audio.alarm(car.x + car.w / 2, car.y + car.h / 2, 15);
-    g.announce('CAR ALARM!', '#ffb347', 2.5);
+    const fire = car.kind === 'alarmbox';
+    g.audio.alarm(car.x + car.w / 2, car.y + car.h / 2, 15, fire ? 'fire' : 'car');
+    g.announce(fire ? 'FIRE ALARM!' : 'CAR ALARM!', '#ffb347', 2.5);
     g.noise(car.x + car.w / 2, car.y + car.h / 2, 950);
   }
 

@@ -4,6 +4,8 @@
 const STORAGE_KEY = 'funland2.p0.tuning.v1';
 
 export const DEFAULTS = Object.freeze({
+  level: 'city', // 'city' (streets) | 'interior' (building floor)
+
   // --- Sticks -------------------------------------------------------------
   moveMode: 'dynamic', // 'dynamic' (base follows thumb) | 'floating' | 'fixed'
   aimMode: 'dynamic',
@@ -79,6 +81,20 @@ const MODE_OPTIONS = [
 
 // Drives the tuning panel UI.
 export const SCHEMA = [
+  {
+    group: 'Level',
+    items: [
+      {
+        key: 'level',
+        label: 'Level (restarts the run)',
+        type: 'select',
+        options: [
+          ['city', 'Streets – night city'],
+          ['interior', 'Building – interior floor'],
+        ],
+      },
+    ],
+  },
   {
     group: 'Sticks',
     items: [
