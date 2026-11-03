@@ -16,6 +16,9 @@ const SLIDERS = [
   { key: 'volume', label: 'Volume', min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` },
 ];
 
+// Served from the repo (/camp/) the game is one folder up; anywhere else, use Pages.
+const GAME_URL = /\/camp\/?(index\.html)?$/.test(location.pathname) ? '../' : 'https://miikka-boom.github.io/FunLand2/';
+
 export class DevPanel {
   constructor(root, ctx) {
     this.root = root;
@@ -85,7 +88,7 @@ export class DevPanel {
       `<div class="panel-section"><div class="panel-group">Save</div><div class="panel-row"><button class="btn" type="button" data-dev="export">Copy save JSON</button><button class="btn" type="button" data-dev="import">Load save JSON</button><button class="btn danger" type="button" data-dev="reset">Reset progress</button></div>` +
       `<textarea class="panel-json" spellcheck="false" placeholder="Paste a save here, then press Load save JSON again"></textarea>` +
       `<div class="panel-note">Run <code>npm run camp:balance</code> for a scripted multi-day pacing simulation.</div>` +
-      `<div class="panel-row"><a class="btn" href="../">Open the action game prototype</a></div></div>` +
+      `<div class="panel-row"><a class="btn" href="${GAME_URL}"${GAME_URL.startsWith('http') ? ' target="_blank" rel="noopener"' : ''}>Open the action game prototype</a></div></div>` +
       `</div>`;
     this.json = this.root.querySelector('.panel-json');
   }
