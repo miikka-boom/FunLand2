@@ -273,7 +273,10 @@ export class Effects {
     const P = clamp(num(p.power, 0.6), 0, 1.5);
     const [dx, dy] = unitDir(p);
     const ang = Math.atan2(dy, dx);
-    const R = 12 + 19 * P;
+    const R = 8 + 12 * P;
+    // Sit on the attacker's side of the contact so the victim's shocked face stays visible
+    x -= dx * R * 0.6;
+    y -= dy * R * 0.6;
     const life = 0.13 + 0.05 * Math.min(1, P) + (P > 1 ? 0.04 : 0);
 
     // Speed lines shoot out from behind the burst
@@ -286,7 +289,7 @@ export class Effects {
     if (P >= 0.9) {
       const ring = this.add(RING, true, x, y, 0.14);
       ring.a = R * 0.6;
-      ring.b = R * 1.9;
+      ring.b = R * 1.4;
       ring.c = 3 + 2 * P;
       ring.col = '#fffbea';
     }

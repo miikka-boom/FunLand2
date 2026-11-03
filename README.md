@@ -23,13 +23,16 @@ on phones.
 
 | Unit | Cost | Role |
 |---|---|---|
-| **Clubber** | 60 | Big overhead club swing. The hit launches beans spinning through the air and knocks them down. |
-| **Squire** | 90 | Sword and shield. Raises the shield when archers aim at it, and blocks sword pokes from the front. Clubs come down over the top. |
-| **Archer** | 80 | Lobs arrows on a ballistic arc. Arrows stick in bodies, shields and the ground, and stay in the corpses. Squishy up close. |
+| **Clubber** | 65 | Big overhead club swing. The hit launches beans cartwheeling through the air and knocks them down. Breaks into a yelling charge when close. |
+| **Squire** | 95 | Sword and shield. Raises the shield when archers aim at it and blocks hits from the front; a block stops the swing. Heavy: flies lower. Clubs come down over the top. |
+| **Archer** | 75 | Lobs arrows on a ballistic arc (and sometimes misses). Arrows stick and quiver in bodies, shields and the ground, and stay in the corpses. Squishy up close. |
 
 Rock-paper-scissors: archers shoot clubbers before they arrive, clubbers bonk
 squires over their shields, and squires walk through arrow rain under a raised
-shield.
+shield. At equal gold the counter wins almost every time but loses a good share
+of its health, and mixed armies beat single-type ones (checked with headless
+simulations).
+
 
 ## How the beans work
 
@@ -46,13 +49,18 @@ The jokes come from that one rule plus a few extras:
 - **Googly eyes:** each pupil is a little physics point pushed by gravity and
   the head's acceleration, so it jiggles with every step and spins when hit.
 - **Faces:** angry brows when attacking, an "O" mouth for battle cries and
-  screams, a smile when cheering, droopy eyelids when dead.
+  screams, a smile when cheering, shocked eyes that turn into X's (tongue out)
+  when dead.
 - **Squash and stretch** follows the hips' vertical acceleration.
-- **Bonks:** club hits launch beans up and away with spin. Launched beans
-  scream, windmill their arms and run in the air.
+- **Bonks:** the clubber raises the club overhead, trembles for a beat, then
+  steps into a swing that launches beans up and away with a cartwheel. Launched
+  beans scream, stretch into sausages, windmill their arms and run in the air.
+  Medium hits cause a stumble with windmilling arms; corpses give a last wobble
+  and pile up.
 - **Juice:** hit-stop on big hits, screen shake, comic starbursts and dirt
-  clods, "BONK!" pop-ups, slow motion on the final blow, and the winners hop
-  and cheer.
+  clods, "BONK!" pop-ups, smooth slow motion (drawing blends between physics
+  steps), a final-blow slow-mo that keeps the victim in the shot, and the
+  winners hop and cheer.
 - **Hand of god:** drag a bean to pick it up. It dangles and flails, and you
   can fling it.
 
@@ -60,13 +68,18 @@ The jokes come from that one rule plus a few extras:
 
 - **Campaign:** six rounds. Red's army is preset, and you have a gold budget
   for blue. **Retry** replays your placement; **Change army** lets you edit it.
+  Beaten rounds can be replayed from the title card. Every round has several
+  winning armies and loses to the obvious wrong answer (checked by simulating
+  every affordable army).
 - **Sandbox:** place both armies (left of the field is blue, right is red) with
   no budget. You can grab beans during the battle too.
 
-Controls: tap or click your side of the field to place the selected unit. Drag
-a bean to grab it, drag elsewhere to pan, pinch or scroll to zoom. The 🐢 button
-toggles slow motion. Keys: `1` `2` `3` pick a unit, `E` remove, `Space` fight,
-`S` slow-mo, `F` auto camera, `R` reset, `M` mute, `Esc` menu.
+Controls: tap or click your side of the field to place the selected unit (a
+tap right next to a bean still places one). Drag a bean to grab it, drag
+elsewhere to pan, pinch or scroll to zoom; 🎥 reframes. The 🐢 button toggles
+slow motion. The ≡ menu pauses the battle. Keys: `1` `2` `3` pick a unit, `E`
+remove, `Space` fight, `S` slow-mo, `F` auto camera, `R` reset, `M` mute, `Esc`
+menu / resume.
 
 ## Code map (battle/)
 

@@ -241,6 +241,7 @@ export class Unit {
   // AI: pick a target, walk to it, attack. Runs ~7 times a second.
 
   think(b) {
+    this.charging = false;
     if (!this.alive) return;
     if (b.phase !== 'battle' || this.held) {
       this.wantVx = 0;
@@ -310,6 +311,7 @@ export class Unit {
   }
 
   startAttack(b) {
+    if (this.type.ranged) this.nocked = true; // a new draw always has an arrow on the string
     const variant = this.type.poses.windup2 ? (this.rng.chance(0.45) ? 1 : 0) : 0;
     this.act = { phase: this.type.ranged ? 'draw' : 'windup', t: 0, variant, hits: new Set(), done: false, aim: null };
     this.brow = 1;
@@ -400,7 +402,9 @@ export class Unit {
     // Walk
     if (gF > 0) {
       let ax = DRIVE_K * (this.wantVx - hipVx);
-      if (!this.wantVx && this.feet[0].plant && this.feet[1].plant) {
+      const striking = this.act && this.act.phase === 'strike' && !this.type.ranged;
+      if (striking) ax = 30 * (f * 150 - hipVx); // step into the blow, don't get kicked back by it
+      else if (!this.wantVx && this.feet[0].plant && this.feet[1].plant) {
         const mid = (this.feet[0].x + this.feet[1].x) / 2 - f * 0.5;
         ax += BALANCE_K * (mid - hip.x);
       }
@@ -512,6 +516,8 @@ export class Unit {
         let tx;
         let ty;
         if (ft.plant) {
+          // Dragged by a push? Re-plant where it is instead of skating back
+          if (Math.abs(p.x - ft.x) > 4) ft.x = p.x - Math.sign(p.x - ft.x) * 4;
           tx = ft.x;
           ty = this.ground - p.r;
         } else {
@@ -581,6 +587,8 @@ export class Unit {
 
     const W = WEAPONS[this.type.weapon];
     if (this.tip) {
+      // During the strike the body is braced: most of the swing's kick goes into the ground
+      const rk = this.act && this.act.phase === 'strike' ? 0.2 : 1;
       const [dx, dy] = this.weaponDir(pose.ang);
       const tx = hand.x + dx * W.len;
       const ty = hand.y + dy * W.len;
@@ -592,10 +600,10 @@ export class Unit {
       const Fy = tip.mass * (TIP_K * wk * (ty - tip.y) - TIP_C * Math.sqrt(wk) * rvy) * m;
       tip.fx += Fx;
       tip.fy += Fy;
-      hand.fx -= Fx * 0.3;
-      hand.fy -= Fy * 0.3;
-      this.chest.fx -= Fx * 0.7;
-      this.chest.fy -= Fy * 0.7;
+      hand.fx -= Fx * 0.3 * rk;
+      hand.fy -= Fy * 0.3 * rk;
+      this.chest.fx -= Fx * 0.7 * rk;
+      this.chest.fy -= Fy * 0.7 * rk;
     }
 
     let ox;
@@ -660,7 +668,7 @@ export class Unit {
         a.phase = 'strike';
         a.t = 0;
         // Lunge into the swing
-        const lunge = this.type.weapon === 'club' ? 130 : 90;
+        const lunge = this.type.weapon === 'club' ? 180 : 90;
         this.hip.addVel(this.f * lunge, 0, dt);
         this.chest.addVel(this.f * lunge, 0, dt);
         b.emit('whoosh', this.hip.x, this.hip.y, { unit: this, power: this.type.weapon === 'club' ? 1 : 0.6 });
@@ -688,7 +696,9 @@ export class Unit {
       this.brow = 0;
       return P.rest;
     }
-    return blendPose(strike, P.rest, easeInOut(a.t / A.recover));
+    const k = a.t / A.recover;
+    if (P.recover && !a.variant) return k < 0.5 ? blendPose(strike, P.recover, easeOut(k * 2)) : blendPose(P.recover, P.rest, easeInOut(k * 2 - 1));
+    return blendPose(strike, P.rest, easeInOut(k));
   }
 
   animateBow(dt, b, a) {
@@ -772,8 +782,8 @@ export class Unit {
    * part gets extra so the bean spins.
    */
   takeHit(b, hit) {
-    const heft = this.type.heft || 1; // heavy beans slide less, but still fly
-    this.knock(hit.dvx * heft, hit.dvy, hit.x, hit.y, hit.spin == null ? 0.7 : hit.spin, b.dt, hit.flip || 0, hit.from ? hit.from.f : 0);
+    const heft = this.type.heft || 1; // heavy beans slide less, and fly a bit lower (but still fly)
+    this.knock(hit.dvx * heft, hit.dvy * (this.type.heftUp || 1), hit.x, hit.y, hit.spin == null ? 0.7 : hit.spin, b.dt, hit.flip || 0, hit.from ? hit.from.f : 0);
     this.sqv += 6 * Math.min(1.5, Math.hypot(hit.dvx, hit.dvy) / 300);
     if (!this.alive) return;
     this.hp -= hit.damage;
@@ -785,7 +795,9 @@ export class Unit {
       this.die(b, hit);
       return;
     }
-    if (stun >= 0.85 || this.conscious < 0.12) {
+    // Full-speed club bonks floor even armoured beans; poise only saves them from weak ones
+    const downStun = hit.kind === 'club' ? hit.stun * Math.min(1, (this.type.poise || 1) + 0.12) : stun;
+    if (downStun >= 0.85 || this.conscious < 0.12) {
       this.downT = this.rng.range(0.75, 1.25);
       this.act = null;
       this.bowDraw = 0;
@@ -833,6 +845,7 @@ export class Unit {
     this.alive = false;
     this.hp = 0;
     this.conscious = Math.min(this.conscious, 0.3); // fades out in control(): a last wobble
+    for (const p of this.body) p.bounce = 0.4;
     this.wake = 0;
     this.act = null;
     this.striking = false;
@@ -929,8 +942,8 @@ export class Unit {
         const power = clamp(p.impact / 900, 0, 1.5);
         b.emit('land', p.x, this.ground, { unit: this, power });
         this.sqv += power * 5;
-        if (this.alive && b.phase === 'battle' && p.impact > 820) {
-          const dmg = (p.impact - 820) * 0.06;
+        if (this.alive && b.phase === 'battle' && p.impact > 650) {
+          const dmg = (p.impact - 650) * 0.12;
           this.hp -= dmg;
           this.conscious = Math.max(0, this.conscious - 0.4);
           if (this.hp <= 0) this.die(b, null);

@@ -18,7 +18,9 @@ export class Camera {
     this.trauma = 0;
     this.shakeX = 0;
     this.shakeY = 0;
-    this.groundFrac = 0.72;
+    this.groundFrac = 0.74; // where the ground line sits on screen (0 = top)
+    this.groundTarget = 0.74;
+    this.fast = false; // snappier tracking for the final-blow slow-mo
     this.t = 0;
   }
 
@@ -86,10 +88,19 @@ export class Camera {
     this.trauma = Math.min(1, this.trauma + amount);
   }
 
+  /** After a resize: keep the user's view, just bring it back inside the limits. */
+  clampView() {
+    this.zoom = clamp(this.zoom, this.minZoom, this.maxZoom);
+    this.tzoom = clamp(this.tzoom, this.minZoom, this.maxZoom);
+    this.clampX();
+    this.y = this.yFor(this.zoom);
+  }
+
   update(dt) {
     this.t += dt;
-    const k = 1 - Math.exp(-dt * 2.6);
-    const kz = 1 - Math.exp(-dt * 1.8);
+    const k = 1 - Math.exp(-dt * (this.fast ? 6 : 2.6));
+    const kz = 1 - Math.exp(-dt * (this.fast ? 5 : 1.8));
+    this.groundFrac += (this.groundTarget - this.groundFrac) * (1 - Math.exp(-dt * 2.5));
     this.x += (this.tx - this.x) * k;
     // Zoom in log space so it feels even
     this.zoom = Math.exp(Math.log(this.zoom) + (Math.log(this.tzoom) - Math.log(this.zoom)) * kz);

@@ -7,7 +7,7 @@ export const ROUNDS = [
   {
     name: 'Bonk Basics',
     tip: 'Clubbers hit hard but walk into arrows.',
-    budget: 220,
+    budget: 240,
     red: [...line('clubber', 1160, 3, 46)],
   },
   {
@@ -31,13 +31,13 @@ export const ROUNDS = [
   {
     name: 'Mixed Company',
     tip: 'Front, middle, back. Who should your archers shoot first?',
-    budget: 720,
+    budget: 790,
     red: [...line('squire', 1130, 3, 36), ...line('clubber', 1260, 3, 34), ...line('archer', 1480, 4, 50)],
   },
   {
     name: 'Final Siege',
     tip: 'Everything they have. Good luck.',
-    budget: 1050,
+    budget: 1100,
     red: [...line('squire', 1120, 5, 30), ...line('clubber', 1290, 6, 28), ...line('archer', 1500, 6, 40)],
   },
 ];

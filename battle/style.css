@@ -106,7 +106,7 @@ button {
 }
 
 .team-bar .tag {
-  font-size: calc(17px * var(--ui-scale));
+  font-size: max(12px, calc(17px * var(--ui-scale)));
   letter-spacing: 0.04em;
   color: var(--ink);
 }
@@ -139,7 +139,7 @@ button {
 }
 
 .team-bar .count {
-  font-size: calc(15px * var(--ui-scale));
+  font-size: max(12px, calc(15px * var(--ui-scale)));
   min-width: 1.4em;
   text-align: center;
   color: var(--ink-soft);
@@ -163,7 +163,7 @@ button {
   background: var(--parch);
   border: 2px solid var(--ink-soft);
   padding: calc(6px * var(--ui-scale)) calc(16px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: calc(19px * var(--ui-scale));
+  font-size: max(12px, calc(19px * var(--ui-scale)));
   white-space: nowrap;
   clip-path: polygon(0 0, 100% 0, 100% 78%, 55% 78%, 50% 100%, 45% 78%, 0 78%);
   box-shadow: inset 0 -3px 0 var(--parch-dark);
@@ -174,7 +174,7 @@ button {
   margin: 2px auto 0;
   width: max-content;
   max-width: 90vw;
-  font-size: calc(14px * var(--ui-scale));
+  font-size: max(11px, calc(14px * var(--ui-scale)));
   color: var(--ink);
   background: rgba(246, 234, 208, 0.88);
   border-radius: 999px;
@@ -210,7 +210,7 @@ button {
   border-radius: 10px;
   border: 2px solid var(--ink-soft);
   background: var(--parch);
-  font-size: calc(18px * var(--ui-scale));
+  font-size: max(12px, calc(18px * var(--ui-scale)));
   line-height: 1;
   box-shadow: 0 2px 0 rgba(58, 40, 22, 0.35);
   padding: 0;
@@ -245,6 +245,8 @@ button {
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
+  padding-top: 10px; /* room for the selected card's lift */
+  margin-top: -10px;
 }
 
 .card-unit {
@@ -269,12 +271,12 @@ button {
 }
 
 .card-unit .name {
-  font-size: calc(13px * var(--ui-scale));
+  font-size: max(11px, calc(13px * var(--ui-scale)));
   line-height: 1.1;
 }
 
 .card-unit .cost {
-  font-size: calc(12px * var(--ui-scale));
+  font-size: max(11px, calc(12px * var(--ui-scale)));
   color: #8a5d00;
 }
 
@@ -318,13 +320,13 @@ button {
   border: 2px solid var(--ink-soft);
   background: var(--parch);
   box-shadow: 0 3px 0 rgba(58, 40, 22, 0.4), inset 0 -3px 0 var(--parch-dark);
-  font-size: calc(20px * var(--ui-scale));
+  font-size: max(14px, calc(20px * var(--ui-scale)));
   line-height: 1;
   padding: 2px 6px;
 }
 
 .tool span {
-  font-size: calc(11px * var(--ui-scale));
+  font-size: max(11px, calc(11px * var(--ui-scale)));
   margin-top: 3px;
   font-weight: 700;
 }
@@ -350,7 +352,7 @@ button {
   color: #fff7e6;
   font-family: Georgia, "Times New Roman", serif;
   font-weight: 900;
-  font-size: calc(26px * var(--ui-scale));
+  font-size: max(14px, calc(26px * var(--ui-scale)));
   letter-spacing: 0.04em;
   text-shadow: 0 2px 0 #7a1a12;
   box-shadow: 0 4px 0 #6b150f, 0 8px 16px rgba(0, 0, 0, 0.18);
@@ -383,21 +385,23 @@ button {
 .result {
   position: fixed;
   left: 50%;
-  top: 42%;
-  transform: translate(-50%, -50%);
+  top: calc(max(8px, env(safe-area-inset-top)) + 64px * var(--ui-scale));
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  transform: translateX(-50%);
   text-align: center;
   font-family: Georgia, "Times New Roman", serif;
   animation: pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1);
 }
 
 @keyframes pop {
-  from { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
-  to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  from { transform: translateX(-50%) scale(0.4); opacity: 0; }
+  to { transform: translateX(-50%) scale(1); opacity: 1; }
 }
 
 .ribbon {
   display: inline-block;
-  font-size: calc(54px * var(--ui-scale));
+  font-size: max(14px, calc(54px * var(--ui-scale)));
   font-weight: 900;
   letter-spacing: 0.04em;
   color: #fff8e8;
@@ -419,11 +423,12 @@ button {
 .result p {
   margin: 10px auto 12px;
   background: rgba(246, 234, 208, 0.92);
-  display: inline-block;
+  display: block;
+  width: fit-content;
   padding: 4px 14px;
   border-radius: 999px;
   font-weight: 700;
-  font-size: calc(16px * var(--ui-scale));
+  font-size: max(12px, calc(16px * var(--ui-scale)));
 }
 
 .result .row {
@@ -440,7 +445,7 @@ button {
   padding: calc(10px * var(--ui-scale)) calc(18px * var(--ui-scale));
   font-family: Georgia, "Times New Roman", serif;
   font-weight: 800;
-  font-size: calc(17px * var(--ui-scale));
+  font-size: max(12px, calc(17px * var(--ui-scale)));
   box-shadow: 0 3px 0 rgba(58, 40, 22, 0.4), inset 0 -3px 0 var(--parch-dark);
 }
 
@@ -453,7 +458,7 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  font-size: calc(22px * var(--ui-scale));
+  font-size: max(14px, calc(22px * var(--ui-scale)));
   padding: calc(12px * var(--ui-scale)) calc(22px * var(--ui-scale));
   min-width: calc(170px * var(--ui-scale));
 }
@@ -484,7 +489,7 @@ button {
 }
 
 .toast .big {
-  font-size: calc(40px * var(--ui-scale));
+  font-size: max(14px, calc(40px * var(--ui-scale)));
   font-weight: 900;
   color: #fff8e8;
   text-shadow: 0 3px 0 rgba(58, 40, 22, 0.55), 0 0 18px rgba(58, 40, 22, 0.25);
@@ -494,7 +499,7 @@ button {
 .toast .small {
   margin-top: 6px;
   display: inline-block;
-  font-size: calc(15px * var(--ui-scale));
+  font-size: max(12px, calc(15px * var(--ui-scale)));
   font-weight: 700;
   background: rgba(246, 234, 208, 0.92);
   padding: 4px 12px;
@@ -536,7 +541,7 @@ button {
   margin: 4px 0 2px;
   font-family: Georgia, "Times New Roman", serif;
   font-weight: 900;
-  font-size: calc(54px * var(--ui-scale));
+  font-size: max(14px, calc(54px * var(--ui-scale)));
   letter-spacing: 0.04em;
   color: var(--blue);
   text-shadow: 0 3px 0 var(--blue-dark);
@@ -655,4 +660,46 @@ button {
   border-radius: 8px;
   font: 13px/1.4 ui-monospace, monospace;
   z-index: 99;
+}
+
+.result p:empty {
+  display: none;
+}
+
+.round-picker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: -4px 0 10px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.round-picker .icon-btn:disabled {
+  opacity: 0.35;
+}
+
+/* Touch: finger-sized targets even when the UI scales down on small phones */
+.is-touch .icon-btn {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+.is-touch .corner-btns {
+  gap: 10px;
+}
+
+.is-touch .tool {
+  min-width: 48px;
+  min-height: 44px;
+}
+
+.is-touch .btn {
+  min-height: 42px;
+}
+
+.is-touch .card-unit {
+  min-width: 64px;
 }

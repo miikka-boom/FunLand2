@@ -268,8 +268,9 @@ export class UnitRenderer {
       { p: P(R * 0.22, R * 0.14), r: er * 0.9 },
       { p: P(R * 0.74, R * 0.04), r: er },
     ];
-    // Dead: eyes stay open in shock for a beat, then the lids droop
-    const blink = u.alive ? (u.blinkT < 0 ? 1 : 0) : u.deadT > 0.45 ? 0.55 : 0;
+    // Dead: eyes stay open in shock for a beat, then turn into cartoon X's
+    const blink = u.alive && u.blinkT < 0 ? 1 : 0;
+    const xEyes = !u.alive && u.deadT > 0.45;
     for (let i = 0; i < 2; i++) {
       const { p, r } = eyes[i];
       const e = u.eyes[i];
@@ -280,6 +281,18 @@ export class UnitRenderer {
       ctx.lineWidth = Math.max(0.8, R * 0.07);
       ctx.strokeStyle = EYE_LINE;
       ctx.stroke();
+      if (xEyes) {
+        const k = r * 0.55;
+        ctx.lineWidth = Math.max(1.2, R * 0.14);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(p[0] - k, p[1] - k);
+        ctx.lineTo(p[0] + k, p[1] + k);
+        ctx.moveTo(p[0] + k, p[1] - k);
+        ctx.lineTo(p[0] - k, p[1] + k);
+        ctx.stroke();
+        continue;
+      }
       const s = r / er;
       ctx.beginPath();
       ctx.arc(p[0] + e.ox * s, p[1] + e.oy * s, r * 0.5, 0, TAU);
@@ -334,6 +347,13 @@ export class UnitRenderer {
         ctx.ellipse(0, 0, w, h, 0, 0, TAU);
         ctx.fillStyle = '#3a0e12';
         ctx.fill();
+        if (!u.alive && u.deadT > 0.45) {
+          // Tongue lolling out
+          ctx.beginPath();
+          ctx.ellipse(0, h * 0.75, w * 0.75, h * 0.55, 0, 0, TAU);
+          ctx.fillStyle = '#ff7f8c';
+          ctx.fill();
+        }
       }
       ctx.restore();
     }

@@ -34,6 +34,7 @@ export class Battle {
     this.yellT = 0;
     this.grab = null;
     this.sorted = [];
+    this.sortedDead = [];
     this.stats = { hits: 0, blocks: 0, arrows: 0, kills: 0 };
   }
 
@@ -70,9 +71,9 @@ export class Battle {
     for (const u of this.units.slice()) if (!team || u.team === team) this.removeUnit(u);
   }
 
-  /** Placement as plain data (for retry / next round). */
+  /** Placement as plain data (for retry / next round), always inside each team's zone. */
   snapshot() {
-    return this.units.map((u) => ({ type: u.type.id, team: u.team, x: Math.round(u.homeX ?? u.hip.x), lane: u.lane, seed: u.placeSeed }));
+    return this.units.map((u) => ({ type: u.type.id, team: u.team, x: Math.round(zoneClamp(u.team, u.walkTo ?? u.homeX ?? u.hip.x)), lane: u.lane, seed: u.placeSeed }));
   }
 
   count(team, aliveOnly = true) {
@@ -98,12 +99,27 @@ export class Battle {
     return { hp, max };
   }
 
+  /**
+   * Placement rule for the player: a bean held or dropped over the line goes
+   * back to its zone edge. (Re-created rather than teleported: its planted
+   * feet would drag it straight back.) Call before start().
+   */
+  enforceZones() {
+    this.release();
+    for (const u of this.units.slice()) {
+      const x = zoneClamp(u.team, u.walkTo ?? u.hip.x);
+      if (Math.abs(x - u.hip.x) < 1 && u.walkTo == null) continue;
+      this.removeUnit(u);
+      this.addUnit(u.type.id, u.team, x, u.lane, u.placeSeed);
+    }
+  }
+
   start() {
-    if (this.phase !== 'place') return;
+    if (this.phase !== 'place' || !this.count('blue') || !this.count('red')) return false;
+    this.release();
     this.phase = 'battle';
     this.battleTime = 0;
     this.yellT = 0.9;
-    this.release();
     for (const u of this.units) {
       u.homeX = u.homeX ?? u.hip.x;
       u.hopAt = this.rng.range(0, 0.35); // the army leaps up yelling in a ripple, then charges
@@ -112,6 +128,7 @@ export class Battle {
       u.brow = 1;
     }
     this.emit('battleStart', WORLD.width / 2, -100, {});
+    return true;
   }
 
   // --- simulation --------------------------------------------------------------
@@ -180,6 +197,7 @@ export class Battle {
     }
 
     this.separate(dt);
+    this.walls(dt);
 
     if (this.phase === 'battle' || this.phase === 'over') {
       for (const u of units) if (u.striking && u.alive) this.resolveMelee(u);
@@ -228,15 +246,63 @@ export class Battle {
         }
         // Enemies: solid. Move whole torsos (keeps velocity), bleed off approach speed
         const minD = (a.R + b.R) * 1.05 + 3;
-        if (dx >= minD) continue;
-        const share = 0.35 * (minD - dx);
-        for (const p of a.body) p.teleport(-share, 0);
-        for (const p of b.body) p.teleport(share, 0);
-        const closing = a.hip.vx(dt) - b.hip.vx(dt);
-        if (closing > 0) {
-          for (const p of a.body) p.addVel(-closing * 0.25, 0, dt);
-          for (const p of b.body) p.addVel(closing * 0.25, 0, dt);
+        if (dx < minD) {
+          const share = 0.35 * (minD - dx);
+          moveTorso(a, -share, 0);
+          moveTorso(b, share, 0);
+          const closing = a.hip.vx(dt) - b.hip.vx(dt);
+          if (closing > 0) {
+            for (const p of a.body) p.addVel(-closing * 0.25, 0, dt);
+            for (const p of b.body) p.addVel(closing * 0.25, 0, dt);
+          }
         }
+        // Leaning upper bodies too: no heads inside heads
+        capsulePush(a, b, (a.R + b.R) * 0.92, 0.5);
+      }
+    }
+    // Corpses shove each other so they pile up instead of sinking into one another
+    const d = this.sortedDead;
+    d.length = 0;
+    for (const u of this.units) if (!u.alive) d.push(u);
+    d.sort((a, b) => a.hip.x - b.hip.x);
+    for (let i = 0; i < d.length; i++) {
+      for (let j = i + 1; j < d.length; j++) {
+        const a = d[i];
+        const b = d[j];
+        if (Math.min(b.hip.x, b.head.x) - Math.max(a.hip.x, a.head.x) > 40) {
+          if (b.hip.x - a.hip.x > 80) break;
+          continue;
+        }
+        if (a.asleep && b.asleep) continue;
+        if (capsulePush(a, b, (a.R + b.R) * 0.85, 0.4) > 1) {
+          a.asleep = false;
+          b.asleep = false;
+        }
+      }
+    }
+  }
+
+  /** Soft world walls at the castles: beans bounce off them instead of leaving the world. */
+  walls(dt) {
+    const lo = -150;
+    const hi = WORLD.width + 150;
+    for (const u of this.units) {
+      if (u.asleep) continue;
+      const x = u.hip.x;
+      const over = x < lo ? lo - x : x > hi ? hi - x : 0;
+      if (!over) continue;
+      const vx = u.hip.vx(dt);
+      for (const p of u.parts) {
+        p.teleport(over, 0);
+        if (Math.sign(p.x - p.px) !== Math.sign(over)) p.px = p.x + (p.x - p.px) * 0.4; // reflect, damped
+      }
+      for (const ft of u.feet) ft.x += over;
+      if (Math.abs(vx) > 250) this.emit('land', u.hip.x, u.ground, { unit: u, power: Math.min(1.2, Math.abs(vx) / 900) });
+    }
+    for (const it of this.items) {
+      for (const p of [it.a, it.b]) {
+        if (p.x < lo - 40) p.teleport(lo - 40 - p.x, 0);
+        else if (p.x > hi + 40) p.teleport(hi + 40 - p.x, 0);
       }
     }
   }
@@ -275,6 +341,7 @@ export class Battle {
     const ref = u.type.weapon === 'club' ? 650 : 260; // a sword thrust is slower than a club swing
     const sf = clamp(tipSpeed / ref, 0.35, 1.3);
     for (const e of this.units) {
+      if (u.act.done) return;
       if (e.team === u.team || !e.alive || u.act.hits.has(e.id)) continue;
       if (Math.abs(e.hip.x - u.hip.x) > 140) continue;
       const rr = e.R + W.tipR;
@@ -304,10 +371,10 @@ export class Battle {
         const sy1 = sh.y + sh.ay * sh.half;
         const pad = (W.tipR + 4) ** 2;
         const touch = segSeg(ax, ay, t.x, t.y, sx0, sy0, sx1, sy1, tmp).d2 < pad || segSeg(t.px, t.py, t.x, t.y, sx0, sy0, sx1, sy1, tmp).d2 < pad;
-        const over = hit && (hx - sh.x) * sh.ax + (hy - sh.y) * sh.ay > sh.half * 0.7;
+        const over = hit && (hx - sh.x) * sh.ax + (hy - sh.y) * sh.ay > sh.half * 0.45;
         if (touch && !over) {
           this.blockHit(u, e, tmp.x2, tmp.y2, sf);
-          continue;
+          return; // the shield stops the weapon: nobody else gets hit by this swing
         }
       }
       if (!hit) continue;
@@ -369,6 +436,9 @@ export class Battle {
     u.conscious = Math.max(0, u.conscious - 0.12);
     const sh = e.hand[1 - e.mainHand];
     sh.addVel(u.f * 120 * sf, -40, this.dt);
+    // The defender is rocked back a step
+    e.wobbleT = Math.max(e.wobbleT, 0.3);
+    for (const p of e.body) p.addVel(u.f * 90 * sf, 0, this.dt);
     this.stats.blocks++;
     this.emit('block', x, y, { power: clamp(sf, 0.2, 1.3), dirX: -u.f, dirY: -0.3, unit: e, from: u, kind: 'melee' });
   }
@@ -509,7 +579,7 @@ export class Battle {
       }
       a.x = nx;
       a.y = ny;
-      if (a.x < -800 || a.x > WORLD.width + 800 || a.age > 8) this.arrows.splice(i, 1);
+      if (a.age > 8) this.arrows.splice(i, 1); // gravity always brings them down well before this
     }
   }
 
@@ -702,7 +772,7 @@ export class Battle {
 
   moveGrab(x, y) {
     if (!this.grab) return;
-    this.grab.x = x + this.grab.ox * 0.3;
+    this.grab.x = clamp(x + this.grab.ox * 0.3, -120, WORLD.width + 120);
     this.grab.y = Math.min(y + this.grab.oy * 0.3, this.grab.unit.ground - 24);
   }
 
@@ -711,6 +781,13 @@ export class Battle {
     if (!g) return null;
     g.unit.held = false;
     this.grab = null;
+    // Cap the fling so the bean lands somewhere the camera can see
+    for (const p of g.unit.parts) {
+      const vx = p.vx(this.dt);
+      const vy = p.vy(this.dt);
+      const sp = Math.hypot(vx, vy);
+      if (sp > 1100) p.setVel((vx / sp) * 1100, (vy / sp) * 1100, this.dt);
+    }
     this.emit('drop', g.p.x, g.p.y, { unit: g.unit });
     return g.unit;
   }
@@ -720,9 +797,6 @@ export class Battle {
   checkEnd() {
     const b = this.count('blue');
     const r = this.count('red');
-    const placedB = this.count('blue', false);
-    const placedR = this.count('red', false);
-    if (!placedB || !placedR) return;
     let winner = null;
     if (b === 0 && r === 0) winner = 'draw';
     else if (b === 0) winner = 'red';
@@ -730,7 +804,9 @@ export class Battle {
     else if (this.battleTime > 150) {
       const hb = this.teamHp('blue');
       const hr = this.teamHp('red');
-      winner = hb.hp / hb.max > hr.hp / hr.max ? 'blue' : 'red';
+      const fb = hb.hp / hb.max;
+      const fr = hr.hp / hr.max;
+      winner = Math.abs(fb - fr) < 1e-6 ? 'draw' : fb > fr ? 'blue' : 'red';
     }
     if (!winner) return;
     this.phase = 'over';
@@ -738,6 +814,46 @@ export class Battle {
     for (const u of this.units) if (u.alive && u.team === winner) u.state = 'cheer';
     this.emit('battleEnd', WORLD.width / 2, -100, { winner });
   }
+}
+
+function zoneClamp(team, x) {
+  const [z0, z1] = WORLD.zone[team];
+  return clamp(x, z0 + 12, z1 - 12);
+}
+
+/** Move a bean's torso without changing its velocity; planted feet follow halfway. */
+function moveTorso(u, dx, dy) {
+  for (const p of u.body) p.teleport(dx, dy);
+  for (const ft of u.feet) if (ft.plant) ft.x += dx * 0.5;
+}
+
+/**
+ * Push two beans' body capsules (hip -> head) apart along the contact
+ * normal, weighted toward the parts that touch. Returns the overlap depth.
+ */
+function capsulePush(a, b, rr, k) {
+  segSeg(a.hip.x, a.hip.y, a.head.x, a.head.y, b.hip.x, b.hip.y, b.head.x, b.head.y, tmp);
+  if (tmp.d2 >= rr * rr) return 0;
+  const d = Math.sqrt(tmp.d2);
+  let nx = tmp.x1 - tmp.x2;
+  let ny = tmp.y1 - tmp.y2;
+  if (d > 1e-4) {
+    nx /= d;
+    ny /= d;
+  } else {
+    nx = a.hip.x < b.hip.x ? -1 : 1;
+    ny = 0;
+  }
+  const push = (rr - d) * k * 0.5;
+  const s = tmp.s;
+  const t = tmp.t;
+  const wa = [Math.max(0.2, 1 - s), Math.max(0.2, 1 - Math.abs(s - 0.5) * 2), Math.max(0.2, s)];
+  const wb = [Math.max(0.2, 1 - t), Math.max(0.2, 1 - Math.abs(t - 0.5) * 2), Math.max(0.2, t)];
+  for (let i = 0; i < 3; i++) {
+    a.body[i].teleport(nx * push * wa[i], ny * push * wa[i]);
+    b.body[i].teleport(-nx * push * wb[i], -ny * push * wb[i]);
+  }
+  return rr - d;
 }
 
 function segFrame(p, q) {

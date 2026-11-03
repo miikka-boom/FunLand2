@@ -60,6 +60,13 @@ const game = {
   simDtFrame: 0,
   grabNoticeShown: false,
   lastWordT: -1,
+  paused: false, // menu open over a running game
+  inputBlockUntil: 0, // swallow taps that fall through from a just-closed overlay
+  pickRound: 0, // campaign round chosen on the title card
+  lastDeath: null,
+  finalVictim: null,
+  bonkTimes: [],
+  zoneToastT: -9,
 };
 window.__ww = { game, camera, fx, audio };
 
@@ -76,7 +83,8 @@ function resize() {
   canvas.style.height = H + 'px';
   camera.setView(W, H);
   document.documentElement.style.setProperty('--ui-scale', clamp(Math.min(H / 760, W / 1100), 0.62, 1.15).toFixed(3));
-  if (game.battle.phase === 'place' || !camera.follow) framePlacement(true);
+  if (game.battle.phase === 'place' && camera.follow) framePlacement(true);
+  else camera.clampView();
 }
 window.addEventListener('resize', resize);
 if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
@@ -96,7 +104,17 @@ function newBattle() {
   game.resultT = -1;
   game.finalSlowT = 0;
   game.hitstop = 0;
+  game.erase = false;
+  game.finalVictim = null;
+  game.lastDeath = null;
+  camera.groundTarget = 0.74;
+  camera.fast = false;
   unitsGfx.trails.clear();
+}
+
+/** Ignore canvas taps for a moment (a double-tap on a button mustn't place a bean). */
+function blockInput(ms = 350) {
+  game.inputBlockUntil = performance.now() + ms;
 }
 
 function enterPlacement(snapshot) {
@@ -122,23 +140,43 @@ function startFight() {
     audio.play('ui');
     return;
   }
+  b.enforceZones();
   game.snapshot = b.snapshot().filter((s) => game.mode === 'sandbox' || s.team === 'blue');
   audio.unlock();
   b.start();
   game.erase = false;
   camera.follow = true;
+  camera.groundTarget = 0.78;
   ui.showBattle();
 }
 
 function startMode(mode) {
   audio.unlock();
   audio.play('ui');
+  blockInput();
   game.mode = mode;
   game.snapshot = null;
+  game.slowmo = false;
+  game.paused = false;
+  audio.resume();
   $('title').classList.add('hidden');
-  if (mode === 'campaign') game.round = Math.min(save.unlocked, ROUNDS.length - 1);
+  if (mode === 'campaign') game.round = clamp(game.pickRound, 0, unlockedRound());
   enterPlacement(null);
   announceRound();
+}
+
+/** Highest campaign round the player may pick (0-based). */
+function unlockedRound() {
+  return Math.min(save.unlocked, ROUNDS.length - 1);
+}
+
+function resumeGame() {
+  if (!game.mode) return;
+  audio.play('ui');
+  blockInput();
+  game.paused = false;
+  audio.resume();
+  $('title').classList.add('hidden');
 }
 
 function announceRound() {
@@ -159,8 +197,13 @@ function finishBattle(winner) {
   }
   if (game.mode === 'campaign' && winner === 'blue') {
     save.unlocked = Math.max(save.unlocked, Math.min(game.round + 1, ROUNDS.length - 1));
+    if (game.round === ROUNDS.length - 1) save.completed = true;
+    game.pickRound = Math.min(game.round + 1, ROUNDS.length - 1);
     persist();
   }
+  // Keep the survivors and the final victim in frame through the slow-mo
+  game.finalVictim = game.lastDeath;
+  camera.fast = true;
 }
 
 // --- UI -------------------------------------------------------------------------------
@@ -229,19 +272,23 @@ const ui = {
     });
     $('stop').addEventListener('click', () => {
       audio.play('ui');
+      blockInput();
       enterPlacement(game.snapshot);
     });
     $('retry').addEventListener('click', () => {
       audio.play('ui');
+      blockInput();
       enterPlacement(game.snapshot);
       startFight();
     });
     $('edit').addEventListener('click', () => {
       audio.play('ui');
+      blockInput();
       enterPlacement(game.snapshot);
     });
     $('next').addEventListener('click', () => {
       audio.play('ui');
+      blockInput();
       game.round = Math.min(game.round + 1, ROUNDS.length - 1);
       game.snapshot = null;
       enterPlacement(null);
@@ -249,6 +296,21 @@ const ui = {
     });
     $('play-campaign').addEventListener('click', () => startMode('campaign'));
     $('play-sandbox').addEventListener('click', () => startMode('sandbox'));
+    $('resume').addEventListener('click', resumeGame);
+    $('round-prev').addEventListener('click', () => {
+      game.pickRound = Math.max(0, game.pickRound - 1);
+      audio.play('ui');
+      refreshRoundPicker();
+    });
+    $('round-next').addEventListener('click', () => {
+      game.pickRound = Math.min(unlockedRound(), game.pickRound + 1);
+      audio.play('ui');
+      refreshRoundPicker();
+    });
+    $('reframe').addEventListener('click', () => {
+      audio.play('ui');
+      framePlacement(false);
+    });
     $('menu-btn').addEventListener('click', () => {
       audio.play('ui');
       showTitle();
@@ -332,8 +394,10 @@ const ui = {
     set('fr', Math.round(fr * 200), (v) => (this.els.barR.style.transform = `scaleX(${v / 200})`));
     set('cb', b.count('blue'), (v) => (this.els.cntB.textContent = v));
     set('cr', b.count('red'), (v) => (this.els.cntR.textContent = v));
+    set('reframe', b.phase === 'place' && !camera.follow, (v) => $('reframe').classList.toggle('hidden', !v));
     let sub = '';
-    if (b.phase === 'place') {
+    if (!game.mode) sub = '';
+    else if (b.phase === 'place') {
       if (game.mode === 'campaign') {
         const left = this.goldLeft();
         const r = ROUNDS[game.round];
@@ -399,8 +463,23 @@ function toast(big, small, secs = 2) {
 }
 
 function showTitle() {
-  $('campaign-progress').textContent = `Round ${Math.min(save.unlocked, ROUNDS.length - 1) + 1} of ${ROUNDS.length}`;
+  if (game.mode) {
+    game.paused = true;
+    audio.suspend();
+    input.reset();
+  }
+  $('resume').classList.toggle('hidden', !game.mode);
+  game.pickRound = clamp(game.pickRound, 0, unlockedRound());
+  refreshRoundPicker();
   $('title').classList.remove('hidden');
+}
+
+function refreshRoundPicker() {
+  const top = unlockedRound();
+  $('campaign-progress').textContent = save.completed && game.pickRound === top ? `Complete! Replay round ${game.pickRound + 1}` : `Round ${game.pickRound + 1} of ${ROUNDS.length}`;
+  $('round-picker').classList.toggle('hidden', top === 0);
+  $('round-prev').disabled = game.pickRound <= 0;
+  $('round-next').disabled = game.pickRound >= top;
 }
 
 // --- placement rules -------------------------------------------------------------
@@ -419,13 +498,35 @@ function laneFor(wy) {
   return null;
 }
 
+/** Taps just outside a zone edge snap into it (fingers are fat). */
+function snapToZone(wx) {
+  const slop = Math.max(18, 26 / camera.zoom);
+  for (const team of ['blue', 'red']) {
+    if (team === 'red' && game.mode !== 'sandbox') continue;
+    const [z0, z1] = WORLD.zone[team];
+    if (wx < z0 && wx > z0 - slop) return z0 + 4;
+    if (wx > z1 && wx < z1 + slop) return z1 - 4;
+  }
+  return wx;
+}
+
+/** World-px slack around a bean for grabbing / removing: finger-sized on screen. */
+function pickSlack() {
+  return game.battle.phase === 'place' ? Math.max(8, 20 / camera.zoom - 12) : 3;
+}
+
 function tryPlace(sx, sy) {
   const b = game.battle;
-  const [wx, wy] = camera.toWorld(sx, sy);
+  let [wx, wy] = camera.toWorld(sx, sy);
+  wx = snapToZone(wx);
   const team = teamForX(wx);
   const type = UNIT_TYPES[game.selected];
   if (!team) {
-    if (game.mode === 'campaign' && wx > WORLD.zone.red[0]) toast('That\'s red\'s side', 'Place on the blue side (left)', 1.3);
+    if (game.realTime - game.zoneToastT > 1.5) {
+      game.zoneToastT = game.realTime;
+      if (game.mode === 'campaign' && wx > WORLD.zone.red[0]) toast('That\'s red\'s side', 'Place on the blue side (left)', 1.3);
+      else toast('Not here', 'Place inside the dashed zone', 1.3);
+    }
     return;
   }
   if (game.mode === 'campaign' && type.cost > ui.goldLeft()) {
@@ -449,7 +550,7 @@ function tryRemove(sx, sy) {
   const b = game.battle;
   if (b.phase !== 'place') return;
   const [wx, wy] = camera.toWorld(sx, sy);
-  const u = b.unitAt(wx, wy, (u) => game.mode === 'sandbox' || u.team === 'blue');
+  const u = b.unitAt(wx, wy, (u) => game.mode === 'sandbox' || u.team === 'blue', pickSlack());
   if (!u) return;
   fx.spawn('poof', { x: u.chest.x, y: u.chest.y, color: TEAMS[u.team].body });
   b.removeUnit(u);
@@ -466,6 +567,16 @@ function canGrab(u) {
 // --- input -------------------------------------------------------------------------
 
 const input = new Input(canvas, {
+  blocked() {
+    return game.paused || performance.now() < game.inputBlockUntil;
+  },
+  /** Is there a grabbable bean here? (The grab itself only starts once the finger moves.) */
+  canGrab(sx, sy) {
+    const b = game.battle;
+    if (game.erase && b.phase === 'place') return false;
+    const [wx, wy] = camera.toWorld(sx, sy);
+    return !!b.unitAt(wx, wy, canGrab, pickSlack());
+  },
   tap(sx, sy) {
     audio.unlock();
     if (game.battle.phase !== 'place') return;
@@ -480,7 +591,7 @@ const input = new Input(canvas, {
     if (game.erase && b.phase === 'place') return false;
     const [wx, wy] = camera.toWorld(sx, sy);
     // Generous finger-sized target while placing; in battle only the body itself (so drags still pan)
-    const slack = b.phase === 'place' ? Math.max(8, 22 / camera.zoom - 13) : 3;
+    const slack = pickSlack();
     const hit = b.unitAt(wx, wy, null, slack);
     if (!hit) return false;
     if (!canGrab(hit)) {
@@ -517,7 +628,13 @@ window.addEventListener('keydown', (e) => {
   const b = game.battle;
   const k = e.key.toLowerCase();
   if (!$('title').classList.contains('hidden')) {
-    if (k === 'enter' || k === ' ') startMode(save.unlocked > 0 ? 'campaign' : 'campaign');
+    if (k === 'escape') resumeGame();
+    else if ((k === 'enter' || k === ' ') && document.activeElement && document.activeElement.tagName === 'BUTTON') return; // the button handles it
+    else if (k === 'enter' || k === ' ') {
+      e.preventDefault();
+      if (game.mode) resumeGame();
+      else startMode('campaign');
+    }
     return;
   }
   if (k >= '1' && k <= '3') {
@@ -525,6 +642,7 @@ window.addEventListener('keydown', (e) => {
     game.erase = false;
     ui.refresh();
   } else if (k === 'e') {
+    if (b.phase !== 'place') return;
     game.erase = !game.erase;
     ui.refresh();
   } else if (k === ' ') {
@@ -578,11 +696,17 @@ function handleEvents() {
           if (e.unit) fx.spawn('dirt', { x: e.unit.hip.x, y: e.unit.ground, power: p, dirX: e.dirX });
           audio.play('bonk', soundOpts(e, { power: p }));
           camera.shake(0.18 + p * 0.25);
-          if (p >= 0.75 && game.hitstopCool <= 0) {
+          // Hit-stop for bonks that matter (kills, or near the middle of the screen); back off in mobs
+          const now = game.realTime;
+          game.bonkTimes = game.bonkTimes.filter((t) => now - t < 1);
+          game.bonkTimes.push(now);
+          const [bx] = camera.toScreen(e.x, e.y);
+          const central = Math.abs(bx - W / 2) < W * 0.35;
+          if (p >= 0.75 && (e.killed || central) && game.hitstopCool <= 0) {
             game.hitstop = 0.05 + Math.min(0.05, p * 0.03) + (e.killed ? 0.03 : 0);
-            game.hitstopCool = 0.28;
+            game.hitstopCool = game.bonkTimes.length > 2 ? 0.6 : 0.28;
           }
-          if ((e.killed || p >= 1.05) && game.realTime - game.lastWordT > 0.45) {
+          if ((e.killed || p >= 1.05) && game.realTime - game.lastWordT > 0.9) {
             game.lastWordT = game.realTime;
             wordI = (wordI + 1 + ((e.x * 7) | 0) % 3) % BONK_WORDS.length;
             fx.spawn('text', { x: e.x, y: e.y - 26, text: BONK_WORDS[wordI], color: '#ffe14d', size: 20 + p * 6 });
@@ -635,6 +759,7 @@ function handleEvents() {
         audio.play('hitVoice', soundOpts(e, { power: e.power }));
         break;
       case 'death':
+        game.lastDeath = e.unit;
         audio.play('death', soundOpts(e));
         break;
       case 'dizzy':
@@ -674,6 +799,12 @@ let last = performance.now();
 function frame(now) {
   const realDt = Math.min(0.05, Math.max(0, (now - last) / 1000));
   last = now;
+  if (game.paused) {
+    // Menu open: the battle waits underneath
+    render();
+    requestAnimationFrame(frame);
+    return;
+  }
   game.realTime += realDt;
   const b = game.battle;
   let simDt = 0;
@@ -695,11 +826,13 @@ function frame(now) {
     game.resultT -= realDt;
     if (game.resultT <= 0) {
       ui.showResult(b.winner);
-      audio.play(game.mode === 'sandbox' || b.winner === 'blue' ? 'victory' : b.winner === 'draw' ? 'defeat' : 'defeat', {});
+      camera.groundTarget = 0.88; // winners in the lower third, under the banner
+      audio.play(game.mode === 'sandbox' || b.winner === 'blue' ? 'victory' : 'defeat', {});
     }
   }
   handleEvents();
-  fx.update(simDt);
+  // Effects keep animating through hit-stop: the starburst pops and shrinks while the bodies freeze
+  fx.update(game.hitstop > 0 ? realDt * 0.6 : simDt);
 
   // Camera: follow the fight
   if (camera.follow && b.phase !== 'place') followFight(b);
@@ -712,29 +845,45 @@ function frame(now) {
 }
 
 /**
- * Auto camera: frame the living armies, but lean toward the front line (where
- * the bonks are) and don't zoom out further than ~1100 world px for stragglers.
+ * Auto camera: frame the fight close enough to read faces. Lean toward the
+ * front line; leave archers hanging far back out of it; keep anything flying
+ * (and the final victim during the slow-mo) in the shot, sky included.
  */
 function followFight(b) {
-  let x0 = Infinity;
-  let x1 = -Infinity;
   let blueFront = -Infinity;
   let redFront = Infinity;
   for (const u of b.units) {
     if (!u.alive) continue;
-    x0 = Math.min(x0, u.hip.x);
-    x1 = Math.max(x1, u.hip.x);
     if (u.team === 'blue') blueFront = Math.max(blueFront, u.hip.x);
     else redFront = Math.min(redFront, u.hip.x);
   }
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let top = 0;
+  for (const u of b.units) {
+    let take;
+    if (u.alive) {
+      take = true;
+      const front = u.team === 'blue' ? blueFront : redFront;
+      if (u.type.ranged && Number.isFinite(blueFront) && Number.isFinite(redFront) && Math.abs(front - u.hip.x) > 320) take = false;
+      if (u.held || u.groundF < 0.2) take = true;
+    } else take = u.deadT < 1.6 || (u === game.finalVictim && game.finalSlowT > 0);
+    if (!take) continue;
+    x0 = Math.min(x0, u.hip.x);
+    x1 = Math.max(x1, u.hip.x);
+    top = Math.max(top, u.ground - Math.min(u.head.y, u.hip.y));
+  }
   if (x0 > x1) return;
-  const span = clamp(x1 - x0 + 340, 520, 1100);
-  const front = Number.isFinite(blueFront) && Number.isFinite(redFront) ? (blueFront + redFront) / 2 : (x0 + x1) / 2;
-  let cx = front * 0.7 + ((x0 + x1) / 2) * 0.3;
-  // Keep both armies' extremes on screen when they fit
-  cx = clamp(cx, x0 - 170 + span / 2, x1 + 170 - span / 2);
-  if (x1 - x0 + 340 <= span) cx = (x0 + x1) / 2;
-  camera.frame(cx - span / 2, cx + span / 2, false, camera.h / 260);
+  const span = clamp(x1 - x0 + 300, 480, 820);
+  const mid = (x0 + x1) / 2;
+  const front = Number.isFinite(blueFront) && Number.isFinite(redFront) ? (blueFront + redFront) / 2 : mid;
+  let cx = front * 0.75 + mid * 0.25;
+  if (x1 - x0 + 300 <= span) cx = mid;
+  else cx = clamp(cx, x0 - 150 + span / 2, x1 + 150 - span / 2);
+  let maxZ = Math.min(camera.h / 260, (camera.h * camera.groundFrac) / (top + 60));
+  // Result showing: pull back a little so the cheering winners sit below the banner
+  if (b.phase === 'over' && game.resultT <= 0) maxZ = Math.min(maxZ, camera.h / 470);
+  camera.frame(cx - span / 2, cx + span / 2, false, maxZ);
 }
 
 /**
@@ -829,11 +978,10 @@ function drawZones() {
 
 function drawGhost() {
   if (!game.hover || game.erase || input.mode) return;
-  const [wx, wy] = camera.toWorld(game.hover.sx, game.hover.sy);
+  const [hx, wy] = camera.toWorld(game.hover.sx, game.hover.sy);
+  const wx = snapToZone(hx);
   const team = teamForX(wx) || 'blue';
   const ok = !!teamForX(wx) && (game.mode !== 'campaign' || UNIT_TYPES[game.selected].cost <= ui.goldLeft());
-  const b = game.battle;
-  if (b.unitAt(wx, wy)) return; // hovering a bean: you'd grab it
   const { b: gb, u } = ghostUnit(game.selected, team);
   const lane = laneFor(wy);
   const gy = lane == null ? WORLD.laneDepth * 0.5 : lane * WORLD.laneDepth;

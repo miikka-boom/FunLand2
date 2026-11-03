@@ -68,6 +68,7 @@
   <div id="dock" class="dock">
     <div class="cards" id="cards"></div>
     <div class="dock-actions">
+      <button id="reframe" class="tool hidden" type="button" title="Show the whole field (F)" aria-label="Show the whole field">🎥<span>Reframe</span></button>
       <button id="erase" class="tool" type="button" title="Remove units (E)" aria-label="Remove units">✖<span>Remove</span></button>
       <button id="clear" class="tool" type="button" title="Clear your side" aria-label="Clear">⟲<span>Clear</span></button>
       <button id="fight" class="fight" type="button" title="Start the battle (Space)">FIGHT!</button>
@@ -98,13 +99,19 @@
       <h1>WOBBLE <span>WAR</span></h1>
       <p class="sub">A wobbly 2D battle simulator. Place your beans, press FIGHT, enjoy the bonks.</p>
       <div class="modes">
+        <button id="resume" class="btn primary big hidden" type="button">Resume<small>Back to the battle (Esc)</small></button>
         <button id="play-campaign" class="btn primary big" type="button">Campaign<small id="campaign-progress">Round 1 of 6</small></button>
         <button id="play-sandbox" class="btn big" type="button">Sandbox<small>Place both armies</small></button>
+      </div>
+      <div id="round-picker" class="round-picker hidden">
+        <button id="round-prev" class="icon-btn" type="button" aria-label="Previous round">◀</button>
+        <span>Pick a round</span>
+        <button id="round-next" class="icon-btn" type="button" aria-label="Next round">▶</button>
       </div>
       <div class="howto">
         <div><b>Place</b><span>Pick a unit below, then tap your side of the field.</span></div>
         <div><b>Fight</b><span>Press FIGHT! The beans do the rest.</span></div>
-        <div><b>Grab</b><span>Drag a bean to pick it up and fling it.</span></div>
+        <div><b>Grab</b><span>Drag a bean to pick it up and fling it around.</span></div>
         <div><b>Watch</b><span>Drag to pan, pinch or scroll to zoom, 🐢 for slow-mo.</span></div>
       </div>
       <p class="hint desktop-only">Keys: 1 2 3 pick unit · E remove · Space fight · S slow-mo · F auto cam · R reset · M mute · Esc menu</p>

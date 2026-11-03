@@ -235,3 +235,147 @@ test('campaign rounds are well formed', () => {
     }
   }
 });
+
+// --- regressions from review ------------------------------------------------------
+
+test('a shield block stops the swing: it never also wounds or gets blocked by a neighbour', () => {
+  let doubles = 0;
+  let swings = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const b = new Battle(seed);
+    army(b, [
+      ['squire', 'blue', 1000, 0.5],
+      ['squire', 'red', 1040, 0.1], // shield-bearer in front...
+      ['squire', 'red', 1040, 0.9], // ...and a teammate at the same x in another lane
+    ]);
+    for (const u of b.units) if (u.team === 'red') u.cooldown = 1e9;
+    b.start();
+    for (let i = 0; i < 6 / DT; i++) {
+      b.step(DT);
+      const per = new Map();
+      for (const e of b.events) {
+        if ((e.type === 'hit' || e.type === 'block') && e.from && e.from.team === 'blue') per.set(e.from, (per.get(e.from) || 0) + 1);
+      }
+      for (const n of per.values()) {
+        swings++;
+        if (n > 1) doubles++;
+      }
+      b.events.length = 0;
+    }
+  }
+  assert.ok(swings > 10, `only ${swings} connecting swings`);
+  assert.equal(doubles, 0);
+});
+
+test('enforceZones puts a bean dragged over the line back at its zone edge, and the snapshot agrees', () => {
+  const b = new Battle(21);
+  army(b, [
+    ['clubber', 'blue', 600],
+    ['clubber', 'red', 1500],
+  ]);
+  run(b, 0.5);
+  const blue = b.units.find((u) => u.team === 'blue');
+  b.grabAt(blue.head.x, blue.head.y);
+  for (let i = 0; i < 60; i++) {
+    b.moveGrab(1450, -100); // hold it deep in red's zone
+    b.step(DT);
+  }
+  b.enforceZones();
+  const nb = b.units.find((u) => u.team === 'blue');
+  assert.ok(nb.hip.x <= WORLD.zone.blue[1], `blue starts at ${nb.hip.x}`);
+  const snap = b.snapshot().find((s) => s.team === 'blue');
+  assert.ok(snap.x >= WORLD.zone.blue[0] && snap.x <= WORLD.zone.blue[1], `snapshot x ${snap.x}`);
+  assert.equal(b.grab, null);
+  assert.ok(b.start());
+});
+
+test('a hard fling is capped and the castle walls keep beans in the world', () => {
+  const b = new Battle(23);
+  army(b, [
+    ['squire', 'blue', 400],
+    ['clubber', 'red', 1600],
+  ]);
+  b.start();
+  const u = b.units.find((x) => x.team === 'blue');
+  b.grabAt(u.head.x, u.head.y);
+  // Yank it left very fast, then let go
+  for (let i = 0; i < 12; i++) {
+    b.moveGrab(400 - i * 60, -200);
+    b.step(DT);
+  }
+  b.release();
+  for (const p of u.parts) assert.ok(Math.hypot(p.vx(DT), p.vy(DT)) <= 1100 + 1e-6);
+  let minX = Infinity;
+  for (let i = 0; i < 4 / DT; i++) {
+    b.step(DT);
+    b.events.length = 0;
+    minX = Math.min(minX, u.hip.x);
+  }
+  assert.ok(minX > -200, `went to ${minX}`);
+});
+
+test('timeout with equal health is a draw; a battle needs both sides to start', () => {
+  const e = new Battle(25);
+  army(e, [['clubber', 'blue', 500]]);
+  assert.equal(e.start(), false);
+  assert.equal(e.phase, 'place');
+
+  const b = new Battle(25);
+  army(b, [
+    ['archer', 'blue', 300],
+    ['archer', 'red', 1700],
+  ]);
+  for (const u of b.units) u.cooldown = 1e9;
+  b.start();
+  b.battleTime = 151;
+  b.step(DT);
+  assert.equal(b.phase, 'over');
+  assert.equal(b.winner, 'draw');
+});
+
+test('an archer knocked out mid-recover still draws its next shot with an arrow nocked', () => {
+  const b = new Battle(27);
+  army(b, [
+    ['archer', 'blue', 700],
+    ['squire', 'red', 1200],
+  ]);
+  const a = b.units.find((u) => u.team === 'blue');
+  b.start();
+  let fired = false;
+  for (let i = 0; i < 10 / DT && !fired; i++) {
+    b.step(DT);
+    if (b.events.some((e) => e.type === 'bowRelease')) fired = true;
+    b.events.length = 0;
+  }
+  assert.ok(fired);
+  assert.equal(a.nocked, false);
+  a.takeHit(b, { damage: 1, dvx: 0, dvy: 0, x: a.hip.x, y: a.hip.y, stun: 1, kind: 'test' }); // floored mid-recover
+  let drew = false;
+  for (let i = 0; i < 6 / DT && !drew; i++) {
+    b.step(DT);
+    b.events.length = 0;
+    if (a.act && a.act.phase === 'draw' && a.bowDraw > 0.3) drew = true;
+  }
+  assert.ok(drew, 'never drew again');
+  assert.equal(a.nocked, true);
+});
+
+test('a held clubber stops leaning into its charge', () => {
+  const b = new Battle(29);
+  army(b, [
+    ['clubber', 'blue', 800],
+    ['archer', 'red', 1150],
+  ]);
+  const c = b.units.find((u) => u.team === 'blue');
+  b.start();
+  let charged = false;
+  for (let i = 0; i < 6 / DT && !charged; i++) {
+    b.step(DT);
+    b.events.length = 0;
+    charged = c.charging;
+  }
+  assert.ok(charged, 'never charged');
+  b.grabAt(c.head.x, c.head.y);
+  run(b, 0.5);
+  assert.equal(c.charging, false);
+});
