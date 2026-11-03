@@ -5,7 +5,6 @@ import { clamp, rayRect } from '../util.js';
 const BP_CELL = 128;
 const BP_PAD = 34; // >= largest entity radius
 export const NAV_CELL = 32;
-const NAV_INFLATE = 5;
 const INF = 0x3fffffff;
 
 const DIRS = [
@@ -88,11 +87,14 @@ export class World {
     const n = this.navW * this.navH;
     this.blocked = new Uint8Array(n);
     this.penalty = new Uint8Array(n);
+    // Conservative: every cell an obstacle overlaps is blocked. Marking only
+    // cells whose centre is inside let thin walls and fences (6-16u) slip
+    // between rows of centres, and the field then routed bodies through them.
     for (const o of this.moveBlockers) {
-      const x0 = Math.max(0, Math.ceil((o.x - NAV_INFLATE) / cs - 0.5));
-      const x1 = Math.min(this.navW - 1, Math.floor((o.x + o.w + NAV_INFLATE) / cs - 0.5));
-      const y0 = Math.max(0, Math.ceil((o.y - NAV_INFLATE) / cs - 0.5));
-      const y1 = Math.min(this.navH - 1, Math.floor((o.y + o.h + NAV_INFLATE) / cs - 0.5));
+      const x0 = Math.max(0, Math.floor(o.x / cs));
+      const x1 = Math.min(this.navW - 1, Math.floor((o.x + o.w - 1e-6) / cs));
+      const y0 = Math.max(0, Math.floor(o.y / cs));
+      const y1 = Math.min(this.navH - 1, Math.floor((o.y + o.h - 1e-6) / cs));
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) this.blocked[y * this.navW + x] = 1;
     }
     // Prefer the middle of corridors: small cost next to walls.
