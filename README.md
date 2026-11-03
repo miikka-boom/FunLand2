@@ -45,10 +45,35 @@ and no dependencies.
   decals that stay, casings, tracers, screen shake and recoil, off-screen
   threat arrows.
 
+## Camp: the metagame prototype
+
+[`camp/`](camp) is a separate page with a survivor-camp base-building
+metagame, prototyped on its own. It isn't connected to the action game: a
+**simulated PLAY button** stands in for a run.
+
+- Runs bring home scrap, wood, food, gems and survivors. Camp buildings give
+  the next run guns, damage, max HP, medkits, crafted items, extra loot and
+  new zones.
+- Buildings unlock slowly through Command Post levels 1–8 and two rubble
+  expansions, guided by 36 objectives.
+- Idle production, builds, expeditions and crafting all run on timers,
+  including while the page is closed. Gems rush any timer or buy missing
+  resources.
+- Two wait rewards: a **Supply Crate** every 10 minutes and an **Airdrop**
+  every 8 hours.
+- The tuning drawer (gear, top right) has time warp, fast-forward, cheats,
+  live economy multipliers and a pacing log.
+  `npm run camp:balance` simulates days of play.
+
+Open `/camp/` (on Pages: `https://miikka-boom.github.io/FunLand2/camp/`).
+The design, unlock schedule, numbers and the RunLoadout / RunResult
+contract with the game are in [docs/METAGAME.md](docs/METAGAME.md).
+
 ## Run it
 
 - **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` once this is on
-  the default branch (the Pages workflow only deploys from there).
+  the default branch (the Pages workflow only deploys from there). The camp
+  is at `/camp/`.
 - **Locally:** `npm start` (or `python3 -m http.server 8080`), then open
   `http://localhost:8080`. To try it on a phone, open
   `http://<your-computer-ip>:8080` on the same network. Opening `index.html`
@@ -72,7 +97,8 @@ src/world/                 seeded city generator, collision, ray casts, flow fie
 src/game/                  player, weapons, zombies, director, effects, game state
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX
-tests/                     node --test unit tests (stick math, touch controller rules)
+camp/                      camp metagame prototype (separate page; map in docs/METAGAME.md)
+tests/                     node --test unit tests (stick math, touch controller rules, camp economy)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

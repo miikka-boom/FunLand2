@@ -158,8 +158,23 @@ code {
   position: absolute;
 }
 
+/* Taps land on what is actually drawn, not the whole art box. */
 .plot,
 .rubble {
+  pointer-events: none;
+}
+
+.plot-art svg * {
+  pointer-events: visiblePainted;
+  cursor: pointer;
+}
+
+.plot-pad,
+.plot-tag,
+.plot-sign,
+.plot-timer,
+.bubble {
+  pointer-events: auto;
   cursor: pointer;
 }
 
@@ -168,6 +183,32 @@ code {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  z-index: var(--z);
+}
+
+.plot-scaffold {
+  z-index: calc(var(--z) + 1);
+}
+
+.plot-pad {
+  z-index: var(--z);
+}
+
+.plot-tag,
+.plot-sign,
+.plot-timer,
+.plot-new,
+.bubble {
+  z-index: calc(var(--z) + 1000);
+}
+
+.plot.pulse::after,
+.rubble.pulse::after {
+  z-index: calc(var(--z) + 999);
+}
+
+.rubble.poof .plot-art {
+  animation: poof 0.8s ease-in forwards;
 }
 
 .plot-art svg,
@@ -564,8 +605,11 @@ code {
 
 .rubble.poof {
   display: block;
-  animation: poof 0.8s ease-in forwards;
   pointer-events: none;
+}
+
+.rubble.poof * {
+  pointer-events: none !important;
 }
 
 @keyframes poof {
@@ -662,7 +706,7 @@ code {
 
 @keyframes lit {
   to {
-    filter: brightness(0.86);
+    opacity: 0.8;
   }
 }
 
@@ -3135,5 +3179,32 @@ h2 {
   .intro .hint,
   .intro p {
     display: none;
+  }
+}
+
+/* Decorative loops off for people who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .flame,
+  .fireglow,
+  .glow,
+  .lit,
+  .blink,
+  .flag,
+  .smoke,
+  .waves,
+  .sparks,
+  .beam,
+  .bulbs circle,
+  .bubble,
+  .hammer-arm,
+  .walking .leg,
+  .drop-long .chute,
+  .plot-sign,
+  .plot-new,
+  .reward.ready,
+  .quest.done,
+  .lu-burst,
+  .can-up .plot-tag .upa {
+    animation: none !important;
   }
 }

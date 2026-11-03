@@ -125,12 +125,15 @@ function catchUp(since) {
   camp.tick();
   const events = camp.drain();
   const awayMs = camp.now() - since;
-  const levelUps = events.filter((e) => e.type === 'hqUp');
   const worth = events.some((e) => ['built', 'cleared', 'crafted', 'expeditionBack'].includes(e.type)) || anyPending() || camp.rewardInfo('short').ready || camp.rewardInfo('long').ready;
   if (awayMs >= tuning.awayMinutes * 60000 && worth && !firstVisitIntro) {
+    // The summary lists what happened; level-ups follow it.
     modals.enqueue(() => modals.open(() => P.welcomePanel(camp, { awayMs, events }), { cls: 'm-welcome' }));
+    for (const e of events) if (e.type === 'hqUp') modals.enqueue(() => showLevelUp(e));
+  } else {
+    // A short absence: treat it like it happened live (toasts, level-ups).
+    for (const e of events) onEvent(e);
   }
-  for (const e of levelUps) modals.enqueue(() => showLevelUp(e));
 }
 
 function anyPending() {

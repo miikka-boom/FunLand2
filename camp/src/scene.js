@@ -55,7 +55,8 @@ export class Scene {
     this.campfire.innerHTML = fire.html;
     this.objects.appendChild(this.campfire);
 
-    for (const id of BUILDING_ORDER) this._makePlot(id);
+    // Back row first: where boxes overlap, the front row should win.
+    for (const id of [...BUILDING_ORDER].sort((a, b) => PLOTS[a].y - PLOTS[b].y)) this._makePlot(id);
     for (const area of Object.keys(RUBBLE)) this._makeRubble(area);
     this.drops = {};
     for (const kind of ['short', 'long']) {
@@ -83,10 +84,21 @@ export class Scene {
     return d;
   }
 
+  /**
+   * Plots and rubble don't form their own stacking context: their art sorts
+   * by baseline with everything else, while their labels (tag, sign, timer,
+   * bubble) sit in a band above all art so nothing in front can hide them.
+   */
+  _layered(d, y) {
+    d.style.zIndex = '';
+    d.style.setProperty('--z', String(Math.round(y)));
+  }
+
   _makePlot(id) {
     const at = PLOTS[id];
     const a = buildingSvg(id, 1);
     const d = this._place('plot', at.x, at.y, a.w, a.h);
+    this._layered(d, at.y);
     d.dataset.id = id;
     d.setAttribute('role', 'button');
     d.setAttribute('aria-label', BUILDINGS[id].name);
@@ -123,6 +135,7 @@ export class Scene {
     const at = RUBBLE_AT[area];
     const a = rubbleSvg(area);
     const d = this._place('rubble', at.x, at.y, a.w, a.h);
+    this._layered(d, at.y);
     d.dataset.area = area;
     d.setAttribute('role', 'button');
     d.setAttribute('aria-label', RUBBLE[area].name);
