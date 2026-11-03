@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0c0f1c">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Road to Evac">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../icon-180.png">
+  <title>Road to Evac</title>
+  <link rel="stylesheet" href="evac.css">
+  <script>
+    (function () {
+      var d = document.documentElement;
+      if ('ontouchstart' in window || navigator.maxTouchPoints > 0) d.classList.add('is-touch');
+      // Phones have no console: surface the first error on screen.
+      function show(msg) {
+        var el = document.getElementById('boot-error');
+        if (!el || el.dataset.shown) return;
+        el.dataset.shown = '1';
+        el.textContent = msg;
+        el.style.display = 'block';
+      }
+      window.addEventListener('error', function (e) { show('Error: ' + (e.message || e) + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+      window.addEventListener('unhandledrejection', function (e) { show('Error: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)); });
+      setTimeout(function () {
+        if (!d.classList.contains('booted')) {
+          show(location.protocol === 'file:'
+            ? 'Road to Evac did not start: browsers block ES modules on file://. Serve the folder instead, e.g. "python3 -m http.server", or use the GitHub Pages URL.'
+            : 'Road to Evac did not start. Try a hard refresh.');
+        }
+      }, 4000);
+    })();
+  </script>
+</head>
+<body>
+  <div id="sky" aria-hidden="true"><i class="moon"></i></div>
+  <div id="road" aria-label="The road"></div>
+  <div id="hud"></div>
+  <div id="run"></div>
+  <div id="modals"></div>
+  <div id="fx" aria-hidden="true"></div>
+  <div id="toasts" aria-live="polite"></div>
+  <div id="dev" class="panel" aria-label="Testing tools"></div>
+  <div id="rotate">Rotate to landscape</div>
+  <div id="boot-error"></div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

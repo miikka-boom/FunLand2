@@ -1,0 +1,15 @@
+{
+  "name": "FunLand2 · Road to Evac (metagame prototype 2)",
+  "short_name": "Road to Evac",
+  "description": "Journey-map metagame prototype for the Horde co-op zombie game",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0c0f1c",
+  "theme_color": "#0c0f1c",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "../icon-180.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
