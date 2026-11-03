@@ -56,7 +56,8 @@ export class Road {
       s.type = 'button';
       s.className = 'dsign';
       s.dataset.ci = ci;
-      s.style.left = `${START_W + ci * DIST_W + 10}px`;
+      // Centered in the gap between the last district's finale and this district's first stop.
+      s.style.left = `${START_W + ci * DIST_W + 20}px`;
       s.innerHTML = `<b>${c.name.toUpperCase()}</b><small></small>`;
       this.marks.appendChild(s);
       c.sign = s;
@@ -301,6 +302,17 @@ export class Road {
       for (const [, el] of this.squadEls) el.classList.add('hop');
       this.el.classList.add('locked');
     });
+  }
+
+  /** Finish the drive quickly from wherever it is (a tap during the cinematic). */
+  hurry() {
+    const c = this.cine;
+    if (!c || c.hurried) return;
+    c.hurried = true;
+    c.fromX = this.vanX;
+    c.fogFrom = this.frontier;
+    c.t = 0;
+    c.dur = 0.3;
   }
 
   _cineStep(step) {

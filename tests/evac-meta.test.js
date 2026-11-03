@@ -207,7 +207,11 @@ test('clearing the last finale reaches the evac', () => {
   assert.equal(meta.playTarget(), TOTAL_CHAPTERS - 1);
   assert.equal(meta.rescued().length, 5);
   assert.equal(meta.found().length, 6);
+  // After the evac the coach chases stars: upgrades first while affordable, then replays.
+  assert.equal(meta.advice().kind, 'upgrade');
+  state.supplies = 0;
   assert.equal(meta.advice().kind, 'replay');
+  assert.match(meta.advice().text, /★★★/);
 });
 
 test('advice: upgrade when it matters, replay when stuck, else play', () => {
@@ -282,4 +286,49 @@ test('saves: missing fields are filled in, new road stops are padded', () => {
   assert.equal(m.weapons.smg, 1);
   const bad = migrate('nope');
   assert.equal(bad.next, 0);
+});
+
+test('nextUpgrade names the cheapest power upgrade and what it still costs', () => {
+  const { meta, state } = make();
+  state.supplies = 10;
+  const nu = meta.nextUpgrade();
+  assert.ok(nu, 'there is always something to upgrade at the start');
+  assert.equal(nu.cost, Math.min(meta.upgradeCost('survivor', 'rook'), meta.upgradeCost('weapon', 'smg')));
+  assert.equal(nu.missing, nu.cost - 10);
+  assert.ok(nu.gain > 0);
+  state.supplies = nu.cost + 5;
+  assert.equal(meta.nextUpgrade().missing, 0);
+  // Everything maxed: nothing left to name.
+  state.survivors.rook = MAX_LEVEL;
+  state.weapons.smg = MAX_LEVEL;
+  assert.equal(meta.nextUpgrade(), null);
+});
+
+test('play advice carries the odds when the stop is not a sure thing', () => {
+  const { meta, state } = make();
+  state.stats.runs = 10; // past the first-session upgrade nudges
+  state.supplies = 0; // nothing affordable
+  meta.tuning.difficulty = meta.power().total / meta.chapter(0).def.rec; // power right at the recommendation
+  const a = meta.advice();
+  assert.equal(a.kind, 'play');
+  assert.equal(a.i, 0);
+  assert.match(a.text, new RegExp(`${Math.round(meta.oddsFor(0).chance * 100)}% to survive$`));
+  meta.tuning.difficulty = 0.5; // now easy
+  assert.equal(meta.advice().text, `Play ${meta.chapter(0).name}`);
+});
+
+test('the loadout hands the game stable keys: chapter, survivor, gun, bots and perk fractions', () => {
+  const { meta, state } = make();
+  state.survivors.doc = 2;
+  state.survivors.rook = 3;
+  state.weapons.shotgun = 4;
+  state.weapon = 'shotgun';
+  const L = meta.loadout(0);
+  assert.deepEqual(L.chapter, { index: 0, campaign: 'suburbs', name: meta.chapter(0).name, type: meta.chapter(0).type, rec: meta.chapter(0).rec });
+  assert.deepEqual(L.survivor, { id: 'rook', level: 3 });
+  assert.deepEqual(L.weapon, { id: 'shotgun', game: 'shotgun', level: 4 });
+  assert.deepEqual(L.squad, [{ id: 'doc', level: 2 }]);
+  assert.deepEqual(L.perks, { moveSpeed: (SURVIVORS.rook.perkPer * 3) / 100, maxHealth: (SURVIVORS.doc.perkPer * 2) / 100 });
+  assert.equal(L.power, meta.power().total);
+  for (const d of Object.values(SURVIVORS)) assert.match(d.perkKey, /^[a-z][A-Za-z]+$/);
 });

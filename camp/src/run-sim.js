@@ -1,6 +1,6 @@
 // Simulated run: stands in for the action game until the two are connected.
 // It takes the RunLoadout the camp would hand the game and returns a
-// RunResult in the shape the game should report back (docs/METAGAME.md).
+// RunResult in the shape the game should report back (docs/METAGAME-CAMP.md).
 // Pure and seeded, so outcomes are reproducible in tests.
 
 import { WIN_CHANCE, RESOURCES, ZONES } from './config.js';

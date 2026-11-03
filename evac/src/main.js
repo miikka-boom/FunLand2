@@ -46,6 +46,7 @@ const road = new Road($('road'), meta, {
   onStop: (i) => {
     sfx.unlock();
     hud.poke();
+    if (afterBusy) return road.hurry();
     const ch = meta.chapter(i);
     if (ch.state === 'locked') {
       sfx.play('error');
@@ -56,7 +57,7 @@ const road = new Road($('road'), meta, {
     openBriefing(i);
   },
   onSign: (ci) => road.focusStop(Math.min(ci * CHAPTERS_PER_CAMPAIGN, meta.s.next)),
-  onSquad: () => openUpgrades('survivors'),
+  onSquad: () => (afterBusy ? road.hurry() : openUpgrades('survivors')),
 });
 const hud = new Hud($('hud'), meta, (a, d, el) => {
   sfx.unlock();
@@ -141,6 +142,15 @@ function openUpgrades(tab = null, returnTo = null) {
       if (back !== null && back !== undefined) setTimeout(() => openBriefing(back), 230);
     },
   });
+  showBestCard();
+}
+
+/** Scroll the upgrade cards so the BEST one is in view (or back to the start). */
+function showBestCard() {
+  const scroller = document.querySelector('#modals .upg .cards');
+  if (!scroller) return;
+  const card = scroller.querySelector('.card.best');
+  scroller.scrollLeft = card ? Math.max(0, card.offsetLeft - scroller.offsetLeft - (scroller.clientWidth - card.offsetWidth) / 2) : 0;
 }
 
 function openReward(kind) {
@@ -225,6 +235,10 @@ function fail(r) {
 function act(name, d = {}, el = null) {
   sfx.unlock();
   hud.poke();
+  if (afterBusy && name !== 'dev') {
+    road.hurry();
+    return;
+  }
   switch (name) {
     case 'play': {
       const a = meta.advice();
@@ -279,6 +293,7 @@ function act(name, d = {}, el = null) {
       ctx.tab = d.id;
       sfx.play('tap');
       modals.render();
+      showBestCard();
       return;
     case 'up': {
       const r = meta.upgrade(d.kind, d.id);
@@ -335,13 +350,22 @@ function startRun(i) {
   });
 }
 
+// True while the van drives on after a results screen: taps then speed the drive
+// up instead of opening anything, so the unlock reveals always come first.
+let afterBusy = false;
+
 async function afterResults(res, out, fromVan) {
   flyFrom('.r-total', { supplies: out.supplies, gems: out.gems });
   if (out.advanced) {
-    await wait(500);
-    sfx.play('drive');
-    const toX = meta.s.next >= TOTAL_CHAPTERS ? road._vanTarget() : stopX(meta.s.next - 1) + 6;
-    await road.drive({ fromX: fromVan, toX, fogTo: road._frontierTarget() });
+    afterBusy = true;
+    try {
+      await wait(500);
+      sfx.play('drive');
+      const toX = meta.s.next >= TOTAL_CHAPTERS ? road._vanTarget() : stopX(meta.s.next - 1) + 6;
+      await road.drive({ fromX: fromVan, toX, fogTo: road._frontierTarget() });
+    } finally {
+      afterBusy = false;
+    }
   }
   road.hold = false;
   road.update();

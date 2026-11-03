@@ -1,235 +1,274 @@
-# Survivor camp metagame (prototype)
+# Road to Evac (metagame v2)
 
-A landscape, mobile-first base-building metagame for HORDE, prototyped **on
-its own**: the action game is not connected. A **simulated PLAY button**
-stands in for a run, so the camp loop can be tuned until it is satisfying
-by itself. It lives in [`camp/`](../camp) and runs as a separate page:
-`/camp/` on GitHub Pages, or `http://localhost:8080/camp/` with `npm start`.
+A landscape, mobile-first metagame for a co-op zombie survivor game,
+prototyped **on its own**: a **simulated PLAY button** stands in for the
+action game. It lives in [`evac/`](../evac) and runs as a separate page at
+`/evac/` (on Pages: `https://miikka-boom.github.io/FunLand2/evac/`, locally
+`http://localhost:8080/evac/` with `npm start`).
 
-## The loops
+Your squad fights its way across a ruined city in a van, one stop at a
+time, toward the evac chopper. Every cleared stop moves the van on, rolls
+back the fog and often hands you a new gun or a new survivor. Supplies from
+each run buy instant upgrades, so you're stronger for the next stop.
+
+v1, the survivor camp, is still playable at `/camp/` for comparison
+([METAGAME-CAMP.md](METAGAME-CAMP.md)).
+
+## What changed from v1, and why
+
+| v1 playtest feedback | v2 answer |
+| --- | --- |
+| "Idles feel too forced" | Nothing you build waits on a timer, and upgrades are instant. Only two things run on the clock, the Supply Crate and the Airdrop, and both are bonuses. They never gate progress. |
+| "Direction is not clear" | There's one road to one goal (the evac), and PLAY always plays the next stop. The goal card names the next reward and how many stops away it is. After a few idle seconds, a coach bubble names the single best next step and points at its button. |
+| "Some build buttons are not working" | Every button does what its label says, or immediately explains why it can't. There are no "tap again" confirms, no timers hidden in buttons, and no dimmed buttons without a reason. Gems are spent only through a dialog that shows the cost. |
+| "Overwhelmed by the amount of resources" | There are two currencies. **Supplies** come from runs and buy upgrades. **Gems** pay for revives and for skipping the Airdrop wait. |
+
+## The loop
+
+1. **PLAY** opens the next stop's briefing. It shows:
+   - your power against the power needed, and your chance to survive (Easy / Fair / Hard / Deadly)
+   - the supplies you'd earn for 1, 2 or 3 stars
+   - the first-clear reward (extra supplies, gems, and a gun or a survivor)
+   - your squad and the co-op friends toggle
+2. **The run is simulated.** The squad has portraits, health bars and a story ticker. Tap to fast-forward. If you go down after 30% of the route, you're offered a revive for gems.
+3. **Results** show the stars, a cascade of supply lines (chapter reward, star bonus, Scavenger bonus, co-op bonus, first clear) and any gems.
+4. **A first clear** sets off this sequence:
+   - The van drives to the next stop and the fog rolls back.
+   - A reveal card shows the unlock. A new gun has a one-tap "Equip · +N power". A rescued survivor joins the squad.
+   - After a finale, a "district reclaimed" card shows your star count.
+5. **Upgrades are instant.** Spending supplies raises your power, and you move on to the next stop.
+
+The very first run always survives with 3 stars, so the first upgrade comes
+right away.
+
+When you die, you keep 15% + 35% × route progress of the chapter's supplies.
+The results screen then tells you what helps most: the best upgrade, how
+many supplies until the next one, or a cleared stop to farm. There's a
+button for each.
+
+## The road
+
+Five districts with five stops each, 25 stops in total. The third stop in
+each district is a supply run that finds a new gun. The fifth is a finale
+that rescues a survivor; the last one is the evac itself.
+
+| District | Stops (recommended power) | Unlocks |
+| --- | --- | --- |
+| Suburbs | Wake-Up Call 55 · Picket Fences 85 · Gun Shop 115 · Highway Jam 140 · Gas Station 165 | Pump Shotgun (Gun Shop), **Doc** (finale, +20 gems) |
+| Downtown | Subway Stairs 190 · Neon Alley 205 · Precinct 9 225 · Car Alarm Ave 240 · Rooftop Flare 270 | Assault Rifle, **Mags** (+25 gems) |
+| Industrial | Rail Yard 290 · Cannery 305 · Foundry 325 · Crane Row 345 · Bridge Down 375 | Hunting Rifle, **Sparks** (+30 gems) |
+| Mercy Hospital | Parking Deck 395 · ER Lobby 410 · Pharmacy 425 · Quarantine 450 · Helipad Hold 490 | Auto Shotgun, **Juno** (+35 gems) |
+| Military Base | Checkpoint Zulu 480 · Barracks 495 · Armory Vault 510 · Runway 525 · Evac 565 | Machine Gun, **the evac** (+60 gems) |
+
+Chapter types are **Run** (reach the safe room), **Horde** (survive the
+horde), **Supply run** (find the stash, then reach the safe room) and
+**Finale** (beat the Tank and hold out for rescue).
+
+After the evac, the road stays open. The coach then suggests upgrades,
+because more power means more stars, and stops still short of 3 stars. Getting 3 stars on every stop of a district pays a mastery
+bonus of 25 gems plus twice the finale's supplies.
+
+## Power, squad and guns
+
+- **Power** is the sum of:
+  - your survivor: 30 + 14 per level
+  - your gun: its base + 15 per level
+  - every bot in the squad: 10 + 5 per level
+
+  Everything goes to level 12.
+- **Squad**: you plus up to three rescued survivors riding along as bots.
+  Each survivor adds their perk for the whole squad, per level:
+
+  | Survivor | Role | Perk per level |
+  | --- | --- | --- |
+  | Rook | Pointman | move speed +3% |
+  | Doc | Medic | max health +4% |
+  | Mags | Gunner | damage +3% |
+  | Sparks | Engineer | reload speed +4% |
+  | Juno | Scavenger | supplies found +4% |
+
+- **Co-op friends** (simulated, up to 3) replace bots from the end of the
+  squad. Each one adds +10% supplies and +3% power.
+- **Guns**: SMG 30, Pump Shotgun 40, Assault Rifle 52, Hunting Rifle 64,
+  Auto Shotgun 78, Machine Gun 92 (base power). A new gun arrives at the
+  level of your best gun, so it's always an upgrade. You never have to start
+  over at level 1.
+- **Costs** run from 30 supplies (level 2) to 1500 (level 12), times a
+  multiplier per item. Later survivors and guns cost more, but give more.
+
+## Odds and stars
+
+- Chance to survive = `0.62 + 1.1 × (power / rec − 1)`, clamped to 8–98%
+  (`ODDS`).
+- Stars for a survived run come from `power / rec` plus noise (σ 0.12):
+  - 3★ at 1.25 or more
+  - 2★ at 1.05 or more
+  - 1★ otherwise
+- Star multipliers on supplies are ×1, ×1.3 and ×1.6. A first clear adds
+  the chapter's supplies once more.
+- **Revive**: 10 / 15 / 20 / 25 / 30 gems by district, once per run, after
+  30% of the route. A revived run counts as survived with 1★ (2★ when power
+  was well above the recommendation).
+
+## Wait rewards
+
+There are only two, and neither blocks anything.
+
+- **Supply Crate**, the short wait: every 30 minutes, with the first one 3
+  minutes in. It holds about 0.6 of a stop's supplies for your current
+  district, with an 8% chance of 1–2 gems. It can't be skipped, because it's
+  short.
+- **Airdrop**, the long wait: every 8 hours. It holds about 3 stops' worth
+  of supplies plus 5–10 gems. You can skip the wait for 4 gems per hour
+  left, through a confirm dialog that shows the price.
+
+Both scale with your current district, so they stay worth opening.
+
+## Pacing
+
+Recommended power per stop is derived from a target pace
+(`evac/tools/derive-recs.mjs`). The balance simulation checks it:
+`npm run evac:balance`. The simulated player does 3 sessions a day of 5 runs
+each, buys the best upgrades, plays the next stop at 55% odds or better, and
+otherwise farms the best replay.
 
 ```
-          ┌──────────── PLAY (simulated run) ─────────────┐
-          │                                               ▼
-   run power, guns, HP,                     scrap · wood · food · gems
-   medkits, items, new zones                survivors (rescued on runs)
-          ▲                                               │
-          └────── build & upgrade the camp ◄──────────────┘
-                     (timers · builders · gems)
-
-   idle: producers fill up · builds, clearing, expeditions, crafting run
-         on timers · the Supply Crate and Airdrop wait for you
+Suburbs         cleared after   6 runs  day 1
+Downtown        cleared after  13 runs  day 1
+Industrial      cleared after  20 runs  day 2
+Mercy Hospital  cleared after  29 runs  day 2
+Military Base   cleared after  41 runs  day 3
+Evac after 41 runs (31 survived, 10 died, 8 revives), ~4 h of play
 ```
 
-- **Core loop.** Runs bring home resources and survivors. Spend them on
-  buildings. Buildings make the next run stronger (Armory, Infirmary,
-  Workshop), reveal harder zones with better loot (Radio Tower) and haul
-  more of it home (Garage).
-- **Idle loop.** The Garden, Lumber Yard and Scrapyard produce while you're
-  away, until their store is full. Builds, rubble clearing, expeditions and
-  crafting all run on timers. Every timer can be **rushed with gems**, and
-  missing resources can be **bought with gems**.
-- **Reasons to come back.** The **Supply Crate** (short: every 10 min) and
-  the **Airdrop** (long: every 8 h) wait in the camp (left HUD, and dropped
-  into the camp itself). There are also full producers, finished timers and
-  a **welcome-back summary** of what happened while you were gone.
-- **Direction.** 36 objectives in a row take you through every unlock and
-  pay gems along the way. The first five play out in the first few
-  minutes.
-- **Why the game matters.** Scrap mostly comes from runs. Survivors gate
-  Command Post levels 4 to 8, and they mostly come from runs. In the balance
-  sim, a player who never runs maxes the camp **about 1.7× slower**.
+The **Economy** sliders in the testing drawer change rewards, costs and
+recommended power live.
 
-## Unlock schedule
+## Meta ↔ game contract
 
-| Camp level | Regular player* | Unlocks |
-|---|---|---|
-| 1 | start | Garden (food), Lumber Yard (wood) |
-| 2 | ~6 min | Armory (guns + damage), Radio Tower (zones), Scrapyard (scrap), Warehouse (storage) |
-| 3 | 18 min with 4 runs, else session 2 | 2nd builder, Bunkhouse (beds), clear the Wrecked Cars → Infirmary (HP + medkits) |
-| 4 | end of day 1 | Garage (+run loot, expeditions). Needs 4 survivors. |
-| 5 | day 2 | clear the Collapsed Shed → Workshop (crafted items). Needs 6 survivors. |
-| 6 | day 3 | 3rd builder. Needs 8 survivors. |
-| 7 | day 5 | Needs 10 survivors. |
-| 8 | day 7 | Needs 12 survivors. |
+This is the seam where the real game plugs in.
 
-\* `npm run camp:balance`: 5 sessions a day, 2 runs a session, rushing only
-timers that cost 2 gems or less.
+- `Meta#loadout()` builds a **RunLoadout** for the next run.
+- The meta banks a **RunResult** with `Meta#applyRun()`.
+- The simulator (`evac/src/run-sim.js`) produces the same RunResult the game
+  should send.
 
-Each Command Post level also raises building level caps, so there's always
-something new to put a builder on. **Zones:** Suburbs (start), Downtown
-(Radio 1), Industrial Park (Radio 2), Mercy Hospital (Radio 3), Military
-Base (Radio 4). **Guns:** SMG (start), Pump Shotgun (Armory 2), Assault
-Rifle (Armory 4), Hunting Rifle (Armory 6). These are the action game's
-weapon ids, and a test checks that they match `src/game/weapons.js`.
-
-## Systems
-
-- **Resources:** food, wood, scrap, plus **gems** (hard currency) and
-  **survivors**. Storage (Command Post + Warehouse) caps what you can
-  *collect* from producers. Rewards (runs, crates, airdrops, objectives,
-  expeditions) can go over the cap, so earned loot is never lost.
-- **Producers:** rate per hour and a store (1 h at level 1, up to 10 h).
-  A new producer starts 40% full, so the first collect is instant.
-  Upgrading pauses production; whatever is stored is banked first.
-- **Builders:** 1, then 2 at Command Post 3, then 3 at Command Post 6. Rubble
-  clearing also takes a builder.
-- **Rushing:** gems = piecewise-linear through 1 min → 1, 1 h → 20,
-  1 day → 260, 1 week → 1000 (`GEM_ANCHORS`). Missing resources cost
-  1 gem per 40 food/wood or 20 scrap. Spends of 15+ gems need a second tap.
-- **Expeditions (Garage):** send a crew of survivors on a 15 min / 1 h /
-  4 h / 8 h trip. Loot is rolled at departure and scales with camp level.
-  The longer trips can bring gems or a survivor back. Slots come from the
-  Garage level.
-- **Workshop:** craft Medkits, Pipe Bombs and Molotovs on timers. The deploy
-  screen packs up to one of each into the next run (+power), and the run
-  uses them up.
-- **Survivors:** need beds (Command Post 3 + Bunkhouse). You get them on
-  runs (zone chance + Radio bonus), from 30% of airdrops and from long
-  expeditions. With no free bed, the survivor moves on and the UI tells you.
-
-## Camp ↔ game contract
-
-This is the seam where the real game plugs in. `Camp#loadout()` builds a
-**RunLoadout**, and the camp banks a **RunResult** with `Camp#applyRun()`.
-The simulator (`camp/src/run-sim.js`) produces the same RunResult the game
-should send.
-
-**RunLoadout** (camp → game), also shown in the in-camp *Your next run* panel:
+**RunLoadout** (meta → game). Perks are fractions, so `0.12` means +12%:
 
 ```json
 {
-  "maxHp": 130,
-  "damageMult": 1.15,
-  "weapons": ["smg", "shotgun"],
-  "medkits": 1,
-  "items": { "pipebomb": 1 },
-  "lootMult": 1.2,
-  "rescueBonus": 0.05,
-  "power": 184
+  "chapter": { "index": 7, "campaign": "downtown", "name": "Precinct 9", "type": "rescue", "rec": 225 },
+  "survivor": { "id": "rook", "level": 6 },
+  "weapon": { "id": "shotgun", "game": "shotgun", "level": 6 },
+  "squad": [{ "id": "doc", "level": 4 }],
+  "perks": { "moveSpeed": 0.18, "maxHealth": 0.16 },
+  "power": 240
 }
 ```
 
-**RunResult** (game → camp):
+**RunResult** (game → meta):
 
 ```json
 {
-  "zone": "downtown",
+  "index": 7,
   "won": true,
+  "stars": 2,
   "progress": 1,
-  "kills": 64,
-  "timeS": 312,
-  "loot": { "scrap": 180, "wood": 120, "food": 100 },
-  "kept": 1,
-  "gems": 20,
-  "rescued": 1,
-  "itemsUsed": { "pipebomb": 1 }
+  "kills": 81,
+  "timeS": 324,
+  "incaps": 1,
+  "friends": 0,
+  "main": "rook"
 }
 ```
 
-`kept` is the share of the route's loot that made it home (1 on a win).
+`progress` is how far along the route the squad got (0–1, and 1 on a win).
+It sets how many supplies a death keeps.
 
-How the action game would use it:
+How the action game would use the contract:
 
-- `weapons` limits which guns you can swap between. `maxHp` and
-  `damageMult` scale the player and weapon tables. `medkits` and `items`
-  spawn as carried consumables.
-- The zone picks the map seed and Director tuning. Its `loot` table is the
-  target total for physical pickups placed along the route, and `lootMult`
-  scales them.
-- On death, keep what was carried and report the share as `kept`. The
-  simulator models that as `20% + 50% × route progress`.
-- Survivors are found and escorted on the route (`rescueBonus` raises the
-  chance one spawns).
-- `power` and the zone's `rec` are only the simulator's stand-in for skill.
-  In the real game they'd just be a difficulty hint.
+- `chapter.type` picks the mode:
+  - `run`: A to B, to a safe room
+  - `horde`: hold a spot
+  - `rescue`: find the stash, then reach the safe room
+  - `finale`: a Tank, then hold out
 
-## The simulated run
+  `chapter.campaign` picks the map theme, and `rec` sets the Director's
+  difficulty.
+- `survivor` is the character you play. `squad` lists the AI teammates, who
+  are swapped for real players in co-op. `perks` multiply the squad's move
+  speed, max health, damage and reload speed. The `supplies` perk is applied
+  by the meta, not the game.
+- `weapon.game` maps to the game's weapon table. SMG, shotgun, rifle and
+  hunting rifle exist today. `auto` and `lmg` are proposals (`game: null`).
+  `weapon.level` would scale damage.
+- **Stars** in the real game should come from performance, not from power:
+  for example, 1★ for reaching the end, plus one star for nobody going down
+  and one for beating par time. Power and `rec` are only the simulator's
+  stand-in for skill.
+- **Revive**: when the whole squad is down after 30% of the route, the game
+  pauses and asks. The meta charges the gems (`Meta#revive`), and the run
+  continues.
 
-- Win chance = `0.75 + 0.8 × (power − rec) / rec`, clamped to 5–97%
-  (`WIN_CHANCE`). The deploy screen shows it as Easy / Fair / Risky / Deadly.
-  The very first run always survives. For testing, the outcome can be forced
-  to *Always survive* or *Always die*.
-- First-time survival of a zone pays gems. A lucky stash gives 1–3 gems 6% of
-  the time.
-- **A run moves the camp clock on by its length** (~5–9 minutes, toggle in
-  tuning). That's what the real game would do: timers keep running while you
-  play, so starting an upgrade and then playing a run feels like it does in
-  the final game. It also stops instant simulated runs from making the
-  economy feel faster than it will be.
+## Testing tools
 
-## Tuning and testing
+The gear (top right) or the <kbd>`</kbd> key opens a drawer with:
 
-- **All content and numbers** are in [`camp/src/config.js`](../camp/src/config.js):
-  buildings with per-level cost, time and effect, zones, expeditions,
-  recipes, rewards, objectives and gem pricing.
-  `tests/camp-content.test.js` guards the tables. It checks that every cost
-  fits in storage at the camp level that unlocks it, that survivor
-  requirements fit the available beds, that objectives can be done in order
-  and that ids resolve.
-- **Tuning drawer** (gear, top right, or the `` ` `` key):
-  - time warp (+1 min … +1 day) and fast-forward (×10, ×60, ×600)
-  - cheats
-  - live multipliers for build time, production, run loot and rush price,
-    plus the crate and airdrop intervals
-  - default run outcome
-  - a **pacing log** of when each camp level was reached, in camp time and
-    in time actually spent in the camp
-  - save export, import and reset
-- **Balance simulator:** `npm run camp:balance -- --days=10 --sessions=5 --runs=2 --rush=2`
-  plays a scripted regular player and prints when each level is reached.
-  Some reference results:
+- **Runs**: by power (the odds shown on each stop), always survive, or
+  always die.
+- **Time**: warp +10 min, +1 h, +8 h or +1 day, and "Rewards ready".
+- **Cheats**:
+  - +500 supplies
+  - +50 gems
+  - clear the next stop with ★★★
+  - clear the district
+  - max the squad and guns
+- **Economy (live)** sliders:
+  - run rewards
+  - upgrade costs
+  - recommended power
+  - crate and airdrop intervals
+  - volume
 
-| Profile | Camp 4 | Camp 6 | Camp 8 |
-|---|---|---|---|
-| 5 sessions/day, 2 runs each | 12 h | 2.5 days | 6 days |
-| 3 sessions/day, 2 runs each | 1.3 days | 3.8 days | 8.7 days |
-| 5 sessions/day, never runs | 1.5 days | 5.2 days | 10.7 days |
-| 5 sessions/day, rushes everything | 11 h | 2 days | 5.5 days |
+  There's also a haptics switch.
+- **Pacing log** for each district: runs, play time and real time it took to
+  clear.
+- **Save**: copy and load the save as JSON, or reset progress (two steps).
 
-After the mid-game, resources rather than time are the main limit, so
-rushing only speeds things up a little. If timers should be the main
-pressure on spenders, lower the costs or raise the times of level 6–8.
+`window.__evac` exposes the meta, clock, road, HUD and actions in the
+console.
 
 ## Playtest checklist
 
-- Does the first session (10–20 min) feel like a cascade of unlocks? Is the
-  Camp Level 2 and 3 reveal exciting?
-- Do you know what to do next without the objective banner? With it?
-- Does a run feel worth it compared with just waiting? Is a death
-  frustrating, or fair?
-- Do you notice and care about the run power going up? Do the gun unlocks
-  land?
-- Is the Supply Crate interval a nice "while I'm here" bonus, or a chore?
-  Is the Airdrop a reason to come back?
-- When do you first want to spend gems? Does a rush ever feel like a bad
-  deal, or a must?
-- Is storage ever annoying ("full")? Does the Warehouse feel needed?
-- After being away: does the welcome-back summary make you want to play?
-- Mid-game (camp level 4–6 via time warp): are there always useful things
-  to do with builders, expeditions and crafting?
+- After five minutes, can you say what you're working toward?
+- Did you ever not know what to tap next? Did the coach bubble help, or get
+  in the way?
+- Did any button seem to do nothing?
+- Does a first clear feel like a moment: the drive, the fog lifting, the
+  reveal?
+- When you died, did you know why, and what to do about it?
+- Does the 30-minute crate bring you back? Does the airdrop feel worth a
+  daily check?
+- Would you spend gems on a revive at a finale? On skipping an airdrop?
+- Where does it start to feel grindy? Note the district and the run count
+  from the pacing log.
 
 ## Code map
 
 ```
-camp/index.html, camp.css   page shell and styles
-camp/src/config.js          all content and numbers (edit me)
-camp/src/economy.js         Camp state + rules (pure, no DOM, unit tested)
-camp/src/run-sim.js         simulated run: RunLoadout -> RunResult
-camp/src/clock.js           camp clock: real time + warp offset (saved)
-camp/src/save.js            localStorage save/tuning with forward-filling migration
-camp/src/main.js            boot, frame loop, offline catch-up, action dispatcher
-camp/src/scene.js           camp panorama: plots, rubble, bubbles, survivors, drops
-camp/src/art.js, icons.js   procedural SVG art (3 tiers per building) and icons
-camp/src/hud.js             top bar, wait rewards, chips, objective, PLAY
-camp/src/panels.js          every modal's HTML
-camp/src/ui.js              modal manager, gem confirmation, toasts
-camp/src/run-view.js        the simulated run overlay
-camp/src/fx.js, audio.js    flying loot, floaters, bursts; WebAudio UI sounds
-camp/src/dev-panel.js       tuning drawer
-camp/tools/balance-sim.mjs  pacing simulator (npm run camp:balance)
-tests/camp-*.test.js        economy, simulator and content tests
+evac/index.html, evac.css   page shell and styles
+evac/src/config.js          all content and numbers: survivors, guns, districts, stops, odds, rewards
+evac/src/meta.js            the rules (pure, no DOM): power, upgrades, runs, unlocks, rewards, advice, loadout
+evac/src/run-sim.js         simulated run -> RunResult (seeded, pure)
+evac/src/save.js            localStorage save + migration; tuning
+evac/src/clock.js           real clock with a warp offset; FakeClock for tests
+evac/src/main.js            wiring: actions, run -> results -> drive -> reveals, frame loop
+evac/src/road.js            the scrolling road: districts, stops, van, squad, zombies, fog, drive cinematic
+evac/src/hud.js             power, currencies, crate/airdrop, UPGRADE, goal card, PLAY, coach
+evac/src/screens.js         briefing, results, upgrades, reveals, rewards, gem confirm, intro
+evac/src/run-view.js        the simulated run screen (portraits, HP, ticker, revive prompt)
+evac/src/art.js, icons.js   inline SVG art and icons
+evac/src/ui.js, fx.js, audio.js, dev.js   modals and toasts, flying loot, synth sounds, testing drawer
+evac/tools/                 balance-sim.mjs (npm run evac:balance), derive-recs.mjs
+tests/evac-*.test.js        rules, content and simulator tests
 ```
-
-`window.__camp` exposes the camp, the clock, the tuning and the action
-dispatcher in the browser console.

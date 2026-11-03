@@ -14,6 +14,17 @@ export function tickLive(root, now) {
   }
 }
 
+/** Mark a scroller that has more content past its end (CSS fades that edge). */
+function moreHint(el) {
+  const update = () => {
+    el.classList.toggle('more-y', el.scrollHeight - el.clientHeight - el.scrollTop > 4);
+    el.classList.toggle('more-x', el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
+  };
+  el.addEventListener('scroll', update, { passive: true });
+  update();
+  requestAnimationFrame(update); // after layout settles (fonts, images)
+}
+
 export class Modals {
   constructor(root, { onAct, now, sound }) {
     this.root = root;
@@ -60,6 +71,7 @@ export class Modals {
       s2.scrollTop = top;
       s2.scrollLeft = left;
     }
+    for (const el of c.body.querySelectorAll('.scroll')) moreHint(el);
     tickLive(c.body, this.now());
   }
 

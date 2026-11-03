@@ -18,6 +18,7 @@ export const SURVIVORS = {
     role: 'Pointman',
     bio: 'Ex-courier. Knows every shortcut in this city.',
     perk: 'Squad move speed',
+    perkKey: 'moveSpeed', // RunLoadout.perks key
     perkPer: 3, // % per level
     costMult: 1,
     start: true,
@@ -27,6 +28,7 @@ export const SURVIVORS = {
     role: 'Medic',
     bio: 'ER nurse. Stayed behind for her patients.',
     perk: 'Squad max health',
+    perkKey: 'maxHealth', // RunLoadout.perks key
     perkPer: 4,
     costMult: 1.15,
   },
@@ -35,6 +37,7 @@ export const SURVIVORS = {
     role: 'Gunner',
     bio: 'Range officer. Never misses twice.',
     perk: 'Squad damage',
+    perkKey: 'damage', // RunLoadout.perks key
     perkPer: 3,
     costMult: 1.3,
   },
@@ -43,6 +46,7 @@ export const SURVIVORS = {
     role: 'Engineer',
     bio: 'Can wire a pipe bomb out of anything.',
     perk: 'Squad reload speed',
+    perkKey: 'reloadSpeed', // RunLoadout.perks key
     perkPer: 4,
     costMult: 1.45,
   },
@@ -51,6 +55,7 @@ export const SURVIVORS = {
     role: 'Scavenger',
     bio: 'Finds food where there is none.',
     perk: 'Supplies found',
+    perkKey: 'supplies', // RunLoadout.perks key
     perkPer: 4,
     costMult: 1.6,
   },

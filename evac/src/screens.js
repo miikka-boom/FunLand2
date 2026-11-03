@@ -78,27 +78,56 @@ export function briefing(meta, i, ctx) {
       : `<div class="sec-h">Squad <button class="mini-btn" type="button" data-act="friends">${icon('squad')} Co-op friends: ${friends}/3 <small>(simulated)</small></button></div>`) +
     (meta.rescued().length > 1 ? `<div class="sec-h">Play as</div><div class="chips">${mains}</div>` : '') +
     (meta.found().length > 1 ? `<div class="sec-h">Gun</div><div class="chips">${guns}</div>` : '');
-  const foot =
-    (advice ? btn(`${icon('up')} Upgrade first`, 'upgrades', {}, 'ghost') : '') +
-    btn(`${icon('play')} ${ch.state === 'done' ? 'Replay' : 'Start'}`, 'start', { i }, 'primary big');
-  return `<div class="brief"><div class="b-main scroll">${body}</div><div class="b-foot"><span class="hint">${advice ? `Tough one. ${esc(meta.advice().text)}.` : ch.state === 'done' ? `Best: ${'★'.repeat(ch.stars)}${'☆'.repeat(3 - ch.stars)}` : 'Clear it to move the van on.'}</span>${foot}</div></div>`;
+  // The footer always says what would help most, with a button for it.
+  const a = meta.advice();
+  let hint;
+  let extra = '';
+  if (advice) {
+    const name = advice.kind === 'survivor' ? SURVIVORS[advice.id].name : WEAPONS[advice.id].name;
+    hint = `Tough one. Upgrade ${esc(name)}: +${advice.gain} power.`;
+    extra = btn(`${icon('up')} Upgrade first`, 'upgrades', {}, 'ghost');
+  } else if (a.kind === 'replay' && i === meta.playTarget() && a.i !== i) {
+    hint = 'Too tough for now. Farm supplies on a stop you know.';
+    extra = btn(`${icon('play')} ${esc(meta.chapter(a.i).name)}`, 'retry', { i: a.i }, 'ghost');
+  } else if (o.chance < 0.55) {
+    const nu = meta.nextUpgrade();
+    hint = nu && nu.missing > 0 ? `Tough one. Next upgrade in ${nu.missing} supplies.` : 'Tough one. Bring friends?';
+  } else {
+    hint = ch.state === 'done' ? `Best: ${'★'.repeat(ch.stars)}${'☆'.repeat(3 - ch.stars)}` : 'Clear it to move the van on.';
+  }
+  const foot = extra + btn(`${icon('play')} ${ch.state === 'done' ? 'Replay' : 'Start'}`, 'start', { i }, 'primary big');
+  return `<div class="brief"><div class="b-main scroll">${body}</div><div class="b-foot"><span class="hint">${hint}</span>${foot}</div></div>`;
 }
 
 // --- Results -------------------------------------------------------------------------------------
 
+function lostButtons(meta, a, i) {
+  const retry = (primary) => btn('Retry', 'retry', { i }, primary ? 'primary' : '');
+  const back = btn('Back to the road', 'close');
+  if (meta.bestUpgrade()) return btn(`${icon('up')} Upgrade`, 'upgrades', {}, 'primary') + retry(false) + back;
+  if (a.kind === 'replay' && a.i !== i) return retry(false) + btn(`${icon('play')} ${esc(meta.chapter(a.i).name)}`, 'retry', { i: a.i }, 'primary') + back;
+  return retry(true) + back;
+}
+
 export function results(meta, result, out) {
   const ch = meta.chapter(result.index);
   if (!out.won) {
-    const best = meta.bestUpgrade();
     const p = meta.power().total;
-    const tip = best
-      ? `<div class="tip">${icon('info')}<span>Power ${p} vs ${ch.rec} needed. <b>${esc(meta.advice().text)}</b>.</span></div>`
-      : `<div class="tip">${icon('info')}<span>Power ${p} vs ${ch.rec} needed. ${esc(meta.advice().text)}.</span></div>`;
+    const a = meta.advice();
+    let line;
+    if (a.kind === 'upgrade' || a.kind === 'replay') {
+      line = `<b>${esc(a.text)}</b>.`;
+    } else {
+      const nu = meta.nextUpgrade();
+      const retry = `Retry: ${Math.round(meta.oddsFor(result.index).chance * 100)}% to survive.`;
+      line = nu && nu.missing > 0 ? `Next upgrade in <b>${nu.missing}</b> supplies. ${retry}` : retry;
+    }
+    const tip = `<div class="tip">${icon('info')}<span>Power ${p} vs ${ch.rec} needed. ${line}</span></div>`;
     return (
       `<div class="res lost"><div class="kicker">${esc(ch.label)}</div><div class="r-title">YOU DIED</div>` +
       `<div class="r-sub">${esc(ch.name)} · made it ${Math.round(result.progress * 100)}% of the way · ${result.kills} kills</div>` +
       `<div class="r-total">${sup(out.supplies, 'big')}<small>kept</small></div>${tip}` +
-      `<div class="btns">${best ? btn(`${icon('up')} Upgrade`, 'upgrades', {}, 'primary') : ''}${btn('Retry', 'retry', { i: result.index }, best ? '' : 'primary')}${btn('Back to the road', 'close')}</div></div>`
+      `<div class="btns">${lostButtons(meta, a, result.index)}</div></div>`
     );
   }
   const lines = out.lines.map((l, k) => `<div class="r-line" style="--d:${0.5 + k * 0.18}s"><span>${esc(l.label)}</span>${sup(l.value)}</div>`).join('');
@@ -113,7 +142,8 @@ export function results(meta, result, out) {
     `<div class="r-lines">${lines}</div>` +
     `<div class="r-total">${sup(out.supplies, 'big')}${out.gems ? gem(out.gems, 'big') : ''}</div>${news}` +
     (out.mastery ? `<div class="r-new">${icon('trophy')}<span>${esc(out.mastery.campaign)} mastered: <b>3 stars everywhere</b></span></div>` : '') +
-    `<div class="btns">${btn('Replay', 'retry', { i: result.index })}${btn(`Continue ${icon('arrow')}`, 'close', {}, 'primary big')}</div></div>`
+    // A first clear drives the van on and may reveal unlocks: Continue only, so nothing gets skipped.
+    `<div class="btns">${out.advanced || out.unlocks.length ? '' : btn('Replay', 'retry', { i: result.index })}${btn(`Continue ${icon('arrow')}`, 'close', {}, 'primary big')}</div></div>`
   );
 }
 
@@ -143,11 +173,25 @@ function upButton(meta, kind, id) {
   return `<div class="need">${sup(cost)}<small>Need ${fmtNum(cost - meta.s.supplies)} more</small></div>`;
 }
 
+/** The advice line on the upgrade screen; when the best upgrade is on the other tab it takes you there. */
+function tipHtml(tip, tab) {
+  if (tip.kind === 'upgrade') {
+    const other = tip.item.kind === 'weapon' ? 'guns' : 'survivors';
+    if (other !== tab) return `<button class="u-tip go" type="button" data-act="tab" data-id="${other}">${icon('up')} ${esc(tip.text)} ${icon('arrow')}</button>`;
+    return `<span class="u-tip">${icon('up')} ${esc(tip.text)}</span>`;
+  }
+  if (tip.kind === 'play') return `<span class="u-tip">${icon('play')} Ready: ${esc(tip.text)}</span>`;
+  return `<span class="u-tip">${esc(tip.text)}</span>`;
+}
+
 export function upgrades(meta, tab) {
   const best = meta.advice().kind === 'upgrade' ? meta.advice().item : meta.bestUpgrade();
   const p = meta.power();
+  // Each tab counts the upgrades you can afford right now.
+  const can = meta.affordable().filter((u) => u.gain > 0);
+  const count = { survivors: can.filter((u) => u.kind === 'survivor').length, guns: can.filter((u) => u.kind === 'weapon').length };
   const tabs = ['survivors', 'guns']
-    .map((t) => `<button class="tab${tab === t ? ' on' : ''}" type="button" data-act="tab" data-id="${t}">${t === 'survivors' ? `${icon('squad')} Squad` : `${icon('smg')} Guns`}</button>`)
+    .map((t) => `<button class="tab${tab === t ? ' on' : ''}" type="button" data-act="tab" data-id="${t}">${t === 'survivors' ? `${icon('squad')} Squad` : `${icon('smg')} Guns`}${count[t] ? `<span class="t-n">${count[t]}</span>` : ''}</button>`)
     .join('');
   let cards = '';
   if (tab === 'survivors') {
@@ -177,7 +221,7 @@ export function upgrades(meta, tab) {
       const d = WEAPONS[id];
       const lvl = meta.s.weapons[id];
       if (lvl <= 0) {
-        cards += `<div class="card locked gunc"><div class="c-art sil">${gunSvg(id)}</div><div class="c-name">${d.name}<small>${d.game ? 'In the game' : 'Proposed gun'}</small></div><div class="c-lock">${icon('lock')}<span>Found at <b>${esc(where('weapon', id))}</b></span></div><div class="c-perk">${esc(d.blurb)}</div></div>`;
+        cards += `<div class="card locked gunc"><div class="c-art sil">${gunSvg(id)}</div><div class="c-name">${d.name}<small>${d.game ? 'Not found yet' : 'Proposed gun'}</small></div><div class="c-lock">${icon('lock')}<span>Found at <b>${esc(where('weapon', id))}</b></span></div><div class="c-perk">${esc(d.blurb)}</div></div>`;
         continue;
       }
       const eq = id === meta.s.weapon;
@@ -185,7 +229,7 @@ export function upgrades(meta, tab) {
       const now = meta.weaponPower(id);
       cards +=
         `<div class="card gunc${eq ? ' main' : ''}${isBest ? ' best' : ''}">${isBest ? '<span class="ribbon">BEST</span>' : ''}<div class="c-art">${gunSvg(id)}</div>` +
-        `<div class="c-name">${d.name}<small>${eq ? 'equipped' : d.game ? 'in the game' : 'proposed gun'}</small></div>` +
+        `<div class="c-name">${d.name}<small>${eq ? 'equipped' : 'in reserve'}${d.game ? '' : ' · proposed'}</small></div>` +
         `<div class="c-lv">Lv ${lvl}${pips(lvl)}</div>` +
         `<div class="c-stat">${icon('power')}<b>+${now}</b>${lvl < MAX_LEVEL ? `<span class="nx">→ +${meta.weaponPower(id, lvl + 1)}</span>` : ''}<small>${eq ? 'equipped' : 'if equipped'}</small></div>` +
         `<div class="c-perk">${esc(d.blurb)}</div>` +
@@ -197,7 +241,7 @@ export function upgrades(meta, tab) {
   return (
     `<div class="upg"><div class="u-head"><div><div class="kicker">Spend supplies, get stronger. Instantly.</div><h2>Squad & Guns</h2></div>` +
     `<div class="u-cur">${icon('power')}<b class="pw">${p.total}</b><small>power</small>${sup(meta.s.supplies, 'big')}</div></div>` +
-    `<div class="tabs">${tabs}<span class="u-tip">${tip.kind === 'upgrade' ? `${icon('up')} ${esc(tip.text)}` : tip.kind === 'play' ? `${icon('play')} Ready: ${esc(tip.text)}` : esc(tip.text)}</span></div>` +
+    `<div class="tabs">${tabs}${tipHtml(tip, tab)}</div>` +
     `<div class="cards scroll">${cards}</div></div>`
   );
 }

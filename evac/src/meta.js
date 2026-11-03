@@ -292,6 +292,21 @@ export class Meta {
     return list[0] || null;
   }
 
+  /** The cheapest upgrade that adds power, affordable or not, with how many supplies it still needs. */
+  nextUpgrade() {
+    let best = null;
+    const consider = (kind, id) => {
+      const cost = this.upgradeCost(kind, id);
+      const gain = this.upgradeGain(kind, id);
+      if (cost === null || gain <= 0) return;
+      if (!best || cost < best.cost) best = { kind, id, cost, gain };
+    };
+    for (const id of this.rescued()) consider('survivor', id);
+    for (const id of this.found()) consider('weapon', id);
+    if (best) best.missing = Math.max(0, best.cost - this.s.supplies);
+    return best;
+  }
+
   // --- Runs ----------------------------------------------------------------------------------------------
 
   canPlay(i) {
@@ -517,22 +532,27 @@ export class Meta {
    */
   advice() {
     const target = this.playTarget();
+    const best = this.bestUpgrade();
+    const upgrade = () => {
+      const name = best.kind === 'survivor' ? SURVIVORS[best.id].name : WEAPONS[best.id].name;
+      return { kind: 'upgrade', item: best, text: `Upgrade ${name}: +${best.gain} power` };
+    };
     if (this.s.evac) {
+      // After the evac it's all about stars, and more power means more stars.
       const missing = this._bestReplay(true);
+      if (best && missing !== null) return upgrade();
       if (missing !== null) return { kind: 'replay', i: missing, text: `Go for ★★★ on ${this.chapter(missing).name}` };
       return { kind: 'done', text: 'Every stop mastered. Legend.' };
     }
     const o = this.oddsFor(target);
-    const best = this.bestUpgrade();
-    if (best && (this.s.stats.runs <= 3 || o.chance < 0.8)) {
-      const name = best.kind === 'survivor' ? SURVIVORS[best.id].name : WEAPONS[best.id].name;
-      return { kind: 'upgrade', item: best, text: `Upgrade ${name}: +${best.gain} power` };
-    }
+    if (best && (this.s.stats.runs <= 3 || o.chance < 0.8)) return upgrade();
     if (o.chance < 0.45) {
       const r = this._bestReplay();
       if (r !== null) return { kind: 'replay', i: r, text: `Too tough for now. Replay ${this.chapter(r).name} for supplies` };
     }
-    return { kind: 'play', i: target, text: `Play ${this.chapter(target).name}` };
+    const name = this.chapter(target).name;
+    const pct = Math.round(o.chance * 100);
+    return { kind: 'play', i: target, chance: o.chance, text: o.chance < 0.8 ? `Play ${name}: ${pct}% to survive` : `Play ${name}` };
   }
 
   /**
@@ -569,10 +589,14 @@ export class Meta {
     }
   }
 
-  /** What the camp hands the action game for the next run (docs/METAGAME.md). */
+  /** What the meta hands the action game for the next run (docs/METAGAME.md). Perks are fractions: 0.12 = +12%. */
   loadout(i = this.playTarget()) {
     const c = this.chapter(i);
-    const perks = this.perks();
+    const perks = {};
+    for (const id of this.squad()) {
+      const d = SURVIVORS[id];
+      perks[d.perkKey] = Math.round((perks[d.perkKey] || 0) * 100 + d.perkPer * this.s.survivors[id]) / 100;
+    }
     return {
       chapter: { index: i, campaign: c.campaign.id, name: c.name, type: c.type, rec: c.rec },
       survivor: { id: this.s.main, level: this.s.survivors[this.s.main] },

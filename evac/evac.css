@@ -423,6 +423,8 @@ code {
   cursor: pointer;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
   z-index: 200;
+  max-width: 132px;
+  transform: translateX(-50%);
 }
 
 .dsign b {
@@ -439,7 +441,7 @@ code {
 .dsign::after {
   content: "";
   position: absolute;
-  left: 18px;
+  left: calc(50% - 2px);
   top: 100%;
   width: 4px;
   height: 22px;
@@ -1933,6 +1935,37 @@ h1 {
   height: 16px;
 }
 
+/* When the best upgrade is on the other tab, the tip is a button that goes there. */
+button.u-tip.go {
+  min-height: 36px;
+  padding: 4px 12px;
+  border: 1px solid rgba(255, 210, 122, 0.45);
+  border-radius: 999px;
+  background: rgba(255, 210, 122, 0.1);
+  cursor: pointer;
+  animation: tipGo 1.6s ease-in-out infinite;
+}
+
+@keyframes tipGo {
+  50% {
+    background: rgba(255, 210, 122, 0.22);
+  }
+}
+
+/* Affordable-upgrade count on a tab. */
+.t-n {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #3ecf6e;
+  color: #0c1a10;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 20px;
+  text-align: center;
+}
+
 .cards {
   display: flex;
   gap: 10px;
@@ -3018,6 +3051,150 @@ h1 {
   }
 }
 
+/* Very short screens (iPhone SE landscape is 568x320): everything that matters fits without scrolling
+   except the briefing's squad pickers, which scroll with a fade hint. */
+@media (max-height: 360px) {
+  .modal {
+    max-height: calc(100vh - 8px);
+    max-height: calc(100dvh - 8px - var(--st) - var(--sb));
+  }
+  .intro h1 {
+    font-size: 28px;
+    margin-bottom: 2px;
+  }
+  .intro > p {
+    margin-bottom: 8px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .intro .kicker {
+    margin-bottom: 2px;
+  }
+  .intro-steps {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .intro-steps > div {
+    grid-template-columns: 1fr;
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+  .intro-steps .ico {
+    grid-row: auto;
+    width: 20px;
+    height: 20px;
+  }
+  .intro-steps b {
+    font-size: 12px;
+  }
+  .intro .hint {
+    display: none;
+  }
+  .b-main .desc {
+    display: none;
+  }
+  .odds {
+    margin-top: 6px;
+    padding: 5px 10px;
+  }
+  .odds .pw b {
+    font-size: 19px;
+  }
+  .odds .risk b {
+    font-size: 16px;
+  }
+  .rw-row {
+    margin-top: 6px;
+  }
+  .b-foot {
+    padding: 6px 10px;
+  }
+  .u-head {
+    padding: 8px 52px 4px 14px;
+  }
+  .u-head .kicker {
+    display: none;
+  }
+  .tabs {
+    padding: 0 14px 6px;
+  }
+  .tab {
+    min-height: 34px;
+    padding: 4px 12px;
+  }
+  .cards {
+    padding: 2px 14px 8px;
+    gap: 8px;
+  }
+  .card {
+    width: 150px;
+    gap: 2px;
+    padding: 6px 8px 8px;
+  }
+  .c-art {
+    width: 46px;
+    height: 46px;
+  }
+  .c-art .portrait {
+    width: 44px;
+    height: 44px;
+  }
+  .card.gunc .c-art {
+    width: 112px;
+    height: 40px;
+  }
+  .c-art .gun {
+    width: 106px;
+  }
+  .c-name {
+    font-size: 14px;
+  }
+  .c-name small {
+    font-size: 10px;
+  }
+  .c-lv {
+    flex-direction: row;
+    gap: 6px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .c-stat {
+    font-size: 13px;
+  }
+  .c-stat small {
+    display: none;
+  }
+  .c-perk {
+    min-height: 0;
+    font-size: 10.5px;
+  }
+  .card.gunc:not(.locked) .c-perk {
+    display: none;
+  }
+  .card .btn.up,
+  .need {
+    min-height: 38px;
+  }
+  .card .btn.sel,
+  .card .sel-on {
+    top: 4px;
+    right: 4px;
+    min-height: 26px;
+    padding: 2px 8px;
+  }
+}
+
+/* A panel with more to scroll to fades out at that edge. */
+.scroll.more-y {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+}
+
+.scroll.more-x {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .flame,
   .fireglow,
@@ -3033,7 +3210,8 @@ h1 {
   .heli .rotor,
   .zed-w .leg,
   .van.driving,
-  .van.driving .wheel {
+  .van.driving .wheel,
+  button.u-tip.go {
     animation: none !important;
   }
 }
