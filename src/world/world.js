@@ -87,14 +87,32 @@ export class World {
     const n = this.navW * this.navH;
     this.blocked = new Uint8Array(n);
     this.penalty = new Uint8Array(n);
-    // Conservative: every cell an obstacle overlaps is blocked. Marking only
-    // cells whose centre is inside let thin walls and fences (6-16u) slip
-    // between rows of centres, and the field then routed bodies through them.
+    // Thin obstacles (walls, glass, fences, shelves: < one cell thick) block
+    // every cell they touch, or they could slip between rows of cell centres
+    // and the field would route bodies straight through them. Bulky props
+    // (>= one cell thick) always cover a centre, so centre-based marking is
+    // enough and keeps the gaps between scattered furniture walkable.
     for (const o of this.moveBlockers) {
-      const x0 = Math.max(0, Math.floor(o.x / cs));
-      const x1 = Math.min(this.navW - 1, Math.floor((o.x + o.w - 1e-6) / cs));
-      const y0 = Math.max(0, Math.floor(o.y / cs));
-      const y1 = Math.min(this.navH - 1, Math.floor((o.y + o.h - 1e-6) / cs));
+      let x0;
+      let x1;
+      let y0;
+      let y1;
+      if (Math.min(o.w, o.h) < cs) {
+        x0 = Math.floor(o.x / cs);
+        x1 = Math.floor((o.x + o.w - 1e-6) / cs);
+        y0 = Math.floor(o.y / cs);
+        y1 = Math.floor((o.y + o.h - 1e-6) / cs);
+      } else {
+        const inf = 4;
+        x0 = Math.ceil((o.x - inf) / cs - 0.5);
+        x1 = Math.floor((o.x + o.w + inf) / cs - 0.5);
+        y0 = Math.ceil((o.y - inf) / cs - 0.5);
+        y1 = Math.floor((o.y + o.h + inf) / cs - 0.5);
+      }
+      x0 = Math.max(0, x0);
+      y0 = Math.max(0, y0);
+      x1 = Math.min(this.navW - 1, x1);
+      y1 = Math.min(this.navH - 1, y1);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) this.blocked[y * this.navW + x] = 1;
     }
     // Prefer the middle of corridors: small cost next to walls.
@@ -143,6 +161,40 @@ export class World {
       }
     }
     return -1;
+  }
+
+  /**
+   * Nearest position to (x, y) that the field reaches (e.g. to rescue a pickup
+   * that landed in a pocket). Returns null if nothing within maxR cells.
+   */
+  reachableSpot(x, y, field, maxR = 5) {
+    const i0 = this.navIndex(x, y);
+    if (!this.blocked[i0] && field.dist[i0] < INF) return { x, y };
+    const cx = i0 % this.navW;
+    const cy = Math.floor(i0 / this.navW);
+    const c = { x: 0, y: 0 };
+    for (let r = 1; r <= maxR; r++) {
+      let best = null;
+      let bd = Infinity;
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const gx = cx + dx;
+          const gy = cy + dy;
+          if (gx < 0 || gy < 0 || gx >= this.navW || gy >= this.navH) continue;
+          const j = gy * this.navW + gx;
+          if (this.blocked[j] || field.dist[j] >= INF) continue;
+          this.cellCenter(j, c);
+          const d = Math.hypot(c.x - x, c.y - y);
+          if (d < bd) {
+            bd = d;
+            best = { x: c.x, y: c.y };
+          }
+        }
+      }
+      if (best) return best;
+    }
+    return null;
   }
 
   /** Resolve a circle against nearby movement blockers. */
