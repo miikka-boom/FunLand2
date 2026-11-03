@@ -46,6 +46,13 @@ export const DEFAULTS = Object.freeze({
   hordeSize: 1.0,
   wanderers: 1.0,
 
+  // --- Special infected ---------------------------------------------------
+  specials: true, // Hunter + Tank
+  hunterBreakTaps: 5, // taps to break a Hunter pin
+  deadstopWindow: 0.18, // seconds a shove stays live for knocking a pouncing Hunter down
+  tankHealth: 1.0,
+  tankSpeed: 1.0, // 1.0 = 182 u/s, just under your run speed: kite it, don't stop
+
   // --- Presentation -------------------------------------------------------
   night: true,
   darkness: 0.8,
@@ -130,6 +137,16 @@ export const SCHEMA = [
       { key: 'zombieDamage', label: 'Zombie damage', type: 'range', min: 0, max: 3, step: 0.1, fmt: mult },
       { key: 'hordeSize', label: 'Horde size', type: 'range', min: 0.25, max: 3, step: 0.05, fmt: mult },
       { key: 'wanderers', label: 'Wanderer density', type: 'range', min: 0, max: 3, step: 0.1, fmt: mult },
+    ],
+  },
+  {
+    group: 'Specials',
+    items: [
+      { key: 'specials', label: 'Hunter + Tank', type: 'toggle' },
+      { key: 'hunterBreakTaps', label: 'Taps to break a Hunter pin', type: 'range', min: 2, max: 12, step: 1, fmt: (v) => `${v}` },
+      { key: 'deadstopWindow', label: 'Deadstop shove window', type: 'range', min: 0, max: 0.4, step: 0.01, fmt: secs },
+      { key: 'tankHealth', label: 'Tank health', type: 'range', min: 0.25, max: 3, step: 0.05, fmt: mult },
+      { key: 'tankSpeed', label: 'Tank speed', type: 'range', min: 0.6, max: 1.5, step: 0.05, fmt: mult },
     ],
   },
   {

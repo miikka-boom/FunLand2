@@ -41,6 +41,8 @@ export class SettingsPanel {
       return b;
     };
     mk('Call horde now', () => this.actions.onCallHorde());
+    mk('Spawn Hunter', () => this.actions.onSpawnHunter());
+    mk('Spawn Tank', () => this.actions.onSpawnTank());
     mk('Restart run', () => this.actions.onRestart());
     mk('New map', () => this.actions.onNewMap());
     this.fsBtn = mk('Fullscreen', () => this.actions.onFullscreen());

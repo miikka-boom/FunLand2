@@ -77,6 +77,9 @@ export class Renderer {
     this.drawGroundParticles(ctx, game, vr);
     this.drawZombies(ctx, game, vr);
     this.drawPlayer(ctx, game);
+    const pin = game.player.pinnedBy;
+    if (pin && pin.alive) this.drawHunter(ctx, pin, game.time);
+    this.drawRocks(ctx, game, vr);
     this.drawAirParticles(ctx, game, vr);
 
     if (S.night || S.los) {
@@ -437,6 +440,14 @@ export class Renderer {
     const t = game.time;
     for (const z of game.zombies) {
       if (!z.alive || z.x < vr.x || z.x > vr.x + vr.w || z.y < vr.y || z.y > vr.y + vr.h) continue;
+      if (z.type === 'hunter') {
+        if (z.mode !== 'pin') this.drawHunter(ctx, z, t);
+        continue;
+      }
+      if (z.type === 'tank') {
+        this.drawTank(ctx, z, t);
+        continue;
+      }
       const r = z.r;
       let f = z.face;
       if (z.stagger > 0) f += Math.sin(t * 30 + z.id) * 0.35;
@@ -478,8 +489,178 @@ export class Renderer {
     }
   }
 
+  drawHunter(ctx, h, t) {
+    const r = h.r;
+    let f = h.face;
+    if (h.mode === 'stunned') f += Math.sin(t * 22 + h.id) * 0.4;
+    const ca = Math.cos(f);
+    const sa = Math.sin(f);
+    // Crouched = squat and wide; mid-air = stretched along the pounce.
+    let along = r * 1.05;
+    let across = r * 0.85;
+    if (h.mode === 'crouch') {
+      along = r * 0.8;
+      across = r * 1.12;
+    } else if (h.mode === 'leap') {
+      along = r * 1.45;
+      across = r * 0.75;
+    }
+    const lift = h.mode === 'leap' ? 6 : 0;
+    if (lift) {
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(h.x + 4, h.y + 7, along, across, f, 0, TAU);
+      ctx.fill();
+    }
+    const x = h.x;
+    const y = h.y - lift;
+    // Claws: tucked while stalking, reaching while crouched / flying / pinning.
+    const reach = h.mode === 'stalk' || h.mode === 'stunned' ? 0.55 : h.mode === 'pin' ? 0.9 + Math.sin(t * 30) * 0.35 : 1.35;
+    ctx.strokeStyle = h.skin;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = r * 0.36;
+    ctx.beginPath();
+    for (const side of [-1, 1]) {
+      const sx = x - sa * r * 0.55 * side;
+      const sy = y + ca * r * 0.55 * side;
+      const flail = h.mode === 'pin' ? Math.sin(t * 28 + side) * 0.5 : 0;
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + (ca - sa * flail * side) * r * reach, sy + (sa + ca * flail * side) * r * reach);
+    }
+    ctx.stroke();
+    ctx.fillStyle = h.shirt;
+    ctx.beginPath();
+    ctx.ellipse(x, y, along * 0.82, across, f, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#1a1f2b'; // hood
+    ctx.beginPath();
+    circle(ctx, x + ca * r * 0.25, y + sa * r * 0.25, r * 0.55);
+    ctx.fill();
+    if (h.hitFlash > 0) {
+      ctx.fillStyle = 'rgba(255,240,230,0.55)';
+      ctx.beginPath();
+      circle(ctx, x, y, r * 1.1);
+      ctx.fill();
+    }
+  }
+
+  drawTank(ctx, k, t) {
+    const r = k.r;
+    const f = k.face;
+    const ca = Math.cos(f);
+    const sa = Math.sin(f);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(k.x + 5, k.y + 7, r * 1.05, r * 1.2, f, 0, TAU);
+    ctx.fill();
+    const walk = Math.sin(k.anim * 7) * 0.35;
+    const wind = k.mode === 'punch' ? 1 - k.modeT / 0.42 : 0;
+    const throwing = k.mode === 'throw';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = k.skin;
+    ctx.lineWidth = r * 0.5;
+    const fists = [];
+    for (const side of [-1, 1]) {
+      const sx = k.x - sa * r * 0.95 * side;
+      const sy = k.y + ca * r * 0.95 * side;
+      let reach = 0.9 + walk * side * 0.5;
+      let spread = 0.15;
+      if (throwing) {
+        reach = 1.1;
+        spread = -0.35; // both hands up together, holding the rock
+      } else if (k.mode === 'punch' && side === 1) {
+        reach = wind < 0.75 ? 0.2 - wind * 0.6 : 1.9; // haul back... then the haymaker
+      }
+      const ex = sx + (ca + -sa * spread * side) * r * reach;
+      const ey = sy + (sa + ca * spread * side) * r * reach;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      fists.push([ex, ey]);
+    }
+    ctx.fillStyle = k.skin;
+    for (const [fx, fy] of fists) {
+      ctx.beginPath();
+      circle(ctx, fx, fy, r * 0.4);
+      ctx.fill();
+    }
+    // Hulking shoulders, torn shirt, tiny head.
+    ctx.fillStyle = k.skin;
+    ctx.beginPath();
+    ctx.ellipse(k.x, k.y, r * 0.78, r * 1.18, f, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = k.shirt;
+    ctx.beginPath();
+    ctx.ellipse(k.x - ca * r * 0.25, k.y - sa * r * 0.25, r * 0.45, r * 0.9, f, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#8c7f73';
+    ctx.beginPath();
+    circle(ctx, k.x + ca * r * 0.42, k.y + sa * r * 0.42, r * 0.34);
+    ctx.fill();
+    if (throwing) {
+      const rx = k.x + ca * r * 1.25;
+      const ry = k.y + sa * r * 1.25;
+      const grow = Math.min(1, (1 - k.modeT) * 1.6);
+      this.drawRockShape(ctx, rx, ry, 13 * (0.6 + grow * 0.4), t * 2);
+    }
+    if (k.hitFlash > 0 || wind > 0) {
+      ctx.fillStyle = wind > 0 ? `rgba(255,60,40,${0.25 + wind * 0.3})` : 'rgba(255,240,230,0.4)';
+      ctx.beginPath();
+      ctx.ellipse(k.x, k.y, r * 0.85, r * 1.25, f, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  drawRockShape(ctx, x, y, r, rot) {
+    ctx.fillStyle = '#6f6a63';
+    ctx.beginPath();
+    for (let i = 0; i < 7; i++) {
+      const a = rot + (i / 7) * TAU;
+      const rr = r * (0.82 + hash01(i * 3.7) * 0.3);
+      if (i === 0) ctx.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+      else ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    circle(ctx, x + Math.cos(rot) * r * 0.3, y + Math.sin(rot) * r * 0.3, r * 0.35);
+    ctx.fill();
+  }
+
+  drawRocks(ctx, game, vr) {
+    for (const r of game.rocks) {
+      if (!r.alive || !pointInRect(r.x, r.y, vr, 40)) continue;
+      const h = Math.sin(Math.min(1, r.dist / r.max) * Math.PI) * 34 + 6; // thrown in an arc
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath();
+      ctx.ellipse(r.x, r.y, r.r * 0.9, r.r * 0.6, 0, 0, TAU);
+      ctx.fill();
+      this.drawRockShape(ctx, r.x, r.y - h, r.r, r.rot);
+    }
+    for (const p of game.effects.particles) {
+      if (p.kind !== 'debris' || !pointInRect(p.x, p.y, vr)) continue;
+      ctx.globalAlpha = Math.min(1, p.life * 2);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2 - p.z * 0.5, p.size, p.size * 0.8);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   drawPlayer(ctx, game) {
     const p = game.player;
+    if (p.pinnedBy && p.alive) {
+      ctx.fillStyle = '#2f8291';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, p.r * 1.25, p.r * 0.85, p.facing, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#d2a582';
+      ctx.beginPath();
+      circle(ctx, p.x + Math.cos(p.facing) * p.r * 1.1, p.y + Math.sin(p.facing) * p.r * 1.1, p.r * 0.42);
+      ctx.fill();
+      return;
+    }
     if (!p.alive && game.endT > 0.8) {
       ctx.fillStyle = '#2d6f7a';
       ctx.beginPath();
@@ -618,6 +799,8 @@ export class Renderer {
       }
     }
 
+    this.drawSpecialTells(ctx, game, vr);
+
     ctx.globalCompositeOperation = 'lighter';
     // Tracers.
     ctx.lineCap = 'round';
@@ -706,6 +889,86 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(a.x, a.y, a.reach * (1.05 - k * 0.2), a.ang - 1.0, a.ang + 1.0);
       ctx.stroke();
+    }
+  }
+
+  /** Telegraphs drawn over the darkness: you must be able to read them in time. */
+  drawSpecialTells(ctx, game, vr) {
+    const p = game.player;
+    const t = game.time;
+    for (const z of game.zombies) {
+      // Generous cull: the telegraph line reaches you even if the thrower is off-screen.
+      if (!z.alive || z.type === 'common' || !pointInRect(z.x, z.y, vr, 900)) continue;
+      const seen = pointInRect(z.x, z.y, vr, 40) && game.world.segmentClear(p.x, p.y, z.x, z.y);
+      if (z.type === 'hunter') {
+        if (z.mode === 'crouch') {
+          // Pounce line + a closing ring: the shove-timing cue.
+          const k = Math.max(0, z.modeT) / 0.75;
+          ctx.setLineDash([10, 8]);
+          ctx.lineDashOffset = -t * 60;
+          ctx.strokeStyle = `rgba(255,70,60,${0.55 + Math.sin(t * 30) * 0.2})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(z.x, z.y);
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.strokeStyle = 'rgba(255,90,70,0.8)';
+          ctx.beginPath();
+          circle(ctx, z.x, z.y, z.r + 6 + k * 26);
+          ctx.stroke();
+        } else if (z.mode === 'leap') {
+          for (let i = 0; i < z.trail.length; i++) {
+            const g = z.trail[i];
+            ctx.fillStyle = `rgba(150,170,255,${(i / z.trail.length) * 0.25})`;
+            ctx.beginPath();
+            circle(ctx, g.x, g.y - 6, z.r * 0.9);
+            ctx.fill();
+          }
+        }
+        if (seen && z.mode !== 'pin') {
+          const ca = Math.cos(z.face);
+          const sa = Math.sin(z.face);
+          const ex = z.x + ca * z.r * 0.55;
+          const ey = z.y + sa * z.r * 0.55 - (z.mode === 'leap' ? 6 : 0);
+          ctx.fillStyle = 'rgba(230,240,255,0.95)';
+          for (const side of [-1, 1]) {
+            ctx.beginPath();
+            circle(ctx, ex - sa * 3 * side, ey + ca * 3 * side, 1.6);
+            ctx.fill();
+          }
+        }
+      } else if (z.type === 'tank') {
+        if (z.mode === 'throw') {
+          ctx.setLineDash([12, 10]);
+          ctx.lineDashOffset = -t * 50;
+          ctx.strokeStyle = `rgba(255,170,60,${0.4 + Math.sin(t * 18) * 0.15})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(z.x, z.y);
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (z.mode === 'punch') {
+          const reach = z.r + p.r + 32;
+          ctx.fillStyle = `rgba(255,50,30,${0.12 + (1 - z.modeT / 0.42) * 0.22})`;
+          ctx.beginPath();
+          ctx.moveTo(z.x, z.y);
+          ctx.arc(z.x, z.y, reach, z.face - 1.3, z.face + 1.3);
+          ctx.closePath();
+          ctx.fill();
+        }
+        if (seen) {
+          const ca = Math.cos(z.face);
+          const sa = Math.sin(z.face);
+          ctx.fillStyle = 'rgba(255,90,60,0.9)';
+          for (const side of [-1, 1]) {
+            ctx.beginPath();
+            circle(ctx, z.x + ca * z.r * 0.6 - sa * 3.5 * side, z.y + sa * z.r * 0.6 + ca * 3.5 * side, 1.8);
+            ctx.fill();
+          }
+        }
+      }
     }
   }
 

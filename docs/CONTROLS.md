@@ -80,6 +80,49 @@ The knob turns orange while firing, and the fire ring brightens.
   fires instead of shoving. Tap near the base, or use the button or a second
   finger.
 
+## Special infected: stress tests for the controls
+
+### Hunter: shove timing
+
+- It stalks and circles you, and growls when it's close.
+- **Telegraph:** it stops, crouches and screeches for 0.75 s (0.42 s if
+  you're right next to it). A dashed red line and a shrinking ring show the
+  pounce coming. Off screen, a purple HUNTER arrow sits on the screen edge.
+- **Pounce:** it leaps at 720 u/s and leads you by half your velocity, so
+  stepping sideways during the screech dodges it.
+- **Deadstop:** shove (tap, button, Space or RB) while it's within 104 u of
+  you in mid-air. The shove stays live for `deadstopWindow` (0.18 s), so a
+  shove that's slightly early still counts, for a total window of about
+  0.3 s. It's knocked down and stunned for 1.6 s.
+- **Skeet:** kill it in mid-air. Hitting it hard while it crouches (45+
+  damage in one hit, or a shotgun stagger) cancels the pounce.
+- **Pinned:** you can't move or shoot while it claws you for about 12 HP/s.
+  Tap `hunterBreakTaps` (5) times to throw it off; any shove input counts.
+  The meter only drains once you stop mashing.
+
+### Tank: kiting while shooting backwards
+
+- 2400 HP (× `tankHealth`) and 182 u/s (× `tankSpeed`), just under your
+  190 u/s run. If you keep moving you can kite it; anything that slows you
+  (hits, limping) lets it catch up. It turns slowly, so sharp jukes work.
+- **Haymaker:** a 0.42 s wind-up (red wedge, red flash), then 24 damage that
+  sends you flying (560 u/s, with almost no control for 0.45 s). Commons in
+  the swing get thrown too.
+- **Rock:** a 1 s wind-up with an orange dashed line, thrown from 280–820 u
+  when it has a clear line to you. It leads you by 60%, so strafe to dodge
+  it, or shoot it down (70 HP). Aim assist prioritises rocks and pouncing
+  Hunters.
+- You can't shove or stagger it, and bullets barely push it.
+- One Tank per run, at a random point 38–58% of the way along the route.
+  Mobs and Hunters pause while it's within about 1000 u of you, and a relax
+  phase follows its death. While it's alive you get a boss bar,
+  ground-shaking footsteps and its own music.
+
+**Pacing:** the first Hunter comes after 18–28 s of build-up, and always by
+22% of the route. After that, a new one comes every 25–45 s while none is
+alive (the relax phase halves that clock). The tuning panel has **Spawn
+Hunter** and **Spawn Tank** buttons for testing on demand.
+
 ## Camera
 
 - The visible world is **470 units across the short screen axis** on every
@@ -138,3 +181,8 @@ The knob turns orange while firing, and the fire ring brightens.
   45%.
 - Dynamic vs floating vs fixed: which one do you stop noticing?
 - Is the look-ahead comfortable, or does the camera swing too much?
+- Can you deadstop a Hunter with a tap when you mean to? Does the 0.18 s
+  window feel fair, too generous or too tight?
+- Does mashing to break a pin feel fair at 5 taps, or panicky?
+- Can you kite the Tank while shooting backwards without the move stick
+  drifting? Can you read the rock throws in time to strafe?

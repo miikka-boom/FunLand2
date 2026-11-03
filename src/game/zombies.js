@@ -1,5 +1,7 @@
 // Common infected: shamble while idle, sprint in packs once alerted, follow the
 // flow field around buildings, crowd and claw. Shoves stagger them.
+// Special infected (specials.js) share the array, hash and crowd physics; they
+// plug in through type/mass/knockScale and optional onHit/onDeath hooks.
 
 import { rand, pick, TAU, wrapAngle } from '../util.js';
 
@@ -7,10 +9,15 @@ const SKINS = ['#8d9a7e', '#9a917c', '#7f8c84', '#a39a86', '#86907a', '#958a7c']
 const SHIRTS = ['#4a4f63', '#5c3b33', '#3e5241', '#6b6252', '#2f3540', '#6a4a5a', '#7b6a3a', '#3a3a3a', '#8a8378', '#4b2f2f'];
 const HIT_DAMAGE = 5;
 let nextId = 1;
+export const newId = () => nextId++;
 
 export class Zombie {
   constructor(x, y, alerted = false) {
     this.id = nextId++;
+    this.type = 'common';
+    this.mass = 1;
+    this.knockScale = 1;
+    this.staggerable = true;
     this.x = x;
     this.y = y;
     this.vx = 0;
@@ -63,7 +70,7 @@ export function updateZombies(game, dt) {
   const reach = (z) => z.r + p.r + 8;
 
   for (const z of zombies) {
-    if (!z.alive) continue;
+    if (!z.alive || z.type !== 'common') continue;
     z.hitFlash -= dt;
     z.attackCd -= dt;
     z.anim += dt;
@@ -155,31 +162,46 @@ export function updateZombies(game, dt) {
     if (z.state === 'chase' && d < 120) z.face += wrapAngle(Math.atan2(dy, dx) - z.face) * Math.min(1, dt * 10);
     else if (sp2 > 25) z.face += wrapAngle(Math.atan2(z.vy, z.vx) - z.face) * Math.min(1, dt * 8);
   }
+}
 
-  // Separation: soft pairwise push so packs flow around each other.
+/**
+ * Crowd physics for everything in the zombie array, after all AI moved:
+ * mass-weighted separation, bodies pressing on the survivor, walls.
+ * Bodies flagged noCollide (a Hunter mid-pounce or pinning) are skipped.
+ */
+export function resolveCrowd(game) {
+  const { player: p, world, zombies } = game;
+  const hash = game.zhash;
+
   for (const z of zombies) {
-    if (!z.alive) continue;
-    hash.query(z.x, z.y, 26, (o) => {
-      if (o.id <= z.id) return;
+    if (!z.alive || z.noCollide) continue;
+    hash.query(z.x, z.y, z.r + 26, (o) => {
+      if (o.id <= z.id || !o.alive || o.noCollide) return;
       const dx = o.x - z.x;
       const dy = o.y - z.y;
       const min = z.r + o.r;
       const d2 = dx * dx + dy * dy;
       if (d2 >= min * min || d2 < 1e-6) return;
       const d = Math.sqrt(d2);
-      const push = ((min - d) / d) * 0.5;
-      z.x -= dx * push;
-      z.y -= dy * push;
-      o.x += dx * push;
-      o.y += dy * push;
+      const pen = (min - d) / d;
+      // Heavier bodies yield less (a Tank walks through a crowd).
+      const wz = o.mass / (z.mass + o.mass);
+      const wo = z.mass / (z.mass + o.mass);
+      z.x -= dx * pen * wz;
+      z.y -= dy * pen * wz;
+      o.x += dx * pen * wo;
+      o.y += dy * pen * wo;
     });
   }
 
-  // Bodies vs survivor: zombies yield most, but a crowd still shoves you.
-  if (p.alive) {
+  // Bodies vs survivor: commons yield most but a crowd still shoves you;
+  // a Tank shoulders you aside. (Not while a Hunter has you pinned.)
+  if (p.alive && !p.pinnedBy) {
     let pushX = 0;
     let pushY = 0;
-    hash.query(p.x, p.y, 40, (z) => {
+    let cap = 3;
+    hash.query(p.x, p.y, 60, (z) => {
+      if (!z.alive || z.noCollide) return;
       const dx = z.x - p.x;
       const dy = z.y - p.y;
       const min = z.r + p.r;
@@ -187,33 +209,36 @@ export function updateZombies(game, dt) {
       if (d2 >= min * min || d2 < 1e-6) return;
       const d = Math.sqrt(d2);
       const pen = min - d;
-      z.x += (dx / d) * pen * 0.85;
-      z.y += (dy / d) * pen * 0.85;
-      pushX -= (dx / d) * pen * 0.15;
-      pushY -= (dy / d) * pen * 0.15;
+      const share = z.mass > 3 ? 0.75 : 0.15;
+      if (z.mass > 3) cap = 14;
+      z.x += (dx / d) * pen * (1 - share);
+      z.y += (dy / d) * pen * (1 - share);
+      pushX -= (dx / d) * pen * share;
+      pushY -= (dy / d) * pen * share;
     });
     const pl = Math.hypot(pushX, pushY);
-    if (pl > 3) {
-      pushX *= 3 / pl;
-      pushY *= 3 / pl;
+    if (pl > cap) {
+      pushX *= cap / pl;
+      pushY *= cap / pl;
     }
     p.x += pushX;
     p.y += pushY;
   }
 
   // Re-resolve walls after the pushes.
-  for (const z of zombies) if (z.alive) world.collide(z, z.r);
+  for (const z of zombies) if (z.alive && !z.noCollide) world.collide(z, z.r);
 }
 
 export function damageZombie(game, z, dmg, dx, dy, knock, stagger, bleed = true) {
   if (!z.alive) return false;
   z.hp -= dmg;
   z.hitFlash = 0.08;
-  z.vx += dx * knock;
-  z.vy += dy * knock;
-  if (stagger > 0) z.stagger = Math.max(z.stagger, stagger);
+  z.vx += dx * knock * z.knockScale;
+  z.vy += dy * knock * z.knockScale;
+  if (stagger > 0 && z.staggerable) z.stagger = Math.max(z.stagger, stagger);
   if (z.state === 'idle') alertZombie(game, z, 0);
-  if (bleed) game.effects.blood(z.x, z.y, dx, dy, 3, 170);
+  if (bleed) game.effects.blood(z.x, z.y, dx, dy, z.type === 'tank' ? 2 : 3, 170);
+  if (z.onHit && z.hp > 0) z.onHit(game, dmg, stagger, dx, dy);
   if (z.hp <= 0) {
     killZombie(game, z, dx, dy, knock * 1.6 + 60);
     return true;
@@ -224,6 +249,7 @@ export function damageZombie(game, z, dmg, dx, dy, knock, stagger, bleed = true)
 export function killZombie(game, z, dx, dy, force) {
   z.alive = false;
   game.stats.kills++;
+  if (z.onDeath) z.onDeath(game, dx, dy);
   const fx = game.effects;
   fx.blood(z.x, z.y, dx, dy, 9, 220);
   if (force > 300 || Math.random() < 0.35) fx.gibs(z.x, z.y, dx, dy, force > 300 ? 4 : 2);

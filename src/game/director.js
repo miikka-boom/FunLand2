@@ -1,9 +1,12 @@
 // A small "AI Director": paces the run through build-up -> peak -> relax,
 // keeps wanderers around, throws mobs ("HERE THEY COME") from out of sight,
 // and turns alarm cars into panic events. Starts when you leave the safe room.
+// Specials: a Hunter now and then (one at a time), and one Tank per run at a
+// random point along the route (mobs pause while it's alive, like L4D).
 
 import { rand, randInt, pointInRect } from '../util.js';
 import { Zombie, alertZombie } from './zombies.js';
+import { spawnHunter, spawnTank } from './specials.js';
 import { NAV_CELL } from '../world/world.js';
 
 const INF = 0x3fffffff;
@@ -21,7 +24,23 @@ export class Director {
     this.threatNear = 0;
     this.queue = [];
     this.alarm = null;
+    this.specialT = rand(18, 28); // first Hunter (or by 22% of the route, whichever first)
+    this.hunterSeen = false;
+    this.tankAt = rand(0.38, 0.58); // fraction of the route where the Tank shows up
+    this.tankSpawned = false;
+    this.tank = null;
     this._c = { x: 0, y: 0 };
+  }
+
+  get tankAlive() {
+    return !!(this.tank && this.tank.alive);
+  }
+
+  /** The Tank is on you (not left behind somewhere): pause mobs and Hunters. */
+  get tankEngaged() {
+    if (!this.tankAlive) return false;
+    const p = this.game.player;
+    return Math.hypot(this.tank.x - p.x, this.tank.y - p.y) < 1000;
   }
 
   addIntensity(v) {
@@ -81,8 +100,12 @@ export class Director {
     }
     if (g.won) return;
 
+    if (g.settings.specials) this.updateSpecials(dt);
+    const tank = this.tankEngaged;
+
     switch (this.phase) {
       case 'build':
+        if (tank) break; // the Tank fight is the event: no mobs on top of it
         this.mobT -= dt;
         this.trickleT -= dt;
         if (this.trickleT <= 0) {
@@ -118,6 +141,61 @@ export class Director {
     }
   }
 
+  updateSpecials(dt) {
+    const g = this.game;
+    let hunters = 0;
+    for (const z of g.zombies) if (z.alive && z.type === 'hunter') hunters++;
+    // Relax slows the clock (a breather) rather than freezing it; a Tank on you pauses it.
+    if (hunters === 0 && !this.tankEngaged) this.specialT -= dt * (this.phase === 'relax' ? 0.5 : 1);
+    if (!this.hunterSeen && hunters === 0 && g.progress >= 0.22 && !this.tankEngaged) this.specialT = 0;
+    if (this.specialT <= 0) {
+      if (this.spawnHunterNow()) {
+        this.hunterSeen = true;
+        this.specialT = rand(25, 45);
+      } else this.specialT = 4;
+    }
+    if (!this.tankSpawned && g.progress >= this.tankAt && this.spawnTankNow()) this.tankSpawned = true;
+  }
+
+  spawnHunterNow(force = false) {
+    const spot = this.findSpawn(force ? 320 : 450, force ? 700 : 950) || (force ? this.findSpawn(200, 1400, 400) : null);
+    if (!spot) return false;
+    spawnHunter(this.game, spot.x, spot.y);
+    return true;
+  }
+
+  spawnTankNow(force = false) {
+    if (this.tankAlive) return false;
+    const spot = this.findSpawn(force ? 380 : 500, force ? 800 : 950) || (force ? this.findSpawn(250, 1500, 400) : null);
+    if (!spot) return false;
+    this.tank = spawnTank(this.game, spot.x, spot.y);
+    if (this.phase === 'relax' || this.phase === 'peak') this.phase = 'build';
+    return true;
+  }
+
+  onTankDeath() {
+    // Breather after the boss.
+    this.phase = 'relax';
+    this.phaseT = rand(16, 24);
+    this.intensity = Math.min(this.intensity, 0.6);
+    this.mobT = Math.max(this.mobT, rand(20, 35));
+  }
+
+  /** Tuning panel: spawn now (also starts the director if still in the safe room). */
+  forceHunter() {
+    if (this.phase === 'calm') this.phase = 'build';
+    const ok = this.spawnHunterNow(true);
+    if (ok) this.hunterSeen = true;
+    return ok;
+  }
+
+  forceTank() {
+    if (this.phase === 'calm') this.phase = 'build';
+    const ok = this.spawnTankNow(true);
+    if (ok) this.tankSpawned = true;
+    return ok;
+  }
+
   upkeep() {
     const g = this.game;
     const p = g.player;
@@ -138,7 +216,7 @@ export class Director {
         }
         if (d < 1600) idleNear++;
       } else {
-        if (d > 2800 && !inView) {
+        if (d > 2800 && !inView && z.type !== 'tank') {
           z.alive = false;
           continue;
         }

@@ -26,6 +26,15 @@ and no dependencies.
 - **Common infected** that shamble, notice you, sprint in packs, path around
   buildings with a flow field, crowd you and claw. Getting hit slows you down,
   and under 40 HP you limp.
+- **Special infected**:
+  - The **Hunter** tests shove timing. It screeches, then pounces: shove it
+    out of the air (deadstop), shoot it mid-air (skeet), or get pinned and
+    tap to break free.
+  - The **Tank** tests kiting. It's a boss with a telegraphed haymaker that
+    sends you flying and rocks you can dodge or shoot down. It arrives once
+    per run, mid-route, with a boss bar and its own music.
+  - The spec is in [docs/CONTROLS.md](docs/CONTROLS.md#special-infected-stress-tests-for-the-controls),
+    and the tuning panel has Spawn Hunter / Spawn Tank buttons.
 - **Four guns** to compare feel: SMG, assault rifle (pierces 2), pump shotgun
   (loads shell by shell; firing interrupts the reload) and hunting rifle
   (pierces lines of zombies). Reloading is automatic when empty.

@@ -92,6 +92,14 @@ const panel = new SettingsPanel(panelEl, settings, {
     resume();
     game.director.forceMob();
   },
+  onSpawnHunter: () => {
+    resume();
+    game.director.forceHunter();
+  },
+  onSpawnTank: () => {
+    resume();
+    game.director.forceTank();
+  },
   onRestart: () => {
     game.newRun(settings.seed);
     resume();
@@ -117,6 +125,7 @@ function start() {
 
 function pause() {
   if (state !== 'play') return;
+  audio.suspend(); // Tank theme etc. freeze with the game; Resume unlocks again
   state = 'paused';
   input.reset();
   input.touch.enabled = false;
@@ -141,7 +150,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     pause();
     audio.suspend();
-  } else audio.resume();
+  } else if (state === 'play' || state === 'title') audio.resume();
 });
 window.addEventListener('blur', () => input.reset());
 // iOS Safari: block pinch-zoom gesture events outright.
