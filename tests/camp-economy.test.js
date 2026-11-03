@@ -179,6 +179,18 @@ test('builder jobs stay correct across changes (memoised by revision)', () => {
   assert.equal(camp.freeBuilders(), 1);
 });
 
+test('upgradeInfo always answers canStart / affordable with a boolean, maxed buildings included', () => {
+  const { camp } = makeCamp((s) => {
+    for (const id of Object.keys(s.buildings)) s.buildings[id].level = BUILDINGS[id].levels.length;
+  });
+  for (const id of Object.keys(BUILDINGS)) {
+    const info = camp.upgradeInfo(id);
+    assert.equal(info.maxed, true, id);
+    assert.equal(info.canStart, false, id);
+    assert.equal(info.affordable, false, id);
+  }
+});
+
 test('building levels are gated by the Command Post level', () => {
   const { camp, clock } = makeCamp(rich);
   finish(camp, clock, 'garden');

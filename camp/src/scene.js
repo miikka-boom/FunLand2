@@ -321,7 +321,8 @@ export class Scene {
     }
     p.el.classList.toggle('is-new', camp.isNew(id));
     const busy = state === 'upgrading' || state === 'constructing';
-    p.el.classList.toggle('can-up', state === 'built' && camp.upgradeInfo(id).canStart);
+    // (Force a boolean: toggle(name, undefined) would flip the class every tick.)
+    p.el.classList.toggle('can-up', !!(state === 'built' && camp.upgradeInfo(id).canStart));
     if (busy) {
       const up = b.up;
       const f = clamp((now - up.start) / Math.max(1, up.end - up.start), 0, 1);

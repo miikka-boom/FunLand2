@@ -120,11 +120,14 @@ should send.
   "kills": 64,
   "timeS": 312,
   "loot": { "scrap": 180, "wood": 120, "food": 100 },
+  "kept": 1,
   "gems": 20,
   "rescued": 1,
   "itemsUsed": { "pipebomb": 1 }
 }
 ```
+
+`kept` is the share of the route's loot that made it home (1 on a win).
 
 How the action game would use it:
 
@@ -134,8 +137,8 @@ How the action game would use it:
 - The zone picks the map seed and Director tuning. Its `loot` table is the
   target total for physical pickups placed along the route, and `lootMult`
   scales them.
-- On death, keep what was carried. The simulator models that as
-  `20% + 50% × route progress`.
+- On death, keep what was carried and report the share as `kept`. The
+  simulator models that as `20% + 50% × route progress`.
 - Survivors are found and escorted on the route (`rescueBonus` raises the
   chance one spawns).
 - `power` and the zone's `rec` are only the simulator's stand-in for skill.

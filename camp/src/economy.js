@@ -384,7 +384,7 @@ export class Camp {
     const def = BUILDINGS[id];
     const b = this.s.buildings[id];
     const lvl = b.level;
-    const info = { id, level: lvl, max: def.levels.length, maxed: lvl >= def.levels.length, blockers: [], missing: {}, missingGems: 0 };
+    const info = { id, level: lvl, max: def.levels.length, maxed: lvl >= def.levels.length, blockers: [], missing: {}, missingGems: 0, affordable: false, canStart: false };
     if (info.maxed) return info;
     const next = def.levels[lvl];
     info.next = lvl + 1;
