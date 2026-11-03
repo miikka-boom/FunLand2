@@ -701,7 +701,7 @@ export class Effects {
   /** Read the camera zoom so effects keep a minimum on-screen size. */
   measure(ctx) {
     const m = ctx.getTransform();
-    const dpr = Math.min(globalThis.devicePixelRatio || 1, 2.5);
+    const dpr = Math.min(globalThis.devicePixelRatio || 1, 2);
     const zoom = Math.hypot(m.a, m.b) / dpr || 1;
     this.px = 1 / zoom;
     this.boost = clamp((0.9 / zoom) ** 0.6, 1, 1.8);

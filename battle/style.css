@@ -613,7 +613,7 @@ button {
     display: block;
     position: fixed;
     left: 50%;
-    bottom: 120px;
+    top: calc(max(8px, env(safe-area-inset-top)) + 96px);
     transform: translateX(-50%);
     background: rgba(246, 234, 208, 0.95);
     border: 2px solid var(--ink-soft);
@@ -629,6 +629,16 @@ button {
   }
   .team-bar .count {
     display: none;
+  }
+  /* Narrow portrait: unit cards on their own row above the buttons */
+  .dock {
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 6px;
+  }
+  .cards {
+    width: 100%;
+    justify-content: center;
   }
 }
 

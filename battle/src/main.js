@@ -76,7 +76,7 @@ let dpr = 1;
 function resize() {
   W = Math.max(1, window.innerWidth);
   H = Math.max(1, window.innerHeight);
-  dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  dpr = Math.min(window.devicePixelRatio || 1, 2); // 3x phones: 44% less fill, no visible loss for this art
   canvas.width = Math.round(W * dpr);
   canvas.height = Math.round(H * dpr);
   canvas.style.width = W + 'px';
@@ -91,7 +91,9 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', resi
 
 function framePlacement(instant) {
   camera.follow = true;
-  camera.frame(WORLD.zone.blue[0] - 90, WORLD.zone.red[1] + 90, instant, 1.35);
+  // Portrait campaign: only blue's side matters, so show it big enough to tap
+  if (W < H && game.mode === 'campaign') camera.frame(WORLD.zone.blue[0] - 60, WORLD.zone.blue[1] + 60, instant, 1.35);
+  else camera.frame(WORLD.zone.blue[0] - 90, WORLD.zone.red[1] + 90, instant, 1.35);
 }
 
 // --- flow ---------------------------------------------------------------------------
