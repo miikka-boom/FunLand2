@@ -1317,6 +1317,7 @@ export class Safehouse {
     }
     this._settleYard(now);
     this._pump(now);
+    if (this.waiting().length && this.freeBunks() > 0) this._houseWaiting(now); // e.g. an imported save
     this._checkStage(now);
   }
 

@@ -69,11 +69,47 @@ Open `/camp/` (on Pages: `https://miikka-boom.github.io/FunLand2/camp/`).
 The design, unlock schedule, numbers and the RunLoadout / RunResult
 contract with the game are in [docs/METAGAME.md](docs/METAGAME.md).
 
+## Safehouse: a second metagame prototype
+
+[`safehouse/`](safehouse) is another separate page, built from the design doc
+*Safehouse: Meta-Progression Design for a Co-op Zombie Mobile Game*. It isn't
+connected to the action game or to the camp: a **PLAY · simulation** button
+runs a simulated co-op mission in place of a real one.
+
+- One screen with eight stations in a building cross-section. Tapping a
+  station opens a sheet with Upgrade, Craft and Collect. It works in
+  portrait and landscape.
+- Four resources: Scrap, Parts, Supplies and Fuel. Mission loot is banked at
+  every safe room, every player gets the full share, and payouts over a cap
+  turn into Scrap.
+- A Generator sets power capacity and the Fuel tank. Crafts draw power while
+  they run and burn Fuel when they start. Queued jobs start on their own,
+  also while you're away.
+- Upgrades are gated by the Barricade (stations can be at most one level
+  above it), by chapters cleared and by build slots. Cancelling refunds
+  everything.
+- The Loadout Crate fills three mission slots: a throwable, a heal and a
+  boost. Everyone gets a free bandage, and unused items come back.
+- Five named survivors play as bot teammates. They arrive in scripted
+  chapter finales and Radio Room rescue calls, and bonds grow with every
+  mission played together. A simulated friend shows how co-op shares the
+  best bonuses.
+- The Radio Room opens new chapters and adds daily orders, which stack up to
+  three.
+- The five-stage progression flow comes with a guide and a pacing log.
+- The tuning drawer (gear, top right) has time warp, cheats, forced mission
+  outcomes and live multipliers. `npm run safehouse:balance` simulates weeks
+  of play.
+
+Open `/safehouse/` (on Pages: `https://miikka-boom.github.io/FunLand2/safehouse/`).
+The design decisions, numbers, pacing results and the MissionLoadout /
+MissionReport contract are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
+
 ## Run it
 
 - **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` once this is on
   the default branch (the Pages workflow only deploys from there). The camp
-  is at `/camp/`.
+  is at `/camp/` and the Safehouse at `/safehouse/`.
 - **Locally:** `npm start` (or `python3 -m http.server 8080`), then open
   `http://localhost:8080`. To try it on a phone, open
   `http://<your-computer-ip>:8080` on the same network. Opening `index.html`
@@ -98,7 +134,8 @@ src/game/                  player, weapons, zombies, director, effects, game sta
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX
 camp/                      camp metagame prototype (separate page; map in docs/METAGAME.md)
-tests/                     node --test unit tests (stick math, touch controller rules, camp economy)
+safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
+tests/                     node --test unit tests (stick math, touch controller rules, camp and Safehouse economy)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.
