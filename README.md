@@ -61,6 +61,32 @@ and no dependencies.
   decals that stay, casings, tracers, screen shake and recoil, off-screen
   threat arrows.
 
+## Hope Street: a metagame prototype
+
+[`hope/`](hope) is a separate page built around **base building** and
+**randomly generated people**. It isn't connected to the action game: a
+**simulated PLAY button** stands in for a run.
+
+- You hold a firehouse on one street. Strangers come to the gate, each with
+  a generated face, name, age, former job, role (Bruiser, Shooter, Medic,
+  Scout or Mechanic), grade (★ to ★★★) and traits like Night owl or Clumsy.
+  Take them in if you have a bed.
+- For every run you pick a crew of up to four. Each run's tags favor certain
+  roles and traits, and injuries rotate people out for a few days. People
+  level up by playing; training at home helps the rest.
+- Story runs reclaim the street one building at a time. Each building
+  becomes a facility: beds, a kitchen (XP), a workshop (power), training, an
+  infirmary and a radio (better visitors). Upgrades are instant.
+- Two currencies (scrap and gems). Two wait rewards, both people: a visitor
+  at the gate every 30 minutes and a convoy with a skilled survivor every 8
+  hours.
+- The testing drawer (gear, top right) has forced outcomes, time warp,
+  cheats and live sliders. `npm run hope:balance` simulates days of play.
+
+Open `/hope/` (on Pages: `https://miikka-boom.github.io/FunLand2/hope/`).
+The design, numbers and the RunLoadout / RunResult contract with the game
+are in [docs/HOPE-STREET.md](docs/HOPE-STREET.md).
+
 ## Road to Evac: a metagame prototype
 
 [`evac/`](evac) is a separate page with a metagame for a co-op zombie
@@ -129,8 +155,8 @@ MissionReport contract are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
 
 - **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` once this is on
   the default branch (the Pages workflow only deploys from there). The
-  metagame prototypes are at `/evac/` (Road to Evac), `/safehouse/` (the
-  Safehouse) and `/camp/` (the v1 camp).
+  metagame prototypes are at `/hope/` (Hope Street), `/evac/` (Road to
+  Evac), `/safehouse/` (the Safehouse) and `/camp/` (the v1 camp).
 - **Locally:** `npm start` (or `python3 -m http.server 8080`), then open
   `http://localhost:8080`. To try it on a phone, open
   `http://<your-computer-ip>:8080` on the same network. Opening `index.html`
@@ -154,10 +180,11 @@ src/world/                 seeded city + building generators, collision, ray cas
 src/game/                  player, weapons, zombies, director, effects, game state
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX
+hope/                      Hope Street metagame prototype (separate page; map in docs/HOPE-STREET.md)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, horde scaling, the three metagames)
+tests/                     node --test unit tests (stick math, touch controller rules, horde scaling, the four metagames)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.
