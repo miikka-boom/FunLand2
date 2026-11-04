@@ -319,7 +319,7 @@ export function confirmGems(text, gems, act, data = {}) {
 
 export function intro() {
   return (
-    `<div class="intro"><div class="kicker">FUNLAND2 · METAGAME PROTOTYPE 2</div><h1>ROAD TO EVAC</h1>` +
+    `<div class="intro"><div class="kicker">FUNLAND2 · METAGAME PROTOTYPE</div><h1>ROAD TO EVAC</h1>` +
     `<p>The city fell overnight. An evac chopper is waiting at the military base, five districts away. Get your squad there.</p>` +
     `<div class="intro-steps"><div>${icon('play')}<b>Play the next stop</b><span>Each run is a chapter. Clear it and the van drives on.</span></div>` +
     `<div>${icon('up')}<b>Upgrade instantly</b><span>Spend supplies on your squad and guns. No waiting.</span></div>` +

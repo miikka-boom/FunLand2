@@ -12,7 +12,9 @@ back the fog and often hands you a new gun or a new survivor. Supplies from
 each run buy instant upgrades, so you're stronger for the next stop.
 
 v1, the survivor camp, is still playable at `/camp/` for comparison
-([METAGAME-CAMP.md](METAGAME-CAMP.md)).
+([METAGAME-CAMP.md](METAGAME-CAMP.md)). The Safehouse at `/safehouse/`
+([SAFEHOUSE.md](SAFEHOUSE.md)) is a separate prototype built from its own
+design doc; it shares no code with either.
 
 ## What changed from v1, and why
 
