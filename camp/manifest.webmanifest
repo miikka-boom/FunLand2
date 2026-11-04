@@ -1,0 +1,15 @@
+{
+  "name": "FunLand2 · Horde Camp (metagame prototype)",
+  "short_name": "Horde Camp",
+  "description": "Survivor camp base-building metagame prototype for the Horde zombie game",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0d1020",
+  "theme_color": "#0d1020",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "../icon-180.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
