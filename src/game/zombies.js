@@ -66,21 +66,39 @@ export function alertZombie(game, z, delay = 0, chain = true) {
 
 const tmpDir = { x: 0, y: 0 };
 
+// Zombies closer to the AI teammate than to you (and this close) go for it.
+const ALLY_AGGRO = 220;
+
 export function updateZombies(game, dt) {
   const { player: p, world, settings: S, zombies } = game;
   const hash = game.zhash;
   hash.clear();
   for (const z of zombies) if (z.alive) hash.insert(z);
+  const ally = game.ally && game.ally.alive ? game.ally : null;
 
   for (const z of zombies) {
     if (!z.alive || z.type !== 'common') continue;
     z.hitFlash -= dt;
     z.attackCd -= dt;
     z.anim += dt;
-    const dx = p.x - z.x;
-    const dy = p.y - z.y;
-    const d = Math.sqrt(dx * dx + dy * dy) || 1e-6;
-    const reach = z.r + p.r + 8;
+    // Target: you, or the teammate when it's the nearer survivor close by.
+    let tgt = p;
+    let dx = p.x - z.x;
+    let dy = p.y - z.y;
+    let d = Math.sqrt(dx * dx + dy * dy) || 1e-6;
+    if (ally) {
+      const ax = ally.x - z.x;
+      const ay = ally.y - z.y;
+      const ad = Math.sqrt(ax * ax + ay * ay) || 1e-6;
+      if (ad < ALLY_AGGRO && (ad < d || !p.alive)) {
+        tgt = ally;
+        dx = ax;
+        dy = ay;
+        d = ad;
+      }
+    }
+    const tgtAlive = tgt.alive;
+    const reach = z.r + tgt.r + 8;
     let wantX = 0;
     let wantY = 0;
     let steer = 4;
@@ -101,13 +119,13 @@ export function updateZombies(game, dt) {
         wantX = Math.cos(z.heading) * z.walk;
         wantY = Math.sin(z.heading) * z.walk;
       }
-      // Notice the survivor: very close, or in sight within range.
-      if (p.alive) {
+      // Notice a survivor: very close, or in sight within range.
+      if (tgtAlive) {
         z.losT -= dt;
         if (d < 70) alertZombie(game, z, rand(0.05, 0.3));
         else if (d < 250 && z.losT <= 0) {
           z.losT = rand(0.25, 0.45);
-          if (world.segmentClear(z.x, z.y, p.x, p.y)) alertZombie(game, z, rand(0.1, 0.4));
+          if (world.segmentClear(z.x, z.y, tgt.x, tgt.y)) alertZombie(game, z, rand(0.1, 0.4));
         }
       }
       z.groanT -= dt;
@@ -123,7 +141,7 @@ export function updateZombies(game, dt) {
       z.losT -= dt;
       if (z.losT <= 0) {
         z.losT = rand(0.16, 0.3);
-        z.hasLOS = d < 650 && world.segmentClear(z.x, z.y, p.x, p.y, world.moveBlockers);
+        z.hasLOS = d < 650 && world.segmentClear(z.x, z.y, tgt.x, tgt.y, world.moveBlockers);
       }
       let mx = dx / d;
       let my = dy / d;
@@ -138,14 +156,17 @@ export function updateZombies(game, dt) {
       wantY = my * sp;
       steer = 7;
 
-      if (p.alive && d < reach && z.windup <= 0 && z.attackCd <= 0) {
+      if (tgtAlive && d < reach && z.windup <= 0 && z.attackCd <= 0) {
         z.windup = 0.3;
       }
       if (z.windup > 0) {
         z.windup -= dt;
         if (z.windup <= 0) {
           z.attackCd = rand(0.8, 1.2);
-          if (p.alive && d < reach + 8) game.hurtPlayer(HIT_DAMAGE * S.zombieDamage, z);
+          if (tgtAlive && d < reach + 8) {
+            if (tgt === p) game.hurtPlayer(HIT_DAMAGE * S.zombieDamage, z);
+            else game.hurtAlly(HIT_DAMAGE * S.zombieDamage, z);
+          }
         }
       }
       z.groanT -= dt;
@@ -209,6 +230,35 @@ function separate(z, o) {
   o.y += dy * pen * wo;
 }
 
+function pressSurvivor(hash, s) {
+  let pushX = 0;
+  let pushY = 0;
+  let cap = 3;
+  hash.query(s.x, s.y, 60, (z) => {
+    if (!z.alive || z.noCollide) return;
+    const dx = z.x - s.x;
+    const dy = z.y - s.y;
+    const min = z.r + s.r;
+    const d2 = dx * dx + dy * dy;
+    if (d2 >= min * min || d2 < 1e-6) return;
+    const d = Math.sqrt(d2);
+    const pen = min - d;
+    const share = z.mass > 3 ? 0.75 : 0.15;
+    if (z.mass > 3) cap = 14;
+    z.x += (dx / d) * pen * (1 - share);
+    z.y += (dy / d) * pen * (1 - share);
+    pushX -= (dx / d) * pen * share;
+    pushY -= (dy / d) * pen * share;
+  });
+  const pl = Math.hypot(pushX, pushY);
+  if (pl > cap) {
+    pushX *= cap / pl;
+    pushY *= cap / pl;
+  }
+  s.x += pushX;
+  s.y += pushY;
+}
+
 /**
  * Crowd physics for everything in the zombie array, after all AI moved:
  * mass-weighted separation, bodies pressing on the survivor, walls.
@@ -238,11 +288,17 @@ export function resolveCrowd(game, dt) {
   // bodies keep their momentum.
   if (dt > 0) {
     const inv = 1 / dt;
+    const al = game.ally && game.ally.alive ? game.ally : null;
     for (const z of zombies) {
       if (!z.alive || z.type !== 'common' || z.stagger > 0) continue;
-      const ddx = z.x - p.x;
-      const ddy = z.y - p.y;
-      const d2 = ddx * ddx + ddy * ddy;
+      let ddx = z.x - p.x;
+      let ddy = z.y - p.y;
+      let d2 = ddx * ddx + ddy * ddy;
+      if (al) {
+        ddx = z.x - al.x;
+        ddy = z.y - al.y;
+        d2 = Math.min(d2, ddx * ddx + ddy * ddy);
+      }
       if (d2 < QUEUE_NEAR * QUEUE_NEAR) continue;
       const a = d2 > QUEUE_FAR * QUEUE_FAR ? 1 : smoothstep(QUEUE_NEAR, QUEUE_FAR, Math.sqrt(d2));
       let vx = (z.x - z.px) * inv;
@@ -259,35 +315,27 @@ export function resolveCrowd(game, dt) {
     }
   }
 
-  // Bodies vs survivor: commons yield most but a crowd still shoves you;
+  // Bodies vs survivors: commons yield most but a crowd still shoves you;
   // a Tank shoulders you aside. (Not while a Hunter has you pinned.)
-  if (p.alive && !p.pinnedBy) {
-    let pushX = 0;
-    let pushY = 0;
-    let cap = 3;
-    hash.query(p.x, p.y, 60, (z) => {
-      if (!z.alive || z.noCollide) return;
-      const dx = z.x - p.x;
-      const dy = z.y - p.y;
-      const min = z.r + p.r;
-      const d2 = dx * dx + dy * dy;
-      if (d2 >= min * min || d2 < 1e-6) return;
+  if (p.alive && !p.pinnedBy) pressSurvivor(hash, p);
+  const ally = game.ally && game.ally.alive ? game.ally : null;
+  if (ally) {
+    pressSurvivor(hash, ally);
+    // You and the teammate don't overlap (it gives way).
+    const dx = ally.x - p.x;
+    const dy = ally.y - p.y;
+    const min = ally.r + p.r;
+    const d2 = dx * dx + dy * dy;
+    if (p.alive && d2 < min * min && d2 > 1e-6) {
       const d = Math.sqrt(d2);
       const pen = min - d;
-      const share = z.mass > 3 ? 0.75 : 0.15;
-      if (z.mass > 3) cap = 14;
-      z.x += (dx / d) * pen * (1 - share);
-      z.y += (dy / d) * pen * (1 - share);
-      pushX -= (dx / d) * pen * share;
-      pushY -= (dy / d) * pen * share;
-    });
-    const pl = Math.hypot(pushX, pushY);
-    if (pl > cap) {
-      pushX *= cap / pl;
-      pushY *= cap / pl;
+      const mine = p.pinnedBy ? 0 : 0.2;
+      ally.x += (dx / d) * pen * (1 - mine);
+      ally.y += (dy / d) * pen * (1 - mine);
+      p.x -= (dx / d) * pen * mine;
+      p.y -= (dy / d) * pen * mine;
     }
-    p.x += pushX;
-    p.y += pushY;
+    world.collide(ally, ally.r);
   }
 
   // Re-resolve walls after the pushes.
@@ -314,6 +362,7 @@ export function damageZombie(game, z, dmg, dx, dy, knock, stagger, bleed = true)
 export function killZombie(game, z, dx, dy, force) {
   z.alive = false;
   game.stats.kills++;
+  if (game.killCredit === 'ally') game.stats.allyKills++;
   if (z.onDeath) z.onDeath(game, dx, dy);
   const fx = game.effects;
   fx.blood(z.x, z.y, dx, dy, 9, 220);

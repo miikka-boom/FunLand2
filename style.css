@@ -315,8 +315,61 @@ html.is-ios .ios-only {
 .ctl-top {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
   margin-bottom: 4px;
+}
+
+.ctl-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.ctl-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Per-setting "Default" button: only visible once the value is changed.
+   visibility (not display) keeps the row height fixed while dragging. */
+.ctl-reset {
+  appearance: none;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 10px;
+  min-height: 26px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.ctl-reset:active {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.ctl:not(.changed) .ctl-reset {
+  visibility: hidden;
+}
+
+.ctl.changed .ctl-name {
+  color: #fff;
+}
+
+.ctl.changed .ctl-name::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
 }
 
 .ctl-val {

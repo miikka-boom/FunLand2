@@ -123,6 +123,32 @@ The knob turns orange while firing, and the fire ring brightens.
 alive (the relax phase halves that clock). The tuning panel has **Spawn
 Hunter** and **Spawn Tank** buttons for testing on demand.
 
+## AI teammate
+
+A bot survivor fights alongside you (on by default; **Teammate** in the
+tuning panel turns it off or changes its gun and accuracy). It's there to test
+how the controls hold up with someone else in the fight.
+
+- **Follows** a spot behind and to one side of you, a little ahead of where
+  you're going, so it keeps pace. It steps out of your line of fire when you
+  aim its way. If it gets lost or stuck, it reappears next to you.
+- **Shoots** in this order: a Tank's rock, a Hunter riding you, a Hunter
+  crouching or mid-pounce, zombies on you, zombies on it, then anything else
+  close. It never fires through you and never sets off car or fire alarms.
+- **Shoves** zombies that get on it (with the same fatigue as yours), and
+  shoves a Hunter off you when you're pinned ("ALLY SAVED YOU"). Often it just
+  shoots the Hunter first.
+- **Tank:** if the Tank is close or turning on it, it backs off. A Tank busy
+  chasing you just gets shot in the back.
+- **Heals** itself once (3 s) when it's under 40 HP and nothing is coming.
+- **Down, not dead:** at 0 HP it drops and keeps shooting from the floor at
+  short range while it bleeds out over 45 s (zombie hits speed that up).
+  **Stand next to it without shooting for 3 s** to revive it at 40 HP. A dashed
+  circle shows where to stand, and a green arc shows the progress. If nobody
+  revives it, it dies for the rest of the run.
+- Zombies go for whichever survivor is nearer. A Tank's punch and rocks hurt
+  it too; Hunters only ever pounce on you.
+
 ## Camera
 
 - The visible world is **470 units across the short screen axis** on every
@@ -192,3 +218,7 @@ Hunter** and **Spawn Tank** buttons for testing on demand.
 - **Massive hordes** (Horde size ×10–×25): does a shove still clear space in
   a packed crowd? Does aim assist still pick the zombie you meant, or does it
   jump around? Keep the debug read-out on and note the fps on your phone.
+- **AI teammate:** does it get in your way, or stand in doorways you need?
+  Is reviving (stand next to it, don't shoot, 3 s) easy to do in a fight? It
+  often shoots Hunters before they pounce, so practise deadstops with it off
+  (or its accuracy down).

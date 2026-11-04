@@ -7,6 +7,7 @@ build step and no dependencies.
 |---|---|---|
 | 0: HORDE | [`/`](index.html) | Twin-stick touch controls for top-down zombie horde survival |
 | 1: WOBBLE WAR | [`battle/`](battle/) | Funny, satisfying 2D physics units in a side-view battle simulator |
+| Hope Street | [`hope/`](hope) | A metagame with base building and randomly generated people: take them in, pick a crew of four for each run |
 | Road to Evac | [`evac/`](evac) | A metagame for a co-op zombie survivor game (simulated runs) |
 | Safehouse | [`safehouse/`](safehouse) | Another metagame: meta-progression for a co-op zombie mobile game |
 | Camp | [`camp/`](camp) | The first metagame prototype: a survivor camp with base building |
@@ -177,6 +178,17 @@ and no dependencies.
   opens every feel parameter: stick modes and size, dead zones, fire ring, aim
   assist, smoothing, camera, speed, horde size and so on. There are presets
   for A/B testing, and **Copy tuning JSON** copies only what you changed.
+  Every setting you've changed gets a dot and its own **Default** button, and
+  **Reset all to defaults** is at the bottom.
+- **An AI teammate**: a bot survivor (olive jacket, green ring) runs with you.
+  It follows a step behind and shoots what threatens you first: a Tank's rock,
+  a Hunter on you or about to pounce, then zombies on you. It shoves zombies off
+  itself, shoves a Hunter off you, keeps its distance from the Tank and heals
+  itself once. Zombies go for whichever of you is nearer. At 0 HP it goes
+  **down** instead of dying and keeps shooting from the floor while it bleeds
+  out (45 s). Stand next to it without shooting for 3 s to revive it. It never
+  shoots through you and never sets off alarms. You can turn it off, or change
+  its gun and accuracy, under **Teammate** in the tuning panel.
 - **Two levels**, picked on the title card or in the tuning panel:
   - **Streets:** a run across a dark city, from a safe room (bottom left) to
     the green safe room across town.
@@ -221,6 +233,32 @@ and no dependencies.
 - **Feedback**: synthesized sound (no audio files), haptics on Android, blood
   decals that stay, casings, tracers, screen shake and recoil, off-screen
   threat arrows.
+
+## Hope Street: a metagame prototype
+
+[`hope/`](hope) is a separate page built around **base building** and
+**randomly generated people**. It isn't connected to the action game: a
+**simulated PLAY button** stands in for a run.
+
+- You hold a firehouse on one street. Strangers come to the gate, each with
+  a generated face, name, age, former job, role (Bruiser, Shooter, Medic,
+  Scout or Mechanic), grade (★ to ★★★) and traits like Night owl or Clumsy.
+  Take them in if you have a bed.
+- For every run you pick a crew of up to four. Each run's tags favor certain
+  roles and traits, and injuries rotate people out for a few days. People
+  level up by playing; training at home helps the rest.
+- Story runs reclaim the street one building at a time. Each building
+  becomes a facility: beds, a kitchen (XP), a workshop (power), training, an
+  infirmary and a radio (better visitors). Upgrades are instant.
+- Two currencies (scrap and gems). Two wait rewards, both people: a visitor
+  at the gate every 30 minutes and a convoy with a skilled survivor every 8
+  hours.
+- The testing drawer (gear, top right) has forced outcomes, time warp,
+  cheats and live sliders. `npm run hope:balance` simulates days of play.
+
+Open `/hope/` (on Pages: `https://miikka-boom.github.io/FunLand2/hope/`).
+The design, numbers and the RunLoadout / RunResult contract with the game
+are in [docs/HOPE-STREET.md](docs/HOPE-STREET.md).
 
 ## Road to Evac: a metagame prototype
 
@@ -280,8 +318,9 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
 
 - **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` (HORDE) once
   this is on the default branch (the Pages workflow only deploys from there).
-  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/evac/`
-  (Road to Evac), `/safehouse/` (the Safehouse) and `/camp/` (the v1 camp).
+  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/hope/`
+  (Hope Street), `/evac/` (Road to Evac), `/safehouse/` (the Safehouse) and
+  `/camp/` (the v1 camp).
 - **Locally:** `npm start` (or `python3 -m http.server 8080`), then open
   `http://localhost:8080`. To try it on a phone, open
   `http://<your-computer-ip>:8080` on the same network. Opening `index.html`
@@ -302,14 +341,15 @@ src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
 src/world/                 seeded city + building generators, collision, ray casts, flow field
-src/game/                  player, weapons, zombies, director, effects, game state
+src/game/                  player, AI teammate, weapons, zombies, director, effects, game state
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR battle simulator (separate page; code map above)
+hope/                      Hope Street metagame prototype (separate page; map in docs/HOPE-STREET.md)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, horde scaling, the three metagames, battle sim)
+tests/                     node --test unit tests (stick math, touch controller rules, horde scaling, the four metagames, battle sim)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

@@ -84,11 +84,13 @@ function enterFullscreen() {
 const panel = new SettingsPanel(panelEl, settings, {
   onClose: () => resume(),
   onChange: (key) => {
-    if (key === 'volume' || key === '*') audio.setVolume(settings.volume);
-    if (key === 'level') {
-      game.newRun(settings.seed);
+    const all = key === '*'; // presets / reset all
+    if (key === 'volume' || all) audio.setVolume(settings.volume);
+    if (key === 'level' || all) {
+      if (game.level !== settings.level) game.newRun(settings.seed);
       syncLevelPicker();
     }
+    if (key === 'ally' || key === 'allyWeapon' || all) game.syncAlly();
     layout = computeLayout(layout.w, layout.h, safe, settings);
     ui.layout = layout;
   },
