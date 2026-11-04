@@ -1,0 +1,191 @@
+// UI sounds, synthesised with WebAudio (nothing to download), over a quiet
+// generator hum that grows with the power in use. unlock() must run from a
+// user gesture (iOS).
+
+export class Sfx {
+  constructor() {
+    this.ctx = null;
+    this.master = null;
+    this.volume = 0.7;
+    this.last = new Map();
+    this.hum = null;
+  }
+
+  unlock() {
+    try {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        this.ctx = new AC();
+        this.master = this.ctx.createGain();
+        this.master.gain.value = this.volume;
+        const comp = this.ctx.createDynamicsCompressor();
+        comp.threshold.value = -12;
+        this.master.connect(comp);
+        comp.connect(this.ctx.destination);
+        const len = this.ctx.sampleRate;
+        this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+        const d = this.noise.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        this._startHum();
+      }
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+    } catch {
+      this.ctx = null;
+    }
+  }
+
+  setVolume(v) {
+    this.volume = v;
+    if (this.master) this.master.gain.value = v;
+  }
+
+  suspend() {
+    if (this.ctx && this.ctx.state === 'running') this.ctx.suspend();
+  }
+
+  resume() {
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  }
+
+  /** Generator hum: louder and a touch higher with more power in use (0..1). */
+  setLoad(f) {
+    if (!this.hum) return;
+    const t = this.ctx.currentTime;
+    this.hum.gain.gain.setTargetAtTime(f > 0 ? 0.012 + 0.02 * f : 0.004, t, 0.6);
+    this.hum.osc.frequency.setTargetAtTime(48 + 10 * f, t, 0.8);
+  }
+
+  _startHum() {
+    const c = this.ctx;
+    const osc = c.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = 48;
+    const f = c.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 180;
+    const gain = c.createGain();
+    gain.gain.value = 0.004;
+    osc.connect(f);
+    f.connect(gain);
+    gain.connect(this.master);
+    osc.start();
+    this.hum = { osc, gain };
+  }
+
+  _ok(key, gap = 0.03) {
+    if (!this.ctx || this.ctx.state !== 'running' || this.volume <= 0) return false;
+    const t = this.ctx.currentTime;
+    if (t - (this.last.get(key) || -1) < gap) return false;
+    this.last.set(key, t);
+    return true;
+  }
+
+  _tone(f0, f1, dur, { type = 'sine', gain = 0.3, at = 0, attack = 0.005 } = {}) {
+    const c = this.ctx;
+    const t = c.currentTime + at;
+    const o = c.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g);
+    g.connect(this.master);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+
+  _noise(dur, { freq = 1200, q = 1, type = 'bandpass', gain = 0.3, at = 0 } = {}) {
+    const c = this.ctx;
+    const t = c.currentTime + at;
+    const src = c.createBufferSource();
+    src.buffer = this.noise;
+    const f = c.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
+    f.Q.value = q;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f);
+    f.connect(g);
+    g.connect(this.master);
+    src.start(t, Math.random() * 0.5);
+    src.stop(t + dur + 0.05);
+  }
+
+  play(name) {
+    if (!this._ok(name, name === 'coin' ? 0.035 : 0.05)) return;
+    const T = (...a) => this._tone(...a);
+    switch (name) {
+      case 'tap':
+        T(900, 700, 0.05, { type: 'triangle', gain: 0.12 });
+        break;
+      case 'sheet':
+        this._noise(0.1, { freq: 700, q: 0.7, gain: 0.07 });
+        break;
+      case 'open':
+        this._noise(0.12, { freq: 900, q: 0.8, gain: 0.08 });
+        T(420, 640, 0.09, { type: 'triangle', gain: 0.07 });
+        break;
+      case 'error':
+        T(160, 120, 0.16, { type: 'square', gain: 0.07 });
+        break;
+      case 'coin':
+        T(1320 + Math.random() * 120, 1760, 0.07, { type: 'triangle', gain: 0.09 });
+        break;
+      case 'collect':
+        T(660, null, 0.08, { type: 'triangle', gain: 0.16 });
+        T(990, null, 0.12, { type: 'triangle', gain: 0.14, at: 0.06 });
+        break;
+      case 'build':
+        for (let i = 0; i < 3; i++) this._noise(0.05, { freq: 1700, q: 3, gain: 0.25, at: i * 0.13 });
+        break;
+      case 'craft':
+        this._noise(0.08, { freq: 2600, q: 4, gain: 0.18 });
+        T(500, 760, 0.1, { type: 'square', gain: 0.04, at: 0.06 });
+        break;
+      case 'done':
+        [523, 659, 784, 1047].forEach((f, i) => T(f, null, 0.18, { type: 'triangle', gain: 0.12, at: i * 0.07 }));
+        break;
+      case 'stage':
+        [392, 523, 659, 784].forEach((f, i) => T(f, null, 0.35, { type: 'sawtooth', gain: 0.06, at: i * 0.1 }));
+        [784, 1047, 1319].forEach((f, i) => T(f, null, 0.6, { type: 'triangle', gain: 0.1, at: 0.42 + i * 0.05 }));
+        break;
+      case 'radio':
+        T(1800, 1700, 0.06, { type: 'square', gain: 0.04 });
+        this._noise(0.25, { freq: 2200, q: 0.6, gain: 0.05, at: 0.05 });
+        T(1800, 1700, 0.06, { type: 'square', gain: 0.04, at: 0.3 });
+        break;
+      case 'start':
+        T(90, 260, 0.6, { type: 'sawtooth', gain: 0.06 });
+        this._noise(0.5, { freq: 400, gain: 0.05 });
+        break;
+      case 'tick':
+        T(1200, 900, 0.04, { type: 'square', gain: 0.04 });
+        break;
+      case 'thud':
+        T(120, 50, 0.2, { gain: 0.3 });
+        break;
+      case 'saferoom':
+        this._noise(0.18, { freq: 300, q: 0.6, gain: 0.2 });
+        [660, 880].forEach((f, i) => T(f, null, 0.22, { type: 'triangle', gain: 0.1, at: 0.12 + i * 0.09 }));
+        break;
+      case 'win':
+        [523, 659, 784, 1047, 1319].forEach((f, i) => T(f, null, 0.25, { type: 'triangle', gain: 0.11, at: i * 0.08 }));
+        break;
+      case 'lose':
+        [392, 330, 262, 196].forEach((f, i) => T(f, f * 0.97, 0.3, { type: 'sawtooth', gain: 0.05, at: i * 0.14 }));
+        break;
+      case 'bond':
+        [587, 740, 880].forEach((f, i) => T(f, null, 0.3, { type: 'sine', gain: 0.1, at: i * 0.09 }));
+        break;
+      default:
+        break;
+    }
+  }
+}

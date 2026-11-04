@@ -85,12 +85,24 @@ const panel = new SettingsPanel(panelEl, settings, {
   onClose: () => resume(),
   onChange: (key) => {
     if (key === 'volume' || key === '*') audio.setVolume(settings.volume);
+    if (key === 'level') {
+      game.newRun(settings.seed);
+      syncLevelPicker();
+    }
     layout = computeLayout(layout.w, layout.h, safe, settings);
     ui.layout = layout;
   },
   onCallHorde: () => {
     resume();
     game.director.forceMob();
+  },
+  onSpawnHunter: () => {
+    resume();
+    game.director.forceHunter();
+  },
+  onSpawnTank: () => {
+    resume();
+    game.director.forceTank();
   },
   onRestart: () => {
     game.newRun(settings.seed);
@@ -117,6 +129,7 @@ function start() {
 
 function pause() {
   if (state !== 'play') return;
+  audio.suspend(); // Tank theme etc. freeze with the game; Resume unlocks again
   state = 'paused';
   input.reset();
   input.touch.enabled = false;
@@ -133,6 +146,23 @@ function resume() {
 }
 
 startBtn.addEventListener('click', start);
+
+// Title-card level picker (doesn't start the game; the background shows the choice).
+const levelButtons = [...document.querySelectorAll('[data-level]')];
+function syncLevelPicker() {
+  for (const b of levelButtons) b.classList.toggle('active', b.dataset.level === settings.level);
+}
+for (const b of levelButtons) {
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (settings.level === b.dataset.level) return;
+    settings.level = b.dataset.level;
+    saveSettings(settings);
+    game.newRun(settings.seed);
+    syncLevelPicker();
+  });
+}
+syncLevelPicker();
 // "Tap to start" means anywhere on the card, not just the button.
 titleEl.addEventListener('click', () => {
   if (state === 'title') start();
@@ -141,7 +171,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     pause();
     audio.suspend();
-  } else audio.resume();
+  } else if (state === 'play' || state === 'title') audio.resume();
 });
 window.addEventListener('blur', () => input.reset());
 // iOS Safari: block pinch-zoom gesture events outright.

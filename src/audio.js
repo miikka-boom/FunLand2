@@ -293,7 +293,7 @@ export class Audio {
     this._tone({ type: 'sawtooth', f0: 55.8, dur: 3.2, gain: 0.16, attack: 0.6, filter: { freq: 260 } });
   }
 
-  alarm(x, y, dur) {
+  alarm(x, y, dur, kind = 'car') {
     if (!this._ok('alarm', 1)) return;
     this.alarmStop();
     const c = this.ctx;
@@ -302,14 +302,23 @@ export class Audio {
     const o = c.createOscillator();
     o.type = 'square';
     const t0 = c.currentTime;
-    for (let t = 0, k = 0; t < dur; t += 0.2, k++) o.frequency.setValueAtTime(k % 2 ? 1250 : 950, t0 + t);
     const f = c.createBiquadFilter();
     f.type = 'lowpass';
     f.frequency.value = 2600;
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.03);
-    g.gain.setValueAtTime(0.12, t0 + dur - 0.3);
+    if (kind === 'fire') {
+      // Fire alarm: a flat horn, gated on/off.
+      o.frequency.setValueAtTime(960, t0);
+      for (let t = 0; t < dur - 0.3; t += 0.3) {
+        g.gain.setValueAtTime(0.11, t0 + t);
+        g.gain.setValueAtTime(0.0001, t0 + t + 0.18);
+      }
+    } else {
+      for (let t = 0, k = 0; t < dur; t += 0.2, k++) o.frequency.setValueAtTime(k % 2 ? 1250 : 950, t0 + t);
+      g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.03);
+      g.gain.setValueAtTime(0.12, t0 + dur - 0.3);
+    }
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     o.connect(f);
     f.connect(g);
@@ -317,6 +326,175 @@ export class Audio {
     o.start(t0);
     o.stop(t0 + dur + 0.05);
     this.alarmNodes = { o, g };
+  }
+
+  // --- special infected ------------------------------------------------------------
+
+  hunterGrowl(x, y) {
+    if (!this._ok('hgrowl', 0.8)) return;
+    const s = this._spatial(x, y, 800);
+    if (s.gain < 0.03) return;
+    const out = this._out(s.pan, s.gain * 0.7);
+    for (let i = 0; i < 3; i++) {
+      this._noise({ dur: 0.09, type: 'lowpass', freq: 420, gain: 0.35, at: i * 0.13, rate: 0.6, out });
+      this._tone({ type: 'sawtooth', f0: 75 + i * 6, f1: 60, dur: 0.1, gain: 0.12, at: i * 0.13, out, filter: { freq: 380 } });
+    }
+  }
+
+  /** The pounce telegraph: a rising shriek you learn to react to. */
+  hunterScreech(x, y) {
+    if (!this._ok('hscreech', 0.3)) return;
+    const s = this._spatial(x, y, 1100);
+    const out = this._out(s.pan, 0.35 + s.gain * 0.65);
+    this._tone({ type: 'sawtooth', f0: 520, f1: 1500, dur: 0.6, gain: 0.22, attack: 0.05, out, filter: { type: 'bandpass', freq: 1700, q: 2 } });
+    this._tone({ type: 'sawtooth', f0: 540, f1: 1580, dur: 0.6, gain: 0.14, attack: 0.05, out, filter: { type: 'bandpass', freq: 2200, q: 3 } });
+    this._noise({ dur: 0.55, type: 'bandpass', freq: 2600, q: 1.5, gain: 0.12, attack: 0.08, out });
+  }
+
+  hunterPounce(x, y) {
+    if (!this._ok('hpounce', 0.2)) return;
+    const s = this._spatial(x, y, 1000);
+    const out = this._out(s.pan, 0.4 + s.gain * 0.6);
+    this._tone({ type: 'sawtooth', f0: 1100, f1: 520, dur: 0.45, gain: 0.2, out, filter: { type: 'bandpass', freq: 1400, q: 1.5 } });
+    this._noise({ dur: 0.35, type: 'bandpass', freq: 700, sweepTo: 2400, q: 1, gain: 0.25, out });
+  }
+
+  hunterPin() {
+    if (!this._ok('hpin', 0.2)) return;
+    this._noise({ dur: 0.2, type: 'lowpass', freq: 320, gain: 0.9 });
+    this._tone({ f0: 90, f1: 40, dur: 0.22, gain: 0.7 });
+    this._tone({ type: 'sawtooth', f0: 900, f1: 400, dur: 0.5, gain: 0.18, filter: { type: 'bandpass', freq: 1200, q: 2 } });
+  }
+
+  hunterDie(x, y) {
+    if (!this._ok('hdie', 0.2)) return;
+    const s = this._spatial(x, y, 900);
+    const out = this._out(s.pan, 0.3 + s.gain * 0.7);
+    this._tone({ type: 'sawtooth', f0: 700, f1: 160, dur: 0.6, gain: 0.18, out, filter: { type: 'bandpass', freq: 900, q: 1.5 } });
+  }
+
+  claw() {
+    if (!this._ok('claw', 0.08)) return;
+    this._noise({ dur: 0.07, type: 'highpass', freq: 1600, gain: 0.3, rate: 0.8 + Math.random() * 0.4 });
+    this._noise({ dur: 0.08, type: 'lowpass', freq: 500, gain: 0.35, at: 0.02 });
+  }
+
+  struggle() {
+    if (!this._ok('struggle', 0.04)) return;
+    this._noise({ dur: 0.08, type: 'lowpass', freq: 380, gain: 0.5 });
+    this._tone({ f0: 140, f1: 80, dur: 0.07, gain: 0.25 });
+  }
+
+  deadstop() {
+    if (!this._ok('deadstop', 0.1)) return;
+    this._noise({ dur: 0.12, type: 'lowpass', freq: 520, gain: 0.95 });
+    this._tone({ f0: 160, f1: 55, dur: 0.14, gain: 0.6 });
+    this._noise({ dur: 0.05, type: 'highpass', freq: 3000, gain: 0.25 });
+  }
+
+  thud(x, y) {
+    if (!this._ok('thud', 0.1)) return;
+    const s = this._spatial(x, y, 800);
+    if (s.gain < 0.03) return;
+    this._noise({ dur: 0.14, type: 'lowpass', freq: 300, gain: 0.7, out: this._out(s.pan, s.gain) });
+  }
+
+  tankRoar(x, y, size = 1) {
+    if (!this._ok('troar', 0.5)) return;
+    const s = this._spatial(x, y, 2600);
+    const out = this._out(s.pan * 0.7, (0.45 + s.gain * 0.55) * size);
+    const dur = 0.9 + size * 0.6;
+    this._tone({ type: 'sawtooth', f0: 110, f1: 48, dur, gain: 0.5, attack: 0.08, out, filter: { freq: 520, q: 2 } });
+    this._tone({ type: 'sawtooth', f0: 116, f1: 51, dur, gain: 0.35, attack: 0.1, out, filter: { freq: 700, q: 1 } });
+    this._noise({ dur, type: 'lowpass', freq: 600, gain: 0.45, attack: 0.1, rate: 0.5, out });
+  }
+
+  tankGrunt(x, y) {
+    if (!this._ok('tgrunt', 0.3)) return;
+    const s = this._spatial(x, y, 1200);
+    this._tone({ type: 'sawtooth', f0: 95, f1: 70, dur: 0.3, gain: 0.4, out: this._out(s.pan, 0.3 + s.gain * 0.7), filter: { freq: 450 } });
+  }
+
+  tankStep(x, y) {
+    if (!this._ok('tstep', 0.15)) return;
+    const s = this._spatial(x, y, 900);
+    if (s.gain < 0.02) return;
+    const out = this._out(s.pan, s.gain);
+    this._tone({ f0: 58, f1: 32, dur: 0.16, gain: 0.85, out });
+    this._noise({ dur: 0.09, type: 'lowpass', freq: 200, gain: 0.4, out });
+  }
+
+  tankPunch(hit) {
+    if (!this._ok('tpunch', 0.1)) return;
+    this._noise({ dur: 0.18, type: 'bandpass', freq: 400, sweepTo: 1600, q: 1, gain: 0.3 });
+    if (hit) {
+      this._noise({ dur: 0.25, type: 'lowpass', freq: 260, gain: 1 });
+      this._tone({ f0: 85, f1: 28, dur: 0.3, gain: 0.9 });
+    }
+  }
+
+  tankDie(x, y) {
+    if (!this._ok('tdie', 1)) return;
+    const s = this._spatial(x, y, 2000);
+    const out = this._out(s.pan * 0.6, 0.6 + s.gain * 0.4);
+    this._tone({ type: 'sawtooth', f0: 90, f1: 30, dur: 2, gain: 0.5, attack: 0.05, out, filter: { freq: 400 } });
+    this._noise({ dur: 1.4, type: 'lowpass', freq: 350, gain: 0.5, out });
+  }
+
+  rockThrow(x, y) {
+    if (!this._ok('rthrow', 0.2)) return;
+    const s = this._spatial(x, y, 1400);
+    this._noise({ dur: 0.45, type: 'bandpass', freq: 260, sweepTo: 900, q: 1.2, gain: 0.5, out: this._out(s.pan, 0.35 + s.gain * 0.65) });
+  }
+
+  rockShatter(x, y) {
+    if (!this._ok('rshatter', 0.06)) return;
+    const s = this._spatial(x, y, 1200);
+    const out = this._out(s.pan, 0.25 + s.gain * 0.75);
+    this._noise({ dur: 0.3, type: 'lowpass', freq: 1400, gain: 0.8, rate: 0.7, out });
+    this._tone({ f0: 120, f1: 45, dur: 0.18, gain: 0.5, out });
+  }
+
+  /** Tank theme: a driving low ostinato + kick for as long as it lives. */
+  tankMusic(on) {
+    if (!this.ctx) return;
+    if (on) {
+      if (this.music) return;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, this.ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.55, this.ctx.currentTime + 1.2);
+      g.connect(this.master);
+      this.music = { out: g, next: this.ctx.currentTime + 0.1, step: 0 };
+      this.music.timer = setInterval(() => this._musicTick(), 60);
+    } else if (this.music) {
+      const m = this.music;
+      this.music = null;
+      clearInterval(m.timer);
+      const t = this.ctx.currentTime;
+      m.out.gain.cancelScheduledValues(t);
+      m.out.gain.setValueAtTime(Math.max(0.0001, m.out.gain.value), t);
+      m.out.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+      setTimeout(() => m.out.disconnect(), 1800);
+    }
+  }
+
+  _musicTick() {
+    const m = this.music;
+    if (!m || this.ctx.state !== 'running') return;
+    const now = this.ctx.currentTime;
+    if (m.next < now - 0.1) m.next = now + 0.05; // tab was throttled: skip, don't burst
+    const step = 60 / 150 / 2; // eighth notes at 150 bpm
+    const bass = [41.2, 41.2, 49, 41.2, 55, 41.2, 49, 36.7]; // E E G E A E G D
+    while (m.next < now + 0.25) {
+      const i = m.step % 8;
+      const at = Math.max(0, m.next - now);
+      this._tone({ type: 'sawtooth', f0: bass[i], dur: step * 0.9, gain: 0.32, attack: 0.01, at, out: m.out, filter: { freq: 240, q: 4 } });
+      if (i === 0 || i === 3 || i === 4 || i === 6) this._tone({ f0: 95, f1: 38, dur: 0.16, gain: 0.7, at, out: m.out });
+      if (i === 2 || i === 6) this._noise({ dur: 0.1, type: 'bandpass', freq: 1800, q: 0.8, gain: 0.18, at, out: m.out });
+      if (m.step % 32 === 0) this._tone({ type: 'sawtooth', f0: 82.4, dur: step * 7, gain: 0.12, attack: 0.3, at, out: m.out, filter: { freq: 900 } });
+      m.next += step;
+      m.step++;
+    }
   }
 
   alarmStop() {

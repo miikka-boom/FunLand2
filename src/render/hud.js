@@ -46,6 +46,8 @@ export function drawHud(ctx, game, input, ui, renderer) {
   }
   if (S.showTouches) drawTouchDebug(ctx, input.touch, L);
 
+  drawBossBar(ctx, game, L);
+  if (p.pinnedBy && p.alive) drawPinned(ctx, game, L);
   drawMessages(ctx, game, L);
   if (game.won || game.lost) drawEnd(ctx, game, L);
   if (S.showDebug) drawDebug(ctx, game, input, ui, L);
@@ -333,13 +335,34 @@ function drawThreats(ctx, game, L) {
   const ps = game.worldToScreen(p.x, p.y);
   sectors.fill(0);
   let any = false;
+  // worldToScreen inlined: this runs for every hunting zombie, every frame.
+  const v = game.view;
+  const cam = game.camera;
+  const ox = v.w / 2 - (cam.x + cam.shakeX) * v.scale;
+  const oy = v.h / 2 - (cam.y + cam.shakeY) * v.scale;
   for (const z of game.zombies) {
     if (!z.alive || z.state !== 'chase') continue;
-    const d = Math.hypot(z.x - p.x, z.y - p.y);
-    if (d > 850) continue;
-    const zs = game.worldToScreen(z.x, z.y);
-    if (zs.x > 0 && zs.x < L.w && zs.y > 0 && zs.y < L.h) continue;
-    const ang = Math.atan2(zs.y - ps.y, zs.x - ps.x);
+    const ddx = z.x - p.x;
+    const ddy = z.y - p.y;
+    const lim = z.type === 'common' ? 850 : 1300;
+    if (ddx * ddx + ddy * ddy > lim * lim) continue;
+    const d = Math.sqrt(ddx * ddx + ddy * ddy);
+    const zsx = z.x * v.scale + ox;
+    const zsy = z.y * v.scale + oy;
+    if (zsx > 0 && zsx < L.w && zsy > 0 && zsy < L.h) continue;
+    if (z.type !== 'common') {
+      const ang = Math.atan2(zsy - ps.y, zsx - ps.x);
+      const e = edgePoint(L, ps.x, ps.y, ang, z.type === 'tank' ? 26 : 22);
+      const pulse = 0.7 + Math.sin(game.time * 8) * 0.3;
+      ctx.fillStyle = z.type === 'tank' ? `rgba(255,40,30,${pulse})` : `rgba(190,140,255,${pulse})`;
+      chevron(ctx, e.x, e.y, ang, z.type === 'tank' ? 20 : 14);
+      ctx.font = `800 10px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(z.type === 'tank' ? 'TANK' : 'HUNTER', e.x - Math.cos(ang) * 28, e.y - Math.sin(ang) * 22);
+      continue;
+    }
+    const ang = Math.atan2(zsy - ps.y, zsx - ps.x);
     const s = Math.floor(((ang + Math.PI) / TAU) * 24) % 24;
     sectors[s] += 1.2 - d / 850;
     any = true;
@@ -368,7 +391,8 @@ function drawObjective(ctx, game, L) {
   const pulse = 0.65 + Math.sin(game.time * 3) * 0.2;
   ctx.fillStyle = `rgba(110,255,150,${pulse})`;
   chevron(ctx, e.x, e.y, ang, 11);
-  const meters = Math.round(Math.hypot(gx - p.x, gy - p.y) / 24);
+  const path = Number.isFinite(game.goalDist) ? game.goalDist : Math.hypot(gx - p.x, gy - p.y);
+  const meters = Math.round(path / 24);
   ctx.font = `700 10px ${FONT}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -425,13 +449,67 @@ function drawEnd(ctx, game, L) {
     `time ${mm}:${ss}   ·   kills ${st.kills}   ·   accuracy ${acc}%`,
     `shoves ${st.shoves}   ·   damage taken ${Math.round(st.damage)}   ·   hordes ${st.hordes}`,
   ];
+  if (st.hunters || st.pins || st.deadstops || st.tanks || game.director.tankSpawned) {
+    lines.push(
+      `hunters ${st.hunters} (skeets ${st.skeets}, deadstops ${st.deadstops}, pinned ${st.pins})   ·   tank ${st.tanks ? 'down' : game.director.tankSpawned ? 'survived' : '-'}`,
+    );
+  }
   lines.forEach((l, i) => ctx.fillText(l, L.w / 2, cy + 44 + i * 22));
   if (game.endT > 1.4) {
     ctx.font = `700 15px ${FONT}`;
     ctx.fillStyle = `rgba(255,255,255,${0.6 + Math.sin(game.time * 4) * 0.3})`;
-    ctx.fillText('tap to play again', L.w / 2, cy + 110);
+    ctx.fillText('tap to play again', L.w / 2, cy + 44 + lines.length * 22 + 26);
   }
   ctx.globalAlpha = 1;
+}
+
+function drawBossBar(ctx, game, L) {
+  const d = game.director;
+  if (!d.tankAlive) return;
+  const t = d.tank;
+  const w = Math.min(280, L.w * 0.34);
+  const x = L.w / 2 - w / 2;
+  const y = L.safe.t + 34;
+  ctx.fillStyle = 'rgba(8,10,14,0.6)';
+  ctx.fillRect(x - 4, y - 4, w + 8, 18);
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(x, y, w, 10);
+  ctx.fillStyle = t.hitFlash > 0 ? '#ff8a70' : '#d8392c';
+  ctx.fillRect(x, y, w * clamp(t.hp / t.maxHp, 0, 1), 10);
+  ctx.font = `900 10px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('TANK', L.w / 2, y + 5.5);
+}
+
+function drawPinned(ctx, game, L) {
+  const p = game.player;
+  const need = game.settings.hunterBreakTaps;
+  const pulse = 0.75 + Math.sin(game.time * 14) * 0.25;
+  const y = L.h * 0.62;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `900 22px ${FONT}`;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillText('TAP TO BREAK FREE!', L.w / 2 + 2, y + 2);
+  ctx.fillStyle = `rgba(190,140,255,${pulse})`;
+  ctx.fillText('TAP TO BREAK FREE!', L.w / 2, y);
+  const gap = 18;
+  const x0 = L.w / 2 - ((need - 1) * gap) / 2;
+  for (let i = 0; i < need; i++) {
+    const filled = p.struggle >= i + 1 ? 1 : clamp(p.struggle - i, 0, 1);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.beginPath();
+    circle(ctx, x0 + i * gap, y + 26, 6);
+    ctx.fill();
+    if (filled > 0) {
+      ctx.fillStyle = `rgba(190,140,255,${0.35 + filled * 0.65})`;
+      ctx.beginPath();
+      circle(ctx, x0 + i * gap, y + 26, 6 * filled);
+      ctx.fill();
+    }
+  }
 }
 
 function drawTouchDebug(ctx, touch, L) {
@@ -479,8 +557,8 @@ function drawDebug(ctx, game, input, ui, L) {
   const t = input.touch;
   const chasing = game.zombies.reduce((n, z) => n + (z.state === 'chase' ? 1 : 0), 0);
   const lines = [
-    `${ui.fps.toFixed(0)} fps  ${ui.frameMs.toFixed(1)}ms  ·  zombies ${game.zombies.length} (${chasing} hunting)  ·  particles ${game.effects.particles.length}`,
-    `director ${d.phase}  intensity ${d.intensity.toFixed(2)}  next mob ${Math.max(0, d.mobT).toFixed(0)}s  near ${d.threatNear}`,
+    `${ui.fps.toFixed(0)} fps  ${ui.frameMs.toFixed(1)}ms  ·  zombies ${game.zombies.length}/${game.director.cap} (${chasing} hunting)  ·  particles ${game.effects.particles.length}`,
+    `director ${d.phase}  intensity ${d.intensity.toFixed(2)}  next mob ${Math.max(0, d.mobT).toFixed(0)}s  near ${d.threatNear}  ·  hunter in ${Math.max(0, d.specialT).toFixed(0)}s  tank at ${Math.round(d.tankAt * 100)}% (route ${Math.round(game.progress * 100)}%)`,
     `input ${f.source}  move ${f.move.x.toFixed(2)},${f.move.y.toFixed(2)} (raw ${t.move.out.raw.toFixed(2)})  aim raw ${f.aimRaw.toFixed(2)}  fire ${f.fire ? 'Y' : '-'}  assist ${game.player.assist ? 'lock' : '-'}`,
   ];
   ctx.font = `600 11px ui-monospace, Menlo, monospace`;

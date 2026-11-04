@@ -3,7 +3,7 @@
 // left, goal top right). Streets are always left passable, so the route is
 // guaranteed to connect.
 
-import { mulberry32, rectsOverlap } from '../util.js';
+import { mulberry32, rectsOverlap, shuffle } from '../util.js';
 
 export const WORLD_W = 5800;
 export const WORLD_H = 3600;
@@ -400,7 +400,7 @@ export function generateCity(seed) {
   }
 
   // Alarm cars: far from the start, spread out. Shooting one starts a panic event.
-  const shuffled = streetCars.slice().sort(() => rnd() - 0.5);
+  const shuffled = shuffle(streetCars.slice(), rnd);
   const alarms = [];
   for (const c of shuffled) {
     if (alarms.length >= 4) break;

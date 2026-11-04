@@ -1,9 +1,11 @@
 // Game state + per-frame orchestration.
 
 import { generateCity } from '../world/map-gen.js';
-import { World, SpatialHash } from '../world/world.js';
+import { generateBuilding } from '../world/building-gen.js';
+import { World, SpatialHash, FlowField } from '../world/world.js';
 import { Player, updatePlayer, shove, startReload, swapWeapon } from './player.js';
-import { updateZombies, alertZombie } from './zombies.js';
+import { updateZombies, resolveCrowd, alertZombie, ZHASH_CELL } from './zombies.js';
+import { updateSpecials, updateRocks, releasePin } from './specials.js';
 import { Director } from './director.js';
 import { Effects } from './effects.js';
 import { dampFactor, pointInRect, rand } from '../util.js';
@@ -19,22 +21,39 @@ export class Game {
 
   newRun(seed = this.settings.seed) {
     this.audio.alarmStop();
-    let map = generateCity(seed);
+    this.audio.tankMusic(false);
+    const gen = this.settings.level === 'interior' ? generateBuilding : generateCity;
+    let map = gen(seed);
     let world = new World(map);
     // Paranoia: if the goal were ever unreachable, step the seed.
     for (let k = 1; k < 6; k++) {
       world.flow.compute(map.start.x, map.start.y);
       const er = map.endRoom.interior;
       if (Number.isFinite(world.flow.pathDist(er.x + er.w / 2, er.y + er.h / 2))) break;
-      map = generateCity(seed + k);
+      map = gen(seed + k);
       world = new World(map);
     }
     this.world = world;
+    // Static field toward the goal: route progress (places the Tank) and the
+    // walking distance shown on the safe-room arrow.
+    this.goalField = new FlowField(world);
+    const er = map.endRoom.interior;
+    this.goalField.compute(er.x + er.w / 2, er.y + er.h / 2);
+    this.routeLen = Math.max(1, this.goalField.pathDist(map.start.x, map.start.y));
+    this.goalDist = this.routeLen;
+    this.progress = 0;
     this.player = new Player(map.start.x, map.start.y);
     this.zombies = [];
-    this.zhash = new SpatialHash(map.w, map.h, 48);
+    this.rocks = [];
+    this.zhash = new SpatialHash(map.w, map.h, ZHASH_CELL);
     this.effects = new Effects(map.w, map.h);
-    this.pickups = map.pickups.map((p) => ({ ...p, taken: false, bob: rand(0, 6) }));
+    // Any pickup that landed in an unreachable pocket is nudged to the nearest reachable spot.
+    world.flow.compute(map.start.x, map.start.y);
+    this.pickups = [];
+    for (const p of map.pickups) {
+      const spot = world.reachableSpot(p.x, p.y, world.flow);
+      if (spot) this.pickups.push({ ...p, x: spot.x, y: spot.y, taken: false, bob: rand(0, 6) });
+    }
     this.director = new Director(this);
     this.camera = { x: map.start.x, y: map.start.y, lookX: 0, lookY: 0, kickX: 0, kickY: 0, trauma: 0, shakeX: 0, shakeY: 0 };
     this.time = 0;
@@ -45,7 +64,10 @@ export class Game {
     this.endT = 0;
     this.hurtFlash = 0;
     this.messages = [];
-    this.stats = { kills: 0, shots: 0, hits: 0, shoves: 0, damage: 0, hordes: 0, time: 0 };
+    this.stats = {
+      kills: 0, shots: 0, hits: 0, shoves: 0, damage: 0, hordes: 0, time: 0,
+      hunters: 0, skeets: 0, deadstops: 0, pins: 0, breakFrees: 0, tanks: 0, rocksShot: 0,
+    };
     this.world.flow.compute(this.player.x, this.player.y);
     this.director.populate();
   }
@@ -82,21 +104,26 @@ export class Game {
     }
   }
 
-  hurtPlayer(dmg, z) {
+  hurtPlayer(dmg, z, opts = {}) {
     const p = this.player;
     if (!p.alive || this.won) return;
     if (!this.settings.godMode) p.hp -= dmg;
     this.stats.damage += dmg;
-    p.slowT = 0.35;
+    const slow = opts.slow === undefined ? 0.35 : opts.slow;
+    if (slow > 0) p.slowT = Math.max(p.slowT, slow);
     p.hurtT = 0.25;
-    this.hurtFlash = Math.min(1, this.hurtFlash + 0.45);
-    this.addTrauma(0.22);
+    this.hurtFlash = Math.min(1, this.hurtFlash + (opts.pinned ? 0.18 : 0.45));
+    this.addTrauma(opts.pinned ? 0.08 : 0.22);
     if (z) {
       const dx = p.x - z.x;
       const dy = p.y - z.y;
       const d = Math.hypot(dx, dy) || 1;
-      p.vx += (dx / d) * 60;
-      p.vy += (dy / d) * 60;
+      if (!p.pinnedBy) {
+        const knock = opts.knock === undefined ? 60 : opts.knock;
+        p.vx += (dx / d) * knock;
+        p.vy += (dy / d) * knock;
+        if (opts.knockT) p.knockT = Math.max(p.knockT, opts.knockT);
+      }
       this.effects.blood(p.x, p.y, dx / d, dy / d, 2, 120);
     }
     this.audio.hurt();
@@ -162,6 +189,14 @@ export class Game {
 
     this.director.update(dt);
     updateZombies(this, dt);
+    updateSpecials(this, dt);
+    resolveCrowd(this, dt);
+    updateRocks(this, dt);
+    const gd = this.goalField.pathDist(p.x, p.y);
+    if (Number.isFinite(gd)) {
+      this.goalDist = gd;
+      this.progress = Math.min(1, Math.max(this.progress, 1 - gd / this.routeLen));
+    }
 
     // Drop removed zombies in place.
     let j = 0;
@@ -199,6 +234,7 @@ export class Game {
     // Win: reach the end safe room.
     const er = this.world.map.endRoom.interior;
     if (!this.won && !this.lost && p.alive && pointInRect(p.x, p.y, er)) {
+      if (p.pinnedBy) releasePin(this);
       this.won = true;
       this.endT = 0;
       this.audio.win();

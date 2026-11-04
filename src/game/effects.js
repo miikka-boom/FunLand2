@@ -54,6 +54,19 @@ export class Effects {
     }
   }
 
+  /** Rock / concrete chunks (no blood). */
+  debris(x, y, n = 8) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * TAU;
+      const s = rand(60, 260);
+      this._p({
+        kind: 'debris', x, y, z: rand(4, 16), vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(60, 200),
+        size: rand(2.5, 5.5), life: 1.6, max: 1.6, color: Math.random() < 0.5 ? '#6f6a63' : '#8a847b', rot: rand(0, TAU), spin: rand(-14, 14),
+      });
+    }
+    this._p({ kind: 'dust', x, y, vx: 0, vy: 0, life: 0.7, max: 0.7, size: 14 });
+  }
+
   sparks(x, y, nx, ny, n = 5) {
     for (let i = 0; i < n; i++) {
       const a = Math.atan2(ny, nx) + randSpread() * 1.3;
@@ -158,6 +171,23 @@ export class Effects {
       p.life -= dt;
       let dead = p.life <= 0;
       switch (p.kind) {
+        case 'debris': {
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.rot += p.spin * dt;
+          if (p.z > 0 || p.vz > 0) {
+            p.vz -= 900 * dt;
+            p.z += p.vz * dt;
+            if (p.z <= 0) {
+              p.z = 0;
+              p.vz = 0;
+            }
+          }
+          const f = Math.exp(-(p.z > 0 ? 0.6 : 7) * dt);
+          p.vx *= f;
+          p.vy *= f;
+          break;
+        }
         case 'blood':
         case 'gib': {
           p.x += p.vx * dt;

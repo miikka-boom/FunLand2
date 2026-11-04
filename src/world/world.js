@@ -5,7 +5,6 @@ import { clamp, rayRect } from '../util.js';
 const BP_CELL = 128;
 const BP_PAD = 34; // >= largest entity radius
 export const NAV_CELL = 32;
-const NAV_INFLATE = 5;
 const INF = 0x3fffffff;
 
 const DIRS = [
@@ -88,11 +87,32 @@ export class World {
     const n = this.navW * this.navH;
     this.blocked = new Uint8Array(n);
     this.penalty = new Uint8Array(n);
+    // Thin obstacles (walls, glass, fences, shelves: < one cell thick) block
+    // every cell they touch, or they could slip between rows of cell centres
+    // and the field would route bodies straight through them. Bulky props
+    // (>= one cell thick) always cover a centre, so centre-based marking is
+    // enough and keeps the gaps between scattered furniture walkable.
     for (const o of this.moveBlockers) {
-      const x0 = Math.max(0, Math.ceil((o.x - NAV_INFLATE) / cs - 0.5));
-      const x1 = Math.min(this.navW - 1, Math.floor((o.x + o.w + NAV_INFLATE) / cs - 0.5));
-      const y0 = Math.max(0, Math.ceil((o.y - NAV_INFLATE) / cs - 0.5));
-      const y1 = Math.min(this.navH - 1, Math.floor((o.y + o.h + NAV_INFLATE) / cs - 0.5));
+      let x0;
+      let x1;
+      let y0;
+      let y1;
+      if (Math.min(o.w, o.h) < cs) {
+        x0 = Math.floor(o.x / cs);
+        x1 = Math.floor((o.x + o.w - 1e-6) / cs);
+        y0 = Math.floor(o.y / cs);
+        y1 = Math.floor((o.y + o.h - 1e-6) / cs);
+      } else {
+        const inf = 4;
+        x0 = Math.ceil((o.x - inf) / cs - 0.5);
+        x1 = Math.floor((o.x + o.w + inf) / cs - 0.5);
+        y0 = Math.ceil((o.y - inf) / cs - 0.5);
+        y1 = Math.floor((o.y + o.h + inf) / cs - 0.5);
+      }
+      x0 = Math.max(0, x0);
+      y0 = Math.max(0, y0);
+      x1 = Math.min(this.navW - 1, x1);
+      y1 = Math.min(this.navH - 1, y1);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) this.blocked[y * this.navW + x] = 1;
     }
     // Prefer the middle of corridors: small cost next to walls.
@@ -141,6 +161,40 @@ export class World {
       }
     }
     return -1;
+  }
+
+  /**
+   * Nearest position to (x, y) that the field reaches (e.g. to rescue a pickup
+   * that landed in a pocket). Returns null if nothing within maxR cells.
+   */
+  reachableSpot(x, y, field, maxR = 5) {
+    const i0 = this.navIndex(x, y);
+    if (!this.blocked[i0] && field.dist[i0] < INF) return { x, y };
+    const cx = i0 % this.navW;
+    const cy = Math.floor(i0 / this.navW);
+    const c = { x: 0, y: 0 };
+    for (let r = 1; r <= maxR; r++) {
+      let best = null;
+      let bd = Infinity;
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const gx = cx + dx;
+          const gy = cy + dy;
+          if (gx < 0 || gy < 0 || gx >= this.navW || gy >= this.navH) continue;
+          const j = gy * this.navW + gx;
+          if (this.blocked[j] || field.dist[j] >= INF) continue;
+          this.cellCenter(j, c);
+          const d = Math.hypot(c.x - x, c.y - y);
+          if (d < bd) {
+            bd = d;
+            best = { x: c.x, y: c.y };
+          }
+        }
+      }
+      if (best) return best;
+    }
+    return null;
   }
 
   /** Resolve a circle against nearby movement blockers. */
@@ -214,6 +268,11 @@ export class FlowField {
     this.head = new Int32Array(BUCKETS);
     this.entryNode = new Int32Array(n * 8 + 16);
     this.entryNext = new Int32Array(n * 8 + 16);
+    // dirAt's look-ahead cell, cached per cell until the next compute: a
+    // horde shares a few hundred cells, so most lookups are one array read.
+    this.ahead = new Int32Array(n);
+    this.aheadGen = new Uint32Array(n);
+    this.gen = 1;
     this.target = -1;
     this._c = { x: 0, y: 0 };
   }
@@ -223,6 +282,7 @@ export class FlowField {
     const t = W.nearestFree(W.navIndex(x, y));
     if (t < 0) return;
     this.target = t;
+    this.gen++;
     const dist = this.dist;
     const blocked = W.blocked;
     const pen = W.penalty;
@@ -330,15 +390,25 @@ export class FlowField {
       if (best < 0) return false;
       i = best;
     } else {
-      const j = this._best(i);
-      if (j < 0) return false;
-      const k = this._best(j);
-      i = k >= 0 ? k : j;
+      let k;
+      if (this.aheadGen[i] === this.gen) k = this.ahead[i];
+      else {
+        const j = this._best(i);
+        if (j < 0) k = -1;
+        else {
+          const jj = this._best(j);
+          k = jj >= 0 ? jj : j;
+        }
+        this.ahead[i] = k;
+        this.aheadGen[i] = this.gen;
+      }
+      if (k < 0) return false;
+      i = k;
     }
     const c = W.cellCenter(i, this._c);
     const dx = c.x - x;
     const dy = c.y - y;
-    const d = Math.hypot(dx, dy);
+    const d = Math.sqrt(dx * dx + dy * dy);
     if (d < 1e-6) return false;
     out.x = dx / d;
     out.y = dy / d;
@@ -354,6 +424,7 @@ export class SpatialHash {
     this.ch = Math.ceil(h / cell) + 1;
     this.head = new Int32Array(this.cw * this.ch).fill(-1);
     this.next = new Int32Array(512);
+    this.cellOf = new Int32Array(512);
     this.items = [];
   }
 
@@ -375,10 +446,37 @@ export class SpatialHash {
       const n = new Int32Array(this.next.length * 2);
       n.set(this.next);
       this.next = n;
+      const c = new Int32Array(this.cellOf.length * 2);
+      c.set(this.cellOf);
+      this.cellOf = c;
     }
     const c = this._cell(item.x, item.y);
+    this.cellOf[idx] = c;
     this.next[idx] = this.head[c];
     this.head[c] = idx;
+  }
+
+  /**
+   * fn(a, b) once for every pair of items in the same or neighbouring cells
+   * (so every pair closer than one cell size). Each item visits the rest of
+   * its own cell and four "forward" neighbours, so no pair comes up twice.
+   */
+  pairs(fn) {
+    const { head, next, cellOf, items, cw, ch } = this;
+    for (let i = 0; i < items.length; i++) {
+      const a = items[i];
+      const c = cellOf[i];
+      for (let j = next[i]; j !== -1; j = next[j]) fn(a, items[j]);
+      const cx = c % cw;
+      const cy = (c - cx) / cw;
+      if (cx + 1 < cw) for (let j = head[c + 1]; j !== -1; j = next[j]) fn(a, items[j]);
+      if (cy + 1 < ch) {
+        const b = c + cw;
+        if (cx > 0) for (let j = head[b - 1]; j !== -1; j = next[j]) fn(a, items[j]);
+        for (let j = head[b]; j !== -1; j = next[j]) fn(a, items[j]);
+        if (cx + 1 < cw) for (let j = head[b + 1]; j !== -1; j = next[j]) fn(a, items[j]);
+      }
+    }
   }
 
   query(x, y, r, fn) {

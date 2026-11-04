@@ -4,6 +4,7 @@ import { WEAPONS } from './weapons.js';
 import { aimTau, smoothAngle } from '../input/stick-math.js';
 import { DEG, clamp, rand, randSpread, rayCircle, smoothstep, wrapAngle } from '../util.js';
 import { damageZombie, alertZombie } from './zombies.js';
+import { HUNTER, deadstop, struggle, damageRock } from './specials.js';
 
 const SHOVE_REACH = 52;
 const SHOVE_HALF_ANGLE = 65 * DEG;
@@ -39,6 +40,12 @@ export class Player {
     this.firing = false;
     this.walk = 0;
     this.assist = null; // current aim-assist target
+    this.pinnedBy = null; // Hunter riding you
+    this.struggle = 0;
+    this.lastStruggle = -10;
+    this.pinImmuneT = 0;
+    this.knockT = 0; // sent flying: little control for a moment
+    this.shoveActiveT = 0; // shove still "live" for deadstopping a pouncing Hunter
   }
 
   get weapon() {
@@ -57,20 +64,36 @@ export function updatePlayer(game, dt, input) {
   p.shoveCd -= dt;
   p.recoil *= Math.exp(-14 * dt);
   p.shoveFatigue = Math.max(0, p.shoveFatigue - dt * 0.35);
+  p.knockT -= dt;
+  p.pinImmuneT -= dt;
+  p.shoveActiveT -= dt;
+
+  // Pinned by a Hunter: no moving, no shooting, only struggling (shove input).
+  if (p.pinnedBy) {
+    p.vx = 0;
+    p.vy = 0;
+    p.firing = false;
+    // The meter only drains once you stop mashing, so N quick taps = N.
+    if (game.time - p.lastStruggle > 0.45) p.struggle = Math.max(0, p.struggle - dt * 1.5);
+    const h = p.pinnedBy;
+    p.facing = Math.atan2(h.y - p.y, h.x - p.x) + Math.PI;
+    return;
+  }
 
   // --- Movement ------------------------------------------------------------------
   let speed = S.moveSpeed;
   if (p.hp < 40) speed *= 0.8; // limping
   if (p.slowT > 0) speed *= 0.55; // tagged by a hit
-  const tx = input.move.x * speed;
-  const ty = input.move.y * speed;
+  const control = p.knockT > 0 ? 0.15 : 1; // knocked flying by a Tank
+  const tx = input.move.x * speed * control;
+  const ty = input.move.y * speed * control;
   // Accelerate toward the target velocity; brake harder when reversing/stopping.
   const dvx = tx - p.vx;
   const dvy = ty - p.vy;
   const dv = Math.hypot(dvx, dvy);
   if (dv > 1e-6) {
     const braking = p.vx * tx + p.vy * ty < 0 || tx * tx + ty * ty < p.vx * p.vx + p.vy * p.vy;
-    const rate = (braking ? S.decel : S.accel) * dt;
+    const rate = (p.knockT > 0 ? 700 : braking ? S.decel : S.accel) * dt;
     const k = Math.min(1, rate / dv);
     p.vx += dvx * k;
     p.vy += dvy * k;
@@ -165,12 +188,18 @@ function applyAimAssist(game, p) {
   let best = null;
   let bestScore = Infinity;
   let bestAng = 0;
-  for (const z of game.zombies) {
+  const targets = game.rocks.length ? game.zombies.concat(game.rocks) : game.zombies;
+  const ax = Math.cos(p.aimAngle);
+  const ay = Math.sin(p.aimAngle);
+  for (const z of targets) {
     if (!z.alive) continue;
     const dx = z.x - p.x;
     const dy = z.y - p.y;
-    const d = Math.hypot(dx, dy);
-    if (d > range || d < 1) continue;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > range * range || d2 < 1) continue;
+    // Behind you can't be inside the cone (only something touching you can be that wide).
+    if (dx * ax + dy * ay < 0 && d2 > 6 * z.r * z.r) continue;
+    const d = Math.sqrt(d2);
     const a = Math.atan2(dy, dx);
     const diff = Math.abs(wrapAngle(a - p.aimAngle));
     // Close targets are big: widen the cone by their angular size.
@@ -178,6 +207,10 @@ function applyAimAssist(game, p) {
     if (diff > allowed) continue;
     let score = diff / allowed + 0.35 * (d / range);
     if (z === p.lastAssist) score -= 0.15; // sticky: no flicker in crowds
+    // Threats first: a crouching/pouncing Hunter, an incoming rock, the Tank.
+    if (z.type === 'rock') score -= 0.35;
+    else if (z.type === 'hunter' && (z.mode === 'crouch' || z.mode === 'leap')) score -= 0.3;
+    else if (z.type === 'tank') score -= 0.1;
     if (score < bestScore) {
       if (!game.world.segmentClear(p.x, p.y, z.x, z.y, game.world.shotBlockers)) continue;
       bestScore = score;
@@ -288,6 +321,11 @@ function hitscan(game, p, mx, my, ang, def) {
     const t = rayCircle(p.x, p.y, dx, dy, z.x, z.y, z.r + 2);
     if (t < maxT) hitList.push({ z, t });
   }
+  for (const r of game.rocks) {
+    if (!r.alive) continue;
+    const t = rayCircle(p.x, p.y, dx, dy, r.x, r.y, r.r + 3);
+    if (t < maxT) hitList.push({ z: r, t });
+  }
   hitList.sort((a, b) => a.t - b.t);
 
   let endT = maxT;
@@ -298,7 +336,8 @@ function hitscan(game, p, mx, my, ang, def) {
     let dmg = def.dmg;
     if (def.falloff) dmg *= clamp(1.25 - t / def.range, 0.3, 1);
     if (i > 0) dmg *= 0.8; // each body soaks a bit
-    damageZombie(game, z, dmg, dx, dy, def.knock, def.stagger);
+    if (z.type === 'rock') damageRock(game, z, dmg, dx, dy);
+    else damageZombie(game, z, dmg, dx, dy, def.knock, def.stagger);
     if (i === n - 1 && hitList.length >= def.pierce) {
       endT = t;
       stopped = true;
@@ -322,20 +361,40 @@ function hitscan(game, p, mx, my, ang, def) {
 
 export function shove(game) {
   const p = game.player;
-  if (!p.alive || p.shoveCd > 0) return;
+  if (!p.alive) return;
+  if (p.pinnedBy) {
+    struggle(game); // every shove input is a break-free press
+    return;
+  }
+  if (p.shoveCd > 0) return;
   const now = game.time;
   // Rapid shoves tire you out (L4D-style), so it can't be spammed forever.
   p.shoveFatigue = now - p.lastShove < 1.1 ? Math.min(p.shoveFatigue + 0.14, 0.75) : p.shoveFatigue;
   p.lastShove = now;
   p.shoveCdMax = 0.42 + p.shoveFatigue;
   p.shoveCd = p.shoveCdMax;
+  // The shove stays live briefly, so a Hunter arriving a moment later is still stopped.
+  p.shoveActiveT = game.settings.deadstopWindow;
+
+  // A Hunter in the air within reach gets knocked out of the sky.
+  let ang = p.facing;
+  let flyer = null;
+  for (const z of game.zombies) {
+    if (z.alive && z.type === 'hunter' && z.mode === 'leap' && Math.hypot(z.x - p.x, z.y - p.y) - z.r <= HUNTER.deadstopReach) {
+      flyer = z;
+      break;
+    }
+  }
+  if (flyer) {
+    ang = Math.atan2(flyer.y - p.y, flyer.x - p.x);
+    deadstop(game, flyer);
+  }
 
   // Shove where you face, but swing toward a zombie that's on you from the side.
-  let ang = p.facing;
   let nearest = null;
   let nd = Infinity;
   game.zhash.query(p.x, p.y, SHOVE_REACH + 20, (z) => {
-    if (!z.alive) return;
+    if (!z.alive || flyer) return;
     const d = Math.hypot(z.x - p.x, z.y - p.y) - z.r;
     if (d < nd) {
       nd = d;
@@ -351,9 +410,9 @@ export function shove(game) {
   p.fireAngle = ang;
   p.aimHoldT = Math.max(p.aimHoldT, 0.35);
 
-  let hits = 0;
-  game.zhash.query(p.x, p.y, SHOVE_REACH + 20, (z) => {
-    if (!z.alive) return;
+  let hits = flyer ? 1 : 0;
+  game.zhash.query(p.x, p.y, SHOVE_REACH + 40, (z) => {
+    if (!z.alive || z.noCollide) return;
     const dx = z.x - p.x;
     const dy = z.y - p.y;
     const d = Math.hypot(dx, dy) || 1;
@@ -361,6 +420,7 @@ export function shove(game) {
     const diff = Math.abs(wrapAngle(Math.atan2(dy, dx) - ang));
     if (diff > SHOVE_HALF_ANGLE && d > p.r + z.r + 4) return;
     hits++;
+    if (z.type === 'tank') return; // you can't shove a Tank
     z.windup = 0;
     z.attackCd = Math.max(z.attackCd, 0.5);
     damageZombie(game, z, 8, dx / d, dy / d, 340, rand(0.75, 0.95), false);

@@ -1,13 +1,27 @@
 // A small "AI Director": paces the run through build-up -> peak -> relax,
 // keeps wanderers around, throws mobs ("HERE THEY COME") from out of sight,
 // and turns alarm cars into panic events. Starts when you leave the safe room.
+// Specials: a Hunter now and then (one at a time), and one Tank per run at a
+// random point along the route (mobs pause while it's alive, like L4D).
 
 import { rand, randInt, pointInRect } from '../util.js';
 import { Zombie, alertZombie } from './zombies.js';
+import { spawnHunter, spawnTank } from './specials.js';
 import { NAV_CELL } from '../world/world.js';
 
 const INF = 0x3fffffff;
-export const MAX_ZOMBIES = 230;
+
+// Alive-zombie budget: 230 at default settings, scaled with the Horde size
+// and Wanderer sliders (so x10 really is ten times the zombies), up to a
+// hard ceiling that keeps the sim and renderer responsive.
+export const BASE_ZOMBIES = 230;
+export const ZOMBIE_CEILING = 3000;
+export function zombieCap(S) {
+  return Math.round(Math.min(ZOMBIE_CEILING, BASE_ZOMBIES * Math.max(1, S.hordeSize, S.wanderers)));
+}
+// One spawn spot feeds at most this many; bigger hordes pour in from several.
+const PER_SPOT = 28;
+const MAX_SPOTS = 8;
 
 export class Director {
   constructor(game) {
@@ -21,7 +35,27 @@ export class Director {
     this.threatNear = 0;
     this.queue = [];
     this.alarm = null;
+    this.specialT = rand(18, 28); // first Hunter (or by 22% of the route, whichever first)
+    this.hunterSeen = false;
+    this.tankAt = rand(0.38, 0.58); // fraction of the route where the Tank shows up
+    this.tankSpawned = false;
+    this.tank = null;
     this._c = { x: 0, y: 0 };
+  }
+
+  get cap() {
+    return zombieCap(this.game.settings);
+  }
+
+  get tankAlive() {
+    return !!(this.tank && this.tank.alive);
+  }
+
+  /** The Tank is on you (not left behind somewhere): pause mobs and Hunters. */
+  get tankEngaged() {
+    if (!this.tankAlive) return false;
+    const p = this.game.player;
+    return Math.hypot(this.tank.x - p.x, this.tank.y - p.y) < 1000;
   }
 
   addIntensity(v) {
@@ -31,8 +65,8 @@ export class Director {
   /** Initial wanderers spread over the whole route, none near the start. */
   populate() {
     const g = this.game;
-    const density = (g.world.w * g.world.h) / (4200 * 2800);
-    const n = Math.min(MAX_ZOMBIES - 50, Math.round(70 * density * g.settings.wanderers));
+    const density = ((g.world.w * g.world.h) / (4200 * 2800)) * (g.world.map.wanderDensity || 1);
+    const n = Math.min(this.cap - 50, Math.round(70 * density * g.settings.wanderers));
     const { start, startRoom, endRoom } = g.world.map;
     let placed = 0;
     for (let k = 0; k < n * 10 && placed < n; k++) {
@@ -81,14 +115,17 @@ export class Director {
     }
     if (g.won) return;
 
+    if (g.settings.specials) this.updateSpecials(dt);
+    const tank = this.tankEngaged;
+
     switch (this.phase) {
       case 'build':
+        if (tank) break; // the Tank fight is the event: no mobs on top of it
         this.mobT -= dt;
         this.trickleT -= dt;
         if (this.trickleT <= 0) {
           this.trickleT = rand(10, 18);
-          const spot = this.findSpawn(550, 1200);
-          if (spot) this.queueGroup(spot, Math.round(randInt(2, 5) * Math.max(0.5, g.settings.hordeSize)), 1.2);
+          this.queueHorde(Math.round(randInt(2, 5) * Math.max(0.5, g.settings.hordeSize)), 1.2, 550, 1200);
         }
         if (this.mobT <= 0) {
           this.mobT = rand(45, 75);
@@ -118,6 +155,61 @@ export class Director {
     }
   }
 
+  updateSpecials(dt) {
+    const g = this.game;
+    let hunters = 0;
+    for (const z of g.zombies) if (z.alive && z.type === 'hunter') hunters++;
+    // Relax slows the clock (a breather) rather than freezing it; a Tank on you pauses it.
+    if (hunters === 0 && !this.tankEngaged) this.specialT -= dt * (this.phase === 'relax' ? 0.5 : 1);
+    if (!this.hunterSeen && hunters === 0 && g.progress >= 0.22 && !this.tankEngaged) this.specialT = 0;
+    if (this.specialT <= 0) {
+      if (this.spawnHunterNow()) {
+        this.hunterSeen = true;
+        this.specialT = rand(25, 45);
+      } else this.specialT = 4;
+    }
+    if (!this.tankSpawned && g.progress >= this.tankAt && this.spawnTankNow()) this.tankSpawned = true;
+  }
+
+  spawnHunterNow(force = false) {
+    const spot = this.findSpawn(force ? 320 : 450, force ? 700 : 950) || (force ? this.findSpawn(200, 1400, 400) : null);
+    if (!spot) return false;
+    spawnHunter(this.game, spot.x, spot.y);
+    return true;
+  }
+
+  spawnTankNow(force = false) {
+    if (this.tankAlive) return false;
+    const spot = this.findSpawn(force ? 380 : 500, force ? 800 : 950) || (force ? this.findSpawn(250, 1500, 400) : null);
+    if (!spot) return false;
+    this.tank = spawnTank(this.game, spot.x, spot.y);
+    if (this.phase === 'relax' || this.phase === 'peak') this.phase = 'build';
+    return true;
+  }
+
+  onTankDeath() {
+    // Breather after the boss.
+    this.phase = 'relax';
+    this.phaseT = rand(16, 24);
+    this.intensity = Math.min(this.intensity, 0.6);
+    this.mobT = Math.max(this.mobT, rand(20, 35));
+  }
+
+  /** Tuning panel: spawn now (also starts the director if still in the safe room). */
+  forceHunter() {
+    if (this.phase === 'calm') this.phase = 'build';
+    const ok = this.spawnHunterNow(true);
+    if (ok) this.hunterSeen = true;
+    return ok;
+  }
+
+  forceTank() {
+    if (this.phase === 'calm') this.phase = 'build';
+    const ok = this.spawnTankNow(true);
+    if (ok) this.tankSpawned = true;
+    return ok;
+  }
+
   upkeep() {
     const g = this.game;
     const p = g.player;
@@ -125,7 +217,8 @@ export class Director {
     const view = g.viewRect(160);
     let idleNear = 0;
     let near = 0;
-    const crowded = g.zombies.length > MAX_ZOMBIES - 40;
+    const cap = this.cap;
+    const crowded = g.zombies.length > cap - 40;
     for (const z of g.zombies) {
       if (!z.alive) continue;
       const d = Math.hypot(z.x - p.x, z.y - p.y);
@@ -138,7 +231,7 @@ export class Director {
         }
         if (d < 1600) idleNear++;
       } else {
-        if (d > 2800 && !inView) {
+        if (d > 2800 && !inView && z.type !== 'tank') {
           z.alive = false;
           continue;
         }
@@ -147,7 +240,7 @@ export class Director {
     }
     this.threatNear = near;
     const target = Math.round(22 * S.wanderers);
-    if (idleNear < target && g.zombies.length < MAX_ZOMBIES - 30) {
+    if (idleNear < target && g.zombies.length < cap - 30) {
       const spot = this.findSpawn(700, 1700);
       if (spot) {
         const n = randInt(1, 3);
@@ -190,9 +283,36 @@ export class Director {
     }
   }
 
+  /**
+   * Queue n zombies from out-of-sight spots in a path-distance band. A normal
+   * mob comes from one spot; a big horde is split over up to MAX_SPOTS spots
+   * (several directions at once), and each stream lasts longer so it pours
+   * in instead of popping into existence. `fallback` = [minD, maxD, tries]
+   * for the first spot. Returns the first spot, or null.
+   */
+  queueHorde(n, over, minD, maxD, fallback = null) {
+    if (n <= 0) return null;
+    const want = Math.min(MAX_SPOTS, Math.ceil(n / PER_SPOT));
+    const spots = [];
+    for (let k = 0; k < want; k++) {
+      const s = this.findSpawn(minD, maxD) || (k === 0 && fallback ? this.findSpawn(...fallback) : null);
+      if (s) spots.push(s);
+      else if (k === 0) return null;
+    }
+    const each = n / spots.length;
+    const dur = over * Math.max(1, Math.sqrt(each / PER_SPOT));
+    let left = n;
+    for (let k = 0; k < spots.length; k++) {
+      const m = k === spots.length - 1 ? left : Math.round(each);
+      left -= m;
+      this.queueGroup(spots[k], m, dur);
+    }
+    return spots[0];
+  }
+
   spawnAt(x, y, alert) {
     const g = this.game;
-    if (g.zombies.length >= MAX_ZOMBIES) return null;
+    if (g.zombies.length >= this.cap) return null;
     let zx = x;
     let zy = y;
     for (let k = 0; k < 8; k++) {
@@ -212,9 +332,8 @@ export class Director {
   spawnMob(sizeMul = 1, label = 'HERE THEY COME!') {
     const g = this.game;
     const n = Math.round(rand(16, 24) * g.settings.hordeSize * sizeMul);
-    const spot = this.findSpawn(650, 1300) || this.findSpawn(420, 1900, 300);
+    const spot = this.queueHorde(n, 2.8, 650, 1300, [420, 1900, 300]);
     if (!spot) return false;
-    this.queueGroup(spot, n, 2.8, true);
     g.audio.horde(spot.x, spot.y);
     if (label) g.announce(label, '#ff6b5a', 2.2);
     g.stats.hordes++;
@@ -227,8 +346,9 @@ export class Director {
     car.alarmOn = true;
     this.alarm = { car, t: 0, wave: 0 };
     if (this.phase === 'calm' || this.phase === 'relax') this.phase = 'build';
-    g.audio.alarm(car.x + car.w / 2, car.y + car.h / 2, 15);
-    g.announce('CAR ALARM!', '#ffb347', 2.5);
+    const fire = car.kind === 'alarmbox';
+    g.audio.alarm(car.x + car.w / 2, car.y + car.h / 2, 15, fire ? 'fire' : 'car');
+    g.announce(fire ? 'FIRE ALARM!' : 'CAR ALARM!', '#ffb347', 2.5);
     g.noise(car.x + car.w / 2, car.y + car.h / 2, 950);
   }
 

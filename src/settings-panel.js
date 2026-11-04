@@ -3,6 +3,21 @@
 
 import { SCHEMA, PRESETS, DEFAULTS, diffFromDefaults, saveSettings } from './settings.js';
 
+// Log-scale sliders (item.log): position 0..LOG_STEPS maps to min..max
+// exponentially; values snap to two significant digits (0.25, 1.0, 4.5, 12).
+const LOG_STEPS = 1000;
+
+export function fromLogPos(item, pos) {
+  const v = item.min * Math.pow(item.max / item.min, Math.min(1, Math.max(0, pos / LOG_STEPS)));
+  const q = Math.pow(10, Math.floor(Math.log10(v)) - 1);
+  return Math.min(item.max, Math.max(item.min, +(Math.round(v / q) * q).toFixed(6)));
+}
+
+export function toLogPos(item, v) {
+  const x = Math.min(item.max, Math.max(item.min, v));
+  return Math.round((Math.log(x / item.min) / Math.log(item.max / item.min)) * LOG_STEPS);
+}
+
 export class SettingsPanel {
   constructor(root, settings, actions) {
     this.root = root;
@@ -41,6 +56,8 @@ export class SettingsPanel {
       return b;
     };
     mk('Call horde now', () => this.actions.onCallHorde());
+    mk('Spawn Hunter', () => this.actions.onSpawnHunter());
+    mk('Spawn Tank', () => this.actions.onSpawnTank());
     mk('Restart run', () => this.actions.onRestart());
     mk('New map', () => this.actions.onNewMap());
     this.fsBtn = mk('Fullscreen', () => this.actions.onFullscreen());
@@ -105,11 +122,18 @@ export class SettingsPanel {
     if (item.type === 'range') {
       input = el('input');
       input.type = 'range';
-      input.min = item.min;
-      input.max = item.max;
-      input.step = item.step;
+      if (item.log) {
+        // The track is 0..LOG_STEPS; the value is exponential along it.
+        input.min = 0;
+        input.max = LOG_STEPS;
+        input.step = 1;
+      } else {
+        input.min = item.min;
+        input.max = item.max;
+        input.step = item.step;
+      }
       input.addEventListener('input', () => {
-        S[item.key] = parseFloat(input.value);
+        S[item.key] = item.log ? fromLogPos(item, parseFloat(input.value)) : parseFloat(input.value);
         val.textContent = item.fmt ? item.fmt(S[item.key]) : String(S[item.key]);
         saveSettings(S);
         this.actions.onChange(item.key);
@@ -147,7 +171,7 @@ export class SettingsPanel {
     const S = this.settings;
     for (const { item, input, val } of this.controls.values()) {
       if (item.type === 'range') {
-        input.value = S[item.key];
+        input.value = item.log ? toLogPos(item, S[item.key]) : S[item.key];
         val.textContent = item.fmt ? item.fmt(S[item.key]) : String(S[item.key]);
       } else if (item.type === 'select') {
         input.value = S[item.key];

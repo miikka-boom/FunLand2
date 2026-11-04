@@ -4,6 +4,8 @@
 const STORAGE_KEY = 'funland2.p0.tuning.v1';
 
 export const DEFAULTS = Object.freeze({
+  level: 'city', // 'city' (streets) | 'interior' (building floor)
+
   // --- Sticks -------------------------------------------------------------
   moveMode: 'dynamic', // 'dynamic' (base follows thumb) | 'floating' | 'fixed'
   aimMode: 'dynamic',
@@ -46,6 +48,13 @@ export const DEFAULTS = Object.freeze({
   hordeSize: 1.0,
   wanderers: 1.0,
 
+  // --- Special infected ---------------------------------------------------
+  specials: true, // Hunter + Tank
+  hunterBreakTaps: 5, // taps to break a Hunter pin
+  deadstopWindow: 0.18, // seconds a shove stays live for knocking a pouncing Hunter down
+  tankHealth: 1.0,
+  tankSpeed: 1.0, // 1.0 = 182 u/s, just under your run speed: kite it, don't stop
+
   // --- Presentation -------------------------------------------------------
   night: true,
   darkness: 0.8,
@@ -64,6 +73,7 @@ const pct = (v) => `${Math.round(v * 100)}%`;
 const secs = (v) => `${v.toFixed(2)}s`;
 const deg = (v) => `${Math.round(v)}°`;
 const mult = (v) => `×${v.toFixed(2)}`;
+const multBig = (v) => (v >= 10 ? `×${v.toFixed(0)}` : v >= 2 ? `×${v.toFixed(1)}` : `×${v.toFixed(2)}`);
 const MODE_OPTIONS = [
   ['dynamic', 'Dynamic – follows thumb'],
   ['floating', 'Floating – spawns at touch'],
@@ -72,6 +82,20 @@ const MODE_OPTIONS = [
 
 // Drives the tuning panel UI.
 export const SCHEMA = [
+  {
+    group: 'Level',
+    items: [
+      {
+        key: 'level',
+        label: 'Level (restarts the run)',
+        type: 'select',
+        options: [
+          ['city', 'Streets – night city'],
+          ['interior', 'Building – interior floor'],
+        ],
+      },
+    ],
+  },
   {
     group: 'Sticks',
     items: [
@@ -126,10 +150,21 @@ export const SCHEMA = [
   {
     group: 'Horde',
     items: [
-      { key: 'zombieSpeed', label: 'Zombie speed', type: 'range', min: 0.4, max: 1.6, step: 0.05, fmt: mult },
-      { key: 'zombieDamage', label: 'Zombie damage', type: 'range', min: 0, max: 3, step: 0.1, fmt: mult },
-      { key: 'hordeSize', label: 'Horde size', type: 'range', min: 0.25, max: 3, step: 0.05, fmt: mult },
-      { key: 'wanderers', label: 'Wanderer density', type: 'range', min: 0, max: 3, step: 0.1, fmt: mult },
+      { key: 'zombieSpeed', label: 'Zombie speed', type: 'range', min: 0.4, max: 2.5, step: 0.05, fmt: mult },
+      { key: 'zombieDamage', label: 'Zombie damage', type: 'range', min: 0, max: 5, step: 0.1, fmt: mult },
+      // Log slider: fine control around x1, and still reaches massive hordes.
+      { key: 'hordeSize', label: 'Horde size', type: 'range', min: 0.25, max: 25, log: true, fmt: multBig },
+      { key: 'wanderers', label: 'Wanderer density', type: 'range', min: 0, max: 10, step: 0.1, fmt: multBig },
+    ],
+  },
+  {
+    group: 'Specials',
+    items: [
+      { key: 'specials', label: 'Hunter + Tank', type: 'toggle' },
+      { key: 'hunterBreakTaps', label: 'Taps to break a Hunter pin', type: 'range', min: 2, max: 12, step: 1, fmt: (v) => `${v}` },
+      { key: 'deadstopWindow', label: 'Deadstop shove window', type: 'range', min: 0, max: 0.4, step: 0.01, fmt: secs },
+      { key: 'tankHealth', label: 'Tank health', type: 'range', min: 0.25, max: 3, step: 0.05, fmt: mult },
+      { key: 'tankSpeed', label: 'Tank speed', type: 'range', min: 0.6, max: 1.5, step: 0.05, fmt: mult },
     ],
   },
   {
