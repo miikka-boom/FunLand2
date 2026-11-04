@@ -7,6 +7,7 @@ import { Player, updatePlayer, shove, startReload, swapWeapon } from './player.j
 import { updateZombies, resolveCrowd, alertZombie, ZHASH_CELL } from './zombies.js';
 import { updateSpecials, updateRocks, releasePin } from './specials.js';
 import { Director } from './director.js';
+import { Ally, updateAlly, hurtAlly, allySpotNear } from './ally.js';
 import { Effects } from './effects.js';
 import { dampFactor, pointInRect, rand } from '../util.js';
 
@@ -22,7 +23,8 @@ export class Game {
   newRun(seed = this.settings.seed) {
     this.audio.alarmStop();
     this.audio.tankMusic(false);
-    const gen = this.settings.level === 'interior' ? generateBuilding : generateCity;
+    this.level = this.settings.level;
+    const gen = this.level === 'interior' ? generateBuilding : generateCity;
     let map = gen(seed);
     let world = new World(map);
     // Paranoia: if the goal were ever unreachable, step the seed.
@@ -67,9 +69,34 @@ export class Game {
     this.stats = {
       kills: 0, shots: 0, hits: 0, shoves: 0, damage: 0, hordes: 0, time: 0,
       hunters: 0, skeets: 0, deadstops: 0, pins: 0, breakFrees: 0, tanks: 0, rocksShot: 0,
+      allyKills: 0, allySaves: 0, allyDowns: 0, revives: 0,
     };
+    this.killCredit = null; // 'ally' while the teammate's bullets/shoves land
     this.world.flow.compute(this.player.x, this.player.y);
+    this.ally = null;
+    this.syncAlly();
     this.director.populate();
+  }
+
+  /** Spawn or remove the AI teammate to match the setting (a dead one stays dead until the next run). */
+  syncAlly() {
+    if (!this.settings.ally) {
+      this.ally = null;
+      return;
+    }
+    if (this.ally) {
+      if (this.ally.weapon.def.id !== this.settings.allyWeapon) this.ally.setWeapon(this.settings.allyWeapon);
+      return;
+    }
+    const p = this.player;
+    const spot = allySpotNear(this, p.x, p.y, p.facing) || { x: p.x, y: p.y };
+    this.ally = new Ally(spot.x, spot.y, this.settings.allyWeapon);
+    this.ally.facing = p.facing;
+    this.ally.aimAngle = p.facing;
+  }
+
+  hurtAlly(dmg, src, opts) {
+    hurtAlly(this, dmg, src, opts);
   }
 
   // --- Services used by entities -------------------------------------------
@@ -180,6 +207,7 @@ export class Game {
 
     if (!this.won && !this.lost) this.stats.time += dt;
     updatePlayer(this, dt, input);
+    updateAlly(this, dt);
 
     this.flowT -= dt;
     if (this.flowT <= 0) {

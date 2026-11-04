@@ -158,24 +158,45 @@ export class Audio {
 
   shot(kind) {
     if (!this._ok('shot', 0.02)) return;
+    this._shot(kind);
+  }
+
+  /** The teammate's gunfire: same guns, quieter and placed where it stands. */
+  allyShot(kind, x, y) {
+    if (!this._ok('allyShot', 0.035)) return;
+    const s = this._spatial(x, y, 1200);
+    if (s.gain < 0.02) return;
+    this._shot(kind, this._out(s.pan, s.gain * 0.55));
+  }
+
+  _shot(kind, out) {
     const r = 0.92 + Math.random() * 0.16;
     if (kind === 'shotgun') {
-      this._noise({ dur: 0.32, type: 'lowpass', freq: 2600, gain: 0.95, rate: r * 0.8 });
-      this._tone({ f0: 95, f1: 38, dur: 0.22, gain: 0.9 });
-      this._noise({ dur: 0.05, type: 'highpass', freq: 2500, gain: 0.12, at: 0.42 });
-      this._noise({ dur: 0.06, type: 'highpass', freq: 1800, gain: 0.14, at: 0.52 });
+      this._noise({ dur: 0.32, type: 'lowpass', freq: 2600, gain: 0.95, rate: r * 0.8, out });
+      this._tone({ f0: 95, f1: 38, dur: 0.22, gain: 0.9, out });
+      this._noise({ dur: 0.05, type: 'highpass', freq: 2500, gain: 0.12, at: 0.42, out });
+      this._noise({ dur: 0.06, type: 'highpass', freq: 1800, gain: 0.14, at: 0.52, out });
     } else if (kind === 'hunting') {
-      this._noise({ dur: 0.05, type: 'highpass', freq: 3000, gain: 0.5 });
-      this._noise({ dur: 0.24, type: 'bandpass', freq: 1300, q: 0.6, gain: 0.8, rate: r });
-      this._tone({ f0: 130, f1: 45, dur: 0.18, gain: 0.75 });
-      this._noise({ dur: 0.3, type: 'lowpass', freq: 700, gain: 0.18, at: 0.14 });
+      this._noise({ dur: 0.05, type: 'highpass', freq: 3000, gain: 0.5, out });
+      this._noise({ dur: 0.24, type: 'bandpass', freq: 1300, q: 0.6, gain: 0.8, rate: r, out });
+      this._tone({ f0: 130, f1: 45, dur: 0.18, gain: 0.75, out });
+      this._noise({ dur: 0.3, type: 'lowpass', freq: 700, gain: 0.18, at: 0.14, out });
     } else if (kind === 'rifle') {
-      this._noise({ dur: 0.12, type: 'bandpass', freq: 1500, q: 0.7, gain: 0.6, rate: r });
-      this._tone({ f0: 125, f1: 50, dur: 0.1, gain: 0.55 });
+      this._noise({ dur: 0.12, type: 'bandpass', freq: 1500, q: 0.7, gain: 0.6, rate: r, out });
+      this._tone({ f0: 125, f1: 50, dur: 0.1, gain: 0.55, out });
     } else {
-      this._noise({ dur: 0.085, type: 'bandpass', freq: 2000, q: 0.8, gain: 0.45, rate: r });
-      this._tone({ f0: 150, f1: 62, dur: 0.07, gain: 0.4 });
+      this._noise({ dur: 0.085, type: 'bandpass', freq: 2000, q: 0.8, gain: 0.45, rate: r, out });
+      this._tone({ f0: 150, f1: 62, dur: 0.07, gain: 0.4, out });
     }
+  }
+
+  /** The teammate goes down (or dies): a pained grunt where it is. */
+  allyDown(x, y) {
+    if (!this._ok('allyDown', 0.5)) return;
+    const s = this._spatial(x, y, 1600);
+    const out = this._out(s.pan, 0.35 + s.gain * 0.65);
+    this._tone({ type: 'sawtooth', f0: 210, f1: 120, dur: 0.45, gain: 0.22, attack: 0.02, out, filter: { freq: 900 } });
+    this._noise({ dur: 0.35, type: 'lowpass', freq: 500, gain: 0.3, out });
   }
 
   dryFire() {

@@ -7,6 +7,7 @@ import { Lighting } from './lighting.js';
 import { drawHud } from './hud.js';
 import { rrect, circle, hash01 } from './draw-utils.js';
 import { SKINS, SHIRTS } from '../game/zombies.js';
+import { ALLY } from '../game/ally.js';
 import { TAU, rectsOverlap, pointInRect } from '../util.js';
 
 const GROUND = {
@@ -36,6 +37,92 @@ const FLOORS = {
   restroom: { color: '#384042', grid: 20, alpha: 0.08 },
   closet: { color: '#302e2b' },
 };
+
+// Survivor looks: you (teal jacket) and the AI teammate (olive jacket).
+const PLAYER_LOOK = {
+  ring: 'rgba(120,230,255,0.35)',
+  arms: '#c99a78',
+  pack: '#3a3226',
+  body: '#2f8291',
+  hair: '#6b4a2e',
+  skin: '#d2a582',
+};
+const ALLY_LOOK = {
+  ring: 'rgba(140,255,160,0.45)',
+  arms: '#b78a66',
+  pack: '#2c3424',
+  body: '#78872f',
+  hair: '#2a1d14',
+  skin: '#c49270',
+};
+
+/** A standing survivor (you or the teammate): ring, arms, gun, pack, body, head. */
+function drawSurvivor(ctx, p, look) {
+  const f = p.facing;
+  const ca = Math.cos(f);
+  const sa = Math.sin(f);
+  const r = p.r;
+  const bob = Math.sin(p.walk) * 1.2;
+  const rec = p.recoil * 4;
+
+  // Ring so you never lose a survivor in a crowd.
+  ctx.strokeStyle = p.hurtT > 0 ? 'rgba(255,90,80,0.8)' : look.ring;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  circle(ctx, p.x, p.y, r + 5);
+  ctx.stroke();
+
+  const def = p.weapon.def;
+  const gunLen = def.id === 'hunting' ? 26 : def.id === 'shotgun' ? 22 : def.id === 'rifle' ? 22 : 16;
+  const gx = p.x + ca * (r * 0.4 - rec);
+  const gy = p.y + sa * (r * 0.4 - rec);
+  // Arms to the gun.
+  ctx.strokeStyle = look.arms;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(p.x - sa * r * 0.7, p.y + ca * r * 0.7);
+  ctx.lineTo(gx + ca * 8, gy + sa * 8);
+  ctx.moveTo(p.x + sa * r * 0.7, p.y - ca * r * 0.7);
+  ctx.lineTo(gx + ca * 3 + sa * 2, gy + sa * 3 - ca * 2);
+  ctx.stroke();
+  // Gun.
+  ctx.strokeStyle = '#15171a';
+  ctx.lineWidth = def.id === 'shotgun' ? 5 : 4;
+  ctx.beginPath();
+  ctx.moveTo(gx, gy);
+  ctx.lineTo(gx + ca * gunLen, gy + sa * gunLen);
+  ctx.stroke();
+  // Backpack + body + head.
+  ctx.fillStyle = look.pack;
+  ctx.beginPath();
+  ctx.ellipse(p.x - ca * r * 0.55, p.y - sa * r * 0.55 + bob * 0.2, r * 0.45, r * 0.62, f, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = p.hurtT > 0 ? '#9a3a36' : look.body;
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, r * 0.8, r, f, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = look.hair;
+  ctx.beginPath();
+  circle(ctx, p.x + ca * r * 0.1, p.y + sa * r * 0.1, r * 0.5);
+  ctx.fill();
+  ctx.fillStyle = look.skin;
+  ctx.beginPath();
+  circle(ctx, p.x + ca * r * 0.25, p.y + sa * r * 0.25, r * 0.3);
+  ctx.fill();
+}
+
+/** On the floor (pinned, or the teammate down). */
+function drawLying(ctx, p, body, skin) {
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, p.r * 1.25, p.r * 0.85, p.facing, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = skin;
+  ctx.beginPath();
+  circle(ctx, p.x + Math.cos(p.facing) * p.r * 1.1, p.y + Math.sin(p.facing) * p.r * 1.1, p.r * 0.42);
+  ctx.fill();
+}
 
 /** One splayed corpse arm (subpath only; the caller strokes). */
 function corpseArm(ctx, c, ca, sa) {
@@ -102,6 +189,7 @@ export class Renderer {
     this.drawCorpses(ctx, game, vr);
     this.drawGroundParticles(ctx, game, vr);
     this.drawZombies(ctx, game, vr);
+    this.drawAlly(ctx, game, vr);
     this.drawPlayer(ctx, game);
     const pin = game.player.pinnedBy;
     if (pin && pin.alive) this.drawHunter(ctx, pin, game.time);
@@ -999,14 +1087,7 @@ export class Renderer {
   drawPlayer(ctx, game) {
     const p = game.player;
     if (p.pinnedBy && p.alive) {
-      ctx.fillStyle = '#2f8291';
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y, p.r * 1.25, p.r * 0.85, p.facing, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = '#d2a582';
-      ctx.beginPath();
-      circle(ctx, p.x + Math.cos(p.facing) * p.r * 1.1, p.y + Math.sin(p.facing) * p.r * 1.1, p.r * 0.42);
-      ctx.fill();
+      drawLying(ctx, p, PLAYER_LOOK.body, PLAYER_LOOK.skin);
       return;
     }
     if (!p.alive && game.endT > 0.8) {
@@ -1016,58 +1097,25 @@ export class Renderer {
       ctx.fill();
       return;
     }
-    const f = p.facing;
-    const ca = Math.cos(f);
-    const sa = Math.sin(f);
-    const r = p.r;
-    const bob = Math.sin(p.walk) * 1.2;
-    const rec = p.recoil * 4;
+    drawSurvivor(ctx, p, PLAYER_LOOK);
+  }
 
-    // Survivor ring so you never lose yourself in a crowd.
-    ctx.strokeStyle = p.hurtT > 0 ? 'rgba(255,90,80,0.8)' : 'rgba(120,230,255,0.35)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    circle(ctx, p.x, p.y, r + 5);
-    ctx.stroke();
-
-    const def = p.weapon.def;
-    const gunLen = def.id === 'hunting' ? 26 : def.id === 'shotgun' ? 22 : def.id === 'rifle' ? 22 : 16;
-    const gx = p.x + ca * (r * 0.4 - rec);
-    const gy = p.y + sa * (r * 0.4 - rec);
-    // Arms to the gun.
-    ctx.strokeStyle = '#c99a78';
-    ctx.lineCap = 'round';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(p.x - sa * r * 0.7, p.y + ca * r * 0.7);
-    ctx.lineTo(gx + ca * 8, gy + sa * 8);
-    ctx.moveTo(p.x + sa * r * 0.7, p.y - ca * r * 0.7);
-    ctx.lineTo(gx + ca * 3 + sa * 2, gy + sa * 3 - ca * 2);
-    ctx.stroke();
-    // Gun.
-    ctx.strokeStyle = '#15171a';
-    ctx.lineWidth = def.id === 'shotgun' ? 5 : 4;
-    ctx.beginPath();
-    ctx.moveTo(gx, gy);
-    ctx.lineTo(gx + ca * gunLen, gy + sa * gunLen);
-    ctx.stroke();
-    // Backpack + body + head.
-    ctx.fillStyle = '#3a3226';
-    ctx.beginPath();
-    ctx.ellipse(p.x - ca * r * 0.55, p.y - sa * r * 0.55 + bob * 0.2, r * 0.45, r * 0.62, f, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = p.hurtT > 0 ? '#9a3a36' : '#2f8291';
-    ctx.beginPath();
-    ctx.ellipse(p.x, p.y, r * 0.8, r, f, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#6b4a2e';
-    ctx.beginPath();
-    circle(ctx, p.x + ca * r * 0.1, p.y + sa * r * 0.1, r * 0.5);
-    ctx.fill();
-    ctx.fillStyle = '#d2a582';
-    ctx.beginPath();
-    circle(ctx, p.x + ca * r * 0.25, p.y + sa * r * 0.25, r * 0.3);
-    ctx.fill();
+  /** The AI teammate: same build, olive jacket, green ring; lying when down. */
+  drawAlly(ctx, game, vr) {
+    const a = game.ally;
+    if (!a || !pointInRect(a.x, a.y, vr, 20)) return;
+    if (!a.alive) {
+      ctx.fillStyle = '#3d4422';
+      ctx.beginPath();
+      ctx.ellipse(a.x, a.y, a.r * 1.2, a.r * 0.8, a.facing, 0, TAU);
+      ctx.fill();
+      return;
+    }
+    if (a.down) {
+      drawLying(ctx, a, ALLY_LOOK.body, ALLY_LOOK.skin);
+      return;
+    }
+    drawSurvivor(ctx, a, ALLY_LOOK);
   }
 
   drawAirParticles(ctx, game, vr) {
@@ -1148,6 +1196,7 @@ export class Renderer {
     }
 
     this.drawSpecialTells(ctx, game, vr);
+    this.drawAllyTells(ctx, game, vr);
 
     ctx.globalCompositeOperation = 'lighter';
     // Tracers.
@@ -1275,6 +1324,34 @@ export class Renderer {
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(a.x, a.y, a.reach * (1.05 - k * 0.2), a.ang - 1.0, a.ang + 1.0);
+      ctx.stroke();
+    }
+  }
+
+  /** The teammate down: a pulsing ring you can find in the dark, and the revive progress. */
+  drawAllyTells(ctx, game, vr) {
+    const a = game.ally;
+    if (!a || !a.alive || !a.down || !pointInRect(a.x, a.y, vr, 40)) return;
+    const t = game.time;
+    const pulse = 0.55 + Math.sin(t * 6) * 0.25;
+    ctx.strokeStyle = `rgba(255,90,70,${pulse})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    circle(ctx, a.x, a.y, a.r + 9 + Math.sin(t * 6) * 2);
+    ctx.stroke();
+    // Revive radius (where to stand) + progress arc.
+    ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = 'rgba(140,255,160,0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    circle(ctx, a.x, a.y, ALLY.reviveRange);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (a.revive > 0) {
+      ctx.strokeStyle = 'rgba(140,255,160,0.95)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, a.r + 16, -Math.PI / 2, -Math.PI / 2 + a.revive * TAU);
       ctx.stroke();
     }
   }

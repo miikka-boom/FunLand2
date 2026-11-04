@@ -16,6 +16,17 @@ and no dependencies.
   opens every feel parameter: stick modes and size, dead zones, fire ring, aim
   assist, smoothing, camera, speed, horde size and so on. There are presets
   for A/B testing, and **Copy tuning JSON** copies only what you changed.
+  Every setting you've changed gets a dot and its own **Default** button, and
+  **Reset all to defaults** is at the bottom.
+- **An AI teammate**: a bot survivor (olive jacket, green ring) runs with you.
+  It follows a step behind and shoots what threatens you first: a Tank's rock,
+  a Hunter on you or about to pounce, then zombies on you. It shoves zombies off
+  itself, shoves a Hunter off you, keeps its distance from the Tank and heals
+  itself once. Zombies go for whichever of you is nearer. At 0 HP it goes
+  **down** instead of dying and keeps shooting from the floor while it bleeds
+  out (45 s). Stand next to it without shooting for 3 s to revive it. It never
+  shoots through you and never sets off alarms. You can turn it off, or change
+  its gun and accuracy, under **Teammate** in the tuning panel.
 - **Two levels**, picked on the title card or in the tuning panel:
   - **Streets:** a run across a dark city, from a safe room (bottom left) to
     the green safe room across town.
@@ -151,7 +162,7 @@ src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
 src/world/                 seeded city + building generators, collision, ray casts, flow field
-src/game/                  player, weapons, zombies, director, effects, game state
+src/game/                  player, AI teammate, weapons, zombies, director, effects, game state
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)

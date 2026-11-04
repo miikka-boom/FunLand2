@@ -51,6 +51,15 @@ export class Lighting {
         this.cone(ctx, p.x, p.y, f, 0.4, 470, 0.6);
         this.cone(ctx, p.x, p.y, f, 0.24, 500, 0.55);
       }
+      // The teammate carries a light too (dimmer); down, just a glow.
+      const a = game.ally;
+      if (a && a.alive && pointInRect(a.x, a.y, vr, 520)) {
+        this.radial(ctx, a.x, a.y, a.down ? 70 : 85, 0.75);
+        if (!a.down) {
+          this.cone(ctx, a.x, a.y, a.facing, 0.42, 380, 0.55);
+          this.cone(ctx, a.x, a.y, a.facing, 0.24, 420, 0.45);
+        }
+      }
       for (const l of map.lamps) {
         if (!pointInRect(l.x, l.y, vr, 170)) continue;
         if (l.broken && Math.sin(t * 13 + l.x) <= 0.6) continue;

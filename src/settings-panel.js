@@ -13,6 +13,12 @@ export function fromLogPos(item, pos) {
   return Math.min(item.max, Math.max(item.min, +(Math.round(v / q) * q).toFixed(6)));
 }
 
+export function isDefault(S, key) {
+  const a = S[key];
+  const b = DEFAULTS[key];
+  return typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) < 1e-9 : a === b;
+}
+
 export function toLogPos(item, v) {
   const x = Math.min(item.max, Math.max(item.min, v));
   return Math.round((Math.log(x / item.min) / Math.log(item.max / item.min)) * LOG_STEPS);
@@ -90,7 +96,7 @@ export class SettingsPanel {
     const foot = el('div', 'panel-row foot');
     const copy = el('button', 'btn', 'Copy tuning JSON');
     copy.addEventListener('click', () => this._copy());
-    const reset = el('button', 'btn danger', 'Reset to defaults');
+    const reset = el('button', 'btn danger', 'Reset all to defaults');
     reset.addEventListener('click', () => {
       const seed = S.seed;
       Object.assign(S, DEFAULTS, { seed });
@@ -115,8 +121,10 @@ export class SettingsPanel {
 
   _control(item, el) {
     const S = this.settings;
-    const row = el('label', 'ctl');
-    const name = el('span', 'ctl-name', item.label);
+    const row = el('div', 'ctl');
+    const id = `ctl-${item.key}`;
+    const name = el('label', 'ctl-name', item.label);
+    name.htmlFor = id;
     const val = el('span', 'ctl-val');
     let input;
     if (item.type === 'range') {
@@ -134,7 +142,7 @@ export class SettingsPanel {
       }
       input.addEventListener('input', () => {
         S[item.key] = item.log ? fromLogPos(item, parseFloat(input.value)) : parseFloat(input.value);
-        val.textContent = item.fmt ? item.fmt(S[item.key]) : String(S[item.key]);
+        this._show(item.key);
         saveSettings(S);
         this.actions.onChange(item.key);
       });
@@ -147,6 +155,7 @@ export class SettingsPanel {
       }
       input.addEventListener('change', () => {
         S[item.key] = input.value;
+        this._show(item.key);
         saveSettings(S);
         this.actions.onChange(item.key);
       });
@@ -156,31 +165,57 @@ export class SettingsPanel {
       input.className = 'switch';
       input.addEventListener('change', () => {
         S[item.key] = input.checked;
+        this._show(item.key);
         saveSettings(S);
         this.actions.onChange(item.key);
       });
     }
-    const top = el('span', 'ctl-top');
-    top.append(name, val);
+    input.id = id;
+    // Per-setting reset: shown (and the name marked) only while the value
+    // differs from the default. It keeps its space when hidden, so a slider
+    // never jumps under your thumb as you drag off the default.
+    const reset = el('button', 'ctl-reset', 'Default');
+    reset.type = 'button';
+    reset.title = `Reset ${item.label} to default`;
+    reset.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (isDefault(S, item.key)) return;
+      S[item.key] = DEFAULTS[item.key];
+      this._show(item.key, true);
+      saveSettings(S);
+      this.actions.onChange(item.key);
+      this._flash(`${item.label}: default`);
+    });
+    const side = el('span', 'ctl-side');
+    side.append(val, reset);
+    const top = el('div', 'ctl-top');
+    top.append(name, side);
     row.append(top, input);
-    this.controls.set(item.key, { item, input, val });
+    this.controls.set(item.key, { item, input, val, row });
     return row;
   }
 
-  sync() {
+  /** Refresh one control's value label and changed state (and the input itself if asked). */
+  _show(key, setInput = false) {
+    const c = this.controls.get(key);
+    if (!c) return;
     const S = this.settings;
-    for (const { item, input, val } of this.controls.values()) {
-      if (item.type === 'range') {
-        input.value = item.log ? toLogPos(item, S[item.key]) : S[item.key];
-        val.textContent = item.fmt ? item.fmt(S[item.key]) : String(S[item.key]);
-      } else if (item.type === 'select') {
-        input.value = S[item.key];
-        val.textContent = '';
-      } else {
-        input.checked = !!S[item.key];
-        val.textContent = '';
-      }
+    const { item, input, val, row } = c;
+    if (item.type === 'range') {
+      if (setInput) input.value = item.log ? toLogPos(item, S[key]) : S[key];
+      val.textContent = item.fmt ? item.fmt(S[key]) : String(S[key]);
+    } else if (item.type === 'select') {
+      if (setInput) input.value = S[key];
+      val.textContent = '';
+    } else {
+      if (setInput) input.checked = !!S[key];
+      val.textContent = '';
     }
+    row.classList.toggle('changed', !isDefault(S, key));
+  }
+
+  sync() {
+    for (const key of this.controls.keys()) this._show(key, true);
     if (this.fsBtn) this.fsBtn.style.display = document.documentElement.requestFullscreen ? '' : 'none';
   }
 
