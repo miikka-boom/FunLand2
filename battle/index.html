@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#8fcbe8">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Wobble War">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <title>Wobble War · FunLand2 Prototype 1</title>
+  <link rel="stylesheet" href="style.css">
+  <script>
+    (function () {
+      var d = document.documentElement;
+      if ('ontouchstart' in window || navigator.maxTouchPoints > 0) d.classList.add('is-touch');
+      // Phones have no console: surface the first error on screen.
+      function show(msg) {
+        var el = document.getElementById('boot-error');
+        if (!el || el.dataset.shown) return;
+        el.dataset.shown = '1';
+        el.textContent = msg;
+        el.style.display = 'block';
+      }
+      window.addEventListener('error', function (e) { show('Error: ' + (e.message || e) + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+      window.addEventListener('unhandledrejection', function (e) { show('Error: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)); });
+      setTimeout(function () {
+        if (!d.classList.contains('booted')) {
+          show(location.protocol === 'file:'
+            ? 'The game did not start: browsers block ES modules on file://. Serve the folder instead, e.g. "python3 -m http.server", or use the GitHub Pages URL.'
+            : 'The game did not start. Try a hard refresh.');
+        }
+      }, 4000);
+    })();
+  </script>
+</head>
+<body>
+  <canvas id="game" aria-label="Battlefield"></canvas>
+
+  <div id="hud" class="hud" aria-live="polite">
+    <div class="hud-top">
+      <div class="team-bar blue">
+        <span class="tag">BLUE</span>
+        <div class="bar"><i id="bar-blue"></i></div>
+        <b class="count" id="count-blue">0</b>
+      </div>
+      <div class="round">
+        <span class="dash"></span>
+        <div class="badge" id="round-badge">ROUND 1</div>
+        <span class="dash"></span>
+      </div>
+      <div class="team-bar red">
+        <b class="count" id="count-red">0</b>
+        <div class="bar"><i id="bar-red"></i></div>
+        <span class="tag">RED</span>
+      </div>
+    </div>
+    <div class="hud-sub" id="hud-sub"></div>
+  </div>
+
+  <div class="corner-btns">
+    <button id="mute-btn" class="icon-btn" type="button" title="Sound (M)" aria-label="Toggle sound">🔊</button>
+    <button id="menu-btn" class="icon-btn" type="button" title="Menu (Esc)" aria-label="Menu">≡</button>
+  </div>
+
+  <div id="dock" class="dock">
+    <div class="cards" id="cards"></div>
+    <div class="dock-actions">
+      <button id="reframe" class="tool hidden" type="button" title="Show the whole field (F)" aria-label="Show the whole field">🎥<span>Reframe</span></button>
+      <button id="erase" class="tool" type="button" title="Remove units (E)" aria-label="Remove units">✖<span>Remove</span></button>
+      <button id="clear" class="tool" type="button" title="Clear your side" aria-label="Clear">⟲<span>Clear</span></button>
+      <button id="fight" class="fight" type="button" title="Start the battle (Space)">FIGHT!</button>
+    </div>
+  </div>
+
+  <div id="battle-ctl" class="battle-ctl hidden">
+    <button id="slow" class="tool" type="button" title="Slow motion (S)">🐢<span>Slow-mo</span></button>
+    <button id="cam" class="tool" type="button" title="Camera follows the fight (F)">🎥<span>Auto cam</span></button>
+    <button id="stop" class="tool" type="button" title="Back to placement (R)">⟲<span>Reset</span></button>
+  </div>
+
+  <div id="result" class="result hidden">
+    <div class="ribbon" id="result-title">VICTORY!</div>
+    <p id="result-sub"></p>
+    <div class="row">
+      <button id="retry" class="btn" type="button">Retry</button>
+      <button id="edit" class="btn" type="button">Change army</button>
+      <button id="next" class="btn primary" type="button">Next round ▸</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <div id="title" class="overlay">
+    <div class="card">
+      <div class="kicker">FUNLAND2 · PROTOTYPE 1</div>
+      <h1>WOBBLE <span>WAR</span></h1>
+      <p class="sub">A wobbly 2D battle simulator. Place your beans (and bricks, spikes and bombs), press FIGHT, enjoy the bonks.</p>
+      <div class="modes">
+        <button id="resume" class="btn primary big hidden" type="button">Resume<small>Back to the battle (Esc)</small></button>
+        <button id="play-campaign" class="btn primary big" type="button">Campaign<small id="campaign-progress">Round 1 of 6</small></button>
+        <button id="play-sandbox" class="btn big" type="button">Sandbox<small>Place both armies</small></button>
+      </div>
+      <div id="round-picker" class="round-picker hidden">
+        <button id="round-prev" class="icon-btn" type="button" aria-label="Previous round">◀</button>
+        <span>Pick a round</span>
+        <button id="round-next" class="icon-btn" type="button" aria-label="Next round">▶</button>
+      </div>
+      <div class="howto">
+        <div><b>Place</b><span>Pick a unit below, then tap your side of the field.</span></div>
+        <div><b>Fight</b><span>Press FIGHT! The beans do the rest.</span></div>
+        <div><b>Grab</b><span>Drag a bean to pick it up and fling it around.</span></div>
+        <div><b>Watch</b><span>Drag to pan, pinch or scroll to zoom, 🐢 for slow-mo.</span></div>
+      </div>
+      <p class="hint desktop-only">Keys: 1–6 pick unit · E remove · Space fight · S slow-mo · F auto cam · R reset · M mute · Esc menu</p>
+      <p class="hint"><a href="../">← Prototype 0: HORDE</a></p>
+    </div>
+  </div>
+
+  <div id="rotate">Turn your phone sideways for a bigger battlefield</div>
+  <div id="boot-error"></div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

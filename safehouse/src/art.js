@@ -1,5 +1,5 @@
 // Room illustrations for the Safehouse base view, a building cross-section of
-// eight rooms. Each room is one SVG (viewBox 200x120, sliced to fill its
+// four rooms. Each room is one SVG (viewBox 200x120, sliced to fill its
 // card). The top ~20 units sit under the UI's label strip and the bottom ~22
 // under its status bar, so those bands stay calm (ceiling, wall, floor) and the
 // props live in the middle band. Level 0 is the bare, unbuilt room; levels 1-2,
@@ -37,7 +37,6 @@ const P = (d, fill, ex = '') => `<path d="${d}" fill="${fill}"${ex}/>`;
 const C = (cx, cy, r, fill, ex = '') => `<circle cx="${n1(cx)}" cy="${n1(cy)}" r="${n1(r)}" fill="${fill}"${ex}/>`;
 const E = (cx, cy, rx, ry, fill, ex = '') => `<ellipse cx="${n1(cx)}" cy="${n1(cy)}" rx="${n1(rx)}" ry="${n1(ry)}" fill="${fill}"${ex}/>`;
 const S = (d, color, w = 1.6, ex = '') => `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}"${ex}/>`;
-const OS = (d, color, w) => S(d, L, w + 2.6) + S(d, color, w);
 const T = (x, y, inner, ex = '') => `<g transform="translate(${n1(x)} ${n1(y)})"${ex}>${inner}</g>`;
 const U = (id, fb = 'none') => `url(#sh-${id}) ${fb}`;
 // Light / dark detail strokes; the alpha goes into a 4-digit hex colour.
@@ -128,45 +127,8 @@ function plank(x1, y1, x2, y2, w = 8, fill = '#9a6a3e', grain = true) {
   );
 }
 
-/** Rows of sandbags, [[x, y, count], ...], as two colour groups and one seam path. */
-function sandbags(rows, w = 15, h = 8) {
-  let a = '';
-  let b = '';
-  let seam = '';
-  let k = 0;
-  for (const [x, y, n] of rows) {
-    for (let i = 0; i < n; i++, k++) {
-      const bx = n1(x + i * (w - 1));
-      const r = `<rect x="${bx}" y="${y}" width="${w}" height="${h}" rx="3.6"/>`;
-      if (k % 2) b += r;
-      else a += r;
-      seam += `M${n1(bx + 3)} ${n1(y + h / 2)}h${w - 6}`;
-    }
-  }
-  return `<g fill="#bba676">${a}</g>` + (b ? `<g fill="#a8925f">${b}</g>` : '') + DK(seam, 0.8, 0.2);
-}
-
 function crate(x, y, w, h, fill = '#9a6a3e') {
   return R(x, y, w, h, fill, 1) + DK(`M${x + 2} ${n1(y + h / 2)}h${w - 4}M${x + 2.5} ${y + 2.5}L${x + w - 2.5} ${y + h - 2.5}`, 1.2, 0.3);
-}
-
-function jerry(x, y = 94) {
-  return T(
-    x,
-    y,
-    P('M1.6-14.9v-2.4c0-.5.4-.9.9-.9h4.4c.5 0 .9.4.9.9v2.4', 'none', ' stroke-width="1.4"') +
-      P('M0 0v-13.5c0-.8.6-1.4 1.4-1.4H9l3.2 3.2V0z', '#c9432e') +
-      S('M2.6-11l7 8.8M9.6-11l-7 8.8', '#8e2c1f', 1.2) +
-      P('M9.2-14.9l1.4-2.6h2l-.4 3.2z', K.hazard, ' stroke-width="1.1"'),
-  );
-}
-
-function ammoCan(x, y, w = 18, h = 11) {
-  return R(x, y, w, h, K.olive, 1.2) + R(x + 3, y + 3.6, w - 6, 3, K.hazard, W1) + S(`M${x + 5} ${y}v-2h${w - 10}v2`, L, 1.4);
-}
-
-function tyre(x, y, r = 7) {
-  return C(x, y, r, '#24272c') + C(x, y, r * 0.45, K.steelD, ' stroke-width="1.2"');
 }
 
 const SPECKS = [[30, 40], [62, 58], [88, 34], [118, 64], [140, 42], [166, 70], [52, 80], [176, 36], [104, 50]];
@@ -186,121 +148,7 @@ function bare(bulbX = 100) {
 
 // --- Barricade: the front entrance ------------------------------------------------------------
 
-function street(lv) {
-  const zx = lv === 0 ? 112 : 120;
-  const zombie =
-    lv > 2
-      ? ''
-      : T(
-          zx,
-          0,
-          P('M-2.6 75c-.2-1.3.6-2.2 1.9-2.3h2.4c1.3 0 2.1.9 2.2 2.1l.6 7.6 1.6 9.4H3.6L1.6 84.6.2 91.8h-2.6l.9-9.3zM-2 75.6l-8.4 1-.2 1.8 8.8.6zM-1.6 79l-7.6 2.2.2 1.6 7.6-1z', '#0a0e16', NS) +
-            C(0, 70, 3.4, '#0a0e16', NS) +
-            dots([[-1.6, 69.6], [0.8, 69.6]], '#c9e36a', 1.1),
-        );
-  const sky = R(69, 27, 62, 68, U('sky', '#16203a'), NS);
-  if (lv >= 3) return sky + P('M69 60v-8h11v6h9v-9h12v8h8v-6h12v9z', '#0c111d', NS);
-  return (
-    sky +
-    dots([[76, 33], [98, 31], [124, 37], [104, 40]], '#cfd8ff', 1.3, ' stroke-opacity=".7"') +
-    C(116, 39, 5, '#e9e4d0', NS) +
-    C(118.6, 37.6, 4.4, '#16203a', NS) +
-    P('M69 82V62h6v-6h10v8h5V52h11v12h6v-5h9v8h6v-9h9v24z', '#0c111d', NS) +
-    dots([[94, 57], [115, 64], [76, 66]], '#ffcf7a', 2, ' stroke-linecap="square" stroke-opacity=".55"') +
-    R(69, 82, 62, 13, '#171b23', NS) +
-    glow(88, 54, 12) +
-    S('M82 95V56c0-2 1-3 3-3h4', '#202838', 2) +
-    dots([[89.6, 54.4]], '#ffe9b0', 3.2) +
-    zombie
-  );
-}
-
-function barbedWire(x0, x1, y) {
-  let d = `M${x0 - 4} ${y}`;
-  for (let x = x0; x < x1; x += 5) d += 'a4.4 3.4 0 1 0 8.8 0a4.4 3.4 0 1 0-8.8 0m5 0';
-  return S(d, '#b8c2cb', 0.8) + S(`M${x0 - 4} ${y}H${x1}`, L, 1.6, ' stroke-dasharray=".1 4.4"');
-}
-
-function barricade(lv) {
-  let s = shell('#6b3f32', 'brick', '#3a302b', '#4a2a20', '#43271f');
-  s += R(63, 21, 74, 74, K.woodD, 1) + street(lv) + R(69, 27, 62, 68, 'none') + DK('M63 24h74', 1.4, 0.35);
-  if (lv === 0) {
-    s += `<g transform="rotate(9 140 95)">` + R(140, 34, 24, 61, '#7a5233', 1) + `<path d="M144 40h16v20h-16zM144 66h16v22h-16z" fill="none" stroke="#4f3320" stroke-width="1.2"/>` + C(143.6, 64, 1.3, '#c9a24f', W1) + `</g>`;
-    return s + plank(64, 50, 100, 64, 7, '#8a5a33') + bare(36);
-  }
-  const t = tier(lv);
-  // Spare planks leaning on the wall and a lantern above them.
-  s += plank(40, 94, 50, 56, 6, '#a0703f', false) + plank(48, 94, 56, 60, 6, '#8a5a33', false);
-  if (lv >= 2) s += glow(48, 44, 24) + S('M48 34v3', L, 1.2) + R(44.6, 37, 6.8, 9, '#ffd98a', 2) + S('M44.6 37h6.8M44.6 46h6.8', L, 1.6);
-  if (t === 1) {
-    if (lv >= 2) s += plank(63, 31, 137, 35, 8, '#a0703f');
-    s += plank(63, 42, 137, 49, 9) + plank(63, 63, 137, 54, 9, '#8a5a33') + plank(63, 74, 137, 80, 9, '#a0703f');
-    return s + sandbags(lv >= 2 ? [[70, 87, 4], [77, 80, 3]] : [[70, 87, 4]]);
-  }
-  // Sheet metal over the lower half, a steel plate with a peephole slot.
-  s += R(69, 50, 62, 45, '#7d8893') + S('M74 51v43M84 51v43M94 51v43M104 51v43M114 51v43M124 51v43', '#fff', 2, ' stroke-opacity=".16"');
-  s += R(80, 31, 40, 15, K.steelD, 1.5) + R(87, 36.6, 26, 3.6, '#07090d', 1.2) + R(87, 33, 10, 3, K.steel, 0.8, W1) + dots([[83, 34], [117, 34], [83, 43], [117, 43]], L, 1.8);
-  if (lv >= 4) s += R(69, 50, 62, 26, '#59636e') + HL('M71 52h58', 1, 0.2) + dots([74, 88, 102, 116, 126].flatMap((x) => [[x, 53], [x, 73]]), L, 1.8);
-  else s += P('M110 60c4-2 8 0 9 4-3 2-7 2-9-4z', '#a0583a', ' opacity=".7"' + NS) + plank(63, 54, 137, 82, 8) + plank(63, 82, 137, 54, 8, '#8a5a33');
-  s += sandbags([[36, 87, 2], [66, 87, 5], [138, 87, 2], [42, 79.6, 1], [73, 79.6, 4], [142, 79.6, 1]]);
-  if (lv >= 4) s += barbedWire(70, 132, 75.6);
-  if (lv >= 5) {
-    // Hazard-striped steel bar and a floodlight on the wall above the door.
-    s += R(61, 58, 78, 7, U('hazard', K.hazard), 1) + dots([[66, 61.5], [134, 61.5]], L, 2);
-    s += P('M98 94L127 37l11 5-6 52z', U('beam'), NS) + glow(132, 36, 28);
-    s += R(141, 22, 9, 4, K.steelD, 0.8) + S('M145 26l-4 6', K.steelD, 2.4) + `<g transform="rotate(-62 134 36)">` + R(127, 31, 14, 10, K.dark, 2) + R(125.6, 32.4, 3, 7.2, '#fff6d6', 1) + `</g>`;
-  }
-  return s;
-}
-
 // --- Generator: basement plant room ----------------------------------------------------------
-
-function generator(lv, { active }) {
-  let s = shell('#3a3f47', 'block', '#2a2e33', '#22262b', '#2a2e34');
-  s += R(0, 9, 200, 5, K.steelD, ' stroke-width="1.2"') + rects([[30, 7, 4, 9], [90, 7, 4, 9], [150, 7, 4, 9]], K.dark, W1);
-  s += E(98, 95, 50, 3.6, '#000', ' opacity=".35"' + NS);
-  if (lv === 0) return s + R(116, 14, 6, 12, K.steelD) + S('M116 26l2 2 2-2 2 2', L, 1) + E(92, 98, 16, 2.4, '#000', ' opacity=".4"' + NS) + bare(46);
-  const t = tier(lv);
-  const on = active ? K.safe : '#4a5058';
-  s += bulb(46, 30, active);
-  if (active) s += glow(98, 70, 62, 'lamp', ' opacity=".8"');
-  // Breaker panel with indicator lights.
-  s += R(146, 28, 24, 32, K.steel, 1.5) + DK('M158 30v28', 1, 0.3) + rects([[149, 40, 7, 4], [160, 40, 7, 4], [149, 47, 7, 4], [160, 47, 7, 4]], K.darker, W1) + P('M163 53.4l2.4 4.2h-4.8z', K.hazard, ' stroke-width=".8"');
-  if (active) s += glow(157, 34, 12, 'green', ' class="sh-pulse"');
-  s += dots([[151, 34], [157, 34], [163, 34]], L, 4.4) + dots(active ? [[151, 34], [157, 34], [163, 34]] : [[151, 34], [157, 34]], on, 2.8) + (active ? '' : dots([[163, 34]], '#7a2f2a', 2.8));
-  if (t === 1) {
-    // Small open-frame genset.
-    s += R(110, 26, 6, 32, K.steelD, ' stroke-width="1.4"') + P('M104 7h18l-3 14h-12z', '#4a515b') + R(108, 50, 14, 9, K.darker, 1.5);
-    s += R(72, 64, 26, 26, K.dark, 2) + DK('M75 70h20M75 75h20M75 80h20M75 85h20', 1.2, 0.35);
-    s += R(98, 66, 22, 24, '#4a515b', 3) + rects([[102, 70, 7, 5], [111, 70, 6, 5]], K.darker, W1) + C(106, 82, 2, active ? K.safe : '#7a2f2a', W1);
-    s += R(70, 50, 34, 12, '#d0452f', 5) + C(80, 50.4, 2, K.darker, W1) + HL('M74 54h24', 1.2, 0.4);
-    s += OS('M68 93V60c0-2.4 1.2-3.6 3.6-3.6h50.8c2.4 0 3.6 1.2 3.6 3.6v33M66 93h62', K.hazard, 3);
-  } else {
-    // Enclosed diesel genset on a skid.
-    s += R(118, 24, 7, 22, K.steelD, ' stroke-width="1.4"') + R(116.6, 22, 9.8, 3.4, K.dark, 1, ' stroke-width="1.2"') + P('M110 7h22l-4 13h-14z', '#4a515b');
-    s += R(52, 89, 92, 5, K.steelD, 1) + R(56, 44, 84, 46, K.olive, 3) + DK('M98 46v42M76 54h18M76 58h18M76 62h18M76 66h18', 1.3, 0.3);
-    s += R(58, 50, 12, 34, K.dark, 1) + DK('M60 56h8M60 62h8M60 68h8M60 74h8', 1.2, 0.4);
-    s += R(104, 52, 28, 20, K.darker, 1.5) + C(111, 59, 3.6, '#e9edf1', ' stroke-width="1.1"') + S('M111 59l2-2', L, 1) + R(118, 55, 10, 4, active ? '#ffcf7a' : '#4a4430', 0.6, W1);
-    s += dots([[121, 66], [126, 66]], L, 4) + dots([[121, 66]], on, 2.6) + dots([[126, 66]], active ? K.hazard : '#4a5058', 2.6);
-    s += P('M112 76l3.6 6.4h-7.2z', K.hazard, ' stroke-width=".9"') + HL('M58 46h80', 1.2, 0.25);
-    // Battery bank.
-    const ys = t === 3 ? [80, 62] : [80];
-    const bx = [142, 154, 166];
-    if (t === 3) s += R(140, 76, 40, 3, K.steelD);
-    s += rects(ys.flatMap((y) => bx.map((x) => [x, y, 10.4, 14])), K.darker) + rects(bx.map((x) => [x + 1.4, 84, 7.6, 2.4]), K.hazard, NS) + rects(bx.map((x) => [x + 1.6, 78, 2.4, 2.4]), K.med, ' stroke-width=".8"');
-    if (t === 3) {
-      s += R(16, 7, 6, 46, K.steelD, ' stroke-width="1.4"') + R(4, 52, 44, 38, '#4f5d33', 3) + R(2, 89, 48, 5, K.steelD, 1) + R(32, 58, 12, 10, K.darker, 1) + dots([[38, 63]], on, 3);
-    }
-  }
-  // Cable to the panel, fuel cans in front.
-  s += S(t === 1 ? 'M120 76c10 18 30 14 38-16' : 'M140 70c10 12 16 6 18-10', '#1b1e22', 2.6);
-  s += t === 3 ? jerry(30) + jerry(43) : jerry(34) + (lv >= 2 ? jerry(48) : '');
-  if (!active) return s + shade(0.28);
-  const top = t === 1 ? 26 : 22;
-  const px = t === 1 ? 113 : 121.5;
-  s += `<g fill="#c9ced4"${NS}>` + C(px - 6, top + 4, 3.8, '#c9ced4', ' class="sh-puff" opacity=".75"') + C(px + 7, top + 1, 4.8, '#c9ced4', ' class="sh-puff" opacity=".6"') + C(px, top - 2, 3.4, '#c9ced4', ' class="sh-puff" opacity=".5"') + `</g>`;
-  return s + S(t === 1 ? 'M64 70c-3 3-3 9 0 12M60 68c-4 4-4 12 0 16' : 'M52 58c-3 3-3 9 0 12M48 56c-4 4-4 12 0 16', '#e9edf1', 1, ' stroke-opacity=".45"');
-}
 
 // --- Barracks: dormitory -------------------------------------------------------------------------
 
@@ -442,64 +290,8 @@ function infirmary(lv, { active }) {
 
 // Guns in local coordinates (origin = left end, y 0 = top line). A missing gun
 // is its dark painted silhouette on the board, like a tool shadow board.
-function gun(kind, ghost) {
-  const f = (c) => (ghost ? '#3b2717' : c);
-  let s = '';
-  let d = '';
-  if (kind === 'smg') {
-    s += (ghost ? R(1, 2.4, 9, 8, f()) : OS('M9 3H1.5v7H9', K.steel, 1.8)) + R(8, 0, 23, 9, f(K.steelD), 1.5) + R(11, -2.4, 13, 2.6, f(K.dark), 0.6) + R(31, 2, 9, 5, f(K.dark), 1) + P('M19 9h5.5l.6 8h-5.5zM10.5 9H16l-1.4 8H9z', f(K.dark));
-    d = HL('M10 2.4h18', 1);
-  } else if (kind === 'shotgun') {
-    s += P('M0 3.5L17 1v8.6l-4.4 1L0 15z', f(K.wood)) + R(17, 0, 10, 8.6, f(K.steelD), 1) + R(27, 0.6, 35, 3, f('#6f7b87'), 1) + R(27, 3.6, 30, 2.8, f(K.dark), 1) + R(32, 2, 13, 6, f(K.woodL), 2);
-    d = DK('M36 3.6v3M39.4 3.6v3', 1, 0.4) + S('M19.5 8.6c0 3.2 2.2 4.2 5 4.2', L, 1.3) + HL('M2 4.4l13-2', 1);
-  } else if (kind === 'rifle') {
-    s += (ghost ? R(15, -3.4, 12, 3.4, f()) : OS('M15 0v-3.4h12V0', K.steelD, 1.2)) + P('M0 1h12v9H6.6L0 13.4z', f(K.dark)) + R(12, 0, 19, 9, f(K.steelD), 1) + R(31, 1, 14, 7, f(K.dark), 2) + R(45, 3, 9.5, 2.6, f('#6f7b87'), 0.8) + R(54, 2.2, 4.4, 4.2, f(K.dark), 0.8);
-    s += P('M20.5 9h6c.3 3 1.2 5.4 2.6 7.2l-4.4 2.2c-1.8-2.6-3.2-5.8-4.2-9.4z', f(K.darker)) + P('M14 9h5.4l-2 8h-4.8z', f(K.dark));
-    d = S('M43.5 1v-4.6', L, 1.8) + HL('M13.6 2.4h15', 1);
-  } else {
-    s += P('M0 4L15 2.4h27v6.4H20.4l-4.6 3-4 5.6L0 18z', f(K.wood)) + R(40, 2.6, 24, 2.8, f(K.steelD), 0.8) + R(18, 1.2, 12, 4.4, f(K.steelD), 1);
-    s += P('M15-5.6h4.6l2.2-1.6h11l2.2 1.6H40v5h-4.8l-2.2 1.4H22L19.6-.6H15z', f(K.darker));
-    d = rects([[21, -0.8, 2.4, 2.2], [31, -0.8, 2.4, 2.2]], L, NS) + C(26, 8.6, 1.8, K.steel, W1) + S('M23-5h9', '#8fd3ff', 1) + HL('M2 6l12-1.6', 1);
-  }
-  return ghost ? `<g stroke="none">${s}</g>` : s + d;
-}
 
 // [x, y, length] of each gun on the rack, in reading order: smg, shotgun / rifle, hunting.
-const GUN_SPOTS = {
-  smg: [44, 31, 40],
-  shotgun: [105, 32, 62],
-  rifle: [35, 55, 58],
-  hunting: [104, 56, 64],
-};
-
-function armory(lv, { weapons }) {
-  let s = shell('#3f4639', 'block', '#2b2e27', '#22251f', '#30362b');
-  s += R(0, 70, 200, 22, '#36402f', NS) + DK('M0 70h200', 1.4, 0.25);
-  if (lv === 0) return s + bare(100);
-  const t = tier(lv);
-  s += glow(100, 46, 80, 'lamp', ' opacity=".5"');
-  if (t >= 2) s += R(178, 30, 20, 62, '#5f6b5a', 1) + DK('M181 34h14M181 37h14M181 40h14', 1, 0.45) + S('M194 58v7', K.steelL, 1.6);
-  if (t === 3) s += C(14, 44, 11, '#efe9d8') + C(14, 44, 7, K.med, ' stroke-width="1.2"') + C(14, 44, 3, '#efe9d8', ' stroke-width="1.2"');
-  // The rack: a wooden board with two hooks under every gun.
-  s += R(26, 22, 148, 60, '#5e4029', 2);
-  const have = new Set(weapons);
-  const hooks = [];
-  for (const [kind, [x, y, len]] of Object.entries(GUN_SPOTS)) {
-    s += T(x, y, gun(kind, !have.has(kind)));
-    const hy = y + (kind === 'smg' ? 9.6 : 9.2);
-    hooks.push([x + len * 0.3, hy], [x + len * 0.72, hy]);
-  }
-  s += rects(hooks.map(([x, y]) => [x - 1.4, y, 2.8, 3.6]), K.steelL, ' stroke-width=".9"');
-  // Workbench with ammo.
-  s += rects([[30, 86, 5, 8], [165, 86, 5, 8]], K.woodD) + R(26, 82, 148, 5, K.woodL, 1);
-  s += ammoCan(30, 73, 18, 9) + (lv >= 2 ? ammoCan(152, 73, 18, 9) : '');
-  if (t === 3) {
-    // A vice holding a receiver being fitted with a scope.
-    s += rects([[80, 76, 10, 6], [78, 71, 4, 6], [88, 71, 4, 6]], '#4a6a8a') + R(70, 70.6, 20, 4.4, K.steelD, 1) + R(90, 71.6, 8, 2, '#6f7b87', 0.6) + R(74, 67.4, 9, 3.2, K.darker, 1);
-    s += `<g class="sh-spark">` + dots([[97, 67], [100, 64.6], [94.6, 64]], '#ffe08a', 1.8) + `</g>`;
-  }
-  return s;
-}
 
 // --- Radio room --------------------------------------------------------------------------------
 
@@ -545,102 +337,11 @@ function radio(lv, { alert }) {
 
 // --- Scrap Yard: the fenced lot out back -------------------------------------------------------
 
-const JUNK = [
-  // [u: across the heap, v: up the slope, kind, shown from this fill]
-  [-0.3, 0.3, 'sheet', 0],
-  [0.22, 0.35, 'rim', 0],
-  [0.02, 0.55, 'barrel', 0.2],
-  [-0.14, 0.75, 'pipe', 0.3],
-  [0.3, 0.6, 'rust', 0.45],
-  [-0.38, 0.5, 'tyre', 0.55],
-  [0.1, 0.88, 'door', 0.65],
-  [-0.05, 0.25, 'spring', 0.8],
-];
-
-function junk(kind, x, y, k) {
-  const g = (inner, rot = 0) => `<g transform="translate(${n1(x)} ${n1(y)}) rotate(${rot}) scale(${n1(k)})">${inner}</g>`;
-  switch (kind) {
-    case 'sheet':
-      return g(P('M-9-3l16-3 3 7-16 3z', K.steelL), -8);
-    case 'rim':
-      return g(C(0, 0, 6, K.steelD) + C(0, 0, 2.4, K.dark) + DK('M0-6v12M-6 0h12', 1, 0.4));
-    case 'barrel':
-      return g(R(-6, -8, 12, 15, '#a0583a', 2) + DK('M-6-3h12M-6 2h12', 1.2, 0.35), 14);
-    case 'pipe':
-      return g(R(-12, -2.4, 24, 4.8, K.steel, 2) + E(12, 0, 1.4, 2.4, K.darker, W1), -18);
-    case 'rust':
-      return g(P('M-8-4l14-2 2 8-14 3z', '#b0663a'), 10);
-    case 'tyre':
-      return g(tyre(0, 0, 6.4));
-    case 'door':
-      return g(R(-7, -6, 14, 11, '#4a6f8f', 1) + R(-5, -4, 5, 4, '#9fc4e8', 0.5, W1), -6);
-    default:
-      return g(S('M-6 0l2-3 2 3 2-3 2 3 2-3 2 3', K.steelL, 1.2), 20);
-  }
-}
-
-function heap(fill) {
-  const cx = 104;
-  const w = 34 + 66 * fill;
-  const h = 3 + 46 * fill;
-  const xs = [-0.5, -0.36, -0.2, -0.05, 0.1, 0.26, 0.4, 0.5];
-  const ys = [0, 0.4, 0.74, 0.97, 1, 0.78, 0.42, 0];
-  const pts = xs.map((u, i) => `${n1(cx + u * w)} ${n1(94 - ys[i] * h)}`);
-  let s = fill > 0.02 ? P(`M${pts.join('L')}z`, '#5a5f66') : '';
-  for (const [u, v, kind, min] of JUNK) {
-    if (fill < min) continue;
-    const top = 94 - (1 - 4 * u * u) * h;
-    s += fill < 0.05 ? junk(kind, cx + u * w * 1.3, 92, 0.6) : junk(kind, cx + u * w * 0.9, 94 - (94 - top) * v, 0.7 + 0.3 * fill);
-  }
-  return s;
-}
-
-function scrapyard(lv, { active, fill }) {
-  let s = `<g stroke="none">` + R(0, 0, 200, 120, U('sky', '#121a2b'));
-  s += dots([[14, 28], [72, 31], [128, 29], [58, 40], [96, 25], [150, 22]], '#dfe6ff', 1.5, ' stroke-opacity=".75"');
-  s += C(172, 34, 6, '#e9e4d0') + C(175, 32, 5.2, '#16203a');
-  s += P('M0 82V58h10v-8h14v12h8V46h16v20h10v-8h14v24h12V54h12v10h16v-6h14v16h10V48h12v14h14v-8h12v28z', '#0c111d');
-  s += R(0, 82, 200, 38, '#2a2620') + P('M0 100c40-6 80-4 120-8s60 0 80-4v32H0z', '#25211c') + `</g>`;
-  // Chain-link fence (broken before the yard is built).
-  const broken = lv === 0;
-  s += R(0, 44, 200, 38, U('mesh'), broken ? ' opacity=".55"' + NS : NS) + S(broken ? 'M0 44h90M120 46l80-2' : 'M0 44h200', K.steel, 1.4);
-  s += rects([8, 56, 152, 196].map((x) => [x - 1.5, 41, 3, 43]), K.steelD) + (broken ? `<g transform="rotate(14 104 84)">${R(102.5, 42, 3, 42, K.steelD)}</g>` : R(102.5, 41, 3, 43, K.steelD));
-  if (lv >= 2) s += S('M0 39.6h200', '#a9b4be', 0.8) + S('M2 39.6h200', '#a9b4be', 3.2, ' stroke-dasharray=".4 7.6" stroke-linecap="butt"');
-  // A wrecked car on blocks, tyres lying in front of it.
-  s += T(4, 0, P('M2 84V70l8-2 10-10h30l10 10 6 2v14z', '#7a4a32') + P('M22 60h12v8H14zM38 60h10l8 8H38zM9 84a6 6 0 0 1 12 0zM47 84a6 6 0 0 1 12 0z', '#141820') + DK('M36 70v12M24 62l6 5', 1.2, 0.35) + rects([[11, 84, 8, 4], [49, 84, 8, 4]], '#4a515b') + P('M44 72c3-1 6 1 7 4-3 1-6 0-7-4z', '#a0583a', NS));
-  s += E(68, 91, 9, 3.4, '#24272c') + E(68, 86.4, 9, 3.4, '#2b2f36') + E(68, 86.4, 3.6, 1.2, K.steelD, W1);
-  if (lv === 0) return s + heap(0) + P('M140 94l2-7 2 7M146 94l1-5 2 5M86 94l2-6 2 6', '#4f6a34', W1) + shade(0.2);
-  const t = tier(lv);
-  // Work lamp on a pole, behind the heap.
-  s += R(80, 30, 3, 64, K.steelD, 0.5) + `<g transform="rotate(28 86 30)">${R(78, 25, 16, 9, K.dark, 2)}${R(92.4, 26.4, 2.6, 6.4, active ? '#fff6d6' : '#59606a', 1)}</g>`;
-  if (active) s += P('M90 36L150 94H96z', U('beam'), NS) + glow(92, 34, 28, 'lamp', ' class="sh-flicker"');
-  if (t >= 2) {
-    // A small yard crane with an electromagnet.
-    s += R(184, 26, 6, 68, K.hazard) + R(134, 26, 56, 6, K.hazard) + S('M184 36l6 8M184 52l6 8M184 68l6 8M140 26l8 6 8-6 8 6 8-6 8 6', L, 1) + R(180, 90, 14, 4, K.steelD);
-    s += S('M138 32v14', '#1b1e22', 1.2) + E(138, 50, 10, 4.2, K.dark) + R(128, 50, 20, 3, U('hazard', K.hazard), W1);
-  }
-  if (t === 3) s += `<g transform="rotate(-20 150 92)">` + R(150, 84, 50, 6, K.darker, 3) + dots([[153, 87], [197, 87]], K.steelD, 3) + R(160, 80, 6, 4, K.steelL, ' stroke-width=".8"') + R(176, 80.6, 7, 3.4, '#b0663a', ' stroke-width=".8"') + `</g>` + S('M160 88v6M186 78v16', K.steelD, 2);
-  s += heap(fill);
-  // Hand cart.
-  s += T(t === 3 ? 18 : 140, 0, P('M0 74h26l-4 11H4z', '#3f74c4') + S('M24 76l12-4', K.dark, 2.2) + S('M8 85l-2 9M20 85l2 9', K.dark, 1.6) + tyre(14, 89, 5) + DK('M3 77h21', 1, 0.3) + P('M6 74l3-4 4 2 4-3 3 5z', K.steel, ' stroke-width="1.1"'));
-  return s;
-}
-
 // --- Boarded (locked) room ---------------------------------------------------------------------
-
-export function boardedArt() {
-  let s = shell('#2a2e34', 'block', '#1e2125', '#17191c', '#202328');
-  s += R(58, 20, 84, 75, '#34393f', 1.5) + R(64, 26, 72, 69, '#0a0c0f');
-  s += dots([[72, 40], [124, 34], [90, 70], [116, 82], [80, 58], [132, 62]], '#e9e4d6', 1.4, ' stroke-opacity=".25"');
-  s += web(64, 26);
-  s += plank(58, 34, 142, 56, 10, '#8a5a33') + plank(58, 62, 142, 40, 10, '#a0703f') + plank(58, 70, 142, 86, 9, '#7a5233') + plank(58, 88, 142, 70, 9, '#966638');
-  s += P('M64 95c6-5 14-6 22-3 6-2 12-1 16 3zM112 95c4-3 10-4 18-1l6 1z', '#4a4f56');
-  return svg(s);
-}
 
 // --- Public API -------------------------------------------------------------------------------
 
-const ROOMS = { barricade, generator, barracks, workshop, infirmary, armory, radio, scrapyard };
+const ROOMS = { barracks, workshop, infirmary, radio };
 
 /** One room illustration; opts: { level 0..5, active, fill 0..1, weapons, alert }. */
 export function roomArt(id, opts = {}) {

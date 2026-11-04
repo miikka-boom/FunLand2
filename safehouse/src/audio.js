@@ -1,6 +1,5 @@
-// UI sounds, synthesised with WebAudio (nothing to download), over a quiet
-// generator hum that grows with the power in use. unlock() must run from a
-// user gesture (iOS).
+// UI sounds, synthesised with WebAudio (nothing to download). unlock() must
+// run from a user gesture (iOS).
 
 export class Sfx {
   constructor() {
@@ -8,7 +7,6 @@ export class Sfx {
     this.master = null;
     this.volume = 0.7;
     this.last = new Map();
-    this.hum = null;
   }
 
   unlock() {
@@ -27,7 +25,6 @@ export class Sfx {
         this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
         const d = this.noise.getChannelData(0);
         for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-        this._startHum();
       }
       if (this.ctx.state === 'suspended') this.ctx.resume();
     } catch {
@@ -46,31 +43,6 @@ export class Sfx {
 
   resume() {
     if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
-  }
-
-  /** Generator hum: louder and a touch higher with more power in use (0..1). */
-  setLoad(f) {
-    if (!this.hum) return;
-    const t = this.ctx.currentTime;
-    this.hum.gain.gain.setTargetAtTime(f > 0 ? 0.012 + 0.02 * f : 0.004, t, 0.6);
-    this.hum.osc.frequency.setTargetAtTime(48 + 10 * f, t, 0.8);
-  }
-
-  _startHum() {
-    const c = this.ctx;
-    const osc = c.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.value = 48;
-    const f = c.createBiquadFilter();
-    f.type = 'lowpass';
-    f.frequency.value = 180;
-    const gain = c.createGain();
-    gain.gain.value = 0.004;
-    osc.connect(f);
-    f.connect(gain);
-    gain.connect(this.master);
-    osc.start();
-    this.hum = { osc, gain };
   }
 
   _ok(key, gap = 0.03) {
