@@ -6,8 +6,8 @@ import { DEG, clamp, rand, randSpread, rayCircle, smoothstep, wrapAngle } from '
 import { damageZombie, alertZombie } from './zombies.js';
 import { HUNTER, deadstop, struggle, damageRock } from './specials.js';
 
-const SHOVE_REACH = 52;
-const SHOVE_HALF_ANGLE = 65 * DEG;
+export const SHOVE_REACH = 52;
+export const SHOVE_HALF_ANGLE = 65 * DEG;
 
 export class Player {
   constructor(x, y) {
@@ -303,7 +303,13 @@ function fire(game, p) {
 
 const hitList = [];
 
-function hitscan(game, p, mx, my, ang, def) {
+/**
+ * One bullet from shooter p along ang: hits zombies/rocks (piercing per the
+ * weapon), draws the tracer, sparks off walls. Shots that stop on an alarm
+ * car / fire alarm set it off, unless alarms is false (the AI teammate never
+ * trips alarms).
+ */
+export function hitscan(game, p, mx, my, ang, def, alarms = true) {
   const world = game.world;
   const dx = Math.cos(ang);
   const dy = Math.sin(ang);
@@ -354,7 +360,7 @@ function hitscan(game, p, mx, my, ang, def) {
   if (!stopped && wall.obstacle) {
     // Spark off the surface, facing back toward the shooter.
     game.effects.sparks(x1 - dx * 2, y1 - dy * 2, -dx, -dy, def.pellets > 1 ? 2 : 4);
-    if (wall.obstacle.alarm) game.director.triggerAlarm(wall.obstacle);
+    if (alarms && wall.obstacle.alarm) game.director.triggerAlarm(wall.obstacle);
   }
   return n > 0;
 }

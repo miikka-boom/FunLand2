@@ -55,6 +55,11 @@ export const DEFAULTS = Object.freeze({
   tankHealth: 1.0,
   tankSpeed: 1.0, // 1.0 = 182 u/s, just under your run speed: kite it, don't stop
 
+  // --- AI teammate --------------------------------------------------------
+  ally: true, // a bot survivor that fights alongside you
+  allyWeapon: 'rifle', // smg | rifle | shotgun | hunting
+  allyAccuracy: 0.7, // aim error and reaction time: 0 = sloppy, 1 = sharp
+
   // --- Presentation -------------------------------------------------------
   night: true,
   darkness: 0.8,
@@ -165,6 +170,24 @@ export const SCHEMA = [
       { key: 'deadstopWindow', label: 'Deadstop shove window', type: 'range', min: 0, max: 0.4, step: 0.01, fmt: secs },
       { key: 'tankHealth', label: 'Tank health', type: 'range', min: 0.25, max: 3, step: 0.05, fmt: mult },
       { key: 'tankSpeed', label: 'Tank speed', type: 'range', min: 0.6, max: 1.5, step: 0.05, fmt: mult },
+    ],
+  },
+  {
+    group: 'Teammate',
+    items: [
+      { key: 'ally', label: 'AI teammate (bot)', type: 'toggle' },
+      {
+        key: 'allyWeapon',
+        label: 'Teammate weapon',
+        type: 'select',
+        options: [
+          ['smg', 'SMG'],
+          ['rifle', 'Assault rifle'],
+          ['shotgun', 'Pump shotgun'],
+          ['hunting', 'Hunting rifle'],
+        ],
+      },
+      { key: 'allyAccuracy', label: 'Teammate accuracy', type: 'range', min: 0, max: 1, step: 0.05, fmt: pct },
     ],
   },
   {

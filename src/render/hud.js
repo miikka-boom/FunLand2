@@ -3,6 +3,7 @@
 
 import { FONT, rrect, circle } from './draw-utils.js';
 import { TAU, clamp } from '../util.js';
+import { ALLY } from '../game/ally.js';
 
 let vignette = null;
 let vignetteKey = '';
@@ -36,6 +37,8 @@ export function drawHud(ctx, game, input, ui, renderer) {
   if (!game.won && !game.lost && !ui.title) drawObjective(ctx, game, L);
 
   drawHealth(ctx, game, L);
+  if (game.ally) drawAllyPanel(ctx, game, L);
+  if (game.ally && game.ally.alive && !ui.title) drawAllyMarker(ctx, game, L);
   drawWeapon(ctx, game, L, ui);
   drawStats(ctx, game, L);
   drawButtons(ctx, game, L, input.touch);
@@ -250,6 +253,102 @@ function drawHealth(ctx, game, L) {
   ctx.fillRect(bx, by, bw * clamp(f, 0, 1), 6);
 }
 
+/** Teammate status under your health: HP, DOWN (bleeding out) or DIED. */
+function drawAllyPanel(ctx, game, L) {
+  const a = game.ally;
+  const b = allyPanelRect(L);
+  panel(ctx, b.x, b.y, b.w, b.h);
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.font = `800 10px ${FONT}`;
+  const bx = b.x + 44;
+  const bw = b.w - 44 - 34;
+  const by = b.y + b.h / 2 - 3;
+  if (!a.alive) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillText('ALLY DIED', b.x + 10, b.y + b.h / 2);
+    return;
+  }
+  if (a.down) {
+    const pulse = 0.6 + Math.sin(game.time * 7) * 0.3;
+    ctx.fillStyle = `rgba(255,110,90,${pulse})`;
+    ctx.fillText('DOWN', b.x + 10, b.y + b.h / 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(bx, by, bw, 6);
+    ctx.fillStyle = '#e2574c';
+    ctx.fillRect(bx, by, bw * clamp(a.downHp / 100, 0, 1), 6);
+    if (a.revive > 0) {
+      ctx.fillStyle = '#8cffa0';
+      ctx.fillRect(bx, by, bw * clamp(a.revive, 0, 1), 6);
+    }
+    ctx.textAlign = 'right';
+    ctx.fillStyle = `rgba(255,140,120,${pulse})`;
+    ctx.fillText(a.revive > 0 ? `${Math.round(a.revive * 100)}%` : 'HELP', b.x + b.w - 8, b.y + b.h / 2);
+    return;
+  }
+  const f = clamp(a.hp / a.maxHp, 0, 1);
+  const col = a.healT > 0 ? '#8cffa0' : f > 0.6 ? '#5fd38a' : f > 0.3 ? '#e8c25a' : '#e2574c';
+  ctx.fillStyle = 'rgba(140,255,160,0.85)';
+  ctx.fillText('ALLY', b.x + 10, b.y + b.h / 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  ctx.fillRect(bx, by, bw, 6);
+  ctx.fillStyle = col;
+  ctx.fillRect(bx, by, bw * f, 6);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = col;
+  ctx.fillText(a.healT > 0 ? '+' : String(Math.ceil(a.hp)), b.x + b.w - 8, b.y + b.h / 2);
+}
+
+function allyPanelRect(L) {
+  return { x: L.hp.x, y: L.hp.y + L.hp.h + 6, w: L.hp.w, h: 22 };
+}
+
+/** Name tag over the teammate on screen; an edge arrow (red when it's down) when it's off screen. */
+function drawAllyMarker(ctx, game, L) {
+  const a = game.ally;
+  const v = game.view;
+  const cam = game.camera;
+  const sx = (a.x - cam.x - cam.shakeX) * v.scale + v.w / 2;
+  const sy = (a.y - cam.y - cam.shakeY) * v.scale + v.h / 2;
+  const pulse = 0.6 + Math.sin(game.time * 7) * 0.3;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (sx > 0 && sx < L.w && sy > 0 && sy < L.h) {
+    ctx.font = `800 10px ${FONT}`;
+    if (a.down) {
+      // Under the dashed revive circle (announcements sit above the centre).
+      const y = sy + ALLY.reviveRange * v.scale + 12;
+      ctx.fillStyle = `rgba(255,120,100,${pulse})`;
+      ctx.fillText(a.revive > 0 ? `REVIVING ${Math.round(a.revive * 100)}%` : 'DOWN — STAND HERE', sx, y);
+      return;
+    }
+    // Above its ring; a small health bar between the name and the ring when it's hurt.
+    const top = sy - (a.r + 5) * v.scale;
+    const hurt = a.hp < a.maxHp * 0.6;
+    const y = top - (hurt ? 16 : 10);
+    ctx.fillStyle = 'rgba(160,255,175,0.55)';
+    ctx.fillText('ALLY', sx, y);
+    if (hurt) {
+      const w = 26;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(sx - w / 2, top - 8, w, 3);
+      ctx.fillStyle = a.hp < 30 ? '#e2574c' : '#e8c25a';
+      ctx.fillRect(sx - w / 2, top - 8, w * clamp(a.hp / a.maxHp, 0, 1), 3);
+    }
+    return;
+  }
+  const p = game.player;
+  const px = (p.x - cam.x - cam.shakeX) * v.scale + v.w / 2;
+  const py = (p.y - cam.y - cam.shakeY) * v.scale + v.h / 2;
+  const ang = Math.atan2(sy - py, sx - px);
+  const e = edgePoint(L, px, py, ang, 30);
+  ctx.fillStyle = a.down ? `rgba(255,90,70,${pulse})` : 'rgba(140,255,160,0.75)';
+  chevron(ctx, e.x, e.y, ang, a.down ? 13 : 10);
+  ctx.font = `800 10px ${FONT}`;
+  const m = Math.round(Math.hypot(a.x - p.x, a.y - p.y) / 24);
+  ctx.fillText(a.down ? `ALLY DOWN ${m}m` : `ALLY ${m}m`, e.x - Math.cos(ang) * 30, e.y - Math.sin(ang) * 20);
+}
+
 function drawWeapon(ctx, game, L, ui) {
   const p = game.player;
   const w = p.weapon;
@@ -454,6 +553,11 @@ function drawEnd(ctx, game, L) {
       `hunters ${st.hunters} (skeets ${st.skeets}, deadstops ${st.deadstops}, pinned ${st.pins})   ·   tank ${st.tanks ? 'down' : game.director.tankSpawned ? 'survived' : '-'}`,
     );
   }
+  if (game.ally) {
+    const a = game.ally;
+    const state = !a.alive ? 'died' : a.down ? 'down' : game.won ? 'made it' : 'alive';
+    lines.push(`ally ${state}   ·   ally kills ${st.allyKills}   ·   saved you ${st.allySaves}×   ·   revives ${st.revives}`);
+  }
   lines.forEach((l, i) => ctx.fillText(l, L.w / 2, cy + 44 + i * 22));
   if (game.endT > 1.4) {
     ctx.font = `700 15px ${FONT}`;
@@ -488,6 +592,14 @@ function drawPinned(ctx, game, L) {
   const need = game.settings.hunterBreakTaps;
   const pulse = 0.75 + Math.sin(game.time * 14) * 0.25;
   const y = L.h * 0.62;
+  const a = game.ally;
+  if (a && a.alive && !a.down) {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `800 11px ${FONT}`;
+    ctx.fillStyle = 'rgba(160,255,175,0.8)';
+    ctx.fillText('ALLY ON THE WAY', L.w / 2, y + 46);
+  }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = `900 22px ${FONT}`;
@@ -564,7 +676,7 @@ function drawDebug(ctx, game, input, ui, L) {
   ctx.font = `600 11px ui-monospace, Menlo, monospace`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  const y0 = L.hp.y + L.hp.h + 8;
+  const y0 = (game.ally ? allyPanelRect(L).y + allyPanelRect(L).h : L.hp.y + L.hp.h) + 8;
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
   ctx.fillRect(L.hp.x, y0 - 3, Math.min(L.w - L.hp.x * 2, 560), lines.length * 15 + 6);
   ctx.fillStyle = 'rgba(180,255,200,0.9)';
