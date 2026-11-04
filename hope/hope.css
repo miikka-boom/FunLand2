@@ -3361,7 +3361,7 @@ button.u-tip.go {
   font-size: 10px;
   font-style: normal;
   font-weight: 900;
-  white-space: nowrap;
+  line-height: 1.25;
 }
 
 .pc-fit i.b,

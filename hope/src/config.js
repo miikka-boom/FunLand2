@@ -267,7 +267,7 @@ export const STORY_TOTAL = CHAINS.length * RUNS_PER_CHAIN;
 /** Finales pay this much more scrap than the chain's base. */
 export const FINALE_SCRAP = 1.8;
 /** The rescued survivor's grade odds [★, ★★, ★★★]. */
-export const RESCUE_ODDS = [0.1, 0.7, 0.2];
+export const RESCUE_ODDS = [0, 0.8, 0.2];
 
 /** Scavenge sites: two offers at a time, rerolled when played. */
 export const SCAVENGE_SITES = [

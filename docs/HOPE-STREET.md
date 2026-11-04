@@ -100,7 +100,7 @@ Everyone is generated from a seeded random stream (`hope/src/people.js`):
   | --- | --- | --- |
   | Bruiser | Indoors | |
   | Shooter | Horde | |
-  | Medic | Toxic | The whole crew gets hurt 40% less (up to 2 medics) |
+  | Medic | Toxic | Each Medic (up to 2) makes the whole crew 40% less likely to get hurt |
   | Scout | Night | +10% scrap per Scout (up to 2) |
   | Mechanic | Machines | |
 
@@ -218,10 +218,10 @@ simulated run takes seconds.
   Rosie's Diner    reclaimed at run  3
   Hardware Store   reclaimed at run 11
   Iron Gym         reclaimed at run 16
-  Mercy Clinic     reclaimed at run 24
+  Mercy Clinic     reclaimed at run 25
   Starlite Motel   reclaimed at run 32
   K-HOPE Radio     reclaimed at run 39
-  The Overpass     reclaimed at run 48 (median; 41–67)
+  The Overpass     reclaimed at run 48 (median; 41–66)
   ```
 
   That's about 4 hours of real play. By then the street holds about 15
