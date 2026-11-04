@@ -33,6 +33,16 @@ const BURST_PAL = [
   { rim: '#9fd6ff', edge: '#4f95d6', core: '#ffffff' }, // slash
   { rim: '#ffe27a', edge: '#d98a2c', core: '#fffbea' }, // arrow
   { rim: '#fff0a0', edge: '#c9a03a', core: '#ffffff' }, // block (metal clank)
+  { rim: '#ffb02e', edge: '#d9480f', core: '#fff4c2' }, // explosion
+];
+const FIRE_COLS = [
+  ['#ff7a1a', '#ffd23f'],
+  ['#f2541b', '#ffb02e'],
+  ['#ff9a2e', '#fff0a0'],
+];
+const SMOKE_COLS = [
+  ['#5f5a56', '#8d8781'],
+  ['#4f4b48', '#7a756f'],
 ];
 const SPARK_COLS = ['#fffbe2', '#ffe66e', '#ffc23a'];
 const CHIP_COLS = ['#fff6cf', '#ffd94a'];
@@ -65,6 +75,7 @@ const SCUFF = 10; // dark mark on the grass
 const CONFETTI = 11;
 const TEXT = 12; // comic word
 const STAR = 13; // dizzy cartoon star
+const EYE = 14; // a googly eyeball bouncing away from an explosion
 
 class Particle {
   constructor() {
@@ -204,6 +215,15 @@ export class Effects {
           break;
         case 'arrowGround':
           this.arrowGround(x, y, num(p.dirX, 1));
+          break;
+        case 'explosion':
+          this.explosion(x, y, clamp(num(p.power, 1), 0.3, 2));
+          break;
+        case 'eyeball':
+          this.eyeball(x, y, num(p.vx, 0), num(p.vy, -300), clamp(num(p.size, 5), 2, 14));
+          break;
+        case 'quake':
+          this.quake(x, y, clamp(num(p.power, 1), 0.3, 2));
           break;
       }
     } catch (e) {
@@ -624,6 +644,105 @@ export class Effects {
       d.alpha = 0.9;
       d.col = DUST_COLS[0][0];
       d.col2 = DUST_COLS[0][1];
+    }
+  }
+
+  /** Bomb: white flash, fireball, flying dirt and sparks, a scorch mark and rising smoke. */
+  explosion(x, y, P) {
+    const gy = Math.max(0, y + 20);
+    const flash = this.add(RING, true, x, y, 0.26);
+    flash.a = 8;
+    flash.b = 95 * P;
+    flash.c = 12;
+    flash.col = '#fffbea';
+    const b = this.add(BURST, true, x, y, 0.24);
+    b.size = 36 * P;
+    b.a = -Math.PI / 2;
+    b.b = 13;
+    b.c = 4;
+    b.rot = this.r(0, TAU);
+    // Fireball
+    for (let i = 0; i < 12; i++) {
+      const a = this.r(0, TAU);
+      const sp = this.r(90, 260) * P;
+      const d = this.add(DUST, true, x + Math.cos(a) * 6, y + Math.sin(a) * 6, this.r(0.32, 0.55));
+      d.vx = Math.cos(a) * sp;
+      d.vy = Math.sin(a) * sp - 60;
+      d.drag = 4.5;
+      d.a = this.r(7, 10);
+      d.b = this.r(15, 24) * P;
+      d.alpha = 1;
+      const c = this.pick(FIRE_COLS);
+      d.col = c[0];
+      d.col2 = c[1];
+    }
+    // Smoke drifting up behind everything
+    for (let i = 0; i < 9; i++) {
+      const d = this.add(DUST, false, x + this.r(-30, 30), y + this.r(-20, 10), this.r(1.1, 1.8));
+      d.vx = this.r(-40, 40);
+      d.vy = -this.r(50, 120);
+      d.drag = 1.4;
+      d.a = this.r(8, 12);
+      d.b = this.r(20, 32) * P;
+      d.alpha = 0.85;
+      const c = this.pick(SMOKE_COLS);
+      d.col = c[0];
+      d.col2 = c[1];
+    }
+    // Dirt and sparks
+    for (let i = 0; i < 12; i++) this.clod(x + this.r(-14, 14), gy, this.r(-380, 380), -this.r(300, 650) * P, this.r(2.6, 5));
+    for (let i = 0; i < 10; i++) {
+      const a = this.r(-Math.PI, 0);
+      const k = this.add(SPARK, true, x, y, this.r(0.35, 0.7));
+      const sp = this.r(350, 700);
+      k.vx = Math.cos(a) * sp;
+      k.vy = Math.sin(a) * sp;
+      k.grav = G * 0.6;
+      k.drag = 1.2;
+      k.ground = this.groundFor(-1);
+      k.bounces = 1;
+      k.size = this.r(2, 3.2);
+      k.col = SPARK_COLS[i % 3];
+      k.fade = 0.15;
+    }
+    const sc = this.add(SCUFF, false, x, gy, 3.5);
+    sc.size = 46 * P;
+  }
+
+  /** A googly eye knocked loose: bounces along the grass, still looking around. */
+  eyeball(x, y, vx, vy, size) {
+    const e = this.add(EYE, true, x, y, this.r(2.2, 3));
+    e.vx = vx;
+    e.vy = vy;
+    e.grav = G;
+    e.drag = 0.4;
+    e.ground = this.groundFor(-1) - size;
+    e.bounces = 3;
+    e.rest = 0.55;
+    e.size = size;
+    e.rot = this.r(0, TAU);
+    e.spin = this.r(-14, 14);
+    e.fade = 0.5;
+  }
+
+  /** Brick's ground slam: dust rolling out both ways along the ground, clods jumping. */
+  quake(x, y, P) {
+    this.land(x, y, 1.5 * P);
+    this.dirt(x, y, 1.3 * P, 0);
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 5; i++) {
+        const d = this.add(DUST, false, x + side * this.r(10, 30), y - this.r(0, 5), this.r(0.45, 0.75));
+        d.vx = side * this.r(220, 420) * P;
+        d.vy = -this.r(10, 50);
+        d.drag = 2.6;
+        d.a = this.r(4, 6);
+        d.b = this.r(10, 16) * P;
+        d.alpha = 0.92;
+        const c = this.pick(DUST_COLS);
+        d.col = c[0];
+        d.col2 = c[1];
+      }
+      for (let i = 0; i < 4; i++) this.clod(x + side * this.r(30, 110), y, side * this.r(30, 120), -this.r(200, 420), this.r(2.2, 4));
     }
   }
 
@@ -1120,3 +1239,20 @@ DRAW[SCUFF] = drawScuff;
 DRAW[CONFETTI] = drawConfetti;
 DRAW[TEXT] = drawText;
 DRAW[STAR] = drawStar;
+DRAW[EYE] = drawEye;
+
+function drawEye(ctx, p, fx) {
+  const r = Math.max(p.size * fx.boost, 2.5 * fx.px);
+  ctx.globalAlpha = tailAlpha(p, p.fade || 0.4);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, r, 0, TAU);
+  ctx.fill();
+  ctx.lineWidth = Math.max(r * 0.16, 0.8 * fx.px);
+  ctx.strokeStyle = '#1d1a24';
+  ctx.stroke();
+  ctx.fillStyle = '#111018';
+  ctx.beginPath();
+  ctx.arc(p.x + Math.cos(p.rot) * r * 0.45, p.y + Math.sin(p.rot) * r * 0.45, r * 0.5, 0, TAU);
+  ctx.fill();
+}

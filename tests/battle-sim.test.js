@@ -379,3 +379,135 @@ test('a held clubber stops leaning into its charge', () => {
   run(b, 0.5);
   assert.equal(c.charging, false);
 });
+
+// --- shaped units: Spiker (triangle), Bomb (circle), Brick (rectangle) -------------
+
+test('every unit shape stands at its own height without drifting', () => {
+  const b = new Battle(31);
+  const types = ['clubber', 'squire', 'archer', 'spiker', 'bomb', 'brick'];
+  types.forEach((t, i) => b.addUnit(t, 'blue', 300 + i * 100, 0.5));
+  const x0 = b.units.map((u) => u.hip.x);
+  run(b, 5);
+  const heights = {};
+  b.units.forEach((u, i) => {
+    assert.ok(Math.abs(u.hip.x - x0[i]) < 3, `${u.type.id} drifted`);
+    assert.ok(Math.abs(u.ground - u.hip.y - u.standH) < 3, `${u.type.id} sagging`);
+    heights[u.type.id] = u.ground - u.head.y + u.R;
+  });
+  assert.ok(heights.brick > heights.clubber * 1.5, 'the Brick is a giant');
+  assert.ok(heights.spiker < heights.clubber && heights.bomb < heights.clubber, 'Spiker and Bomb are small');
+  assert.ok(finite(b));
+});
+
+test('a Spiker pounces point-first and launches what it hits, but bounces off a shield', () => {
+  const b = new Battle(33);
+  army(b, [
+    ['spiker', 'blue', 900],
+    ['archer', 'red', 1060],
+  ]);
+  const archer = b.units.find((u) => u.team === 'red');
+  archer.cooldown = 1e9;
+  archer.speed = 0;
+  b.start();
+  const ev = run(b, 4);
+  const hit = ev.find((e) => e.type === 'hit' && e.kind === 'spike');
+  assert.ok(hit, 'no pounce hit');
+  assert.ok(ev.some((e) => e.type === 'knockdown' && e.unit === archer) || !archer.alive);
+
+  const s = new Battle(35);
+  army(s, [
+    ['spiker', 'blue', 900],
+    ['squire', 'red', 1060],
+  ]);
+  const sq = s.units.find((u) => u.team === 'red');
+  sq.cooldown = 1e9;
+  sq.speed = 0;
+  s.start();
+  const ev2 = run(s, 4);
+  assert.ok(ev2.some((e) => e.type === 'block' && e.from && e.from.type.id === 'spiker'), 'the shield should stop the pounce');
+  assert.ok(sq.hp > sq.maxHp - 10);
+});
+
+test('a Bomb walks up, lights its fuse and explodes: enemies flung, friends hurt less, no corpse left', () => {
+  const b = new Battle(37);
+  army(b, [
+    ['bomb', 'blue', 900, 0.5],
+    ['clubber', 'blue', 880, 0.5], // a teammate standing just behind it
+    ['clubber', 'red', 1050, 0.5],
+    ['clubber', 'red', 1075, 0.5],
+  ]);
+  const bomb = b.units.find((u) => u.type.id === 'bomb');
+  const mate = b.units.find((u) => u.team === 'blue' && u.type.id === 'clubber');
+  const reds = b.units.filter((u) => u.team === 'red');
+  for (const u of reds) {
+    u.cooldown = 1e9;
+    u.speed = 0;
+  }
+  mate.speed = 0;
+  mate.cooldown = 1e9;
+  b.start();
+  const ev = run(b, 6);
+  const boom = ev.filter((e) => e.type === 'explode');
+  assert.equal(boom.length, 1);
+  assert.ok(ev.some((e) => e.type === 'fuse'), 'fuse first');
+  assert.ok(bomb.gone && !bomb.alive);
+  const redLoss = reds.reduce((s, u) => s + (u.maxHp - Math.max(0, u.hp)), 0) / reds.length;
+  assert.ok(redLoss > 25, `reds lost ${redLoss}`);
+  assert.ok(mate.maxHp - mate.hp < redLoss, 'teammates take less');
+});
+
+test('a bomb right next to a blast goes off too, but one waiting at a safe distance does not', () => {
+  const b = new Battle(39);
+  army(b, [
+    ['bomb', 'blue', 700, 0.5],
+    ['bomb', 'blue', 728, 0.5], // touching: chains
+    ['bomb', 'blue', 860, 0.5], // queued out of blast range: spared
+    ['clubber', 'red', 1500],
+  ]);
+  const [first, near, far] = b.units.filter((u) => u.type.id === 'bomb').sort((x, y) => x.hip.x - y.hip.x);
+  b.start();
+  first.die(b, null); // it still goes off a beat later...
+  const ev = run(b, 1.5);
+  assert.equal(ev.filter((e) => e.type === 'explode').length, 2); // ...and takes its neighbour with it
+  assert.ok(first.gone && near.gone);
+  assert.ok(far.alive && !far.gone);
+});
+
+test('a Brick slam sends a shockwave through the ground, and clubs barely move the Brick', () => {
+  const b = new Battle(41);
+  army(b, [
+    ['brick', 'blue', 900, 0.5],
+    ['clubber', 'red', 990, 0.4],
+    ['archer', 'red', 1030, 0.6],
+  ]);
+  const brick = b.units.find((u) => u.type.id === 'brick');
+  const reds = b.units.filter((u) => u.team === 'red');
+  for (const u of reds) {
+    u.cooldown = 1e9;
+    u.speed = 0;
+  }
+  b.start();
+  const ev = run(b, 4);
+  assert.ok(ev.some((e) => e.type === 'quake'), 'no slam');
+  const flung = reds.filter((u) => ev.some((e) => e.type === 'knockdown' && e.unit === u) || !u.alive || u.hp < u.maxHp);
+  assert.ok(flung.length === 2, 'both caught by the shockwave');
+  // Heavy: a full club bonk barely moves it
+  const x0 = brick.hip.x;
+  brick.takeHit(b, { damage: 30, dvx: 240, dvy: -500, x: brick.chest.x, y: brick.chest.y, stun: 1, kind: 'club' });
+  run(b, 1);
+  assert.ok(brick.downT <= 0 && brick.alive, 'not knocked down');
+  assert.ok(Math.abs(brick.hip.x - x0) < 60);
+});
+
+test('a battle with every unit type ends cleanly', () => {
+  for (const seed of [1, 2]) {
+    const b = new Battle(seed);
+    const L = ['brick', 'squire', 'clubber', 'spiker', 'bomb', 'archer'];
+    L.forEach((t, i) => b.addUnit(t, 'blue', 880 - i * 30, (i * 0.37) % 1));
+    L.forEach((t, i) => b.addUnit(t, 'red', 1120 + i * 30, (i * 0.53) % 1));
+    b.start();
+    run(b, 150);
+    assert.equal(b.phase, 'over');
+    assert.ok(finite(b));
+  }
+});

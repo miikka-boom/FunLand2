@@ -640,6 +640,10 @@ button {
     width: 100%;
     justify-content: center;
   }
+  .is-touch .card-unit {
+    min-width: 54px;
+    width: 54px;
+  }
 }
 
 @media (max-height: 430px) {

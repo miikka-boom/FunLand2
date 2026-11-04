@@ -29,12 +29,23 @@ on phones.
 | **Clubber** | 65 | Big overhead club swing. The hit launches beans cartwheeling through the air and knocks them down. Breaks into a yelling charge when close. |
 | **Squire** | 95 | Sword and shield. Raises the shield when archers aim at it and blocks hits from the front; a block stops the swing. Heavy: flies lower. Clubs come down over the top. |
 | **Archer** | 75 | Lobs arrows on a ballistic arc (and sometimes misses). Arrows stick and quiver in bodies, shields and the ground, and stay in the corpses. Squishy up close. |
+| **Spiker** (triangle, small) | 45 | Fast and pointy. Rears back, then pounces point-first and rams beans into the sky. A shield bounces it straight back, seeing stars. |
+| **Bomb** (circle, small) | 55 | Waddles up, lights its fuse and charges in screaming, then explodes: everything nearby is flung (teammates take half damage) and its googly eyes go bouncing off. Bombs wait for each other to get out of blast range; one right next to a blast goes off too. |
+| **Brick** (rectangle, giant) | 240 | A walking brick wall about 1.7 times bean height, with an iron hammer. Slow and very hard to knock over; the hammer slam sends a shockwave along the ground that hops everything nearby into the air. |
 
 Rock-paper-scissors: archers shoot clubbers before they arrive, clubbers bonk
 squires over their shields, and squires walk through arrow rain under a raised
-shield. At equal gold the counter wins almost every time but loses a good share
-of its health, and mixed armies beat single-type ones (checked with headless
-simulations).
+shield. The shapes slot in around that triangle: Spikers catch archers and
+bombs but bounce off shields; bombs blow up clumps of melee (and hurt the giant
+extra) but get shot or caught early; the Brick flattens melee but is slow
+enough for archers and bombs to bring down. At equal gold the counter wins
+almost every time but loses a good share of its health, and mixed armies beat
+most single-type ones (checked with headless simulations).
+
+Every shape uses the same wobbly ragdoll skeleton, scaled per unit (a stubby
+ball, a small wedge, a giant block), so the shapes wobble, fly, flop and pile
+up just like the beans. Bigger units shove smaller ones around, not the other
+way round.
 
 
 ## How the beans work
@@ -69,20 +80,20 @@ The jokes come from that one rule plus a few extras:
 
 ## Modes
 
-- **Campaign:** six rounds. Red's army is preset, and you have a gold budget
-  for blue. **Retry** replays your placement; **Change army** lets you edit it.
+- **Campaign:** nine rounds (three of them introduce the Spiker, the Bomb and
+  the Brick). Red's army is preset, and you have a gold budget for blue. **Retry** replays your placement; **Change army** lets you edit it.
   Beaten rounds can be replayed from the title card. Every round has several
   winning armies and loses to the obvious wrong answer (checked by simulating
   every affordable army).
 - **Sandbox:** place both armies (left of the field is blue, right is red) with
   no budget. You can grab beans during the battle too.
 
-Controls: tap or click your side of the field to place the selected unit (a
-tap right next to a bean still places one). Drag a bean to grab it, drag
-elsewhere to pan, pinch or scroll to zoom; 🎥 reframes. The 🐢 button toggles
-slow motion. The ≡ menu pauses the battle. Keys: `1` `2` `3` pick a unit, `E`
-remove, `Space` fight, `S` slow-mo, `F` auto camera, `R` reset, `M` mute, `Esc`
-menu / resume.
+Controls: pick one of the six unit cards, then tap or click your side of the
+field to place it (a tap right next to a bean still places one). Drag a bean to
+grab it (a lit bomb stays lit: throw it), drag elsewhere to pan, pinch or
+scroll to zoom; 🎥 reframes. The 🐢 button toggles slow motion. The ≡ menu
+pauses the battle. Keys: `1`–`6` pick a unit, `E` remove, `Space` fight, `S`
+slow-mo, `F` auto camera, `R` reset, `M` mute, `Esc` menu / resume.
 
 ## Code map (battle/)
 
@@ -90,11 +101,11 @@ menu / resume.
 battle/index.html, style.css    page shell, storybook HUD, title, dock
 battle/src/config.js             world layout + team colours shared by everything
 battle/src/sim/physics.js        Verlet particles, constraints, ground, segment tests
-battle/src/sim/unit.js           the bean: skeleton, muscles, walking, attacks, eyes, AI
-battle/src/sim/unit-types.js     the three units: stats, weapons, attack poses
-battle/src/sim/battle.js         placement, fixed-step sim, melee hits, arrows, dropped gear, win check
-battle/src/campaign.js           the six rounds
-battle/src/render/units.js       drawing beans, faces, weapons, arrows
+battle/src/sim/unit.js           the ragdoll: skeleton, muscles, walking, attacks, pounce, fuse, eyes, AI
+battle/src/sim/unit-types.js     the six units: shape, size, stats, weapons/abilities, attack poses
+battle/src/sim/battle.js         placement, fixed-step sim, melee hits, pounces, shockwaves, explosions, arrows, win check
+battle/src/campaign.js           the nine rounds
+battle/src/render/units.js       drawing beans, bricks, wedges and balls, faces, weapons, arrows, fuses
 battle/src/render/background.js  sky, parallax hills, castles, grass, dirt cross-section
 battle/src/render/effects.js     starbursts, sparks, dust, dirt, confetti, comic words
 battle/src/render/camera.js      auto-framing, pan/zoom, screen shake

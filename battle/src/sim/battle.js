@@ -35,6 +35,7 @@ export class Battle {
     this.grab = null;
     this.sorted = [];
     this.sortedDead = [];
+    this.blasts = []; // bombs waiting to go off (chain reactions run one step apart)
     this.stats = { hits: 0, blocks: 0, arrows: 0, kills: 0 };
   }
 
@@ -139,6 +140,7 @@ export class Battle {
     if (this.phase === 'battle') this.battleTime += dt;
     if (this.yellT > 0) this.yellT -= dt;
     const units = this.units;
+    if (this.blasts.length) for (const u of this.blasts.splice(0)) this.explode(u);
 
     // AI (staggered, ~7 Hz)
     for (const u of units) {
@@ -200,7 +202,11 @@ export class Battle {
     this.walls(dt);
 
     if (this.phase === 'battle' || this.phase === 'over') {
-      for (const u of units) if (u.striking && u.alive) this.resolveMelee(u);
+      for (const u of units) {
+        if (!u.striking || !u.alive) continue;
+        if (u.type.dash) this.resolveDash(u);
+        else this.resolveMelee(u);
+      }
     }
     this.updateArrows(dt);
 
@@ -229,27 +235,30 @@ export class Battle {
       for (let j = i + 1; j < s.length; j++) {
         const b = s[j];
         const dx = b.hip.x - a.hip.x;
-        if (dx > 50) break;
+        if (dx > 70) break;
         if (Math.abs(b.hip.y - a.hip.y) > 34) continue;
         const same = a.team === b.team;
         if (same) {
           // Teammates: soft personal space only, weaker across lanes, so a
           // walking bean can squeeze past one that's standing (1D can't swap
           // order otherwise).
-          const minD = (a.R + b.R) * 0.8;
+          // Bombs keep their distance from each other (one going off shouldn't take them all)
+          const minD = a.type.spread && b.type.spread ? Math.max(a.type.spread, b.type.spread) : (a.R + b.R) * 0.8;
           if (dx >= minD) continue;
           const lane = 1 - Math.min(1, Math.abs(a.lane - b.lane)) * 0.75;
           const acc = Math.min(260, (minD - dx) * 45) * lane;
-          for (const p of a.body) p.addVel(-acc * dt, 0, dt);
-          for (const p of b.body) p.addVel(acc * dt, 0, dt);
+          const wa = (2 * b.mass) / (a.mass + b.mass); // the lighter one gives way
+          const wb = (2 * a.mass) / (a.mass + b.mass);
+          for (const p of a.body) p.addVel(-acc * wa * dt, 0, dt);
+          for (const p of b.body) p.addVel(acc * wb * dt, 0, dt);
           continue;
         }
         // Enemies: solid. Move whole torsos (keeps velocity), bleed off approach speed
         const minD = (a.R + b.R) * 1.05 + 3;
         if (dx < minD) {
-          const share = 0.35 * (minD - dx);
-          moveTorso(a, -share, 0);
-          moveTorso(b, share, 0);
+          const share = 0.7 * (minD - dx);
+          moveTorso(a, (-share * b.mass) / (a.mass + b.mass), 0);
+          moveTorso(b, (share * a.mass) / (a.mass + b.mass), 0);
           const closing = a.hip.vx(dt) - b.hip.vx(dt);
           if (closing > 0) {
             for (const p of a.body) p.addVel(-closing * 0.25, 0, dt);
@@ -263,7 +272,7 @@ export class Battle {
     // Corpses shove each other so they pile up instead of sinking into one another
     const d = this.sortedDead;
     d.length = 0;
-    for (const u of this.units) if (!u.alive) d.push(u);
+    for (const u of this.units) if (!u.alive && !u.gone) d.push(u);
     d.sort((a, b) => a.hip.x - b.hip.x);
     for (let i = 0; i < d.length; i++) {
       for (let j = i + 1; j < d.length; j++) {
@@ -323,6 +332,170 @@ export class Battle {
       }
     }
     return best;
+  }
+
+  /** Spiker pounce: its point against enemy shields and bodies. One hit per leap. */
+  resolveDash(u) {
+    const a = u.act;
+    if (!a || a.done) return;
+    const D = u.type.dash;
+    const dt = this.dt;
+    const tx = u.head.x + u.ux * u.R * 0.7;
+    const ty = u.head.y + u.uy * u.R * 0.7;
+    for (const e of this.units) {
+      if (e.team === u.team || !e.alive) continue;
+      if (Math.abs(e.hip.x - u.hip.x) > 100) continue;
+      const sh = e.shieldFrame();
+      if (sh && e.conscious > 0.4 && Math.sign(u.hip.x - e.hip.x) === e.f) {
+        const pad = (u.R * 0.6 + 4) ** 2;
+        if (segSeg(u.chest.x, u.chest.y, tx, ty, sh.x - sh.ax * sh.half, sh.y - sh.ay * sh.half, sh.x + sh.ax * sh.half, sh.y + sh.ay * sh.half, tmp).d2 < pad) {
+          // BOING: bounced off the shield, seeing stars
+          a.done = true;
+          e.takeHit(this, { damage: 4, dvx: u.f * 70, dvy: -20, x: tmp.x2, y: tmp.y2, stun: 0.1, kind: 'block', from: u, spin: 0.2 });
+          for (const p of u.parts) p.setVel(-u.f * 230, -260, dt);
+          u.conscious = Math.max(0, u.conscious - 0.75);
+          u.downT = Math.max(u.downT, 0.5);
+          this.stats.blocks++;
+          this.emit('block', tmp.x2, tmp.y2, { power: 0.9, dirX: -u.f, dirY: -0.3, unit: e, from: u, kind: 'melee' });
+          return;
+        }
+      }
+      const rr = e.R + u.R * 0.45;
+      const hitA = segSeg(u.chest.x, u.chest.y, tx, ty, e.hip.x, e.hip.y, e.chest.x, e.chest.y, tmp).d2 < rr * rr;
+      const hitB = !hitA && segSeg(u.chest.x, u.chest.y, tx, ty, e.chest.x, e.chest.y, e.head.x, e.head.y, tmp).d2 < rr * rr;
+      if (!hitA && !hitB) continue;
+      a.done = true;
+      const lethal = e.hp - D.damage <= 0;
+      const k = (lethal ? 1.2 : 1) * this.rng.range(0.9, 1.1);
+      const hx = tmp.x2;
+      const hy = tmp.y2;
+      e.takeHit(this, { damage: D.damage * this.rng.range(0.9, 1.1), dvx: u.f * D.launch[0] * k, dvy: -D.launch[1] * k, x: hx, y: hy, stun: D.stun, kind: 'spike', from: u, spin: 0.4, flip: 140 });
+      // The spiker rebounds off its victim
+      for (const p of u.parts) p.setVel(-u.f * 120, -180, dt);
+      this.stats.hits++;
+      this.emit('hit', hx, hy, { kind: 'spike', power: 1.05, dirX: u.f * 0.8, dirY: -0.6, unit: e, from: u, killed: !e.alive });
+      return;
+    }
+  }
+
+  /** Brick hammer meets the ground: a shockwave hops everything nearby into the air. */
+  quake(u, x) {
+    const Q = u.type.attack.quake;
+    const dt = this.dt;
+    this.emit('quake', x, u.ground, { unit: u, power: 1 });
+    for (const e of this.units) {
+      if (e === u || e.gone) continue;
+      if (e.alive && e.team === u.team) continue;
+      const dx = e.hip.x - x;
+      const ad = Math.abs(dx);
+      if (ad > Q.radius) continue;
+      if (e.ground - e.hip.y - e.standH > 40) continue; // already airborne: it passes underneath
+      const k = 1 - ad / Q.radius;
+      const dir = Math.sign(dx) || u.f;
+      const live = e.alive ? 1 : 0.6;
+      e.takeHit(this, {
+        damage: Q.damage * k,
+        dvx: dir * Q.launch[0] * k * live,
+        dvy: -Q.launch[1] * (0.45 + 0.55 * k) * live,
+        x: e.hip.x,
+        y: e.hip.y + e.R,
+        stun: Q.stun * (0.5 + 0.5 * k),
+        kind: 'quake',
+        from: u,
+        spin: 0.3,
+        flip: 70 * k,
+      });
+    }
+    for (const it of this.items) {
+      const ad = Math.abs((it.a.x + it.b.x) / 2 - x);
+      if (ad > Q.radius) continue;
+      const k = 1 - ad / Q.radius;
+      it.a.addVel(0, -320 * k, dt);
+      it.b.addVel(0, -360 * k, dt);
+    }
+  }
+
+  /** Is another bomb of u's team close ahead of it (in direction dir)? */
+  bombAhead(u, dir) {
+    for (const o of this.units) {
+      if (o === u || !o.alive || o.team !== u.team || !o.type.spread) continue;
+      const d = (o.hip.x - u.hip.x) * dir;
+      if (d > 0 && d < u.type.spread) return true;
+    }
+    return false;
+  }
+
+  queueBlast(u) {
+    if (!u.exploded && !this.blasts.includes(u)) this.blasts.push(u);
+  }
+
+  /** Bomb goes off: launches everything around it (teammates get a share of the damage). */
+  explode(u) {
+    if (u.exploded) return;
+    u.exploded = true;
+    const X = u.type.blast;
+    const dt = this.dt;
+    const cx = u.chest.x;
+    const cy = u.chest.y;
+    // Blown to bits: no corpse, nothing left to simulate
+    u.alive = false;
+    u.hp = 0;
+    u.conscious = 0;
+    u.act = null;
+    u.striking = false;
+    u.state = 'dead';
+    u.gone = true;
+    u.asleep = true;
+    if (this.grab && this.grab.unit === u) this.grab = null;
+    this.arrows = this.arrows.filter((a) => a.host !== u);
+    u.arrows.length = 0;
+    this.emit('explode', cx, cy, { unit: u, power: 1, team: u.team });
+    for (const e of this.units) {
+      if (e === u || e.gone) continue;
+      let d = Infinity;
+      for (const p of e.body) d = Math.min(d, Math.hypot(p.x - cx, p.y - cy));
+      if (d > X.radius) continue;
+      const k = 1 - d / X.radius;
+      let nx = e.chest.x - cx;
+      let ny = e.chest.y - cy - 25; // always a bit upward
+      let l = Math.hypot(nx, ny) || 1;
+      nx /= l;
+      ny /= l;
+      if (ny > -0.4) {
+        ny = -0.4;
+        l = Math.hypot(nx, ny);
+        nx /= l;
+        ny /= l;
+      }
+      const sp = X.launch * (0.35 + 0.65 * k);
+      const friend = e.team === u.team;
+      // Bombs right next to the blast light up, get flung, and go off where they land
+      if (e.type.blast && e.alive && !e.exploded && d < X.radius * 0.5) {
+        const left = e.act && e.act.phase === 'fuse' ? e.type.blast.fuse - e.act.t : Infinity;
+        const delay = e.type.blast.chain;
+        if (left > delay) e.act = { phase: 'fuse', t: e.type.blast.fuse - delay, hits: new Set(), done: false };
+      }
+      e.takeHit(this, {
+        damage: X.damage * k * (friend ? X.friendly : 1) * (e.mass >= 3 ? X.vsGiant || 1 : 1),
+        dvx: nx * sp,
+        dvy: ny * sp,
+        x: cx,
+        y: cy,
+        stun: 0.3 + 1.0 * k,
+        kind: 'blast',
+        from: u,
+        spin: 0.5,
+        flip: 120 * k * Math.sign(nx || 1),
+      });
+    }
+    for (const it of this.items) {
+      for (const p of [it.a, it.b]) {
+        const d = Math.hypot(p.x - cx, p.y - cy);
+        if (d > X.radius) continue;
+        const k = 1 - d / X.radius;
+        p.addVel(((p.x - cx) / (d || 1)) * 300 * k, -420 * k, dt);
+      }
+    }
   }
 
   /** Swept test of a swinging weapon against enemy shields and bodies. */
@@ -733,7 +906,7 @@ export class Battle {
     let best = null;
     let bd = Infinity;
     for (const u of this.units) {
-      if (filter && !filter(u)) continue;
+      if (u.gone || (filter && !filter(u))) continue;
       for (const p of u.body) {
         const d = Math.hypot(p.x - x, p.y - y);
         if (d < u.R + slack && d < bd) {
@@ -762,7 +935,7 @@ export class Battle {
     }
     this.grab = { unit: u, p, x, y, ox: p.x - x, oy: p.y - y };
     u.held = true;
-    u.act = null;
+    if (!(u.act && u.act.phase === 'fuse')) u.act = null; // a lit bomb stays lit: throw it!
     u.bowDraw = 0;
     u.mouth = 0.6;
     u.mouthKind = 'o';
@@ -844,14 +1017,16 @@ function capsulePush(a, b, rr, k) {
     nx = a.hip.x < b.hip.x ? -1 : 1;
     ny = 0;
   }
-  const push = (rr - d) * k * 0.5;
+  const push = (rr - d) * k;
+  const ma = b.mass / (a.mass + b.mass); // share a moves: the lighter bean gives way
+  const mb = a.mass / (a.mass + b.mass);
   const s = tmp.s;
   const t = tmp.t;
   const wa = [Math.max(0.2, 1 - s), Math.max(0.2, 1 - Math.abs(s - 0.5) * 2), Math.max(0.2, s)];
   const wb = [Math.max(0.2, 1 - t), Math.max(0.2, 1 - Math.abs(t - 0.5) * 2), Math.max(0.2, t)];
   for (let i = 0; i < 3; i++) {
-    a.body[i].teleport(nx * push * wa[i], ny * push * wa[i]);
-    b.body[i].teleport(-nx * push * wb[i], -ny * push * wb[i]);
+    a.body[i].teleport(nx * push * ma * wa[i], ny * push * ma * wa[i]);
+    b.body[i].teleport(-nx * push * mb * wb[i], -ny * push * mb * wb[i]);
   }
   return rr - d;
 }

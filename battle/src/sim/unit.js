@@ -140,6 +140,12 @@ export class Unit {
     this.hurtT = 0; // flashes white briefly when hit
     this.deadT = 0;
     this.lastHitBy = null;
+    this.mass = type.mass || 1; // how hard it is to shove around (giants vs little ones)
+    this.B = { ...BODY, ...(type.body || {}) }; // skeleton proportions for this shape and size
+    this.fuseT = 0; // bomb: 0..1 once lit
+    this.deathFuse = 0; // bomb killed before it went off: seconds until it does
+    this.exploded = false;
+    this.gone = false; // blown to bits: no body left to draw or simulate
 
     this.build(x);
   }
@@ -149,10 +155,11 @@ export class Unit {
     const L = this.L;
     const f = this.f;
     const gY = this.ground;
-    this.legLen = BODY.thigh + BODY.shin;
-    this.standH = this.legLen * BODY.standFrac;
-    this.armLen = BODY.upperArm + BODY.foreArm;
-    const cf = BODY.chestFrac;
+    const B = this.B;
+    this.legLen = B.thigh + B.shin;
+    this.standH = this.legLen * B.standFrac;
+    this.armLen = B.upperArm + B.foreArm;
+    const cf = B.chestFrac;
     const hipY = gY - this.standH;
     this.parts = [];
     this.cons = [];
@@ -177,12 +184,12 @@ export class Unit {
     for (let i = 0; i < 2; i++) {
       const fx = x + this.footOff[i] * f;
       const fy = gY - 2;
-      const [kx, ky] = ik(x, hipY, fx, fy, BODY.thigh, BODY.shin, -f);
+      const [kx, ky] = ik(x, hipY, fx, fy, B.thigh, B.shin, -f);
       const knee = P(kx, ky, 0.5, 2, 0.3);
       const foot = P(fx, fy, 0.6, 2, 0.5);
       this.knee.push(knee);
       this.foot.push(foot);
-      this.cons.push(new Dist(this.hip, knee, BODY.thigh), new Dist(knee, foot, BODY.shin));
+      this.cons.push(new Dist(this.hip, knee, B.thigh), new Dist(knee, foot, B.shin));
       this.feet.push({ plant: true, air: false, x: fx, sx: fx, t: 0, dur: 0.18, h: 6 });
     }
 
@@ -196,12 +203,12 @@ export class Unit {
       const loc = i === this.mainHand ? rest.main : Array.isArray(rest.off) ? rest.off : rest.main;
       const hx = x + loc[0] * f;
       const hy = this.chest.y - loc[1];
-      const [ex, ey] = ik(x, this.chest.y, hx, hy, BODY.upperArm, BODY.foreArm, f);
+      const [ex, ey] = ik(x, this.chest.y, hx, hy, B.upperArm, B.foreArm, f);
       const elbow = P(ex, ey, 0.35, 2, 0.3);
       const hand = P(hx, hy, 0.45, 2.5, 0.3);
       this.elbow.push(elbow);
       this.hand.push(hand);
-      this.cons.push(new Dist(this.chest, elbow, BODY.upperArm), new Dist(elbow, hand, BODY.foreArm));
+      this.cons.push(new Dist(this.chest, elbow, B.upperArm), new Dist(elbow, hand, B.foreArm));
     }
 
     // Weapon tip (club and sword are physical sticks so swings have momentum)
@@ -300,11 +307,13 @@ export class Unit {
         this.mouth = Math.max(this.mouth, 0.2);
         this.mouthKind = 'o';
       }
-      if (this.act) this.wantVx = 0;
+      if (this.type.spread && !this.act && b.bombAhead(this, toward)) spd = 0; // let the one in front go first
+      if (this.act && this.act.phase === 'fuse') this.wantVx = toward * this.speed * 1.35; // lit: charge in screaming
+      else if (this.act) this.wantVx = 0;
       else if (dist > engage) this.wantVx = toward * spd;
       else if (dist < engage - 14) this.wantVx = -toward * this.speed * 0.45;
       else this.wantVx = 0;
-      if (dist <= reach && !this.act && this.cooldown <= 0 && this.groundF > 0.6) this.startAttack(b);
+      if (dist <= reach && !this.act && (this.cooldown <= 0 || this.type.blast) && this.groundF > 0.6) this.startAttack(b);
     }
     if (this.dizzy > 0) this.wantVx += Math.sin(this.time * 6) * 35; // staggering about
     this.state = this.wantVx ? 'move' : 'idle';
@@ -313,10 +322,15 @@ export class Unit {
   startAttack(b) {
     if (this.type.ranged) this.nocked = true; // a new draw always has an arrow on the string
     const variant = this.type.poses.windup2 ? (this.rng.chance(0.45) ? 1 : 0) : 0;
-    this.act = { phase: this.type.ranged ? 'draw' : 'windup', t: 0, variant, hits: new Set(), done: false, aim: null };
+    const phase = this.type.ranged ? 'draw' : this.type.blast ? 'fuse' : 'windup';
+    this.act = { phase, t: 0, variant, hits: new Set(), done: false, aim: null, quaked: false };
     this.brow = 1;
     if (this.type.ranged) b.emit('bowDraw', this.hip.x, this.hip.y, { unit: this });
-    else {
+    else if (this.type.blast) {
+      b.emit('fuse', this.head.x, this.head.y, { unit: this });
+      this.mouth = 1;
+      this.mouthKind = 'o';
+    } else {
       b.emit('grunt', this.hip.x, this.hip.y, { unit: this });
       this.mouth = Math.max(this.mouth, 0.25);
       this.mouthKind = 'o';
@@ -397,10 +411,18 @@ export class Unit {
     const sy = -Math.cos(lean);
     const bal = this.wobbleT > 0 ? m * 0.35 : m; // near-fall: balance gives way for a moment
     this.uprightPull(this.head, this.L, sx, sy, bal, dt);
-    this.uprightPull(this.chest, this.L * BODY.chestFrac, sx, sy, bal, dt);
+    this.uprightPull(this.chest, this.L * this.B.chestFrac, sx, sy, bal, dt);
+
+    // Lit bomb: shaking with panic
+    if (this.act && this.act.phase === 'fuse') {
+      const shake = (0.2 + this.fuseT) * 500;
+      hip.fx += Math.sin(this.time * 70) * shake * hip.mass;
+      this.head.fx -= Math.sin(this.time * 70) * shake * this.head.mass;
+    }
 
     // Walk
-    if (gF > 0) {
+    const pouncing = this.act && this.act.phase === 'dash';
+    if (gF > 0 && !pouncing) {
       let ax = DRIVE_K * (this.wantVx - hipVx);
       const striking = this.act && this.act.phase === 'strike' && !this.type.ranged;
       if (striking) ax = 30 * (f * 150 - hipVx); // step into the blow, don't get kicked back by it
@@ -647,6 +669,10 @@ export class Unit {
     }
     const a = this.act;
     if (!a) return P.rest;
+    if (a.phase === 'fuse') {
+      a.t += dt;
+      return this.animateFuse(dt, b, a); // a lit fuse burns whatever happens
+    }
     if (this.downT > 0 || this.conscious < 0.2) {
       this.act = null;
       this.bowDraw = 0;
@@ -654,6 +680,7 @@ export class Unit {
     }
     a.t += dt;
     if (this.type.ranged) return this.animateBow(dt, b, a);
+    if (this.type.dash) return this.animateDash(dt, b, a);
 
     const A = this.type.attack;
     const wind = a.variant ? P.windup2 : P.windup;
@@ -679,6 +706,10 @@ export class Unit {
     }
     if (a.phase === 'strike') {
       this.striking = !a.done && a.t > A.strike * 0.15;
+      if (A.quake && !a.quaked && this.tip && (this.tip.y >= this.ground - 16 || a.t >= A.strike * 0.95)) {
+        a.quaked = true;
+        b.quake(this, this.tip.x);
+      }
       if (a.t >= A.strike) {
         a.phase = 'recover';
         a.t = 0;
@@ -699,6 +730,50 @@ export class Unit {
     const k = a.t / A.recover;
     if (P.recover && !a.variant) return k < 0.5 ? blendPose(strike, P.recover, easeOut(k * 2)) : blendPose(P.recover, P.rest, easeInOut(k * 2 - 1));
     return blendPose(strike, P.rest, easeInOut(k));
+  }
+
+  /** Spiker: rear back, then leap point-first at the target. */
+  animateDash(dt, b, a) {
+    const P = this.type.poses;
+    const D = this.type.dash;
+    if (a.phase === 'windup') {
+      if (a.t >= D.windup) {
+        a.phase = 'dash';
+        a.t = 0;
+        for (const p of this.parts) p.addVel(this.f * D.speed, -D.up, dt);
+        b.emit('whoosh', this.hip.x, this.hip.y, { unit: this, power: 0.9 });
+        this.mouth = 0.6;
+        this.mouthKind = 'o';
+        return P.dash;
+      }
+      return blendPose(P.rest, P.windup, easeOut(a.t / D.windup));
+    }
+    if (a.phase === 'dash') {
+      this.striking = !a.done;
+      if (a.t >= D.time || (a.t > 0.15 && this.groundF > 0.8) || a.done) {
+        a.phase = 'recover';
+        a.t = 0;
+      }
+      return P.dash;
+    }
+    this.striking = false;
+    if (a.t >= D.recover) {
+      this.act = null;
+      this.cooldown = D.cooldown * this.rng.range(0.8, 1.3);
+      this.brow = 0;
+      return P.rest;
+    }
+    return blendPose(P.dash, P.rest, easeInOut(a.t / D.recover));
+  }
+
+  /** Bomb: the fuse fizzes, the bomb panics, then BOOM. */
+  animateFuse(dt, b, a) {
+    const X = this.type.blast;
+    this.fuseT = clamp(a.t / X.fuse, 0, 1);
+    this.mouth = 1;
+    this.brow = 0;
+    if (a.t >= X.fuse && !this.exploded) b.explode(this);
+    return this.type.poses.fuse;
   }
 
   animateBow(dt, b, a) {
@@ -797,15 +872,16 @@ export class Unit {
     }
     // Full-speed club bonks floor even armoured beans; poise only saves them from weak ones
     const downStun = hit.kind === 'club' ? hit.stun * Math.min(1, (this.type.poise || 1) + 0.12) : stun;
+    const lit = this.act && this.act.phase === 'fuse'; // nothing puts out a lit fuse
     if (downStun >= 0.85 || this.conscious < 0.12) {
       this.downT = this.rng.range(0.75, 1.25);
-      this.act = null;
+      if (!lit) this.act = null;
       this.bowDraw = 0;
       this.mouth = 0.8;
       this.mouthKind = 'o';
       b.emit('knockdown', this.head.x, this.head.y, { unit: this });
     } else {
-      if (stun >= 0.5 && this.act && this.act.phase !== 'recover') {
+      if (stun >= 0.5 && this.act && this.act.phase !== 'recover' && !lit) {
         this.act = null; // interrupted
         this.bowDraw = 0;
         this.cooldown = Math.max(this.cooldown, 0.25);
@@ -857,6 +933,8 @@ export class Unit {
     this.brow = 0;
     this.dizzy = 0;
     b.dropWeapon(this);
+    // A bomb that dies still goes off: its fuse burns while it flies
+    if (this.type.blast && !this.exploded) this.deathFuse = this.type.blast.chain;
     b.emit('death', this.head.x, this.head.y, { unit: this, power: hit ? Math.hypot(hit.dvx, hit.dvy) / 400 : 0.5 });
   }
 
@@ -970,6 +1048,11 @@ export class Unit {
     if (this.dizzy > 0) this.dizzy -= dt;
     if (this.guardT > 0) this.guardT -= dt;
     if (!this.act && this.brow > 0) this.brow = Math.max(0, this.brow - dt * 3);
+    if (this.deathFuse > 0) {
+      this.deathFuse -= dt;
+      this.fuseT = 1 - this.deathFuse / this.type.blast.chain;
+      if (this.deathFuse <= 0) b.explode(this);
+    }
     if (!this.alive) {
       this.deadT += dt;
       // Resting corpses go to sleep (skipped by the physics) until something hits them

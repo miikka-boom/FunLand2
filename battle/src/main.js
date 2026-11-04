@@ -423,8 +423,10 @@ function drawIcon(cv, typeId) {
   const u = b.addUnit(typeId, 'blue', 0, 0, 77);
   for (let i = 0; i < 90; i++) b.step(DT);
   const c = cv.getContext('2d');
-  const s = cv.width / 80;
-  c.setTransform(s, 0, 0, s, cv.width / 2 - u.hip.x * s + 4 * s, cv.height - 8 * s);
+  // Fit tall units (the giant Brick) into the card
+  const height = u.ground - (Math.min(u.head.y, u.tip ? u.tip.y : u.head.y) - u.R) + 6;
+  const s = (cv.width / 80) * Math.min(1, 74 / height);
+  c.setTransform(s, 0, 0, s, cv.width / 2 - u.hip.x * s + 4 * s, cv.height - 8 * (cv.width / 80));
   unitsGfx.drawUnit(c, u, b, 0);
 }
 
@@ -639,7 +641,7 @@ window.addEventListener('keydown', (e) => {
     }
     return;
   }
-  if (k >= '1' && k <= '3') {
+  if (k >= '1' && k <= String(UNIT_ORDER.length)) {
     game.selected = UNIT_ORDER[+k - 1];
     game.erase = false;
     ui.refresh();
@@ -671,6 +673,7 @@ window.addEventListener('blur', () => input.reset());
 // --- sim events -> juice ------------------------------------------------------------
 
 const BONK_WORDS = ['BONK!', 'POW!', 'WHAM!', 'THWACK!', 'BOINK!'];
+const SPIKE_WORDS = ['POKE!', 'YOINK!', 'BOING!', 'ZING!'];
 let wordI = 0;
 
 function panOf(sx) {
@@ -693,7 +696,7 @@ function handleEvents() {
     switch (e.type) {
       case 'hit': {
         const p = e.power;
-        if (e.kind === 'bonk') {
+        if (e.kind === 'bonk' || e.kind === 'spike') {
           fx.spawn('impact', { x: e.x, y: e.y, power: p, dirX: e.dirX, dirY: e.dirY, kind: 'bonk' });
           if (e.unit) fx.spawn('dirt', { x: e.unit.hip.x, y: e.unit.ground, power: p, dirX: e.dirX });
           audio.play('bonk', soundOpts(e, { power: p }));
@@ -710,8 +713,9 @@ function handleEvents() {
           }
           if ((e.killed || p >= 1.05) && game.realTime - game.lastWordT > 0.9) {
             game.lastWordT = game.realTime;
-            wordI = (wordI + 1 + ((e.x * 7) | 0) % 3) % BONK_WORDS.length;
-            fx.spawn('text', { x: e.x, y: e.y - 26, text: BONK_WORDS[wordI], color: '#ffe14d', size: 20 + p * 6 });
+            const words = e.kind === 'spike' ? SPIKE_WORDS : BONK_WORDS;
+            wordI = (wordI + 1 + ((e.x * 7) | 0) % 3) % words.length;
+            fx.spawn('text', { x: e.x, y: e.y - 26, text: words[wordI], color: '#ffe14d', size: 20 + p * 6 });
           }
         } else if (e.kind === 'slash') {
           fx.spawn('impact', { x: e.x, y: e.y, power: p, dirX: e.dirX, dirY: e.dirY, kind: 'slash' });
@@ -779,6 +783,35 @@ function handleEvents() {
       case 'battleStart':
         audio.play('battleStart', {});
         camera.shake(0.15);
+        break;
+      case 'explode': {
+        fx.spawn('explosion', { x: e.x, y: e.y, power: 1 });
+        // The bomb's googly eyes go flying
+        for (const s of [-1, 1]) fx.spawn('eyeball', { x: e.x + s * 4, y: e.y - 4, vx: s * (120 + Math.abs(Math.sin(e.x)) * 160), vy: -380 - Math.abs(Math.cos(e.x)) * 180, size: 5.5 });
+        audio.play('boom', soundOpts(e, { power: 1 }));
+        camera.shake(0.7);
+        if (game.hitstopCool <= 0) {
+          game.hitstop = 0.08;
+          game.hitstopCool = 0.5;
+        }
+        // One comic word at a time (BOOM shares the timer with the bonk words)
+        if (game.realTime - game.lastWordT > 0.7) {
+          game.lastWordT = game.realTime;
+          fx.spawn('text', { x: e.x, y: e.y - 40, text: 'BOOM!', color: '#ff9a2e', size: 32 });
+        }
+        break;
+      }
+      case 'quake':
+        fx.spawn('quake', { x: e.x, y: e.y, power: 1 });
+        audio.play('quake', soundOpts(e, { power: 1 }));
+        camera.shake(0.45);
+        if (game.hitstopCool <= 0) {
+          game.hitstop = 0.05;
+          game.hitstopCool = 0.4;
+        }
+        break;
+      case 'fuse':
+        audio.play('fuse', soundOpts(e));
         break;
       case 'battleEnd':
         finishBattle(e.winner);

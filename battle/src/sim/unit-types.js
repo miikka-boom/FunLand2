@@ -1,5 +1,7 @@
-// The three units. Everything that makes them feel different lives here:
-// stats, body shape, weapon and the poses of their attack animations.
+// The units. Everything that makes them feel different lives here: stats,
+// body shape and size, weapon or ability, and the poses of their attacks.
+// `shape` is how the body is drawn (bean, brick, triangle, ball); the physics
+// skeleton is the same wobbly ragdoll for all of them, scaled by `body`.
 //
 // Pose coordinates are in the unit's body frame, relative to the chest
 // (where the arms attach): fx = forward (towards the enemy), uy = up.
@@ -11,6 +13,7 @@ export const UNIT_TYPES = {
   clubber: {
     id: 'clubber',
     name: 'Clubber',
+    shape: 'bean',
     blurb: 'Big wooden club. Sends beans flying.',
     cost: 65,
     hp: 110,
@@ -49,6 +52,7 @@ export const UNIT_TYPES = {
   squire: {
     id: 'squire',
     name: 'Squire',
+    shape: 'bean',
     blurb: 'Sword and shield. Raises it against arrows.',
     cost: 95,
     hp: 180,
@@ -88,6 +92,7 @@ export const UNIT_TYPES = {
   archer: {
     id: 'archer',
     name: 'Archer',
+    shape: 'bean',
     blurb: 'Lobs arrows that stick. Squishy up close.',
     cost: 75,
     hp: 64,
@@ -112,9 +117,123 @@ export const UNIT_TYPES = {
       cheer: { main: [5, 17], off: [-2, 4], ang: -90, lean: -0.05, crouch: 0, wk: 1 },
     },
   },
+
+  // --- shapes ------------------------------------------------------------------
+
+  spiker: {
+    id: 'spiker',
+    name: 'Spiker',
+    shape: 'triangle',
+    blurb: 'Small, fast and pointy. Pounces point-first and rams beans into the sky.',
+    cost: 45,
+    hp: 75,
+    radius: 11,
+    bodyLen: 20,
+    speed: 100,
+    mass: 0.6,
+    weapon: 'none',
+    body: { thigh: 11, shin: 11, upperArm: 6, foreArm: 6, chestFrac: 0.45 },
+    face: { up: -0.55, fw: -0.05 },
+    engage: 30,
+    reach: 170, // starts a pounce from this far
+    dash: {
+      windup: 0.32, // rears back...
+      speed: 470, // ...then leaps point-first
+      up: 210,
+      time: 0.55,
+      recover: 0.5,
+      cooldown: 1.0,
+      damage: 30,
+      launch: [230, 420],
+      stun: 0.95,
+    },
+    poses: {
+      rest: { main: [5, -3], off: [1, -3], ang: 0, lean: 0.06, crouch: 0, wk: 1 },
+      windup: { main: [-6, 2], off: [-8, 0], ang: 0, lean: -0.4, crouch: 5, wk: 1 },
+      dash: { main: [-8, -1], off: [-9, -3], ang: 0, lean: 1.15, crouch: 0, wk: 1 },
+      cheer: { main: [3, 10], off: [-1, 10], ang: 0, lean: -0.05, crouch: 0, wk: 1 },
+    },
+  },
+
+  bomb: {
+    id: 'bomb',
+    name: 'Bomb',
+    shape: 'ball',
+    blurb: 'Waddles up, lights its fuse and goes BOOM. Hurts friends too.',
+    cost: 55,
+    hp: 50,
+    radius: 14,
+    bodyLen: 6,
+    speed: 88,
+    spread: 115, // waits until the bomb ahead is out of blast range
+    heft: 0.6, // round and heavy: harder to bat away
+    mass: 0.8,
+    weapon: 'none',
+    body: { thigh: 12, shin: 12, upperArm: 6, foreArm: 6, standFrac: 0.92, chestFrac: 0.5 },
+    face: { up: 0.05, fw: 0.02 },
+    engage: 20,
+    reach: 75, // lights the fuse this close to an enemy, then charges in
+    blast: {
+      fuse: 0.45,
+      radius: 115,
+      damage: 90,
+      launch: 560, // px/s at the centre, less further out
+      friendly: 0.5, // share of the damage teammates take
+      chain: 0.4, // a bomb caught in another's blast goes off this long after (mid-flight, often)
+      vsGiant: 1.6, // giants can't dodge: extra damage to heavy units
+    },
+    poses: {
+      rest: { main: [9, 0], off: [-7, 0], ang: 0, lean: 0.05, crouch: 0, wk: 1 },
+      fuse: { main: [-6, 9], off: [-9, 7], ang: 0, lean: 0.3, crouch: 0, wk: 1 }, // arms flung back, charging
+      cheer: { main: [6, 10], off: [-6, 10], ang: 0, lean: -0.05, crouch: 0, wk: 1 },
+    },
+  },
+
+  brick: {
+    id: 'brick',
+    name: 'Brick',
+    shape: 'brick',
+    blurb: 'A giant block with a hammer. Slow, tough, and the slam shakes the ground.',
+    cost: 240,
+    hp: 560,
+    radius: 27,
+    bodyLen: 46,
+    speed: 44,
+    mass: 4,
+    weapon: 'hammer',
+    body: { thigh: 25, shin: 25, upperArm: 18, foreArm: 18, chestFrac: 0.5 },
+    face: { up: -0.1, fw: 0 },
+    engage: 62,
+    reach: 84,
+    poise: 0.25, // clubs barely stagger it
+    heft: 0.3,
+    heftUp: 0.35,
+    attack: {
+      windup: 0.7,
+      hold: 0.12,
+      strike: 0.16,
+      recover: 0.55,
+      cooldown: 0.55,
+      damage: 42,
+      knock: 300,
+      launch: [210, 400],
+      stun: 0.9,
+      shieldPierce: 0.7,
+      cleave: true,
+      // The hammer hitting the ground sends a shockwave along it
+      quake: { radius: 125, damage: 22, launch: [190, 430], stun: 0.75 },
+    },
+    poses: {
+      rest: { main: [-6, -8], off: 'shaft', ang: -110, lean: 0.04, crouch: 0, wk: 1 },
+      windup: { main: [-4, 34], off: 'shaft', ang: -120, lean: -0.25, crouch: 10, wk: 1.6 },
+      strike: { main: [28, -8], off: 'shaft', ang: 70, lean: 0.4, crouch: -4, wk: 4.5, hk: 2.4 },
+      recover: { main: [6, 2], off: 'shaft', ang: -40, lean: 0.1, crouch: 3, wk: 1.4 },
+      cheer: { main: [4, 32], off: 'shaft', ang: -85, lean: -0.05, crouch: 0, wk: 1 },
+    },
+  },
 };
 
-export const UNIT_ORDER = ['clubber', 'squire', 'archer'];
+export const UNIT_ORDER = ['clubber', 'squire', 'archer', 'spiker', 'bomb', 'brick'];
 
 // Body proportions shared by every unit (world px).
 export const BODY = {
@@ -130,4 +249,6 @@ export const WEAPONS = {
   club: { len: 44, tipMass: 1.15, tipR: 6, grip: 9, react: 0.55 },
   sword: { len: 30, tipMass: 0.3, tipR: 3, grip: 0, react: 0.4 },
   bow: { len: 0, half: 19 },
+  hammer: { len: 58, tipMass: 3.2, tipR: 12, grip: 14, react: 0.5 },
+  none: { len: 0 },
 };

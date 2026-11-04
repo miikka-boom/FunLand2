@@ -436,6 +436,40 @@ function land(b) {
   b.run(src, 0, x + 0.03);
 }
 
+// Bomb: a sharp crack, a deep boom that rolls off, and debris rattling down.
+function boom(b) {
+  const p = clamp(b.power, 0.3, 1.5);
+  b.noise({ type: 'highpass', f: 2500, d: 0.03, g: 0.45 * p });
+  b.tone({ f: 95, to: 28, glide: 0.5, a: 0.004, d: 0.55, g: 0.85 * p });
+  b.tone({ type: 'triangle', f: 160, to: 45, glide: 0.25, d: 0.25, g: 0.3 * p });
+  b.noise({ type: 'lowpass', f: 2200, to: 140, sweep: 0.9, q: 0.7, a: 0.004, d: 0.9, g: 0.75 * p });
+  b.noise({ type: 'bandpass', f: 900, to: 300, sweep: 0.6, q: 0.8, at: 0.05, d: 0.6, g: 0.25 * p, rate: 0.6 });
+  // Debris pattering down
+  for (let i = 0; i < 5; i++) b.noise({ type: 'bandpass', f: rand(1800, 3200), q: 2, at: rand(0.25, 0.7), d: 0.03, g: 0.12 * p });
+}
+
+// Brick hammer hitting the ground: a heavy thump that rumbles.
+function quake(b) {
+  const p = clamp(b.power, 0.3, 1.5);
+  b.tone({ f: 72, to: 26, glide: 0.35, a: 0.003, d: 0.45, g: 0.9 * p });
+  b.noise({ type: 'lowpass', f: 600, to: 90, sweep: 0.5, q: 1, d: 0.5, g: 0.6 * p });
+  b.noise({ type: 'bandpass', f: 1400, q: 1, d: 0.05, g: 0.25 * p });
+  b.tone({ type: 'triangle', f: 46, to: 38, at: 0.08, a: 0.05, d: 0.6, g: 0.25 * p });
+}
+
+// Lit fuse: a fizzing hiss with a flutter.
+function fuse(b) {
+  const src = b.noiseSrc(1);
+  const bp = b.filter('bandpass', 5200, 3, null);
+  const e = b.gain(0);
+  src.connect(bp);
+  bp.connect(e);
+  const d = 0.65;
+  b.line(e.gain, [[0, 0], [0.03, 0.16], [d * 0.8, 0.2], [d, 0]]);
+  b.wobble([bp.frequency], 5200, 23, [[0, 0.15], [d, 0.3]], 0, d);
+  b.run(src, 0, d);
+}
+
 // --- bean voices -------------------------------------------------------------------
 
 // Launched through the air: "waaaah!" rising then falling, wobbling more as it
@@ -711,6 +745,9 @@ const SOUNDS = {
   drop: { fn: drop, gap: 0.05, max: 2, level: 1.5, trim: 1.1 },
   ui: { fn: ui, gap: 0.04, max: 2, level: 1.5, trim: 0.6, jit: 0.01 },
   cheer: { fn: cheer, gap: 0.06, max: 4, level: 0.45, trim: 1, jit: 0.02 },
+  boom: { fn: boom, gap: 0.04, max: 4, level: 1.4, trim: 0.9, hit: true },
+  quake: { fn: quake, gap: 0.06, max: 3, level: 1.2, trim: 0.95, hit: true },
+  fuse: { fn: fuse, gap: 0.08, max: 3, level: 0.5, trim: 0.9 },
 };
 
 export const SOUND_NAMES = Object.keys(SOUNDS);

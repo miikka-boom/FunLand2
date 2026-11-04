@@ -28,6 +28,7 @@ export class UnitRenderer {
     ctx.fillStyle = 'rgba(28, 52, 12, 0.28)';
     ctx.beginPath();
     for (const u of battle.units) {
+      if (u.gone) continue;
       const h = clamp((u.ground - u.hip.y - u.standH) / 160, 0, 1);
       const rx = u.R * (u.alive ? 1.25 : 1.6) * (1 - h * 0.5);
       const cx = (u.hip.x + u.head.x * (u.alive ? 0 : 1)) / (u.alive ? 1 : 2);
@@ -65,6 +66,7 @@ export class UnitRenderer {
   drawItems(ctx, battle) {
     for (const it of battle.items) {
       if (it.kind === 'club') drawClub(ctx, it.a.x, it.a.y, it.b.x, it.b.y);
+      else if (it.kind === 'hammer') drawHammer(ctx, it.a.x, it.a.y, it.b.x, it.b.y);
       else if (it.kind === 'sword') drawSword(ctx, it.a.x, it.a.y, it.b.x, it.b.y);
       else if (it.kind === 'bow') {
         const mx = (it.a.x + it.b.x) / 2;
@@ -91,7 +93,7 @@ export class UnitRenderer {
     // Corpses first, then the living, each back-to-front by lane
     for (let pass = 0; pass < 2; pass++) {
       for (const u of battle.units) {
-        if ((pass === 0) === u.alive) continue;
+        if ((pass === 0) === u.alive || u.gone) continue;
         this.drawUnit(ctx, u, battle, time);
       }
     }
@@ -106,24 +108,26 @@ export class UnitRenderer {
     const head = u.head;
     const mi = u.mainHand;
     const oi = 1 - mi;
-    const limbW = R * 0.3;
+    const limbW = Math.max(2.4, R * 0.3);
     const farCol = T.shade;
     const nearCol = T.limb;
+    const size = R / 13; // hands and feet grow with the body
+    const twoHanded = (u.type.weapon === 'club' || u.type.weapon === 'hammer') && u.tip;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     // --- far side: legs, far arm, sword (in far hand) -----------------------
     drawLimb(ctx, hip, u.knee[0], u.foot[0], farCol, limbW * 1.1);
-    drawFoot(ctx, u.foot[0], f, T.dark);
+    drawFoot(ctx, u.foot[0], f, T.dark, size);
     drawLimb(ctx, hip, u.knee[1], u.foot[1], nearCol, limbW * 1.1);
-    drawFoot(ctx, u.foot[1], f, T.dark);
+    drawFoot(ctx, u.foot[1], f, T.dark, size);
 
-    if (u.type.weapon === 'club' && u.tip) {
+    if (twoHanded) {
       // Off hand behind on the shaft
       drawLimb(ctx, chest, u.elbow[oi], u.hand[oi], farCol, limbW);
     } else {
       drawLimb(ctx, chest, u.elbow[0], u.hand[0], farCol, limbW);
-      drawHand(ctx, u.hand[0], farCol);
+      drawHand(ctx, u.hand[0], farCol, size);
     }
     if (u.type.weapon === 'sword' && u.tip) {
       this.trail(ctx, u, time);
@@ -139,20 +143,23 @@ export class UnitRenderer {
     }
 
     // --- body -------------------------------------------------------------------
-    this.drawBean(ctx, u, T);
+    if (u.type.shape === 'bean' || !u.type.shape) this.drawBean(ctx, u, T);
+    else this.drawShape(ctx, u, T, time);
     if (u.type.shield) drawHelmet(ctx, u);
+    if (u.type.blast) drawFuse(ctx, u, time);
     this.drawFace(ctx, u, T, time);
 
     // --- near side: arm + held item ---------------------------------------------
-    if (u.type.weapon === 'club' && u.tip) {
+    if (twoHanded) {
       this.trail(ctx, u, time);
-      drawClub(ctx, u.hand[mi].x, u.hand[mi].y, u.tip.x, u.tip.y);
+      if (u.type.weapon === 'hammer') drawHammer(ctx, u.hand[mi].x, u.hand[mi].y, u.tip.x, u.tip.y);
+      else drawClub(ctx, u.hand[mi].x, u.hand[mi].y, u.tip.x, u.tip.y);
       drawLimb(ctx, chest, u.elbow[mi], u.hand[mi], nearCol, limbW);
-      drawHand(ctx, u.hand[mi], nearCol);
-      drawHand(ctx, u.hand[oi], farCol);
+      drawHand(ctx, u.hand[mi], nearCol, size);
+      drawHand(ctx, u.hand[oi], farCol, size);
     } else if (u.type.shield) {
       drawLimb(ctx, chest, u.elbow[oi], u.hand[oi], nearCol, limbW);
-      drawHand(ctx, u.hand[oi], nearCol);
+      drawHand(ctx, u.hand[oi], nearCol, size);
       if (u.alive) {
         const sh = u.shieldFrameRaw();
         drawShield(ctx, sh, f);
@@ -173,10 +180,10 @@ export class UnitRenderer {
         const drawing = u.bowDraw > 0.02;
         drawBow(ctx, bh.x, bh.y, dx, dy, -dy * f, dx * f, u.bowDraw, drawing ? sh : null, drawing && u.nocked ? u.team : null, u.team);
       }
-      drawHand(ctx, u.hand[1], nearCol);
+      drawHand(ctx, u.hand[1], nearCol, size);
     } else {
       drawLimb(ctx, chest, u.elbow[1], u.hand[1], nearCol, limbW);
-      drawHand(ctx, u.hand[1], nearCol);
+      drawHand(ctx, u.hand[1], nearCol, size);
     }
 
     if (u.dizzy > 0 && u.alive) drawDizzy(ctx, u, time);
@@ -254,6 +261,49 @@ export class UnitRenderer {
     ctx.restore();
   }
 
+  /** Bricks, triangles and balls: filled shapes with the same two-tone lighting as the beans. */
+  drawShape(ctx, u, T, time) {
+    const R = u.R;
+    let nx = -u.uy;
+    let ny = u.ux;
+    if (nx * LIGHT_X + ny * LIGHT_Y < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    ctx.save();
+    applySquash(ctx, u);
+    const hurt = u.hurtT > 0.05 && u.alive;
+    const tint = u.hurtT > 0 && !hurt && u.alive;
+    let base = tint ? T.light : T.body;
+    // A lit bomb blinks faster and faster
+    if (u.type.blast && ((u.act && u.act.phase === 'fuse') || u.deathFuse > 0) && Math.sin(time * (10 + 40 * u.fuseT)) > 0.2) base = u.fuseT > 0.6 ? '#ffffff' : '#ff8a5c';
+    shapePath(ctx, u);
+    ctx.fillStyle = hurt ? '#ffffff' : T.shade;
+    ctx.fill();
+    if (!hurt) {
+      ctx.save();
+      shapePath(ctx, u);
+      ctx.clip();
+      ctx.translate(nx * R * 0.2, ny * R * 0.2);
+      shapePath(ctx, u);
+      ctx.fillStyle = base;
+      ctx.fill();
+      ctx.translate(-nx * R * 0.2, -ny * R * 0.2);
+      if (u.type.shape === 'brick') drawMortar(ctx, u, T);
+      // Soft highlight on the lit upper side
+      const c = u.chest;
+      const up = u.type.shape === 'ball' ? R * 0.35 : u.L * 0.3;
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = T.light;
+      ctx.beginPath();
+      ctx.ellipse(c.x + nx * R * 0.45 + u.ux * up, c.y + ny * R * 0.45 + u.uy * up, R * 0.22, u.type.shape === 'brick' ? R * 0.9 : R * 0.38, Math.atan2(u.uy, u.ux), 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   drawFace(ctx, u, T, time) {
     const R = u.R;
     const head = u.head;
@@ -261,8 +311,11 @@ export class UnitRenderer {
     const uy = u.uy;
     const fx = u.fwx;
     const fy = u.fwy;
-    // Body-frame point near the head -> world (with the same squash as the body)
-    const P = (fw, up) => [head.x + fx * fw + ux * up, head.y + fy * fw + uy * up];
+    // Body-frame point near the head -> world; shapes put the face lower or further forward
+    const face = u.type.face || ZERO_FACE;
+    const ofw = face.fw * R;
+    const oup = face.up * R;
+    const P = (fw, up) => [head.x + fx * (fw + ofw) + ux * (up + oup), head.y + fy * (fw + ofw) + uy * (up + oup)];
     const er = R * 0.42;
     const eyes = [
       { p: P(R * 0.22, R * 0.14), r: er * 0.9 },
@@ -379,7 +432,7 @@ export class UnitRenderer {
     for (let i = 1; i < tr.length; i++) {
       const k = i / tr.length;
       ctx.strokeStyle = `rgba(255,255,255,${0.45 * k})`;
-      ctx.lineWidth = (u.type.weapon === 'club' ? 9 : 4) * k;
+      ctx.lineWidth = (u.type.weapon === 'hammer' ? 14 : u.type.weapon === 'club' ? 9 : 4) * k;
       ctx.beginPath();
       ctx.moveTo(tr[i - 1].x, tr[i - 1].y);
       ctx.lineTo(tr[i].x, tr[i].y);
@@ -400,18 +453,170 @@ function drawLimb(ctx, a, b, c, col, w) {
   ctx.stroke();
 }
 
-function drawHand(ctx, h, col) {
+function drawHand(ctx, h, col, size = 1) {
   ctx.fillStyle = col;
   ctx.beginPath();
-  ctx.arc(h.x, h.y, 2.7, 0, TAU);
+  ctx.arc(h.x, h.y, 2.7 * Math.max(0.85, size), 0, TAU);
   ctx.fill();
 }
 
-function drawFoot(ctx, p, f, col) {
+function drawFoot(ctx, p, f, col, size = 1) {
+  const k = Math.max(0.8, size);
   ctx.fillStyle = col;
   ctx.beginPath();
-  ctx.ellipse(p.x + f * 2.2, p.y + 0.5, 4, 2.3, 0, 0, TAU);
+  ctx.ellipse(p.x + f * 2.2 * k, p.y + 0.5, 4 * k, 2.3 * k, 0, 0, TAU);
   ctx.fill();
+}
+
+const ZERO_FACE = { fw: 0, up: 0 };
+
+/** Squash & stretch around the hips along the body axis (shared by every shape). */
+function applySquash(ctx, u) {
+  const sq = u.sq;
+  if (Math.abs(sq) <= 0.004) return;
+  const c = u.ux;
+  const s = u.uy;
+  const a = 1 - sq * 0.85; // along the spine
+  const b = 1 + sq; // across
+  const m11 = c * c * a + s * s * b;
+  const m12 = c * s * (a - b);
+  const m22 = s * s * a + c * c * b;
+  ctx.translate(u.hip.x, u.hip.y);
+  ctx.transform(m11, m12, m12, m22, 0, 0);
+  ctx.translate(-u.hip.x, -u.hip.y);
+}
+
+/** Outline of a non-bean body, following the ragdoll's spine. */
+function shapePath(ctx, u) {
+  const R = u.R;
+  const { hip, chest, head } = u;
+  const ux = u.ux;
+  const uy = u.uy;
+  const nx = -uy;
+  const ny = ux;
+  ctx.beginPath();
+  if (u.type.shape === 'ball') {
+    ctx.arc(chest.x, chest.y, R * 1.06, 0, TAU);
+    return;
+  }
+  if (u.type.shape === 'triangle') {
+    // A rounded wedge: point at the top (it leads when the spiker pounces)
+    const ax = head.x + ux * R * 1.05;
+    const ay = head.y + uy * R * 1.05;
+    const bx = hip.x - ux * R * 0.8;
+    const by = hip.y - uy * R * 0.8;
+    const w = R * 1.25;
+    const rr = R * 0.32;
+    ctx.moveTo(bx, by);
+    ctx.arcTo(bx + nx * w, by + ny * w, ax, ay, rr);
+    ctx.arcTo(ax, ay, bx - nx * w, by - ny * w, rr * 0.7);
+    ctx.arcTo(bx - nx * w, by - ny * w, bx, by, rr);
+    ctx.closePath();
+    return;
+  }
+  // Brick: a tall block that bends a little with the spine
+  const e = R * 0.95;
+  const bx = hip.x - ux * e;
+  const by = hip.y - uy * e;
+  const tx = head.x + ux * e;
+  const ty = head.y + uy * e;
+  const P = [
+    [bx - nx * R, by - ny * R],
+    [bx + nx * R, by + ny * R],
+    [chest.x + nx * R, chest.y + ny * R],
+    [tx + nx * R, ty + ny * R],
+    [tx - nx * R, ty - ny * R],
+    [chest.x - nx * R, chest.y - ny * R],
+  ];
+  const rad = R * 0.36;
+  ctx.moveTo((P[5][0] + P[0][0]) / 2, (P[5][1] + P[0][1]) / 2);
+  ctx.arcTo(P[0][0], P[0][1], P[1][0], P[1][1], rad);
+  ctx.arcTo(P[1][0], P[1][1], P[2][0], P[2][1], rad);
+  ctx.arcTo(P[2][0], P[2][1], P[3][0], P[3][1], 1);
+  ctx.arcTo(P[3][0], P[3][1], P[4][0], P[4][1], rad);
+  ctx.arcTo(P[4][0], P[4][1], P[5][0], P[5][1], rad);
+  ctx.arcTo(P[5][0], P[5][1], P[0][0], P[0][1], 1);
+  ctx.closePath();
+}
+
+/** Brick: mortar lines so it reads as a brick (drawn inside the body clip). */
+function drawMortar(ctx, u, T) {
+  const R = u.R;
+  const ux = u.ux;
+  const uy = u.uy;
+  const nx = -uy;
+  const ny = ux;
+  const bx = u.hip.x - ux * R;
+  const by = u.hip.y - uy * R;
+  const H = u.L + 2 * R;
+  ctx.strokeStyle = T.shade;
+  ctx.globalAlpha = 0.5;
+  ctx.lineWidth = R * 0.08;
+  ctx.beginPath();
+  const rows = 4;
+  for (let i = 1; i < rows; i++) {
+    const t = (H * i) / rows;
+    const cx = bx + ux * t;
+    const cy = by + uy * t;
+    ctx.moveTo(cx - nx * R * 1.2, cy - ny * R * 1.2);
+    ctx.lineTo(cx + nx * R * 1.2, cy + ny * R * 1.2);
+  }
+  for (let i = 0; i < rows; i++) {
+    const t0 = (H * i) / rows;
+    const off = (i % 2 ? 0.35 : -0.35) * R;
+    const x0 = bx + ux * t0 + nx * off;
+    const y0 = by + uy * t0 + ny * off;
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x0 + (ux * H) / rows, y0 + (uy * H) / rows);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+/** Bomb: a fuse on top; once lit it burns down with a fizzing spark. */
+function drawFuse(ctx, u, time) {
+  if (!u.alive && !(u.deathFuse > 0)) return;
+  const R = u.R;
+  const c = u.chest;
+  const ux = u.ux;
+  const uy = u.uy;
+  const nx = -uy;
+  const ny = ux;
+  const lit = (u.act && u.act.phase === 'fuse') || u.deathFuse > 0;
+  const len = R * 0.95 * (lit ? 1 - 0.75 * u.fuseT : 1);
+  const sx = c.x + ux * R * 0.98;
+  const sy = c.y + uy * R * 0.98;
+  const wob = Math.sin(time * 5 + u.id) * 2;
+  const ex = sx + ux * len - nx * (len * 0.35 + wob);
+  const ey = sy + uy * len - ny * (len * 0.35 + wob);
+  // Metal cap
+  ctx.fillStyle = '#7d8590';
+  ctx.beginPath();
+  ctx.ellipse(sx, sy, R * 0.32, R * 0.16, Math.atan2(ny, nx), 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = '#4a3a24';
+  ctx.lineWidth = Math.max(1.6, R * 0.16);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.quadraticCurveTo(sx + ux * len * 0.6 + nx * len * 0.25, sy + uy * len * 0.6 + ny * len * 0.25, ex, ey);
+  ctx.stroke();
+  if (!lit) return;
+  // Fizzing spark
+  const n = 7;
+  const flick = ((time * 30) | 0) & 1;
+  for (let k = 0; k < 2; k++) {
+    ctx.fillStyle = k ? '#fff6c2' : flick ? '#ffb02e' : '#ff7a1a';
+    const r0 = (k ? 2.2 : 4.6) * (1 + 0.25 * Math.sin(time * 47));
+    ctx.beginPath();
+    for (let i = 0; i < n * 2; i++) {
+      const a = (i * Math.PI) / n + time * 9;
+      const r = i % 2 ? r0 * 0.4 : r0;
+      ctx.lineTo(ex + Math.cos(a) * r, ey + Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
 }
 
 function drawLid(ctx, x, y, r, ux, uy, k, col) {
@@ -625,6 +830,60 @@ export function drawClub(ctx, hx, hy, tx, ty) {
   ctx.beginPath();
   ctx.ellipse(k2[0] - nx * 2.5 + ax * 2, k2[1] - ny * 2.5 + ay * 2, 1.2, 0.8, Math.atan2(ay, ax), 0, TAU);
   ctx.fill();
+}
+
+/** Brick's hammer: a long handle and a big iron head across the tip. */
+export function drawHammer(ctx, hx, hy, tx, ty) {
+  const dx = tx - hx;
+  const dy = ty - hy;
+  const L = Math.hypot(dx, dy) || 1;
+  const ax = dx / L;
+  const ay = dy / L;
+  const nx = -ay;
+  const ny = ax;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = WOOD_DARK;
+  ctx.lineWidth = 5.4;
+  ctx.beginPath();
+  ctx.moveTo(hx - ax * 9, hy - ay * 9);
+  ctx.lineTo(tx - ax * 6, ty - ay * 6);
+  ctx.stroke();
+  ctx.strokeStyle = WOOD;
+  ctx.lineWidth = 3.4;
+  ctx.stroke();
+  // Head
+  const hl = 15; // half length across the handle
+  const hw = 9; // half width along it
+  const P = (u, v) => [tx + nx * u + ax * v, ty + ny * u + ay * v];
+  const c = [P(-hl, -hw), P(hl, -hw), P(hl, hw), P(-hl, hw)];
+  ctx.beginPath();
+  ctx.moveTo(c[0][0], c[0][1]);
+  for (let i = 1; i < 4; i++) ctx.lineTo(c[i][0], c[i][1]);
+  ctx.closePath();
+  ctx.fillStyle = '#8b939e';
+  ctx.fill();
+  ctx.strokeStyle = '#4f5763';
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  // Bands and a shine
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  for (const u of [-hl * 0.62, hl * 0.62]) {
+    const [x0, y0] = P(u, -hw);
+    const [x1, y1] = P(u, hw);
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+  }
+  ctx.stroke();
+  const [s0x, s0y] = P(-hl * 0.85, -hw * 0.5);
+  const [s1x, s1y] = P(hl * 0.85, -hw * 0.5);
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(s0x, s0y);
+  ctx.lineTo(s1x, s1y);
+  ctx.stroke();
 }
 
 export function drawSword(ctx, hx, hy, tx, ty) {
