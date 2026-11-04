@@ -863,6 +863,8 @@ export class Unit {
     if (!this.alive) return;
     this.hp -= hit.damage;
     this.hurtT = 0.1;
+    // Big hits knock the hat off
+    if (this.hat && (Math.hypot(hit.dvx, hit.dvy) > 320 || this.hp <= 0 || hit.stun >= 0.8)) b.popHat(this, hit.dvx, hit.dvy);
     this.lastHitBy = hit.from || null;
     const stun = hit.stun * (this.type.poise || 1);
     this.conscious = Math.max(0, this.conscious - stun);

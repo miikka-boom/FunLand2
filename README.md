@@ -78,40 +78,80 @@ The jokes come from that one rule plus a few extras:
 - **Hand of god:** drag a bean to pick it up. It dangles and flails, and you
   can fling it.
 
-## Modes
+## A fair free-to-play game
 
-- **Campaign:** nine rounds (three of them introduce the Spiker, the Bomb and
-  the Brick). Red's army is preset, and you have a gold budget for blue. **Retry** replays your placement; **Change army** lets you edit it.
-  Beaten rounds can be replayed from the title card. Every round has several
-  winning armies and loses to the obvious wrong answer (checked by simulating
-  every affordable army).
-- **Sandbox:** place both armies (left of the field is blue, right is red) with
-  no budget. You can grab beans during the battle too.
+Wobble War is set up as a free mobile game of the good kind. Everything that
+wins battles is earned by playing; money (if it is ever connected) only buys
+looks.
 
-Controls: pick one of the six unit cards, then tap or click your side of the
+- **Hub:** the home screen runs a silent demo battle behind the menu. **PLAY**
+  continues the campaign. The other tiles are Map, Daily, Sandbox, Wardrobe and
+  Trophies; ⚙ opens the settings.
+- **Campaign:** 30 levels in three worlds (Green Hills, Pointy Pass, Brick
+  Fortress). Each world ends with a boss army in matching hats. Red's army is
+  preset and you get a gold budget. Winning gives ★, and spending less gives
+  ★★ and ★★★; the HUD shows your stars live while you place. Clearing a world
+  unlocks its units everywhere: Spiker and Bomb after World 1, the Brick after
+  World 2. Every level was simulated headless: several affordable armies win,
+  and the star thresholds come from the cheapest winning army found.
+- **Daily challenge:** one level from the worlds you have reached, with today's
+  enemies in matching hats. The first win of the day pays bonus Jellybeans.
+  There is no streak, so missing a day costs nothing.
+- **Jellybeans:** the one currency. You earn them from first clears, new
+  stars, small replay wins, the daily and trophies. You spend them only on
+  cosmetics.
+- **Wardrobe:** a hat per unit type (15 hats) and an army colour (6 colours),
+  with a live preview you can poke. Buying takes two taps, so purchases are
+  never accidental. Hats pop off when their bean gets bonked.
+- **Trophies:** 16 goals that reward laughing at the physics: Frequent Flyer,
+  Pincushion, Chain Reaction, Boing!, Yeet and others. Each pays Jellybeans
+  when you claim it.
+- **Supporter Pack:** an optional thank-you with a gold colour and a crown. It
+  is cosmetic only, and purchases aren't connected in this prototype.
+- **No** energy, timers, ads, loot boxes, pay-to-win or nag screens. The promise
+  is written in Settings.
+- **Tutorial:** on level 1, a pointer shows where to tap, then FIGHT.
+- **Phone app:** installable to the home screen (manifest + icons), plays
+  offline through a service worker, and updates itself only while you are in
+  the menus. It vibrates on big hits on Android, and settings cover sound,
+  volume, vibration and screen shake.
+- **Sandbox:** place both armies with no budget, using the units you have
+  unlocked. You can grab beans during the battle too.
+
+Progress is saved in `localStorage` (`wobblewar.profile.v1`). Settings → Reset
+progress erases it.
+
+Controls: pick one of your unit cards, then tap or click your side of the
 field to place it (a tap right next to a bean still places one). Drag a bean to
 grab it (a lit bomb stays lit: throw it), drag elsewhere to pan, pinch or
 scroll to zoom; 🎥 reframes. The 🐢 button toggles slow motion. The ≡ menu
-pauses the battle. Keys: `1`–`6` pick a unit, `E` remove, `Space` fight, `S`
-slow-mo, `F` auto camera, `R` reset, `M` mute, `Esc` menu / resume.
+pauses the battle (resume, restart, settings, main menu). Keys: `1`–`6` pick a unit, `E` remove, `Space` fight, `S`
+slow-mo, `F` auto camera, `R` reset, `M` mute, `Esc` pause / back.
 
 ## Code map (battle/)
 
 ```
-battle/index.html, style.css    page shell, storybook HUD, title, dock
+battle/index.html, style.css    page shell, storybook HUD, dock, results, menus
 battle/src/config.js             world layout + team colours shared by everything
 battle/src/sim/physics.js        Verlet particles, constraints, ground, segment tests
 battle/src/sim/unit.js           the ragdoll: skeleton, muscles, walking, attacks, pounce, fuse, eyes, AI
 battle/src/sim/unit-types.js     the six units: shape, size, stats, weapons/abilities, attack poses
 battle/src/sim/battle.js         placement, fixed-step sim, melee hits, pounces, shockwaves, explosions, arrows, win check
-battle/src/campaign.js           the nine rounds
+battle/src/meta/levels.js        the 30 campaign levels (simulation-checked budgets and star thresholds)
+battle/src/meta/profile.js       the save: Jellybeans, stars, cosmetics, stats, settings (pure, migrates old saves)
+battle/src/meta/economy.js       the fair-F2P rules: unlocks, rewards, stars, daily challenge
+battle/src/meta/trophies.js      16 trophies and claiming
+battle/src/meta/cosmetics.js     army colours, buying and equipping hats/colours
+battle/src/ui/meta-ui.js         hub, world map, level card, wardrobe (live preview), trophies, settings, pause
+battle/src/render/hats.js        the hats (vector, drawn in each unit's frame)
+battle/src/pwa.js, battle/sw.js  install + offline + updates (bump VERSION in sw.js on every deploy)
 battle/src/render/units.js       drawing beans, bricks, wedges and balls, faces, weapons, arrows, fuses
 battle/src/render/background.js  sky, parallax hills, castles, grass, dirt cross-section
 battle/src/render/effects.js     starbursts, sparks, dust, dirt, confetti, comic words
 battle/src/render/camera.js      auto-framing, pan/zoom, screen shake
 battle/src/audio.js              WebAudio synth: bonks, clanks, squeaky voices, horn
 battle/src/input.js              tap / grab / pan / pinch / wheel
-battle/src/main.js               game flow, sim events -> juice, frame loop
+battle/src/main.js               game flow, rewards, stats for trophies, sim events -> juice, frame loop
 ```
 
 The simulation (`battle/src/sim/`) has no DOM code, runs at a fixed 120 Hz with

@@ -10,7 +10,10 @@
   <meta name="apple-mobile-web-app-title" content="Wobble War">
   <meta name="format-detection" content="telephone=no">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <title>Wobble War · FunLand2 Prototype 1</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="description" content="A wobbly 2D physics battle game. Free, fair, no ads: everything that wins battles is earned by playing.">
+  <title>Wobble War</title>
   <link rel="stylesheet" href="style.css">
   <script>
     (function () {
@@ -42,7 +45,7 @@
   <div id="hud" class="hud" aria-live="polite">
     <div class="hud-top">
       <div class="team-bar blue">
-        <span class="tag">BLUE</span>
+        <span class="tag" id="tag-blue">BLUE</span>
         <div class="bar"><i id="bar-blue"></i></div>
         <b class="count" id="count-blue">0</b>
       </div>
@@ -83,41 +86,21 @@
 
   <div id="result" class="result hidden">
     <div class="ribbon" id="result-title">VICTORY!</div>
+    <div class="rstars" id="result-stars"></div>
+    <div class="rreward" id="result-reward"></div>
     <p id="result-sub"></p>
+    <div class="rnotes" id="result-notes"></div>
     <div class="row">
+      <button id="home" class="btn" type="button" aria-label="Main menu">⌂</button>
       <button id="retry" class="btn" type="button">Retry</button>
       <button id="edit" class="btn" type="button">Change army</button>
-      <button id="next" class="btn primary" type="button">Next round ▸</button>
+      <button id="next" class="btn primary" type="button">Next level ▸</button>
     </div>
   </div>
+
+  <div id="coach" class="coach hidden" aria-live="polite"><div class="say"></div></div>
 
   <div id="toast" class="toast"></div>
-
-  <div id="title" class="overlay">
-    <div class="card">
-      <div class="kicker">FUNLAND2 · PROTOTYPE 1</div>
-      <h1>WOBBLE <span>WAR</span></h1>
-      <p class="sub">A wobbly 2D battle simulator. Place your beans (and bricks, spikes and bombs), press FIGHT, enjoy the bonks.</p>
-      <div class="modes">
-        <button id="resume" class="btn primary big hidden" type="button">Resume<small>Back to the battle (Esc)</small></button>
-        <button id="play-campaign" class="btn primary big" type="button">Campaign<small id="campaign-progress">Round 1 of 6</small></button>
-        <button id="play-sandbox" class="btn big" type="button">Sandbox<small>Place both armies</small></button>
-      </div>
-      <div id="round-picker" class="round-picker hidden">
-        <button id="round-prev" class="icon-btn" type="button" aria-label="Previous round">◀</button>
-        <span>Pick a round</span>
-        <button id="round-next" class="icon-btn" type="button" aria-label="Next round">▶</button>
-      </div>
-      <div class="howto">
-        <div><b>Place</b><span>Pick a unit below, then tap your side of the field.</span></div>
-        <div><b>Fight</b><span>Press FIGHT! The beans do the rest.</span></div>
-        <div><b>Grab</b><span>Drag a bean to pick it up and fling it around.</span></div>
-        <div><b>Watch</b><span>Drag to pan, pinch or scroll to zoom, 🐢 for slow-mo.</span></div>
-      </div>
-      <p class="hint desktop-only">Keys: 1–6 pick unit · E remove · Space fight · S slow-mo · F auto cam · R reset · M mute · Esc menu</p>
-      <p class="hint"><a href="../">← Prototype 0: HORDE</a></p>
-    </div>
-  </div>
 
   <div id="rotate">Turn your phone sideways for a bigger battlefield</div>
   <div id="boot-error"></div>

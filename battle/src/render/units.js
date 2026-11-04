@@ -4,6 +4,7 @@
 import { TEAMS } from '../config.js';
 import { WEAPONS } from '../sim/unit-types.js';
 import { itemShieldFrame } from '../sim/battle.js';
+import { drawHat } from './hats.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -21,6 +22,11 @@ const EYE_LINE = '#1d1a24';
 export class UnitRenderer {
   constructor() {
     this.trails = new Map(); // unit id -> recent weapon tip positions
+    this.palettes = {}; // team -> palette override (your army colour)
+  }
+
+  pal(team) {
+    return this.palettes[team] || TEAMS[team];
   }
 
   /** Ground shadows for every unit and item (drawn before anything stands on the grass). */
@@ -67,6 +73,12 @@ export class UnitRenderer {
     for (const it of battle.items) {
       if (it.kind === 'club') drawClub(ctx, it.a.x, it.a.y, it.b.x, it.b.y);
       else if (it.kind === 'hammer') drawHammer(ctx, it.a.x, it.a.y, it.b.x, it.b.y);
+      else if (it.kind === 'hat') {
+        // Up is the brim turned a quarter: hats tumble and can land upside down
+        const dx = it.b.x - it.a.x;
+        const dy = it.b.y - it.a.y;
+        drawHat(ctx, it.hat, (it.a.x + it.b.x) / 2, (it.a.y + it.b.y) / 2, Math.atan2(-dx, dy), it.R, this.pal(it.team), it.age || 0, it.f || 1);
+      }
       else if (it.kind === 'sword') drawSword(ctx, it.a.x, it.a.y, it.b.x, it.b.y);
       else if (it.kind === 'bow') {
         const mx = (it.a.x + it.b.x) / 2;
@@ -100,7 +112,7 @@ export class UnitRenderer {
   }
 
   drawUnit(ctx, u, battle, time) {
-    const T = TEAMS[u.team];
+    const T = this.pal(u.team);
     const f = u.f;
     const R = u.R;
     const hip = u.hip;
@@ -145,9 +157,13 @@ export class UnitRenderer {
     // --- body -------------------------------------------------------------------
     if (u.type.shape === 'bean' || !u.type.shape) this.drawBean(ctx, u, T);
     else this.drawShape(ctx, u, T, time);
-    if (u.type.shield) drawHelmet(ctx, u);
+    if (u.type.shield && !u.hat) drawHelmet(ctx, u);
     if (u.type.blast) drawFuse(ctx, u, time);
     this.drawFace(ctx, u, T, time);
+    if (u.hat) {
+      const a = hatAnchor(u);
+      drawHat(ctx, u.hat, a[0], a[1], Math.atan2(u.uy, u.ux), u.R, T, time, u.f);
+    }
 
     // --- near side: arm + held item ---------------------------------------------
     if (twoHanded) {
@@ -469,6 +485,15 @@ function drawFoot(ctx, p, f, col, size = 1) {
 }
 
 const ZERO_FACE = { fw: 0, up: 0 };
+
+/** Where a hat sits: the top of the head, per body shape. */
+export function hatAnchor(u) {
+  const R = u.R;
+  const shape = u.type.shape;
+  const base = shape === 'ball' ? u.chest : u.head;
+  const k = shape === 'bean' || !shape ? 0.92 : shape === 'brick' ? 0.95 : 1.0;
+  return [base.x + u.ux * R * k, base.y + u.uy * R * k];
+}
 
 /** Squash & stretch around the hips along the body axis (shared by every shape). */
 function applySquash(ctx, u) {

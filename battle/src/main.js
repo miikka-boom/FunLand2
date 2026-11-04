@@ -1,5 +1,7 @@
-// Wobble War: boot, game flow (title -> placement -> battle -> result), input,
-// turning sim events into effects / sound / camera, and the frame loop.
+// Wobble War: boot, game flow (hub -> placement -> battle -> result), input,
+// turning sim events into effects / sound / haptics / camera, progression
+// (profile, rewards, trophies) and the frame loop. The menus live in
+// ui/meta-ui.js; the fair-F2P rules live in meta/.
 
 import { WORLD, TEAMS } from './config.js';
 import { Battle, DT } from './sim/battle.js';
@@ -10,26 +12,37 @@ import { createBackground } from './render/background.js';
 import { Effects } from './render/effects.js';
 import { BattleAudio } from './audio.js';
 import { Input } from './input.js';
-import { ROUNDS } from './campaign.js';
+import { LEVELS } from './meta/levels.js';
+import { loadProfile, saveProfile, newProfile } from './meta/profile.js';
+import { WORLDS, unlockedUnits, recordLevelWin, recordDailyWin, dailyChallenge, dateKey, starsFor, worldOf } from './meta/economy.js';
+import { claimable } from './meta/trophies.js';
+import { armyPalette } from './meta/cosmetics.js';
+import { HATS } from './render/hats.js';
+import { createMetaUI } from './ui/meta-ui.js';
+import { registerPWA, canInstall, promptInstall } from './pwa.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const $ = (id) => document.getElementById(id);
 
-// --- persistent settings ------------------------------------------------------
+// --- profile ------------------------------------------------------------------------
 
-const SAVE_KEY = 'wobblewar.v1';
-const save = { unlocked: 0, muted: false };
+const store = (() => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null; // blocked storage: play on, just without saving
+  }
+})();
+let profile = loadProfile(store);
+// Carry the sound setting over from the pre-F2P save
 try {
-  Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'));
+  const old = store && JSON.parse(store.getItem('wobblewar.v1') || 'null');
+  if (old && !profile.stats.battles && old.muted) profile.settings.sound = false;
 } catch {
-  // private mode etc.
+  // ignore
 }
 function persist() {
-  try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  } catch {
-    // ignore
-  }
+  saveProfile(profile, store);
 }
 
 // --- core objects ---------------------------------------------------------------
@@ -41,11 +54,11 @@ const unitsGfx = new UnitRenderer();
 const bg = createBackground({ seed: 7 });
 const fx = new Effects({ seed: 11 });
 const audio = new BattleAudio();
-audio.setMuted(!!save.muted);
 
 const game = {
-  mode: null, // campaign | sandbox
-  round: Math.min(save.unlocked, ROUNDS.length - 1),
+  mode: null, // attract (hub background) | campaign | daily | sandbox
+  level: 0, // campaign level index
+  daily: null, // today's challenge
   battle: new Battle(1),
   snapshot: null, // placement to restore on retry / reset
   selected: 'clubber',
@@ -57,18 +70,30 @@ const game = {
   resultT: -1,
   hover: null,
   realTime: 0,
-  simDtFrame: 0,
   grabNoticeShown: false,
   lastWordT: -1,
   paused: false, // menu open over a running game
   inputBlockUntil: 0, // swallow taps that fall through from a just-closed overlay
-  pickRound: 0, // campaign round chosen on the title card
   lastDeath: null,
   finalVictim: null,
   bonkTimes: [],
   zoneToastT: -9,
+  spent: 0, // gold spent on the army that's fighting
+  reward: null, // what the last win paid out (for the result screen)
+  track: null, // per-battle bookkeeping for trophies
+  attractRestartT: -1,
 };
-window.__ww = { game, camera, fx, audio };
+window.__ww = { game, camera, fx, audio, get profile() {
+  return profile;
+} };
+
+const playing = () => game.mode && game.mode !== 'attract';
+const blueName = () => (game.mode === 'sandbox' || game.mode === 'attract' ? 'BLUE' : 'YOU');
+
+/** Team colours: the player's army wears the colour they picked. */
+function pal(team) {
+  return team === 'blue' ? armyPalette(profile) : TEAMS[team];
+}
 
 let W = 1;
 let H = 1;
@@ -92,26 +117,78 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', resi
 function framePlacement(instant) {
   camera.follow = true;
   // Portrait campaign: only blue's side matters, so show it big enough to tap
-  if (W < H && game.mode === 'campaign') camera.frame(WORLD.zone.blue[0] - 60, WORLD.zone.blue[1] + 60, instant, 1.35);
+  if (W < H && game.mode !== 'sandbox') camera.frame(WORLD.zone.blue[0] - 60, WORLD.zone.blue[1] + 60, instant, 1.35);
   else camera.frame(WORLD.zone.blue[0] - 90, WORLD.zone.red[1] + 90, instant, 1.35);
+}
+
+// --- settings, haptics -------------------------------------------------------------
+
+function applySettings() {
+  const S = profile.settings;
+  audio.setMuted(!S.sound);
+  audio.setVolume(S.volume);
+  ui.refreshMute();
+  const p = armyPalette(profile);
+  const root = document.documentElement.style;
+  root.setProperty('--army', p.body);
+  root.setProperty('--army-dark', p.dark);
+  root.setProperty('--army-light', p.light);
+  unitsGfx.palettes.blue = p;
+}
+
+function setSetting(k, v) {
+  profile.settings[k] = v;
+  persist();
+  applySettings();
+  if (k === 'haptics' && v) buzz(20);
+}
+
+/** Short vibration on Android (iOS Safari has none). Only for the player's own battles. */
+function buzz(pattern) {
+  if (!profile.settings.haptics || game.mode === 'attract' || !navigator.vibrate) return;
+  try {
+    navigator.vibrate(pattern);
+  } catch {
+    // ignore
+  }
+}
+
+function shake(a) {
+  if (!profile.settings.shake) return;
+  camera.shake(game.mode === 'attract' ? a * 0.4 : a);
 }
 
 // --- flow ---------------------------------------------------------------------------
 
 const uiSeed = () => (Math.random() * 2 ** 31) | 0;
 
-function newBattle() {
+function currentLevel() {
+  if (game.mode === 'campaign') return LEVELS[game.level];
+  if (game.mode === 'daily') return game.daily.level;
+  return null;
+}
+
+function availableUnits() {
+  return game.mode === 'attract' ? UNIT_ORDER.slice() : unlockedUnits(profile);
+}
+
+function newBattle(seed = uiSeed()) {
   fx.clear();
-  game.battle = new Battle(uiSeed());
+  game.battle = new Battle(seed);
   game.resultT = -1;
   game.finalSlowT = 0;
   game.hitstop = 0;
   game.erase = false;
   game.finalVictim = null;
   game.lastDeath = null;
+  game.reward = null;
+  game.attractRestartT = -1;
+  game.track = { explodes: [], chained: false, flew: new Set(), pinned: new Set(), boinged: false };
   camera.groundTarget = 0.74;
   camera.fast = false;
   unitsGfx.trails.clear();
+  unitsGfx.palettes.blue = armyPalette(profile);
+  game.battle.hats.blue = { ...profile.equipped.hats };
 }
 
 /** Ignore canvas taps for a moment (a double-tap on a button mustn't place a bean). */
@@ -120,17 +197,21 @@ function blockInput(ms = 350) {
 }
 
 function enterPlacement(snapshot) {
-  newBattle();
+  newBattle(game.mode === 'daily' ? game.daily.seed : undefined);
   const b = game.battle;
-  if (game.mode === 'campaign') {
-    const r = ROUNDS[game.round];
-    r.red.forEach((s, i) => b.addUnit(s.type, 'red', s.x, (i * 0.383 + 0.2) % 1, 1000 + i));
+  const L = currentLevel();
+  if (L) {
+    b.hats.red = L.redHat ? { all: L.redHat } : game.mode === 'daily' && game.daily.hat ? { all: game.daily.hat } : {};
+    L.red.forEach((s, i) => b.addUnit(s.type, 'red', s.x, (i * 0.383 + 0.2) % 1, 1000 + i));
   }
-  if (snapshot) for (const s of snapshot) if (game.mode === 'sandbox' || s.team === 'blue') b.addUnit(s.type, s.team, s.x, s.lane, s.seed);
+  const avail = availableUnits();
+  if (!avail.includes(game.selected)) game.selected = avail[0];
+  if (snapshot) for (const s of snapshot) if ((game.mode === 'sandbox' || s.team === 'blue') && avail.includes(s.type)) b.addUnit(s.type, s.team, s.x, s.lane, s.seed);
   // Let everyone settle into their stance before the player looks
   for (let i = 0; i < 30; i++) b.step(DT);
   b.events.length = 0;
   framePlacement(true);
+  ui.buildCards();
   ui.showPlacement();
 }
 
@@ -144,15 +225,23 @@ function startFight() {
   }
   b.enforceZones();
   game.snapshot = b.snapshot().filter((s) => game.mode === 'sandbox' || s.team === 'blue');
+  game.spent = b.cost('blue');
   audio.unlock();
   b.start();
   game.erase = false;
   camera.follow = true;
   camera.groundTarget = 0.78;
+  buzz(25);
+  if (game.mode === 'campaign' && game.level === 0 && !profile.tutorial) {
+    profile.tutorial = 1;
+    persist();
+    setTimeout(() => toast('Watch them go!', 'Drag to look around · 🐢 for slow-mo', 2.6), 900);
+  }
   ui.showBattle();
 }
 
-function startMode(mode) {
+/** Leave the menus and start playing a mode. */
+function beginMode(mode) {
   audio.unlock();
   audio.play('ui');
   blockInput();
@@ -161,31 +250,144 @@ function startMode(mode) {
   game.slowmo = false;
   game.paused = false;
   audio.resume();
-  $('title').classList.add('hidden');
-  if (mode === 'campaign') game.round = clamp(game.pickRound, 0, unlockedRound());
-  enterPlacement(null);
-  announceRound();
+  meta.hideAll();
+  document.body.classList.remove('in-hub');
+  armBack();
 }
 
-/** Highest campaign round the player may pick (0-based). */
-function unlockedRound() {
-  return Math.min(save.unlocked, ROUNDS.length - 1);
+/**
+ * Android back button / back gesture: step back inside the game (battle ->
+ * pause menu -> resume; any menu -> hub) instead of leaving the page. Only
+ * the hub lets the browser go back for real.
+ */
+let backArmed = false;
+function armBack() {
+  if (backArmed) return;
+  try {
+    history.pushState({ wobble: 1 }, '');
+    backArmed = true;
+  } catch {
+    // ignore
+  }
+}
+window.addEventListener('popstate', () => {
+  backArmed = false;
+  const cur = meta.current();
+  if (cur === 'pause') {
+    resumeGame();
+    armBack();
+  } else if (playing() && !cur) {
+    pauseGame();
+    armBack();
+  } else if (cur === 'settings' && playing()) {
+    meta.show('pause');
+    armBack();
+  } else if (cur && cur !== 'hub') {
+    audio.play('ui');
+    meta.show('hub');
+  } else if (!cur && !playing()) meta.show('hub');
+});
+
+function playLevel(i) {
+  beginMode('campaign');
+  game.level = clamp(i, 0, LEVELS.length - 1);
+  enterPlacement(null);
+  announce();
+}
+
+function playDaily() {
+  const d = dailyChallenge(profile, dateKey(new Date()), LEVELS);
+  const hats = HATS.filter((h) => h.id !== 'none' && !h.supporter);
+  d.hat = hats[d.seed % hats.length].id; // today's enemies dress up
+  beginMode('daily');
+  game.daily = d;
+  enterPlacement(null);
+  announce();
+}
+
+function playSandbox() {
+  beginMode('sandbox');
+  enterPlacement(null);
+  announce();
+}
+
+function announce() {
+  if (game.mode === 'campaign') {
+    const L = LEVELS[game.level];
+    toast(`${L.boss ? 'BOSS · ' : ''}Level ${game.level + 1}: ${L.name}`, L.tip, 2.8);
+  } else if (game.mode === 'daily') {
+    const d = game.daily;
+    toast('Daily challenge', d.done ? `Done today (${'★'.repeat(d.done)}) · more stars still pay` : `First win today: +80 Jellybeans and +10 per star`, 2.8);
+  } else toast('Sandbox', 'Tap the left side for blue, the right side for red', 2.4);
 }
 
 function resumeGame() {
-  if (!game.mode) return;
+  if (!playing()) return;
   audio.play('ui');
   blockInput();
   game.paused = false;
   audio.resume();
-  $('title').classList.add('hidden');
+  meta.hideAll();
 }
 
-function announceRound() {
-  if (game.mode === 'campaign') {
-    const r = ROUNDS[game.round];
-    toast(`Round ${game.round + 1}: ${r.name}`, r.tip, 2.6);
-  } else toast('Sandbox', 'Tap the left side for blue, the right side for red', 2.4);
+function pauseGame() {
+  if (!playing()) return;
+  audio.play('ui');
+  game.paused = true;
+  input.reset();
+  meta.show('pause');
+}
+
+let pendingUpdate = null;
+
+function goHub() {
+  if (pendingUpdate) {
+    pendingUpdate();
+    pendingUpdate = null;
+    return;
+  }
+  blockInput();
+  game.paused = false;
+  input.reset();
+  audio.resume();
+  startAttract();
+  meta.show('hub');
+}
+
+/**
+ * The hub's living background: two random armies (every unit type, so new
+ * players get a peek at what's ahead) fight on loop, silently.
+ */
+function startAttract() {
+  game.mode = 'attract';
+  game.slowmo = false;
+  document.body.classList.add('in-hub');
+  newBattle();
+  const b = game.battle;
+  b.hats.red = { all: Math.random() < 0.5 ? 'viking' : 'none' };
+  for (const team of ['blue', 'red']) {
+    let gold = 520 + Math.random() * 180;
+    const [z0, z1] = WORLD.zone[team];
+    let guard = 0;
+    while (gold > 40 && guard++ < 40) {
+      const id = UNIT_ORDER[(Math.random() * UNIT_ORDER.length) | 0];
+      const t = UNIT_TYPES[id];
+      if (t.cost > gold) continue;
+      gold -= t.cost;
+      const ranged = t.ranged;
+      const front = team === 'blue' ? z1 - 40 : z0 + 40;
+      const back = team === 'blue' ? z0 + 160 : z1 - 160;
+      const x = ranged ? back + (Math.random() - 0.5) * 120 : front + (back - front) * Math.random() * 0.55;
+      b.addUnit(id, team, x, Math.random());
+    }
+  }
+  for (let i = 0; i < 30; i++) b.step(DT);
+  b.events.length = 0;
+  b.start();
+  b.events.length = 0;
+  camera.follow = true;
+  camera.groundTarget = 0.7;
+  ui.showAttract();
 }
 
 function finishBattle(winner) {
@@ -194,24 +396,36 @@ function finishBattle(winner) {
   const b = game.battle;
   // Confetti over the winners
   if (winner === 'blue' || winner === 'red') {
-    const cols = [TEAMS[winner].body, TEAMS[winner].light, '#ffd84a', '#ffffff'];
+    const P = pal(winner);
+    const cols = [P.body, P.light, '#ffd84a', '#ffffff'];
     for (const u of b.units) if (u.alive && u.team === winner) fx.spawn('confetti', { x: u.head.x, y: u.head.y - 30, colors: cols });
-  }
-  if (game.mode === 'campaign' && winner === 'blue') {
-    save.unlocked = Math.max(save.unlocked, Math.min(game.round + 1, ROUNDS.length - 1));
-    if (game.round === ROUNDS.length - 1) save.completed = true;
-    game.pickRound = Math.min(game.round + 1, ROUNDS.length - 1);
-    persist();
   }
   // Keep the survivors and the final victim in frame through the slow-mo
   game.finalVictim = game.lastDeath;
   camera.fast = true;
+  if (game.mode === 'attract') {
+    game.attractRestartT = 4.5;
+    return;
+  }
+  const S = profile.stats;
+  S.battles++;
+  const won = winner === 'blue';
+  if (won && game.mode !== 'sandbox') {
+    S.wins++;
+    if (b.units.every((u) => u.team !== 'blue' || u.alive)) S.flawless++;
+    if (game.mode === 'campaign') game.reward = { kind: 'level', ...recordLevelWin(profile, game.level, game.spent, LEVELS[game.level]) };
+    else game.reward = { kind: 'daily', ...recordDailyWin(profile, game.daily.key, game.spent, game.daily.level) };
+    buzz([30, 60, 40]);
+  }
+  persist();
+  meta.refresh();
 }
 
 // --- UI -------------------------------------------------------------------------------
 
 const ui = {
   cards: new Map(),
+  cardSig: '',
   els: {
     dock: $('dock'),
     battleCtl: $('battle-ctl'),
@@ -226,30 +440,14 @@ const ui = {
     barR: $('bar-red'),
     cntB: $('count-blue'),
     cntR: $('count-red'),
+    tagB: $('tag-blue'),
     mute: $('mute-btn'),
+    coach: $('coach'),
   },
   last: {},
+  timers: [],
 
   build() {
-    const box = $('cards');
-    UNIT_ORDER.forEach((id, i) => {
-      const t = UNIT_TYPES[id];
-      const el = document.createElement('button');
-      el.type = 'button';
-      el.className = 'card-unit';
-      el.title = `${t.name}: ${t.blurb}`;
-      el.innerHTML = `<span class="key">${i + 1}</span><canvas width="112" height="112"></canvas><span class="name">${t.name}</span><span class="cost">${t.cost} gold</span>`;
-      el.addEventListener('click', () => {
-        game.selected = id;
-        game.erase = false;
-        audio.unlock();
-        audio.play('ui');
-        this.refresh();
-      });
-      box.appendChild(el);
-      this.cards.set(id, el);
-      drawIcon(el.querySelector('canvas'), id);
-    });
     const E = this.els;
     E.fight.addEventListener('click', startFight);
     E.erase.addEventListener('click', () => {
@@ -260,10 +458,11 @@ const ui = {
     $('clear').addEventListener('click', () => {
       const b = game.battle;
       if (b.phase !== 'place') return;
-      for (const u of b.units.slice()) if (game.mode === 'sandbox' || u.team === 'blue') {
-        fx.spawn('poof', { x: u.chest.x, y: u.chest.y, color: TEAMS[u.team].body });
-        b.removeUnit(u);
-      }
+      for (const u of b.units.slice())
+        if (game.mode === 'sandbox' || u.team === 'blue') {
+          fx.spawn('poof', { x: u.chest.x, y: u.chest.y, color: pal(u.team).body });
+          b.removeUnit(u);
+        }
       audio.play('remove');
       this.refresh();
     });
@@ -291,47 +490,74 @@ const ui = {
     $('next').addEventListener('click', () => {
       audio.play('ui');
       blockInput();
-      game.round = Math.min(game.round + 1, ROUNDS.length - 1);
+      game.level = Math.min(game.level + 1, LEVELS.length - 1);
       game.snapshot = null;
       enterPlacement(null);
-      announceRound();
+      announce();
     });
-    $('play-campaign').addEventListener('click', () => startMode('campaign'));
-    $('play-sandbox').addEventListener('click', () => startMode('sandbox'));
-    $('resume').addEventListener('click', resumeGame);
-    $('round-prev').addEventListener('click', () => {
-      game.pickRound = Math.max(0, game.pickRound - 1);
+    $('home').addEventListener('click', () => {
       audio.play('ui');
-      refreshRoundPicker();
-    });
-    $('round-next').addEventListener('click', () => {
-      game.pickRound = Math.min(unlockedRound(), game.pickRound + 1);
-      audio.play('ui');
-      refreshRoundPicker();
+      goHub();
     });
     $('reframe').addEventListener('click', () => {
       audio.play('ui');
       framePlacement(false);
     });
-    $('menu-btn').addEventListener('click', () => {
-      audio.play('ui');
-      showTitle();
-    });
+    $('menu-btn').addEventListener('click', pauseGame);
     E.mute.addEventListener('click', toggleMute);
-    this.refreshMute();
+  },
+
+  /** Unit cards for the units you've unlocked (rebuilt when that or your look changes). */
+  buildCards() {
+    const avail = availableUnits();
+    const sig = avail.join() + '|' + profile.equipped.color + '|' + JSON.stringify(profile.equipped.hats);
+    if (sig === this.cardSig) return;
+    this.cardSig = sig;
+    const box = $('cards');
+    box.innerHTML = '';
+    this.cards.clear();
+    avail.forEach((id, i) => {
+      const t = UNIT_TYPES[id];
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'card-unit';
+      el.title = `${t.name}: ${t.blurb}`;
+      el.innerHTML = `<span class="key">${i + 1}</span><canvas width="112" height="112"></canvas><span class="name">${t.name}</span><span class="cost">${t.cost} gold</span>`;
+      el.addEventListener('click', () => {
+        game.selected = id;
+        game.erase = false;
+        audio.unlock();
+        audio.play('ui');
+        this.refresh();
+      });
+      box.appendChild(el);
+      this.cards.set(id, el);
+      drawIcon(el.querySelector('canvas'), id, { team: 'blue', hat: profile.equipped.hats[id] });
+    });
+  },
+
+  hideAllGameUI() {
+    for (const t of this.timers) clearTimeout(t);
+    this.timers.length = 0;
+    this.els.dock.classList.add('hidden');
+    this.els.battleCtl.classList.add('hidden');
+    this.els.result.classList.add('hidden');
+  },
+
+  showAttract() {
+    this.hideAllGameUI();
+    this.refresh();
   },
 
   showPlacement() {
+    this.hideAllGameUI();
     this.els.dock.classList.remove('hidden');
-    this.els.battleCtl.classList.add('hidden');
-    this.els.result.classList.add('hidden');
     this.refresh();
   },
 
   showBattle() {
-    this.els.dock.classList.add('hidden');
+    this.hideAllGameUI();
     this.els.battleCtl.classList.remove('hidden');
-    this.els.result.classList.add('hidden');
     this.refresh();
   },
 
@@ -341,21 +567,80 @@ const ui = {
     E.result.classList.remove('hidden');
     const title = $('result-title');
     const won = winner === 'blue';
+    const starsEl = $('result-stars');
+    const rewardEl = $('result-reward');
+    const notes = $('result-notes');
+    starsEl.innerHTML = '';
+    rewardEl.innerHTML = '';
+    notes.innerHTML = '';
     title.className = 'ribbon' + (winner === 'red' ? ' red' : winner === 'draw' ? ' draw' : '');
     let sub = '';
-    if (game.mode === 'campaign') {
-      title.textContent = winner === 'draw' ? 'DRAW' : won ? 'VICTORY!' : 'DEFEAT';
-      const last = game.round >= ROUNDS.length - 1;
-      sub = won ? (last ? 'You beat the whole campaign! Try the Sandbox.' : `Round ${game.round + 1} cleared`) : 'Try a different army';
-      $('next').classList.toggle('hidden', !won || last);
-    } else {
-      title.textContent = winner === 'draw' ? 'DRAW' : `${TEAMS[winner].name} WINS!`;
-      $('next').classList.add('hidden');
-    }
     const b = game.battle;
-    const left = b.count(winner === 'red' ? 'red' : 'blue');
-    if (winner !== 'draw') sub += `${sub ? ' · ' : ''}${left} left standing · ${Math.round(b.battleTime)}s`;
+    const L = currentLevel();
+    const last = game.mode === 'campaign' && game.level >= LEVELS.length - 1;
+    $('next').classList.toggle('hidden', !(game.mode === 'campaign' && won && !last));
+    $('edit').classList.toggle('hidden', false);
+    if (game.mode === 'sandbox') {
+      title.textContent = winner === 'draw' ? 'DRAW' : `${TEAMS[winner].name} WINS!`;
+    } else {
+      title.textContent = winner === 'draw' ? 'DRAW' : won ? 'VICTORY!' : 'DEFEAT';
+      if (!won) sub = L && L.tip ? `Tip: ${L.tip}` : 'Try a different army';
+    }
+    if (winner !== 'draw') {
+      const left = b.count(winner === 'red' ? 'red' : 'blue');
+      sub += `${sub ? ' · ' : ''}${left} left standing · ${Math.round(b.battleTime)}s`;
+    }
     $('result-sub').textContent = sub;
+
+    const R = game.reward;
+    if (won && R && L) {
+      // Stars pop in one by one, then the Jellybeans count up
+      const slots = [];
+      for (let i = 0; i < 3; i++) {
+        const s = document.createElement('span');
+        s.className = 'rstar';
+        s.textContent = '★';
+        starsEl.appendChild(s);
+        slots.push(s);
+      }
+      for (let i = 0; i < R.stars; i++)
+        this.timers.push(
+          setTimeout(() => {
+            slots[i].classList.add('on');
+            audio.play('star', { pitch: 0.3 + i * 0.35 });
+            buzz(12);
+          }, 450 + i * 380),
+        );
+      const tReward = 450 + R.stars * 380 + 150;
+      if (R.beans > 0) {
+        rewardEl.innerHTML = `<span class="pill beans"><i class="bean"></i><b>+0</b></span>`;
+        const num = rewardEl.querySelector('b');
+        const steps = Math.min(12, R.beans);
+        for (let k = 1; k <= steps; k++)
+          this.timers.push(
+            setTimeout(() => {
+              num.textContent = '+' + Math.round((R.beans * k) / steps);
+              if (k % 3 === 1 || k === steps) audio.play('coin', { pitch: 0.4 + k / steps / 2 });
+            }, tReward + k * 55),
+          );
+      }
+      const add = (html, cls = '') => {
+        const el = document.createElement('div');
+        el.className = 'rnote ' + cls;
+        el.innerHTML = html;
+        notes.appendChild(el);
+      };
+      if (R.kind === 'level' && R.unlockedWorld >= 0) {
+        const names = R.newUnits.map((id) => UNIT_TYPES[id].name).join(' & ');
+        add(`🎉 New world: <b>${WORLDS[R.unlockedWorld].name}</b>${names ? ` · new units: <b>${names}</b>` : ''}`, 'big');
+      }
+      if (R.kind === 'level' && R.stars < 3) add(`★★★ for spending ≤ ${L.stars[2]} gold (you spent ${game.spent})`);
+      if (R.kind === 'daily' && !R.first) add('Daily already won today · more stars still pay');
+      if (last && R.firstClear) add('🏰 You conquered every level! Chase ★★★ or try the Sandbox.', 'big');
+      if (claimable(profile)) add('🏆 Trophy ready · claim it in the menu');
+      this.timers.push(setTimeout(() => notes.classList.add('show'), tReward + 400));
+      notes.classList.remove('show');
+    } else notes.classList.remove('show');
   },
 
   refresh() {
@@ -364,18 +649,20 @@ const ui = {
     const remaining = this.goldLeft();
     for (const [id, el] of this.cards) {
       el.classList.toggle('selected', id === game.selected && !game.erase);
-      el.classList.toggle('poor', game.mode === 'campaign' && UNIT_TYPES[id].cost > remaining);
+      el.classList.toggle('poor', !!currentLevel() && UNIT_TYPES[id].cost > remaining);
     }
     this.els.erase.classList.toggle('on', game.erase);
     this.els.slow.classList.toggle('on', game.slowmo);
     const ready = b.count('blue') > 0 && b.count('red') > 0;
     this.els.fight.classList.toggle('pulse', placing && ready);
-    this.els.badge.textContent = game.mode === 'campaign' ? `ROUND ${game.round + 1}` : game.mode === 'sandbox' ? 'SANDBOX' : 'WOBBLE WAR';
+    this.els.badge.textContent = game.mode === 'campaign' ? `${LEVELS[game.level].boss ? 'BOSS ' : 'LEVEL '}${game.level + 1}` : game.mode === 'daily' ? 'DAILY' : game.mode === 'sandbox' ? 'SANDBOX' : 'WOBBLE WAR';
+    this.els.tagB.textContent = blueName();
   },
 
   goldLeft() {
-    if (game.mode !== 'campaign') return Infinity;
-    return ROUNDS[game.round].budget - game.battle.cost('blue');
+    const L = currentLevel();
+    if (!L) return Infinity;
+    return L.budget - game.battle.cost('blue');
   },
 
   /** Cheap per-frame HUD: only touches the DOM when something changed. */
@@ -398,18 +685,53 @@ const ui = {
     set('cr', b.count('red'), (v) => (this.els.cntR.textContent = v));
     set('reframe', b.phase === 'place' && !camera.follow, (v) => $('reframe').classList.toggle('hidden', !v));
     let sub = '';
-    if (!game.mode) sub = '';
+    const lvl = currentLevel();
+    if (!playing()) sub = '';
     else if (b.phase === 'place') {
-      if (game.mode === 'campaign') {
-        const left = this.goldLeft();
-        const r = ROUNDS[game.round];
-        sub = `<span class="gold">● ${left}</span> / ${r.budget} gold · ${r.name}`;
+      if (lvl) {
+        const spent = b.cost('blue');
+        const left = lvl.budget - spent;
+        const st = spent > 0 ? starsFor(spent, lvl.stars) : 3;
+        sub = `<span class="gold">● ${left}</span> / ${lvl.budget} gold · <span class="stars">${'★'.repeat(st)}<i>${'★'.repeat(3 - st)}</i></span>`;
       } else sub = `Sandbox · ${b.count('blue')} vs ${b.count('red')}`;
     } else if (b.phase === 'battle') {
       const s = Math.floor(b.battleTime);
       sub = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}${game.slowmo ? ' · slow-mo' : ''}`;
     }
     set('sub', sub, (v) => (this.els.sub.innerHTML = v));
+    this.coach();
+  },
+
+  /** First level: point at what to do next. */
+  coach() {
+    const el = this.els.coach;
+    const b = game.battle;
+    let step = null;
+    if (game.mode === 'campaign' && game.level === 0 && !profile.tutorial && b.phase === 'place' && !game.paused) {
+      const n = b.count('blue');
+      if (n === 0) step = 'zone';
+      else if (this.goldLeft() >= UNIT_TYPES.clubber.cost && n < 3) step = 'more';
+      else step = 'fight';
+    }
+    if (this.last.coach !== step) {
+      this.last.coach = step;
+      el.classList.toggle('hidden', !step);
+      el.className = 'coach' + (step ? ' c-' + step : ' hidden');
+      if (step === 'zone') el.querySelector('.say').textContent = 'Tap the blue zone to place a Clubber';
+      if (step === 'more') el.querySelector('.say').textContent = 'Nice! Add more while you have gold';
+      if (step === 'fight') el.querySelector('.say').textContent = 'Now press FIGHT!';
+    }
+    if (!step) return;
+    let x;
+    let y;
+    if (step === 'fight') {
+      const r = this.els.fight.getBoundingClientRect();
+      x = r.left + r.width / 2;
+      y = r.top;
+    } else {
+      [x, y] = camera.toScreen((WORLD.zone.blue[0] + WORLD.zone.blue[1]) / 2 + 40, WORLD.laneDepth * 0.5);
+    }
+    el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
   },
 
   refreshMute() {
@@ -417,25 +739,38 @@ const ui = {
   },
 };
 
-/** Draw a unit card icon by settling a real unit and rendering it. */
-function drawIcon(cv, typeId) {
+/**
+ * Draw a unit icon by settling a real unit and rendering it.
+ * opts: { team, hat, palette }
+ */
+function drawIcon(cv, typeId, opts = {}) {
+  const team = opts.team || 'blue';
   const b = new Battle(5);
-  const u = b.addUnit(typeId, 'blue', 0, 0, 77);
+  if (opts.hat && opts.hat !== 'none') b.hats[team] = { [typeId]: opts.hat };
+  const u = b.addUnit(typeId, team, 0, 0, 77);
   for (let i = 0; i < 90; i++) b.step(DT);
   const c = cv.getContext('2d');
-  // Fit tall units (the giant Brick) into the card
-  const height = u.ground - (Math.min(u.head.y, u.tip ? u.tip.y : u.head.y) - u.R) + 6;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.clearRect(0, 0, cv.width, cv.height);
+  // Fit tall units (the giant Brick) and their hats into the card
+  const hatTop = u.hat ? u.R * 1.3 : 0;
+  const height = u.ground - (Math.min(u.head.y - hatTop, u.tip ? u.tip.y : u.head.y) - u.R) + 6;
   const s = (cv.width / 80) * Math.min(1, 74 / height);
-  c.setTransform(s, 0, 0, s, cv.width / 2 - u.hip.x * s + 4 * s, cv.height - 8 * (cv.width / 80));
+  c.setTransform(s, 0, 0, s, cv.width / 2 - u.hip.x * s + 4 * s * (team === 'red' ? -1 : 1), cv.height - 8 * (cv.width / 80));
+  const keep = unitsGfx.palettes[team];
+  if (opts.palette) unitsGfx.palettes[team] = opts.palette;
+  else if (team === 'blue') unitsGfx.palettes.blue = armyPalette(profile);
   unitsGfx.drawUnit(c, u, b, 0);
+  unitsGfx.palettes[team] = keep;
 }
 
 // Preview units for the placement ghost
 const ghosts = {};
 function ghostUnit(typeId, team) {
-  const k = typeId + team;
+  const k = typeId + team + (team === 'blue' ? profile.equipped.hats[typeId] : '');
   if (!ghosts[k]) {
     const b = new Battle(3);
+    if (team === 'blue') b.hats.blue = { ...profile.equipped.hats };
     const u = b.addUnit(typeId, team, 0, 0.5, 99);
     for (let i = 0; i < 90; i++) b.step(DT);
     ghosts[k] = { b, u };
@@ -451,10 +786,7 @@ function toggleSlow() {
 
 function toggleMute() {
   audio.unlock();
-  audio.setMuted(!audio.muted);
-  save.muted = audio.muted;
-  persist();
-  ui.refreshMute();
+  setSetting('sound', !profile.settings.sound);
 }
 
 let toastTimer = 0;
@@ -464,26 +796,6 @@ function toast(big, small, secs = 2) {
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), secs * 1000);
-}
-
-function showTitle() {
-  if (game.mode) {
-    game.paused = true;
-    audio.suspend();
-    input.reset();
-  }
-  $('resume').classList.toggle('hidden', !game.mode);
-  game.pickRound = clamp(game.pickRound, 0, unlockedRound());
-  refreshRoundPicker();
-  $('title').classList.remove('hidden');
-}
-
-function refreshRoundPicker() {
-  const top = unlockedRound();
-  $('campaign-progress').textContent = save.completed && game.pickRound === top ? `Complete! Replay round ${game.pickRound + 1}` : `Round ${game.pickRound + 1} of ${ROUNDS.length}`;
-  $('round-picker').classList.toggle('hidden', top === 0);
-  $('round-prev').disabled = game.pickRound <= 0;
-  $('round-next').disabled = game.pickRound >= top;
 }
 
 // --- placement rules -------------------------------------------------------------
@@ -528,25 +840,26 @@ function tryPlace(sx, sy) {
   if (!team) {
     if (game.realTime - game.zoneToastT > 1.5) {
       game.zoneToastT = game.realTime;
-      if (game.mode === 'campaign' && wx > WORLD.zone.red[0]) toast('That\'s red\'s side', 'Place on the blue side (left)', 1.3);
+      if (game.mode !== 'sandbox' && wx > WORLD.zone.red[0]) toast("That's red's side", 'Place on the blue side (left)', 1.3);
       else toast('Not here', 'Place inside the dashed zone', 1.3);
     }
     return;
   }
-  if (game.mode === 'campaign' && type.cost > ui.goldLeft()) {
+  if (currentLevel() && type.cost > ui.goldLeft()) {
     toast('Not enough gold', `${type.name} costs ${type.cost}`, 1.3);
     audio.play('ui');
     return;
   }
   if (b.count(team, false) >= 60) {
-    toast('That\'s a lot of beans', 'Max 60 per side', 1.3);
+    toast("That's a lot of beans", 'Max 60 per side', 1.3);
     return;
   }
   const u = b.addUnit(game.selected, team, wx, laneFor(wy));
   // Drop in from a little height: a tiny landing wobble
   for (const p of u.parts) p.teleport(0, -26);
-  fx.spawn('poof', { x: u.chest.x, y: u.chest.y + 10, color: TEAMS[team].body });
+  fx.spawn('poof', { x: u.chest.x, y: u.chest.y + 10, color: pal(team).body });
   audio.play('place', { pitch: u.voice, pan: panOf(sx) });
+  buzz(8);
   ui.refresh();
 }
 
@@ -556,7 +869,7 @@ function tryRemove(sx, sy) {
   const [wx, wy] = camera.toWorld(sx, sy);
   const u = b.unitAt(wx, wy, (u) => game.mode === 'sandbox' || u.team === 'blue', pickSlack());
   if (!u) return;
-  fx.spawn('poof', { x: u.chest.x, y: u.chest.y, color: TEAMS[u.team].body });
+  fx.spawn('poof', { x: u.chest.x, y: u.chest.y, color: pal(u.team).body });
   b.removeUnit(u);
   audio.play('remove', { pan: panOf(sx) });
   ui.refresh();
@@ -572,7 +885,7 @@ function canGrab(u) {
 
 const input = new Input(canvas, {
   blocked() {
-    return game.paused || performance.now() < game.inputBlockUntil;
+    return game.paused || !playing() || meta.isOpen() || performance.now() < game.inputBlockUntil;
   },
   /** Is there a grabbable bean here? (The grab itself only starts once the finger moves.) */
   canGrab(sx, sy) {
@@ -614,7 +927,16 @@ const input = new Input(canvas, {
     game.battle.moveGrab(wx, wy);
   },
   grabEnd() {
-    game.battle.release(); // a bean dropped outside its zone waddles back in by itself
+    const u = game.battle.release(); // a bean dropped outside its zone waddles back in by itself
+    // Sandbox fling: count a proper yeet
+    if (u && game.mode === 'sandbox') {
+      const v = Math.hypot(u.chest.vx(DT), u.chest.vy(DT));
+      if (v > 700) {
+        profile.stats.yeets++;
+        persist();
+        if (profile.stats.yeets === 1) toast('YEET!', 'Trophy unlocked: claim it in the menu', 1.8);
+      }
+    }
   },
   pan(dx) {
     camera.pan(dx);
@@ -631,18 +953,22 @@ window.addEventListener('keydown', (e) => {
   if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
   const b = game.battle;
   const k = e.key.toLowerCase();
-  if (!$('title').classList.contains('hidden')) {
-    if (k === 'escape') resumeGame();
-    else if ((k === 'enter' || k === ' ') && document.activeElement && document.activeElement.tagName === 'BUTTON') return; // the button handles it
-    else if (k === 'enter' || k === ' ') {
-      e.preventDefault();
-      if (game.mode) resumeGame();
-      else startMode('campaign');
+  if (meta.isOpen()) {
+    if (k === 'escape') {
+      const cur = meta.current();
+      if (cur === 'pause') resumeGame();
+      else if (cur !== 'hub') {
+        audio.play('ui');
+        if (playing()) meta.show('pause');
+        else meta.show('hub');
+      }
     }
     return;
   }
-  if (k >= '1' && k <= String(UNIT_ORDER.length)) {
-    game.selected = UNIT_ORDER[+k - 1];
+  if (!playing()) return;
+  const avail = availableUnits();
+  if (k >= '1' && k <= String(avail.length)) {
+    game.selected = avail[+k - 1];
     game.erase = false;
     ui.refresh();
   } else if (k === 'e') {
@@ -653,13 +979,13 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (b.phase === 'place') startFight();
     else if (b.phase === 'battle') toggleSlow();
-    else if (!ui.els.result.classList.contains('hidden')) $(game.mode === 'campaign' && b.winner === 'blue' && !$('next').classList.contains('hidden') ? 'next' : 'retry').click();
+    else if (!ui.els.result.classList.contains('hidden')) $(!$('next').classList.contains('hidden') ? 'next' : 'retry').click();
   } else if (k === 's') toggleSlow();
   else if (k === 'f') camera.follow = true;
   else if (k === 'r') {
     if (b.phase !== 'place') enterPlacement(game.snapshot);
   } else if (k === 'm') toggleMute();
-  else if (k === 'escape') showTitle();
+  else if (k === 'escape') pauseGame();
 });
 
 document.addEventListener('visibilitychange', () => {
@@ -690,107 +1016,176 @@ function soundOpts(e, extra = {}) {
   return o;
 }
 
+/** Sound for the player's battles; the hub's background battle stays silent. */
+function sfx(name, o) {
+  if (game.mode !== 'attract') audio.play(name, o);
+}
+
+/** Trophy bookkeeping from sim events (not for the hub's demo battle). */
+function track(e) {
+  if (!playing()) return;
+  const S = profile.stats;
+  const T = game.track;
+  const u = e.unit;
+  switch (e.type) {
+    case 'knockdown':
+      if (u && u.team === 'red') S.knockdowns++;
+      break;
+    case 'death':
+      if (u && u.team === 'red') {
+        S.kills++;
+        if (u.type.id === 'brick') S.bricksDefeated++;
+      }
+      break;
+    case 'explode': {
+      S.booms++;
+      const t = game.battle.time;
+      T.explodes = T.explodes.filter((x) => t - x < 1);
+      T.explodes.push(t);
+      if (T.explodes.length >= 3 && !T.chained) {
+        T.chained = true;
+        S.chains++;
+        toast('CHAIN REACTION!', null, 1.4);
+      }
+      break;
+    }
+    case 'block':
+      if (!T.boinged && e.from && e.from.type.id === 'spiker' && u && u.team === 'blue') {
+        T.boinged = true;
+        S.boings++;
+      }
+      break;
+    case 'hit':
+      if (e.kind === 'arrow' && u && u.team === 'red' && u.arrows.length >= 8 && !T.pinned.has(u)) {
+        T.pinned.add(u);
+        S.pincushions++;
+      }
+      break;
+  }
+}
+
+/** Enemies launched higher than a castle count as Frequent Flyers. */
+function trackFlights(b) {
+  if (!playing() || b.phase !== 'battle') return;
+  const T = game.track;
+  for (const u of b.units) {
+    if (u.team !== 'red' || T.flew.has(u) || u.held) continue;
+    if (u.ground - u.hip.y > 480) {
+      T.flew.add(u);
+      profile.stats.highFlights++;
+      if (profile.stats.highFlights === 1) fx.spawn('text', { x: u.head.x, y: u.head.y - 30, text: 'FREQUENT FLYER!', color: '#7fd3ff', size: 22 });
+    }
+  }
+}
+
 function handleEvents() {
   const b = game.battle;
+  const demo = game.mode === 'attract';
   for (const e of b.events) {
+    track(e);
     switch (e.type) {
       case 'hit': {
         const p = e.power;
         if (e.kind === 'bonk' || e.kind === 'spike') {
           fx.spawn('impact', { x: e.x, y: e.y, power: p, dirX: e.dirX, dirY: e.dirY, kind: 'bonk' });
           if (e.unit) fx.spawn('dirt', { x: e.unit.hip.x, y: e.unit.ground, power: p, dirX: e.dirX });
-          audio.play('bonk', soundOpts(e, { power: p }));
-          camera.shake(0.18 + p * 0.25);
+          sfx('bonk', soundOpts(e, { power: p }));
+          shake(0.18 + p * 0.25);
           // Hit-stop for bonks that matter (kills, or near the middle of the screen); back off in mobs
           const now = game.realTime;
           game.bonkTimes = game.bonkTimes.filter((t) => now - t < 1);
           game.bonkTimes.push(now);
           const [bx] = camera.toScreen(e.x, e.y);
           const central = Math.abs(bx - W / 2) < W * 0.35;
-          if (p >= 0.75 && (e.killed || central) && game.hitstopCool <= 0) {
+          if (!demo && p >= 0.75 && (e.killed || central) && game.hitstopCool <= 0) {
             game.hitstop = 0.05 + Math.min(0.05, p * 0.03) + (e.killed ? 0.03 : 0);
             game.hitstopCool = game.bonkTimes.length > 2 ? 0.6 : 0.28;
+            buzz(p >= 1 ? 14 : 8);
           }
           if ((e.killed || p >= 1.05) && game.realTime - game.lastWordT > 0.9) {
             game.lastWordT = game.realTime;
             const words = e.kind === 'spike' ? SPIKE_WORDS : BONK_WORDS;
-            wordI = (wordI + 1 + ((e.x * 7) | 0) % 3) % words.length;
+            wordI = (wordI + 1 + (((e.x * 7) | 0) % 3)) % words.length;
             fx.spawn('text', { x: e.x, y: e.y - 26, text: words[wordI], color: '#ffe14d', size: 20 + p * 6 });
           }
         } else if (e.kind === 'slash') {
           fx.spawn('impact', { x: e.x, y: e.y, power: p, dirX: e.dirX, dirY: e.dirY, kind: 'slash' });
-          audio.play('slash', soundOpts(e, { power: p }));
-          camera.shake(0.06 + p * 0.1);
+          sfx('slash', soundOpts(e, { power: p }));
+          shake(0.06 + p * 0.1);
         } else {
           fx.spawn('impact', { x: e.x, y: e.y, power: 0.4, dirX: e.dirX, dirY: e.dirY, kind: 'arrow' });
-          audio.play('arrowBody', soundOpts(e));
+          sfx('arrowBody', soundOpts(e));
         }
         break;
       }
       case 'block':
         fx.spawn('block', { x: e.x, y: e.y, power: e.power, dirX: e.dirX, dirY: e.dirY });
-        audio.play(e.kind === 'arrow' ? 'arrowShield' : 'clank', soundOpts(e, { power: e.power }));
-        if (e.kind !== 'arrow') camera.shake(0.06);
+        sfx(e.kind === 'arrow' ? 'arrowShield' : 'clank', soundOpts(e, { power: e.power }));
+        if (e.kind !== 'arrow') shake(0.06);
         break;
       case 'whoosh':
-        audio.play('whoosh', soundOpts(e, { power: e.power }));
+        sfx('whoosh', soundOpts(e, { power: e.power }));
         break;
       case 'grunt':
-        audio.play('grunt', soundOpts(e));
+        sfx('grunt', soundOpts(e));
         break;
       case 'bowDraw':
-        audio.play('bowDraw', soundOpts(e));
+        sfx('bowDraw', soundOpts(e));
         break;
       case 'bowRelease':
-        audio.play('bowRelease', soundOpts(e));
+        sfx('bowRelease', soundOpts(e));
         break;
       case 'arrowGround':
         fx.spawn('arrowGround', { x: e.x, y: e.y, dirX: e.dirX });
-        audio.play('arrowGround', soundOpts(e));
+        sfx('arrowGround', soundOpts(e));
         break;
       case 'step':
         if (e.power > 0.35 && ((e.x * 13) | 0) % 3 === 0) fx.spawn('dust', { x: e.x, y: e.y, power: 0.25 * e.power, dirX: -(e.unit ? e.unit.f : 0) });
-        if (camera.zoom > 0.8) audio.play('step', soundOpts(e, { power: e.power }));
+        if (camera.zoom > 0.8) sfx('step', soundOpts(e, { power: e.power }));
         break;
       case 'land':
         fx.spawn('land', { x: e.x, y: e.y, power: e.power });
         if (e.power > 0.5) fx.spawn('dirt', { x: e.x, y: e.y, power: e.power * 0.6, dirX: 0 });
-        audio.play('land', soundOpts(e, { power: e.power }));
-        camera.shake(e.power * 0.12);
+        sfx('land', soundOpts(e, { power: e.power }));
+        shake(e.power * 0.12);
         break;
       case 'scream':
-        audio.play('scream', soundOpts(e));
+        sfx('scream', soundOpts(e));
         break;
       case 'hitVoice':
-        audio.play('hitVoice', soundOpts(e, { power: e.power }));
+        sfx('hitVoice', soundOpts(e, { power: e.power }));
         break;
       case 'death':
         game.lastDeath = e.unit;
-        audio.play('death', soundOpts(e));
+        sfx('death', soundOpts(e));
         break;
       case 'dizzy':
         fx.spawn('stars', { x: e.x, y: e.y });
         break;
       case 'cheer':
-        audio.play('cheer', soundOpts(e));
+        sfx('cheer', soundOpts(e));
         break;
       case 'grab':
-        audio.play('grab', soundOpts(e));
+        sfx('grab', soundOpts(e));
         break;
       case 'drop':
-        audio.play('drop', soundOpts(e));
+        sfx('drop', soundOpts(e));
+        break;
+      case 'hatOff':
+        sfx('pop', soundOpts(e));
         break;
       case 'battleStart':
-        audio.play('battleStart', {});
-        camera.shake(0.15);
+        sfx('battleStart', {});
+        shake(0.15);
         break;
       case 'explode': {
         fx.spawn('explosion', { x: e.x, y: e.y, power: 1 });
         // The bomb's googly eyes go flying
         for (const s of [-1, 1]) fx.spawn('eyeball', { x: e.x + s * 4, y: e.y - 4, vx: s * (120 + Math.abs(Math.sin(e.x)) * 160), vy: -380 - Math.abs(Math.cos(e.x)) * 180, size: 5.5 });
-        audio.play('boom', soundOpts(e, { power: 1 }));
-        camera.shake(0.7);
-        if (game.hitstopCool <= 0) {
+        sfx('boom', soundOpts(e, { power: 1 }));
+        shake(0.7);
+        buzz(35);
+        if (!demo && game.hitstopCool <= 0) {
           game.hitstop = 0.08;
           game.hitstopCool = 0.5;
         }
@@ -803,15 +1198,16 @@ function handleEvents() {
       }
       case 'quake':
         fx.spawn('quake', { x: e.x, y: e.y, power: 1 });
-        audio.play('quake', soundOpts(e, { power: 1 }));
-        camera.shake(0.45);
-        if (game.hitstopCool <= 0) {
+        sfx('quake', soundOpts(e, { power: 1 }));
+        shake(0.45);
+        buzz(22);
+        if (!demo && game.hitstopCool <= 0) {
           game.hitstop = 0.05;
           game.hitstopCool = 0.4;
         }
         break;
       case 'fuse':
-        audio.play('fuse', soundOpts(e));
+        sfx('fuse', soundOpts(e));
         break;
       case 'battleEnd':
         finishBattle(e.winner);
@@ -819,6 +1215,7 @@ function handleEvents() {
     }
   }
   b.events.length = 0;
+  trackFlights(b);
 }
 
 // --- frame loop -----------------------------------------------------------------------
@@ -829,11 +1226,23 @@ function timeScale() {
   return s;
 }
 
+/** Full-screen menus hide the battlefield: skip simulating and drawing it. */
+function fieldHidden() {
+  const cur = meta.current();
+  return cur === 'map' || cur === 'wardrobe' || cur === 'trophies' || cur === 'settings';
+}
+
 let acc = 0;
 let last = performance.now();
 function frame(now) {
   const realDt = Math.min(0.05, Math.max(0, (now - last) / 1000));
   last = now;
+  meta.tick(realDt);
+  if (unitsGfx.palettes.blue !== armyPalette(profile)) applySettings(); // colour changed in the wardrobe
+  if (fieldHidden()) {
+    requestAnimationFrame(frame);
+    return;
+  }
   if (game.paused) {
     // Menu open: the battle waits underneath
     render();
@@ -842,8 +1251,8 @@ function frame(now) {
   }
   game.realTime += realDt;
   const b = game.battle;
-  let simDt = 0;
   if (game.hitstopCool > 0) game.hitstopCool -= realDt;
+  let simDt = 0;
   if (game.hitstop > 0) game.hitstop -= realDt;
   else {
     acc += realDt * timeScale();
@@ -859,11 +1268,15 @@ function frame(now) {
   if (game.finalSlowT > 0) game.finalSlowT -= realDt;
   if (game.resultT > 0) {
     game.resultT -= realDt;
-    if (game.resultT <= 0) {
+    if (game.resultT <= 0 && playing()) {
       ui.showResult(b.winner);
       camera.groundTarget = 0.88; // winners in the lower third, under the banner
       audio.play(game.mode === 'sandbox' || b.winner === 'blue' ? 'victory' : 'defeat', {});
     }
+  }
+  if (game.attractRestartT > 0) {
+    game.attractRestartT -= realDt;
+    if (game.attractRestartT <= 0 && game.mode === 'attract') startAttract();
   }
   handleEvents();
   // Effects keep animating through hit-stop: the starburst pops and shrinks while the bodies freeze
@@ -917,7 +1330,7 @@ function followFight(b) {
   else cx = clamp(cx, x0 - 150 + span / 2, x1 + 150 - span / 2);
   let maxZ = Math.min(camera.h / 260, (camera.h * camera.groundFrac) / (top + 60));
   // Result showing: pull back a little so the cheering winners sit below the banner
-  if (b.phase === 'over' && game.resultT <= 0) maxZ = Math.min(maxZ, camera.h / 470);
+  if (b.phase === 'over' && game.resultT <= 0 && playing()) maxZ = Math.min(maxZ, camera.h / 470);
   camera.frame(cx - span / 2, cx + span / 2, false, maxZ);
 }
 
@@ -962,7 +1375,7 @@ function render() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   bg.drawBack(ctx, { w: W, h: H, dpr, cam: v, t: game.realTime });
   camera.apply(ctx, dpr);
-  if (b.phase === 'place') drawZones();
+  if (b.phase === 'place' && playing()) drawZones();
   fx.drawBack(ctx);
   lerpIn(b, clamp(acc / DT, 0, 1));
   unitsGfx.drawShadows(ctx, b);
@@ -971,7 +1384,7 @@ function render() {
   unitsGfx.drawUnits(ctx, b, b.time);
   unitsGfx.drawFlyingArrows(ctx, b);
   lerpOut();
-  if (b.phase === 'place') drawGhost();
+  if (b.phase === 'place' && playing()) drawGhost();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   bg.drawFront(ctx, { w: W, h: H, dpr, cam: v, t: game.realTime });
   camera.apply(ctx, dpr);
@@ -984,7 +1397,7 @@ function drawZones() {
   for (const team of ['blue', 'red']) {
     const [x0, x1] = WORLD.zone[team];
     const active = game.mode === 'sandbox' || team === 'blue';
-    const col = TEAMS[team].body;
+    const col = pal(team).body;
     ctx.globalAlpha = active ? 0.16 : 0.07;
     ctx.fillStyle = col;
     ctx.fillRect(x0, WORLD.grassTop + 2, x1 - x0, WORLD.grassFront - WORLD.grassTop - 2);
@@ -1016,7 +1429,7 @@ function drawGhost() {
   const [hx, wy] = camera.toWorld(game.hover.sx, game.hover.sy);
   const wx = snapToZone(hx);
   const team = teamForX(wx) || 'blue';
-  const ok = !!teamForX(wx) && (game.mode !== 'campaign' || UNIT_TYPES[game.selected].cost <= ui.goldLeft());
+  const ok = !!teamForX(wx) && (!currentLevel() || UNIT_TYPES[game.selected].cost <= ui.goldLeft());
   const { b: gb, u } = ghostUnit(game.selected, team);
   const lane = laneFor(wy);
   const gy = lane == null ? WORLD.laneDepth * 0.5 : lane * WORLD.laneDepth;
@@ -1027,13 +1440,62 @@ function drawGhost() {
   ctx.restore();
 }
 
+// --- menus ---------------------------------------------------------------------------
+
+const meta = createMetaUI({
+  profile,
+  levels: LEVELS,
+  persist,
+  audio,
+  icon: drawIcon,
+  onShow(name) {
+    if (name !== 'hub') armBack();
+  },
+  actions: {
+    playLevel,
+    playDaily,
+    playSandbox,
+    resume: resumeGame,
+    restartLevel() {
+      blockInput();
+      game.paused = false;
+      audio.resume();
+      enterPlacement(game.snapshot);
+    },
+    quitToHub: goHub,
+    setSetting,
+    resetProgress() {
+      const fresh = newProfile();
+      fresh.settings = { ...profile.settings };
+      for (const k of Object.keys(profile)) delete profile[k];
+      Object.assign(profile, fresh); // same object: the menus hold a reference to it
+      persist();
+      applySettings();
+      ui.cardSig = '';
+      startAttract();
+    },
+    canInstall,
+    installApp: () => promptInstall(),
+  },
+});
+
 // --- boot -------------------------------------------------------------------------------
 
 ui.build();
+applySettings();
 resize();
-enterPlacement(null);
-showTitle();
+startAttract();
+meta.show('hub');
 document.documentElement.classList.add('booted');
+// Offline app + updates: a new version downloads in the background. Switch to it
+// (one reload) only while in the menus, never mid-battle; otherwise on the way
+// back to the menu. Progress is saved, so nothing is lost.
+registerPWA({
+  onUpdateReady(applyUpdate) {
+    if (!playing()) applyUpdate();
+    else pendingUpdate = applyUpdate;
+  },
+});
 requestAnimationFrame((t) => {
   last = t;
   frame(t);

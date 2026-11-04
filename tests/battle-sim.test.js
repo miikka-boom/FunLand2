@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Battle, DT } from '../battle/src/sim/battle.js';
 import { UNIT_TYPES } from '../battle/src/sim/unit-types.js';
-import { ROUNDS } from '../battle/src/campaign.js';
 import { WORLD } from '../battle/src/config.js';
 
 const run = (b, secs) => {
@@ -222,18 +221,6 @@ test('snapshot keeps the placement for retry', () => {
   const c = new Battle(19);
   for (const s of snap) c.addUnit(s.type, s.team, s.x, s.lane, s.seed);
   assert.equal(c.cost('blue'), UNIT_TYPES.clubber.cost);
-});
-
-test('campaign rounds are well formed', () => {
-  const cheapest = Math.min(...Object.values(UNIT_TYPES).map((t) => t.cost));
-  for (const r of ROUNDS) {
-    assert.ok(r.name && r.tip && r.budget >= cheapest);
-    assert.ok(r.red.length > 0);
-    for (const s of r.red) {
-      assert.ok(UNIT_TYPES[s.type], s.type);
-      assert.ok(s.x >= WORLD.zone.red[0] && s.x <= WORLD.zone.red[1], `${r.name}: x ${s.x} outside red zone`);
-    }
-  }
 });
 
 // --- regressions from review ------------------------------------------------------
