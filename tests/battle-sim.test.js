@@ -498,3 +498,34 @@ test('a battle with every unit type ends cleanly', () => {
     assert.ok(finite(b));
   }
 });
+
+test('hats are cosmetic: the same battle plays out identically with or without them', () => {
+  const run = (hats) => {
+    const b = new Battle(15);
+    if (hats) b.hats = { blue: { all: 'party' }, red: { all: 'viking' } };
+    army(b, [
+      ['clubber', 'blue', 820, 0.2],
+      ['clubber', 'blue', 860, 0.7],
+      ['squire', 'blue', 780, 0.5],
+      ['bomb', 'blue', 700, 0.4],
+      ['clubber', 'red', 1150, 0.3],
+      ['brick', 'red', 1200, 0.6],
+      ['spiker', 'red', 1180, 0.9],
+    ]);
+    b.start();
+    let t = 0;
+    while (b.phase !== 'over' && t < 90) {
+      b.step(DT);
+      t += DT;
+    }
+    const hatsPopped = b.items.filter((i) => i.kind === 'hat').length;
+    return { winner: b.winner, time: b.battleTime.toFixed(4), hp: b.units.map((u) => u.hp.toFixed(3)).join(), x: b.units.map((u) => u.hip.x.toFixed(2)).join(), hatsPopped };
+  };
+  const plain = run(false);
+  const dressed = run(true);
+  assert.ok(dressed.hatsPopped > 0, 'some hats got knocked off (otherwise this proves nothing)');
+  assert.equal(dressed.winner, plain.winner);
+  assert.equal(dressed.time, plain.time);
+  assert.equal(dressed.hp, plain.hp);
+  assert.equal(dressed.x, plain.x);
+});

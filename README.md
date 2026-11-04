@@ -102,11 +102,13 @@ looks.
   stars, small replay wins, the daily and trophies. You spend them only on
   cosmetics.
 - **Wardrobe:** a hat per unit type (15 hats) and an army colour (6 colours),
-  with a live preview you can poke. Buying takes two taps, so purchases are
-  never accidental. Hats pop off when their bean gets bonked.
+  with a live preview you can poke. Buying takes two deliberate taps, so
+  purchases are never accidental. Hats pop off when their bean gets bonked;
+  they use their own random numbers, so a hat never changes how a battle goes.
 - **Trophies:** 16 goals that reward laughing at the physics: Frequent Flyer,
   Pincushion, Chain Reaction, Boing!, Yeet and others. Each pays Jellybeans
-  when you claim it.
+  when you claim it. Battle feats count in the campaign and the daily, not in
+  the Sandbox, where both armies are yours.
 - **Supporter Pack:** an optional thank-you with a gold colour and a crown. It
   is cosmetic only, and purchases aren't connected in this prototype.
 - **No** energy, timers, ads, loot boxes, pay-to-win or nag screens. The promise

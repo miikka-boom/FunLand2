@@ -13,7 +13,7 @@ import { Effects } from './render/effects.js';
 import { BattleAudio } from './audio.js';
 import { Input } from './input.js';
 import { LEVELS } from './meta/levels.js';
-import { loadProfile, saveProfile, newProfile } from './meta/profile.js';
+import { loadProfile, saveProfile, newProfile, PROFILE_KEY } from './meta/profile.js';
 import { WORLDS, unlockedUnits, recordLevelWin, recordDailyWin, dailyChallenge, dateKey, starsFor, worldOf } from './meta/economy.js';
 import { claimable } from './meta/trophies.js';
 import { armyPalette } from './meta/cosmetics.js';
@@ -43,6 +43,12 @@ try {
 }
 function persist() {
   saveProfile(profile, store);
+}
+
+/** Swap in another profile without replacing the object (the menus hold a reference to it). */
+function replaceProfile(next) {
+  for (const k of Object.keys(profile)) delete profile[k];
+  Object.assign(profile, next);
 }
 
 // --- core objects ---------------------------------------------------------------
@@ -232,12 +238,12 @@ function startFight() {
   camera.follow = true;
   camera.groundTarget = 0.78;
   buzz(25);
+  ui.showBattle();
   if (game.mode === 'campaign' && game.level === 0 && !profile.tutorial) {
     profile.tutorial = 1;
     persist();
-    setTimeout(() => toast('Watch them go!', 'Drag to look around · 🐢 for slow-mo', 2.6), 900);
+    ui.timers.push(setTimeout(() => toast('Watch them go!', 'Drag to look around · 🐢 for slow-mo', 2.6), 900));
   }
-  ui.showBattle();
 }
 
 /** Leave the menus and start playing a mode. */
@@ -261,6 +267,18 @@ function beginMode(mode) {
  * the hub lets the browser go back for real.
  */
 let backArmed = false;
+let ignoreNextPop = false;
+/** Back on the hub: drop our extra history entry, so the next back press leaves for real. */
+function disarmBack() {
+  if (!backArmed) return;
+  backArmed = false;
+  ignoreNextPop = true;
+  try {
+    history.back();
+  } catch {
+    ignoreNextPop = false;
+  }
+}
 function armBack() {
   if (backArmed) return;
   try {
@@ -271,6 +289,10 @@ function armBack() {
   }
 }
 window.addEventListener('popstate', () => {
+  if (ignoreNextPop) {
+    ignoreNextPop = false;
+    return;
+  }
   backArmed = false;
   const cur = meta.current();
   if (cur === 'pause') {
@@ -341,6 +363,7 @@ function pauseGame() {
 let pendingUpdate = null;
 
 function goHub() {
+  persist(); // trophy stats counted mid-battle
   if (pendingUpdate) {
     pendingUpdate();
     pendingUpdate = null;
@@ -360,6 +383,7 @@ function goHub() {
  */
 function startAttract() {
   game.mode = 'attract';
+  game.paused = false;
   game.slowmo = false;
   document.body.classList.add('in-hub');
   newBattle();
@@ -449,7 +473,9 @@ const ui = {
 
   build() {
     const E = this.els;
-    E.fight.addEventListener('click', startFight);
+    E.fight.addEventListener('click', () => {
+      if (!this.justSwapped()) startFight(); // ...and a double-tapped Reset lands here
+    });
     E.erase.addEventListener('click', () => {
       game.erase = !game.erase;
       audio.play('ui');
@@ -472,8 +498,10 @@ const ui = {
       audio.play('ui');
     });
     $('stop').addEventListener('click', () => {
+      if (this.justSwapped()) return; // the second tap of a double-tapped FIGHT lands here
       audio.play('ui');
       blockInput();
+      persist();
       enterPlacement(game.snapshot);
     });
     $('retry').addEventListener('click', () => {
@@ -549,13 +577,21 @@ const ui = {
     this.refresh();
   },
 
+  /** FIGHT and Reset share a corner: ignore a tap right after one replaced the other. */
+  justSwapped() {
+    return performance.now() - this.swapAt < 450;
+  },
+  swapAt: -1e9,
+
   showPlacement() {
+    this.swapAt = performance.now();
     this.hideAllGameUI();
     this.els.dock.classList.remove('hidden');
     this.refresh();
   },
 
   showBattle() {
+    this.swapAt = performance.now();
     this.hideAllGameUI();
     this.els.battleCtl.classList.remove('hidden');
     this.refresh();
@@ -990,11 +1026,23 @@ window.addEventListener('keydown', (e) => {
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
+    persist(); // the app may be closed from the background
     audio.suspend();
     input.reset();
   } else audio.resume();
 });
 window.addEventListener('blur', () => input.reset());
+window.addEventListener('pagehide', persist);
+// Another copy of the game (a second tab, or the installed app) saved: adopt its
+// profile instead of overwriting it with ours on our next save.
+window.addEventListener('storage', (e) => {
+  if (e.key !== PROFILE_KEY || e.newValue == null) return;
+  replaceProfile(loadProfile(store));
+  applySettings();
+  ui.cardSig = '';
+  if (game.battle.phase === 'place' && playing()) ui.buildCards();
+  meta.refresh();
+});
 
 // --- sim events -> juice ------------------------------------------------------------
 
@@ -1023,7 +1071,7 @@ function sfx(name, o) {
 
 /** Trophy bookkeeping from sim events (not for the hub's demo battle). */
 function track(e) {
-  if (!playing()) return;
+  if (game.mode !== 'campaign' && game.mode !== 'daily') return; // the Sandbox is for fun: both armies are yours
   const S = profile.stats;
   const T = game.track;
   const u = e.unit;
@@ -1066,7 +1114,7 @@ function track(e) {
 
 /** Enemies launched higher than a castle count as Frequent Flyers. */
 function trackFlights(b) {
-  if (!playing() || b.phase !== 'battle') return;
+  if ((game.mode !== 'campaign' && game.mode !== 'daily') || b.phase !== 'battle') return;
   const T = game.track;
   for (const u of b.units) {
     if (u.team !== 'red' || T.flew.has(u) || u.held) continue;
@@ -1449,7 +1497,8 @@ const meta = createMetaUI({
   audio,
   icon: drawIcon,
   onShow(name) {
-    if (name !== 'hub') armBack();
+    if (name === 'hub') disarmBack();
+    else armBack();
   },
   actions: {
     playLevel,
@@ -1459,7 +1508,10 @@ const meta = createMetaUI({
     restartLevel() {
       blockInput();
       game.paused = false;
+      input.reset();
       audio.resume();
+      meta.hideAll();
+      persist();
       enterPlacement(game.snapshot);
     },
     quitToHub: goHub,
@@ -1467,12 +1519,14 @@ const meta = createMetaUI({
     resetProgress() {
       const fresh = newProfile();
       fresh.settings = { ...profile.settings };
-      for (const k of Object.keys(profile)) delete profile[k];
-      Object.assign(profile, fresh); // same object: the menus hold a reference to it
+      replaceProfile(fresh);
       persist();
       applySettings();
       ui.cardSig = '';
-      startAttract();
+      blockInput();
+      input.reset();
+      audio.resume();
+      startAttract(); // also clears a pause (reset can be reached from the pause menu)
     },
     canInstall,
     installMethod,

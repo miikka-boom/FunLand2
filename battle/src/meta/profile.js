@@ -45,8 +45,9 @@ export function migrate(p) {
   const out = { ...base, ...p };
   for (const k of ['owned', 'equipped', 'stats', 'daily', 'settings']) out[k] = { ...base[k], ...(p[k] || {}) };
   out.equipped.hats = { ...base.equipped.hats, ...((p.equipped && p.equipped.hats) || {}) };
-  out.owned.hats = Array.from(new Set(['none', ...((p.owned && p.owned.hats) || [])]));
-  out.owned.colors = Array.from(new Set(['blue', ...((p.owned && p.owned.colors) || [])]));
+  const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
+  out.owned.hats = Array.from(new Set(['none', ...list(p.owned && p.owned.hats)]));
+  out.owned.colors = Array.from(new Set(['blue', ...list(p.owned && p.owned.colors)]));
   for (const k of ['stars', 'cleared', 'trophies']) out[k] = { ...(p[k] || {}) };
   out.daily.done = { ...((p.daily && p.daily.done) || {}) };
   out.beans = Math.max(0, Math.floor(Number(p.beans) || 0));

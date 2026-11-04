@@ -189,6 +189,8 @@ export function createMetaUI(deps) {
   const previewGfx = new UnitRenderer();
 
   function makePreview() {
+    const units = unlockedUnits(P);
+    if (!units.includes(ui.wdUnit)) ui.wdUnit = units[0]; // e.g. after a progress reset
     const b = new Battle(17);
     b.hats.blue = { ...P.equipped.hats };
     const u = b.addUnit(ui.wdUnit, 'blue', 0, 0.5, 4242);
@@ -296,10 +298,12 @@ export function createMetaUI(deps) {
       }
       if (ui.confirm !== it.id) {
         ui.confirm = it.id; // two taps to buy: no accidental purchases
+        ui.confirmAt = performance.now();
         click();
         renderWardrobe();
         return;
       }
+      if (performance.now() - ui.confirmAt < 450) return; // a double-tap is not a confirmation
       if (buyItem(P, kind, it) !== 'bought') return;
       audio.play('cheer', { pitch: 0.6 });
     } else click();
@@ -403,12 +407,23 @@ export function createMetaUI(deps) {
     return h('p', { class: 'note' }, '📲 To install: use your browser menu → "Add to Home Screen" (or "Install app"). Then it plays full screen and offline.');
   }
 
+  // A second tap must be a deliberate one: a double-tap (both taps land on the
+  // same spot as the button re-renders) never erases the save.
+  const SECOND_TAP_MS = 600;
   function resetTap() {
     if (!ui.resetArmed) {
       ui.resetArmed = true;
+      ui.resetArmedAt = performance.now();
+      clearTimeout(ui.resetTimer);
+      ui.resetTimer = setTimeout(() => {
+        ui.resetArmed = false;
+        if (ui.open === 'settings') renderSettings();
+      }, 5000);
       renderSettings();
       return;
     }
+    if (performance.now() - ui.resetArmedAt < SECOND_TAP_MS) return;
+    clearTimeout(ui.resetTimer);
     ui.resetArmed = false;
     actions.resetProgress();
     show('hub');

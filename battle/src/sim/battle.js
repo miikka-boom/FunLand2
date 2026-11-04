@@ -21,6 +21,8 @@ export class Battle {
   constructor(seed = 1) {
     this.seed = seed;
     this.rng = new Rng(seed);
+    // Cosmetic-only randomness (hat spin) has its own stream, so looks never change a fight
+    this.fxRng = new Rng((seed ^ 0x9e3779b9) >>> 0);
     this.units = [];
     this.arrows = [];
     this.items = [];
@@ -448,7 +450,7 @@ export class Battle {
     const w = R * 1.5;
     const vx = base.vx(dt) + dvx * 0.4;
     const vy = base.vy(dt) + dvy * 0.4 - 220;
-    const spin = (this.rng.next() - 0.5) * 500;
+    const spin = (this.fxRng.next() - 0.5) * 500;
     const mk = (x, y, s) => {
       const p = new Particle(x, y, 0.3, 2.5);
       p.setVel(vx - ny * spin * s, vy + nx * spin * s, dt);

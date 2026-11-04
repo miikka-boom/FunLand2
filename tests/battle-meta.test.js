@@ -53,6 +53,12 @@ test('profile: fresh, saved, loaded and migrated without losing progress', () =>
   assert.equal(loadProfile(null).beans, 0);
   assert.equal(migrate({ beans: -5 }).beans, 0);
   assert.equal(migrate('hello').beans, 0);
+  // Odd types in a hand-edited or damaged save keep the rest of the progress
+  const odd = migrate({ beans: 100, cleared: { 0: true }, owned: { hats: 5, colors: { a: 1 } } });
+  assert.equal(odd.beans, 100);
+  assert.ok(odd.cleared[0]);
+  assert.deepEqual(odd.owned.hats, ['none']);
+  assert.deepEqual(odd.owned.colors, ['blue']);
   const broken = { setItem() { throw new Error('quota'); } };
   assert.equal(saveProfile(p, broken), false);
 });

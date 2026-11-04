@@ -3,7 +3,8 @@
 // by then were simulated; the budget was raised until several of them win, and
 // the star thresholds come from the cheapest winning army found.
 // stars: [win at all (= budget), 2 stars at or under, 3 stars at or under] gold spent.
-// Level 1 is hand-tuned instead: a lone red Clubber, so the first battle is a near-certain win.
+// Level 1 is hand-tuned instead: a lone red Archer far back, so the coached first army
+// (2-3 Clubbers) wins every time in simulation; one Clubber (the 3-star army) wins ~80%.
 
 const L = (world, name, tip, stars, red, redHat = null) => ({
   world,
@@ -17,7 +18,7 @@ const L = (world, name, tip, stars, red, redHat = null) => ({
 });
 
 export const LEVELS = [
-  L(0, "First Bonk", "Pick a Clubber, tap your side, press FIGHT!", [200, 140, 75], [['clubber', 1125]]),
+  L(0, "First Bonk", "Pick a Clubber, tap your side, press FIGHT!", [200, 140, 75], [['archer', 1460]]),
   L(0, "Two by Two", "Shields stop swords. Clubs come down over the top.", [340, 295, 245], [['squire', 1125], ['clubber', 1153], ['clubber', 1181]]),
   L(0, "Arrow Practice", "Archers are squishy up close.", [340, 275, 210], [['archer', 1460], ['archer', 1494], ['archer', 1528]]),
   L(0, "Shield Wall", "Shields stop arrows from the front. Clubs go over the top.", [530, 390, 245], [['squire', 1125], ['squire', 1153], ['squire', 1181], ['archer', 1460]]),
