@@ -1,11 +1,12 @@
-// Persistence: the Safehouse save and the dev tuning, in localStorage.
-// Loading fills in anything a newer build added, so old saves keep working.
+// Persistence in localStorage. Loading fills in anything a newer build
+// added, so old saves keep working. (The earlier, bigger Safehouse used a
+// different key; its saves are simply ignored.)
 
 import { newState } from './economy.js';
-import { TUNING_DEFAULTS } from './config.js';
 
-const SAVE_KEY = 'funland2.safehouse.save.v1';
-const TUNING_KEY = 'funland2.safehouse.tuning.v1';
+const SAVE_KEY = 'funland2.safehouse.v2';
+const TUNING_KEY = 'funland2.safehouse.tuning.v2';
+export const TUNING_DEFAULTS = Object.freeze({ outcome: 'auto', missionTime: true, volume: 0.7 });
 
 export function loadState() {
   try {
@@ -20,9 +21,8 @@ export function loadState() {
 export function saveState(state) {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(state));
-    return true;
   } catch {
-    return false;
+    // ignore
   }
 }
 
@@ -34,27 +34,20 @@ export function clearState() {
   }
 }
 
-/**
- * Bring a parsed save up to the current shape. Missing fields are filled in
- * at the save's own clock time (real time + its warp offset), so a field a
- * newer build adds doesn't start out days in the past.
- */
+/** Bring a parsed save up to the current shape. */
 export function migrate(saved, now) {
   if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return newState(now ?? Date.now());
-  const offset = Number(saved.clockOffset) || 0;
-  return fillMissing(saved, newState(now ?? Date.now() + offset));
+  return fillMissing(saved, newState(now ?? Date.now() + (Number(saved.clockOffset) || 0)));
 }
 
-function isObj(v) {
-  return v !== null && typeof v === 'object' && !Array.isArray(v);
-}
+const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 function fillMissing(target, template) {
   for (const k of Object.keys(template)) {
     const tv = template[k];
     const cur = target[k];
     if (cur === undefined) target[k] = clone(tv);
-    else if (tv === null) continue; // a nullable field: keep whatever the save has
+    else if (tv === null) continue; // nullable: keep whatever the save has
     else if (cur === null || typeof cur !== typeof tv || Array.isArray(cur) !== Array.isArray(tv)) target[k] = clone(tv);
     else if (isObj(tv)) fillMissing(cur, tv);
   }
@@ -68,13 +61,8 @@ function clone(v) {
 export function loadTuning() {
   const t = { ...TUNING_DEFAULTS };
   try {
-    const raw = localStorage.getItem(TUNING_KEY);
-    if (raw) {
-      const saved = JSON.parse(raw);
-      for (const k of Object.keys(TUNING_DEFAULTS)) {
-        if (k in saved && typeof saved[k] === typeof TUNING_DEFAULTS[k]) t[k] = saved[k];
-      }
-    }
+    const saved = JSON.parse(localStorage.getItem(TUNING_KEY) || '{}');
+    for (const k of Object.keys(TUNING_DEFAULTS)) if (typeof saved[k] === typeof TUNING_DEFAULTS[k]) t[k] = saved[k];
   } catch {
     // defaults
   }
