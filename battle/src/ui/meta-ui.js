@@ -34,7 +34,7 @@ export function createMetaUI(deps) {
   const { profile: P, levels: LEVELS, persist, audio, actions, icon } = deps;
   const root = h('div', { id: 'meta' });
   document.body.appendChild(root);
-  const ui = { open: null, world: 0, wdUnit: 'clubber', wdTab: 'hats', confirm: null, preview: null };
+  const ui = { hubAt: -1e9, open: null, world: 0, wdUnit: 'clubber', wdTab: 'hats', confirm: null, preview: null };
   const click = () => audio.play('ui');
 
   // --- shared bits -----------------------------------------------------------------
@@ -86,22 +86,29 @@ export function createMetaUI(deps) {
   }
 
   // --- hub ----------------------------------------------------------------------------
-  const playBtn = h('button', { class: 'btn primary huge', type: 'button', on: { click: () => (click(), actions.playLevel(nextLevel(P, LEVELS.length))) } }, 'PLAY', h('small', {}, ''));
+  // The hub can appear under a finger that is still tapping (the result screen's ⌂
+  // sits where PLAY and the tiles are): ignore hub taps for a moment after it shows.
+  const hubTap = (fn) => () => {
+    if (performance.now() - ui.hubAt < 400) return;
+    click();
+    fn();
+  };
+  const playBtn = h('button', { class: 'btn primary huge', type: 'button', on: { click: hubTap(() => actions.playLevel(nextLevel(P, LEVELS.length))) } }, 'PLAY', h('small', {}, ''));
   const dailyDot = h('i', { class: 'dot hidden' });
   const trophyBadge = h('i', { class: 'nbadge hidden' }, '0');
   const supporterThanks = h('div', { class: 'thanks hidden' }, '♥ Thank you, Supporter!');
-  const tile = (emoji, label, fn, extra) => h('button', { class: 'tile', type: 'button', on: { click: () => (click(), fn()) } }, h('span', { class: 'emoji' }, emoji), h('span', { class: 'label' }, label), extra || null);
+  const tile = (emoji, label, fn, extra) => h('button', { class: 'tile', type: 'button', on: { click: hubTap(fn) } }, h('span', { class: 'emoji' }, emoji), h('span', { class: 'label' }, label), extra || null);
   const hub = h(
     'div',
     { id: 'hub', class: 'meta-screen hub hidden' },
-    h('div', { class: 'hub-top' }, h('div', { class: 'logo' }, 'WOBBLE ', h('span', {}, 'WAR')), h('div', { class: 'hub-right' }, wallet(), fullscreenBtn(), h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Settings', on: { click: () => (click(), show('settings')) } }, '⚙'))),
+    h('div', { class: 'hub-top' }, h('div', { class: 'logo' }, 'WOBBLE ', h('span', {}, 'WAR')), h('div', { class: 'hub-right' }, wallet(), fullscreenBtn(), h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Settings', on: { click: hubTap(() => show('settings')) } }, '⚙'))),
     h(
       'div',
       { class: 'hub-main' },
       playBtn,
       h('div', { class: 'hub-row' }, tile('🗺️', 'Map', () => show('map')), tile('📅', 'Daily', () => actions.playDaily(), dailyDot), tile('🏖️', 'Sandbox', () => actions.playSandbox()), tile('🎩', 'Wardrobe', () => show('wardrobe')), tile('🏆', 'Trophies', () => show('trophies'), trophyBadge)),
     ),
-    h('div', { class: 'hub-foot' }, supporterThanks, h('button', { class: 'link-btn', type: 'button', on: { click: () => (click(), show('supporter')) } }, '♥ Supporter Pack'), h('span', { class: 'promise' }, 'No ads · No energy · No loot boxes · Every unit is earned by playing')),
+    h('div', { class: 'hub-foot' }, supporterThanks, h('button', { class: 'link-btn', type: 'button', on: { click: hubTap(() => show('supporter')) } }, '♥ Supporter Pack'), h('span', { class: 'promise' }, 'No ads · No energy · No loot boxes · Every unit is earned by playing')),
   );
 
   // --- map ----------------------------------------------------------------------------
@@ -146,7 +153,7 @@ export function createMetaUI(deps) {
 
   // --- level card ---------------------------------------------------------------------
   const lcBody = h('div', { class: 'card' });
-  const levelcard = h('div', { id: 'levelcard', class: 'modal hidden', on: { click: (e) => e.target === levelcard && hideModal() } }, lcBody);
+  const levelcard = h('div', { id: 'levelcard', class: 'modal hidden', on: { click: (e) => e.target === levelcard && closeCard() } }, lcBody);
   function showLevelCard(i) {
     const L = LEVELS[i];
     const counts = {};
@@ -166,12 +173,17 @@ export function createMetaUI(deps) {
       enemy,
       h('div', { class: 'goals' }, h('span', {}, '★ Win'), h('span', {}, `★★ spend ≤ ${L.stars[1]}`), h('span', {}, `★★★ spend ≤ ${L.stars[2]}`)),
       h('p', { class: 'budget' }, `Budget ${L.budget} gold${best ? ' · your best ' + starStr(best) : ''}`),
-      h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', on: { click: () => (click(), hideModal()) } }, 'Close'), h('button', { class: 'btn primary big', type: 'button', on: { click: () => (click(), hideModal(), actions.playLevel(i)) } }, 'Fight!')),
+      h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', on: { click: () => (click(), closeCard()) } }, 'Close'), h('button', { class: 'btn primary big', type: 'button', on: { click: () => (click(), hideModal(), actions.playLevel(i)) } }, 'Fight!')),
     );
     levelcard.classList.remove('hidden');
   }
   function hideModal() {
     for (const m of [levelcard, supporter, pause]) m.classList.add('hidden');
+  }
+  /** A card closed by its own button: back on the bare hub, the back button leaves again. */
+  function closeCard() {
+    hideModal();
+    if (ui.open === 'hub' && deps.onShow) deps.onShow('hub');
   }
 
   // --- wardrobe -----------------------------------------------------------------------
@@ -432,7 +444,7 @@ export function createMetaUI(deps) {
   // --- supporter card -------------------------------------------------------------------
   const supporter = h(
     'div',
-    { id: 'supporter', class: 'modal hidden', on: { click: (e) => e.target === supporter && hideModal() } },
+    { id: 'supporter', class: 'modal hidden', on: { click: (e) => e.target === supporter && closeCard() } },
     h(
       'div',
       { class: 'card' },
@@ -440,7 +452,7 @@ export function createMetaUI(deps) {
       h('h3', {}, '♥ Supporter Pack'),
       h('p', {}, 'Wobble War is free, and everything that wins battles is earned by playing. If you enjoy it, the Supporter Pack is a thank-you: the Supporter Gold army colour and the Royal Crown hat. It changes how you look, never how you fight.'),
       h('p', { class: 'note' }, 'Purchases aren\'t connected in this prototype, so there\'s nothing to buy yet.'),
-      h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', on: { click: () => (click(), hideModal()) } }, 'Close')),
+      h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', on: { click: () => (click(), closeCard()) } }, 'Close')),
     ),
   );
 
@@ -477,6 +489,7 @@ export function createMetaUI(deps) {
   function show(name) {
     if (name === 'supporter') {
       supporter.classList.remove('hidden'); // a card over whatever is open
+      if (deps.onShow) deps.onShow('supporter'); // back closes it first
       return;
     }
     if (name === 'pause') {
@@ -486,6 +499,8 @@ export function createMetaUI(deps) {
       return;
     }
     hideModal();
+    // Arriving from a game (result ⌂, pause > Main menu): the finger may still be tapping
+    if (name === 'hub' && (ui.open === null || ui.open === 'pause')) ui.hubAt = performance.now();
     ui.open = name;
     if (deps.onShow) deps.onShow(name);
     for (const [k, s] of Object.entries(screens)) s.classList.toggle('hidden', k !== name);
@@ -541,6 +556,28 @@ export function createMetaUI(deps) {
       if (ui.open === 'hub') renderHub();
     },
     flash,
+    /** Back button: close an open card (level card, Supporter Pack). True if one was open. */
+    closeModal() {
+      const open = [levelcard, supporter].some((m) => !m.classList.contains('hidden'));
+      if (open) {
+        levelcard.classList.add('hidden');
+        supporter.classList.add('hidden');
+      }
+      return open;
+    },
+    /** The profile was replaced (another window saved): redraw whatever is showing. */
+    profileChanged() {
+      refreshBadges();
+      if (ui.open === 'hub') renderHub();
+      if (ui.open === 'map') renderMap();
+      if (ui.open === 'trophies') renderTrophies();
+      if (ui.open === 'settings') renderSettings();
+      if (ui.open === 'wardrobe') {
+        ui.confirm = null;
+        makePreview();
+        renderWardrobe();
+      }
+    },
     /** Install availability changed (the browser's prompt arrived or went away). */
     installChanged() {
       if (ui.open === 'settings') renderSettings();

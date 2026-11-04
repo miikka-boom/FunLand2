@@ -14,7 +14,7 @@ import { BattleAudio } from './audio.js';
 import { Input } from './input.js';
 import { LEVELS } from './meta/levels.js';
 import { loadProfile, saveProfile, newProfile, PROFILE_KEY } from './meta/profile.js';
-import { WORLDS, unlockedUnits, recordLevelWin, recordDailyWin, dailyChallenge, dateKey, starsFor, worldOf } from './meta/economy.js';
+import { WORLDS, unlockedUnits, recordLevelWin, recordDailyWin, dailyChallenge, dateKey, starsFor, worldOf, levelUnlocked } from './meta/economy.js';
 import { claimable } from './meta/trophies.js';
 import { armyPalette } from './meta/cosmetics.js';
 import { HATS } from './render/hats.js';
@@ -41,8 +41,10 @@ try {
 } catch {
   // ignore
 }
+let savedStats = { ...profile.stats }; // stats as of our last save
 function persist() {
   saveProfile(profile, store);
+  savedStats = { ...profile.stats };
 }
 
 /** Swap in another profile without replacing the object (the menus hold a reference to it). */
@@ -294,6 +296,11 @@ window.addEventListener('popstate', () => {
     return;
   }
   backArmed = false;
+  if (meta.closeModal()) {
+    // Back closes a card first; stay armed unless it sat on the bare hub
+    if (meta.current() !== 'hub' || playing()) armBack();
+    return;
+  }
   const cur = meta.current();
   if (cur === 'pause') {
     resumeGame();
@@ -437,8 +444,10 @@ function finishBattle(winner) {
   if (won && game.mode !== 'sandbox') {
     S.wins++;
     if (b.units.every((u) => u.team !== 'blue' || u.alive)) S.flawless++;
-    if (game.mode === 'campaign') game.reward = { kind: 'level', ...recordLevelWin(profile, game.level, game.spent, LEVELS[game.level]) };
-    else game.reward = { kind: 'daily', ...recordDailyWin(profile, game.daily.key, game.spent, game.daily.level) };
+    // (another window may have reset the save while this battle ran)
+    if (game.mode === 'campaign') {
+      if (levelUnlocked(profile, game.level)) game.reward = { kind: 'level', ...recordLevelWin(profile, game.level, game.spent, LEVELS[game.level]) };
+    } else game.reward = { kind: 'daily', ...recordDailyWin(profile, game.daily.key, game.spent, game.daily.level) };
     buzz([30, 60, 40]);
   }
   persist();
@@ -614,7 +623,7 @@ const ui = {
     const b = game.battle;
     const L = currentLevel();
     const last = game.mode === 'campaign' && game.level >= LEVELS.length - 1;
-    $('next').classList.toggle('hidden', !(game.mode === 'campaign' && won && !last));
+    $('next').classList.toggle('hidden', !(game.mode === 'campaign' && won && !last && levelUnlocked(profile, game.level + 1)));
     $('edit').classList.toggle('hidden', false);
     if (game.mode === 'sandbox') {
       title.textContent = winner === 'draw' ? 'DRAW' : `${TEAMS[winner].name} WINS!`;
@@ -1037,11 +1046,17 @@ window.addEventListener('pagehide', persist);
 // profile instead of overwriting it with ours on our next save.
 window.addEventListener('storage', (e) => {
   if (e.key !== PROFILE_KEY || e.newValue == null) return;
-  replaceProfile(loadProfile(store));
+  // Trophy counts from our running battle aren't saved yet: carry them over
+  const unsaved = {};
+  for (const [k, v] of Object.entries(profile.stats)) if (typeof v === 'number' && v > (savedStats[k] || 0)) unsaved[k] = v - (savedStats[k] || 0);
+  const fresh = loadProfile(store);
+  savedStats = { ...fresh.stats };
+  for (const [k, d] of Object.entries(unsaved)) fresh.stats[k] = (fresh.stats[k] || 0) + d;
+  replaceProfile(fresh);
   applySettings();
   ui.cardSig = '';
   if (game.battle.phase === 'place' && playing()) ui.buildCards();
-  meta.refresh();
+  meta.profileChanged();
 });
 
 // --- sim events -> juice ------------------------------------------------------------
@@ -1540,6 +1555,9 @@ ui.build();
 applySettings();
 resize();
 startAttract();
+// Reloaded (or updated) while away from the hub: the page sits on the history
+// entry we pushed; mark it ours so showing the hub consumes it.
+if (history.state && history.state.wobble) backArmed = true;
 meta.show('hub');
 document.documentElement.classList.add('booted');
 // Offline app + updates: a new version downloads in the background. Switch to it
