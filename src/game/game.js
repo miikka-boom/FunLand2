@@ -4,7 +4,7 @@ import { generateCity } from '../world/map-gen.js';
 import { generateBuilding } from '../world/building-gen.js';
 import { World, SpatialHash, FlowField } from '../world/world.js';
 import { Player, updatePlayer, shove, startReload, swapWeapon } from './player.js';
-import { updateZombies, resolveCrowd, alertZombie } from './zombies.js';
+import { updateZombies, resolveCrowd, alertZombie, ZHASH_CELL } from './zombies.js';
 import { updateSpecials, updateRocks, releasePin } from './specials.js';
 import { Director } from './director.js';
 import { Effects } from './effects.js';
@@ -45,7 +45,7 @@ export class Game {
     this.player = new Player(map.start.x, map.start.y);
     this.zombies = [];
     this.rocks = [];
-    this.zhash = new SpatialHash(map.w, map.h, 48);
+    this.zhash = new SpatialHash(map.w, map.h, ZHASH_CELL);
     this.effects = new Effects(map.w, map.h);
     // Any pickup that landed in an unreachable pocket is nudged to the nearest reachable spot.
     world.flow.compute(map.start.x, map.start.y);
@@ -190,7 +190,7 @@ export class Game {
     this.director.update(dt);
     updateZombies(this, dt);
     updateSpecials(this, dt);
-    resolveCrowd(this);
+    resolveCrowd(this, dt);
     updateRocks(this, dt);
     const gd = this.goalField.pathDist(p.x, p.y);
     if (Number.isFinite(gd)) {

@@ -10,7 +10,18 @@ import { spawnHunter, spawnTank } from './specials.js';
 import { NAV_CELL } from '../world/world.js';
 
 const INF = 0x3fffffff;
-export const MAX_ZOMBIES = 230;
+
+// Alive-zombie budget: 230 at default settings, scaled with the Horde size
+// and Wanderer sliders (so x10 really is ten times the zombies), up to a
+// hard ceiling that keeps the sim and renderer responsive.
+export const BASE_ZOMBIES = 230;
+export const ZOMBIE_CEILING = 3000;
+export function zombieCap(S) {
+  return Math.round(Math.min(ZOMBIE_CEILING, BASE_ZOMBIES * Math.max(1, S.hordeSize, S.wanderers)));
+}
+// One spawn spot feeds at most this many; bigger hordes pour in from several.
+const PER_SPOT = 28;
+const MAX_SPOTS = 8;
 
 export class Director {
   constructor(game) {
@@ -32,6 +43,10 @@ export class Director {
     this._c = { x: 0, y: 0 };
   }
 
+  get cap() {
+    return zombieCap(this.game.settings);
+  }
+
   get tankAlive() {
     return !!(this.tank && this.tank.alive);
   }
@@ -51,7 +66,7 @@ export class Director {
   populate() {
     const g = this.game;
     const density = ((g.world.w * g.world.h) / (4200 * 2800)) * (g.world.map.wanderDensity || 1);
-    const n = Math.min(MAX_ZOMBIES - 50, Math.round(70 * density * g.settings.wanderers));
+    const n = Math.min(this.cap - 50, Math.round(70 * density * g.settings.wanderers));
     const { start, startRoom, endRoom } = g.world.map;
     let placed = 0;
     for (let k = 0; k < n * 10 && placed < n; k++) {
@@ -110,8 +125,7 @@ export class Director {
         this.trickleT -= dt;
         if (this.trickleT <= 0) {
           this.trickleT = rand(10, 18);
-          const spot = this.findSpawn(550, 1200);
-          if (spot) this.queueGroup(spot, Math.round(randInt(2, 5) * Math.max(0.5, g.settings.hordeSize)), 1.2);
+          this.queueHorde(Math.round(randInt(2, 5) * Math.max(0.5, g.settings.hordeSize)), 1.2, 550, 1200);
         }
         if (this.mobT <= 0) {
           this.mobT = rand(45, 75);
@@ -203,7 +217,8 @@ export class Director {
     const view = g.viewRect(160);
     let idleNear = 0;
     let near = 0;
-    const crowded = g.zombies.length > MAX_ZOMBIES - 40;
+    const cap = this.cap;
+    const crowded = g.zombies.length > cap - 40;
     for (const z of g.zombies) {
       if (!z.alive) continue;
       const d = Math.hypot(z.x - p.x, z.y - p.y);
@@ -225,7 +240,7 @@ export class Director {
     }
     this.threatNear = near;
     const target = Math.round(22 * S.wanderers);
-    if (idleNear < target && g.zombies.length < MAX_ZOMBIES - 30) {
+    if (idleNear < target && g.zombies.length < cap - 30) {
       const spot = this.findSpawn(700, 1700);
       if (spot) {
         const n = randInt(1, 3);
@@ -268,9 +283,36 @@ export class Director {
     }
   }
 
+  /**
+   * Queue n zombies from out-of-sight spots in a path-distance band. A normal
+   * mob comes from one spot; a big horde is split over up to MAX_SPOTS spots
+   * (several directions at once), and each stream lasts longer so it pours
+   * in instead of popping into existence. `fallback` = [minD, maxD, tries]
+   * for the first spot. Returns the first spot, or null.
+   */
+  queueHorde(n, over, minD, maxD, fallback = null) {
+    if (n <= 0) return null;
+    const want = Math.min(MAX_SPOTS, Math.ceil(n / PER_SPOT));
+    const spots = [];
+    for (let k = 0; k < want; k++) {
+      const s = this.findSpawn(minD, maxD) || (k === 0 && fallback ? this.findSpawn(...fallback) : null);
+      if (s) spots.push(s);
+      else if (k === 0) return null;
+    }
+    const each = n / spots.length;
+    const dur = over * Math.max(1, Math.sqrt(each / PER_SPOT));
+    let left = n;
+    for (let k = 0; k < spots.length; k++) {
+      const m = k === spots.length - 1 ? left : Math.round(each);
+      left -= m;
+      this.queueGroup(spots[k], m, dur);
+    }
+    return spots[0];
+  }
+
   spawnAt(x, y, alert) {
     const g = this.game;
-    if (g.zombies.length >= MAX_ZOMBIES) return null;
+    if (g.zombies.length >= this.cap) return null;
     let zx = x;
     let zy = y;
     for (let k = 0; k < 8; k++) {
@@ -290,9 +332,8 @@ export class Director {
   spawnMob(sizeMul = 1, label = 'HERE THEY COME!') {
     const g = this.game;
     const n = Math.round(rand(16, 24) * g.settings.hordeSize * sizeMul);
-    const spot = this.findSpawn(650, 1300) || this.findSpawn(420, 1900, 300);
+    const spot = this.queueHorde(n, 2.8, 650, 1300, [420, 1900, 300]);
     if (!spot) return false;
-    this.queueGroup(spot, n, 2.8, true);
     g.audio.horde(spot.x, spot.y);
     if (label) g.announce(label, '#ff6b5a', 2.2);
     g.stats.hordes++;

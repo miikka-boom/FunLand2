@@ -73,6 +73,7 @@ const pct = (v) => `${Math.round(v * 100)}%`;
 const secs = (v) => `${v.toFixed(2)}s`;
 const deg = (v) => `${Math.round(v)}°`;
 const mult = (v) => `×${v.toFixed(2)}`;
+const multBig = (v) => (v >= 10 ? `×${v.toFixed(0)}` : v >= 2 ? `×${v.toFixed(1)}` : `×${v.toFixed(2)}`);
 const MODE_OPTIONS = [
   ['dynamic', 'Dynamic – follows thumb'],
   ['floating', 'Floating – spawns at touch'],
@@ -149,10 +150,11 @@ export const SCHEMA = [
   {
     group: 'Horde',
     items: [
-      { key: 'zombieSpeed', label: 'Zombie speed', type: 'range', min: 0.4, max: 1.6, step: 0.05, fmt: mult },
-      { key: 'zombieDamage', label: 'Zombie damage', type: 'range', min: 0, max: 3, step: 0.1, fmt: mult },
-      { key: 'hordeSize', label: 'Horde size', type: 'range', min: 0.25, max: 3, step: 0.05, fmt: mult },
-      { key: 'wanderers', label: 'Wanderer density', type: 'range', min: 0, max: 3, step: 0.1, fmt: mult },
+      { key: 'zombieSpeed', label: 'Zombie speed', type: 'range', min: 0.4, max: 2.5, step: 0.05, fmt: mult },
+      { key: 'zombieDamage', label: 'Zombie damage', type: 'range', min: 0, max: 5, step: 0.1, fmt: mult },
+      // Log slider: fine control around x1, and still reaches massive hordes.
+      { key: 'hordeSize', label: 'Horde size', type: 'range', min: 0.25, max: 25, log: true, fmt: multBig },
+      { key: 'wanderers', label: 'Wanderer density', type: 'range', min: 0, max: 10, step: 0.1, fmt: multBig },
     ],
   },
   {

@@ -33,6 +33,12 @@ and no dependencies.
   and mobs ("HERE THEY COME!") that spawn out of sight and come round corners.
   Shooting a car with a blinking red light sets off the **alarm**, which brings
   a three-wave panic event.
+- **Massive hordes** for stress tests: in the tuning panel, **Horde size** goes
+  up to ×25 (a log slider, so ×1–×3 still has fine steps), **Wanderer
+  density** to ×10, and zombie speed and damage to ×2.5 and ×5. The zombie
+  limit grows with the horde sliders (230 at the defaults, up to 3,000 alive),
+  and big mobs pour in from several directions at once. Turn on **Debug
+  read-out** to see the fps and how many zombies are alive out of the limit.
 - **Common infected** that shamble, notice you, sprint in packs, path around
   buildings with a flow field, crowd you and claw. Getting hit slows you down,
   and under 40 HP you limp.

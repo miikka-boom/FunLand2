@@ -6,6 +6,7 @@
 import { Lighting } from './lighting.js';
 import { drawHud } from './hud.js';
 import { rrect, circle, hash01 } from './draw-utils.js';
+import { SKINS, SHIRTS } from '../game/zombies.js';
 import { TAU, rectsOverlap, pointInRect } from '../util.js';
 
 const GROUND = {
@@ -36,11 +37,20 @@ const FLOORS = {
   closet: { color: '#302e2b' },
 };
 
+/** One splayed corpse arm (subpath only; the caller strokes). */
+function corpseArm(ctx, c, ca, sa) {
+  ctx.moveTo(c.x - sa * c.r * 0.6 * c.flip, c.y + ca * c.r * 0.6 * c.flip);
+  ctx.lineTo(c.x + (ca * 0.6 - sa * 1.3 * c.flip) * c.r, c.y + (sa * 0.6 + ca * 1.3 * c.flip) * c.r);
+}
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.lighting = new Lighting();
+    // Per-frame scratch for batching the horde by colour (grows as needed).
+    this.zb = { zs: [], f: new Float64Array(256), ca: new Float64Array(256), sa: new Float64Array(256), sw: new Float64Array(256), reach: new Float64Array(256) };
+    this.corpseVis = [];
     this.dpr = 1;
     this.w = 1;
     this.h = 1;
@@ -70,6 +80,7 @@ export class Renderer {
     this.camY = camY;
     const setWorld = () => ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * (v.w / 2 - camX * s), dpr * (v.h / 2 - camY * s));
     setWorld();
+    ctx.lineCap = 'round';
     const vr = { x: camX - v.w / 2 / s - 30, y: camY - v.h / 2 / s - 30, w: v.w / s + 60, h: v.h / s + 60 };
     this.vr = vr;
 
@@ -622,13 +633,15 @@ export class Renderer {
   }
 
   drawCorpses(ctx, game, vr) {
-    for (const c of game.effects.corpses) {
-      if (!pointInRect(c.x, c.y, vr)) continue;
-      const fade = c.t > 48 ? Math.max(0, (50 - c.t) / 2) : 1;
-      ctx.globalAlpha = 0.85 * fade;
+    const vis = this.corpseVis;
+    vis.length = 0;
+    for (const c of game.effects.corpses) if (pointInRect(c.x, c.y, vr)) vis.push(c);
+    if (!vis.length) return;
+    // Body, head flung in the hit direction, one arm splayed. Settled corpses
+    // are batched by colour (one fill per colour); fading ones go one by one.
+    const one = (c) => {
       const ca = Math.cos(c.ang);
       const sa = Math.sin(c.ang);
-      // Body, head flung in the hit direction, one arm splayed.
       ctx.fillStyle = c.shirt;
       ctx.beginPath();
       ctx.ellipse(c.x, c.y, c.r * 1.15, c.r * 0.8, c.ang, 0, TAU);
@@ -639,10 +652,48 @@ export class Renderer {
       ctx.fill();
       ctx.strokeStyle = c.skin;
       ctx.lineWidth = c.r * 0.38;
-      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(c.x - sa * c.r * 0.6 * c.flip, c.y + ca * c.r * 0.6 * c.flip);
-      ctx.lineTo(c.x + (ca * 0.6 - sa * 1.3 * c.flip) * c.r, c.y + (sa * 0.6 + ca * 1.3 * c.flip) * c.r);
+      corpseArm(ctx, c, ca, sa);
+      ctx.stroke();
+    };
+    for (const c of vis) {
+      if (c.t <= 48) continue;
+      ctx.globalAlpha = 0.85 * Math.max(0, (50 - c.t) / 2);
+      one(c);
+    }
+    ctx.globalAlpha = 0.85;
+    const done = this._corpseColors || (this._corpseColors = new Set());
+    done.clear();
+    for (const c0 of vis) {
+      if (c0.t > 48 || done.has(c0.shirt)) continue;
+      done.add(c0.shirt);
+      ctx.fillStyle = c0.shirt;
+      ctx.beginPath();
+      for (const c of vis) {
+        if (c.t > 48 || c.shirt !== c0.shirt) continue;
+        ctx.moveTo(c.x + Math.cos(c.ang) * c.r * 1.15, c.y + Math.sin(c.ang) * c.r * 1.15);
+        ctx.ellipse(c.x, c.y, c.r * 1.15, c.r * 0.8, c.ang, 0, TAU);
+      }
+      ctx.fill();
+    }
+    done.clear();
+    for (const c0 of vis) {
+      if (c0.t > 48 || done.has(c0.skin)) continue;
+      done.add(c0.skin);
+      ctx.fillStyle = c0.skin;
+      ctx.beginPath();
+      for (const c of vis) {
+        if (c.t > 48 || c.skin !== c0.skin) continue;
+        circle(ctx, c.x + Math.cos(c.ang) * c.r * 1.2, c.y + Math.sin(c.ang) * c.r * 1.2, c.r * 0.5);
+      }
+      ctx.fill();
+      ctx.strokeStyle = c0.skin;
+      ctx.lineWidth = c0.r * 0.38;
+      ctx.beginPath();
+      for (const c of vis) {
+        if (c.t > 48 || c.skin !== c0.skin) continue;
+        corpseArm(ctx, c, Math.cos(c.ang), Math.sin(c.ang));
+      }
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -667,56 +718,122 @@ export class Renderer {
   }
 
   drawZombies(ctx, game, vr) {
-    ctx.lineCap = 'round';
     const t = game.time;
+    const x0 = vr.x;
+    const x1 = vr.x + vr.w;
+    const y0 = vr.y;
+    const y1 = vr.y + vr.h;
+    // Commons are batched by colour: a few dozen canvas calls for any horde
+    // size instead of three per zombie. Layers: arms, bodies, heads, hit flashes.
+    const b = this.zb;
+    let n = 0;
+    let specials = false;
+    let flashes = false;
     for (const z of game.zombies) {
-      if (!z.alive || z.x < vr.x || z.x > vr.x + vr.w || z.y < vr.y || z.y > vr.y + vr.h) continue;
-      if (z.type === 'hunter') {
-        if (z.mode !== 'pin') this.drawHunter(ctx, z, t);
+      if (!z.alive || z.x < x0 || z.x > x1 || z.y < y0 || z.y > y1) continue;
+      if (z.type !== 'common') {
+        specials = true;
         continue;
       }
-      if (z.type === 'tank') {
-        this.drawTank(ctx, z, t);
-        continue;
+      if (n >= b.ca.length) {
+        const grow = (a) => {
+          const g = new Float64Array(a.length * 2);
+          g.set(a);
+          return g;
+        };
+        b.f = grow(b.f);
+        b.ca = grow(b.ca);
+        b.sa = grow(b.sa);
+        b.sw = grow(b.sw);
+        b.reach = grow(b.reach);
       }
-      const r = z.r;
       let f = z.face;
       if (z.stagger > 0) f += Math.sin(t * 30 + z.id) * 0.35;
-      const ca = Math.cos(f);
-      const sa = Math.sin(f);
       const chasing = z.state === 'chase' && z.alertDelay <= 0;
+      b.zs[n] = z;
+      b.f[n] = f;
+      b.ca[n] = Math.cos(f);
+      b.sa[n] = Math.sin(f);
       // Arms: reach forward while hunting, hang and sway while shambling.
-      const swing = Math.sin(z.anim * (chasing ? 14 : 4)) * (chasing ? 0.25 : 0.4);
-      const reach = (chasing ? 1.25 : 0.75) + (z.windup > 0 ? 0.45 : 0);
-      const sideX = -sa * r * 0.62;
-      const sideY = ca * r * 0.62;
-      ctx.strokeStyle = z.skin;
-      ctx.lineWidth = r * 0.42;
-      ctx.beginPath();
-      for (const side of [-1, 1]) {
-        const sx = z.x + sideX * side;
-        const sy = z.y + sideY * side;
-        const sw = side * swing;
-        const ex = sx + (ca - sa * sw * 0.6) * r * reach;
-        const ey = sy + (sa + ca * sw * 0.6) * r * reach;
-        ctx.moveTo(sx, sy);
-        ctx.lineTo(ex, ey);
+      b.sw[n] = Math.sin(z.anim * (chasing ? 14 : 4)) * (chasing ? 0.25 : 0.4) * 0.6;
+      b.reach[n] = (chasing ? 1.25 : 0.75) + (z.windup > 0 ? 0.45 : 0);
+      if (z.hitFlash > 0) flashes = true;
+      n++;
+    }
+    const zs = b.zs;
+    const { f, ca, sa, sw, reach } = b;
+    if (n > 0) {
+      ctx.lineWidth = 0.42 * 11; // one width per batch (radii are 10-12)
+      for (let k = 0; k < SKINS.length; k++) {
+        let any = false;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const z = zs[i];
+          if (z.skinI !== k) continue;
+          any = true;
+          const r = z.r;
+          const sideX = -sa[i] * r * 0.62;
+          const sideY = ca[i] * r * 0.62;
+          const rr = r * reach[i];
+          for (let side = -1; side <= 1; side += 2) {
+            const sx = z.x + sideX * side;
+            const sy = z.y + sideY * side;
+            const s2 = side * sw[i];
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(sx + (ca[i] - sa[i] * s2) * rr, sy + (sa[i] + ca[i] * s2) * rr);
+          }
+        }
+        if (any) {
+          ctx.strokeStyle = SKINS[k];
+          ctx.stroke();
+        }
       }
-      ctx.stroke();
-      ctx.fillStyle = z.shirt;
-      ctx.beginPath();
-      ctx.ellipse(z.x, z.y, r * 0.78, r, f, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = z.skin;
-      ctx.beginPath();
-      circle(ctx, z.x + ca * r * 0.18, z.y + sa * r * 0.18, r * 0.52);
-      ctx.fill();
-      if (z.hitFlash > 0) {
+      for (let k = 0; k < SHIRTS.length; k++) {
+        let any = false;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const z = zs[i];
+          if (z.shirtI !== k) continue;
+          any = true;
+          const r = z.r;
+          ctx.moveTo(z.x + ca[i] * r * 0.78, z.y + sa[i] * r * 0.78);
+          ctx.ellipse(z.x, z.y, r * 0.78, r, f[i], 0, TAU);
+        }
+        if (any) {
+          ctx.fillStyle = SHIRTS[k];
+          ctx.fill();
+        }
+      }
+      for (let k = 0; k < SKINS.length; k++) {
+        let any = false;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const z = zs[i];
+          if (z.skinI !== k) continue;
+          any = true;
+          const r = z.r;
+          circle(ctx, z.x + ca[i] * r * 0.18, z.y + sa[i] * r * 0.18, r * 0.52);
+        }
+        if (any) {
+          ctx.fillStyle = SKINS[k];
+          ctx.fill();
+        }
+      }
+      if (flashes) {
         ctx.fillStyle = 'rgba(255,240,230,0.55)';
         ctx.beginPath();
-        circle(ctx, z.x, z.y, r * 1.05);
+        for (let i = 0; i < n; i++) if (zs[i].hitFlash > 0) circle(ctx, zs[i].x, zs[i].y, zs[i].r * 1.05);
         ctx.fill();
       }
+      for (let i = 0; i < n; i++) zs[i] = null; // don't keep dead zombies alive
+    }
+    if (!specials) return;
+    // Specials on top, with their own animated drawing.
+    for (const z of game.zombies) {
+      if (!z.alive || z.type === 'common' || z.x < x0 || z.x > x1 || z.y < y0 || z.y > y1) continue;
+      if (z.type === 'hunter') {
+        if (z.mode !== 'pin') this.drawHunter(ctx, z, t);
+      } else if (z.type === 'tank') this.drawTank(ctx, z, t);
     }
   }
 

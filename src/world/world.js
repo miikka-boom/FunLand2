@@ -268,6 +268,11 @@ export class FlowField {
     this.head = new Int32Array(BUCKETS);
     this.entryNode = new Int32Array(n * 8 + 16);
     this.entryNext = new Int32Array(n * 8 + 16);
+    // dirAt's look-ahead cell, cached per cell until the next compute: a
+    // horde shares a few hundred cells, so most lookups are one array read.
+    this.ahead = new Int32Array(n);
+    this.aheadGen = new Uint32Array(n);
+    this.gen = 1;
     this.target = -1;
     this._c = { x: 0, y: 0 };
   }
@@ -277,6 +282,7 @@ export class FlowField {
     const t = W.nearestFree(W.navIndex(x, y));
     if (t < 0) return;
     this.target = t;
+    this.gen++;
     const dist = this.dist;
     const blocked = W.blocked;
     const pen = W.penalty;
@@ -384,15 +390,25 @@ export class FlowField {
       if (best < 0) return false;
       i = best;
     } else {
-      const j = this._best(i);
-      if (j < 0) return false;
-      const k = this._best(j);
-      i = k >= 0 ? k : j;
+      let k;
+      if (this.aheadGen[i] === this.gen) k = this.ahead[i];
+      else {
+        const j = this._best(i);
+        if (j < 0) k = -1;
+        else {
+          const jj = this._best(j);
+          k = jj >= 0 ? jj : j;
+        }
+        this.ahead[i] = k;
+        this.aheadGen[i] = this.gen;
+      }
+      if (k < 0) return false;
+      i = k;
     }
     const c = W.cellCenter(i, this._c);
     const dx = c.x - x;
     const dy = c.y - y;
-    const d = Math.hypot(dx, dy);
+    const d = Math.sqrt(dx * dx + dy * dy);
     if (d < 1e-6) return false;
     out.x = dx / d;
     out.y = dy / d;
@@ -408,6 +424,7 @@ export class SpatialHash {
     this.ch = Math.ceil(h / cell) + 1;
     this.head = new Int32Array(this.cw * this.ch).fill(-1);
     this.next = new Int32Array(512);
+    this.cellOf = new Int32Array(512);
     this.items = [];
   }
 
@@ -429,10 +446,37 @@ export class SpatialHash {
       const n = new Int32Array(this.next.length * 2);
       n.set(this.next);
       this.next = n;
+      const c = new Int32Array(this.cellOf.length * 2);
+      c.set(this.cellOf);
+      this.cellOf = c;
     }
     const c = this._cell(item.x, item.y);
+    this.cellOf[idx] = c;
     this.next[idx] = this.head[c];
     this.head[c] = idx;
+  }
+
+  /**
+   * fn(a, b) once for every pair of items in the same or neighbouring cells
+   * (so every pair closer than one cell size). Each item visits the rest of
+   * its own cell and four "forward" neighbours, so no pair comes up twice.
+   */
+  pairs(fn) {
+    const { head, next, cellOf, items, cw, ch } = this;
+    for (let i = 0; i < items.length; i++) {
+      const a = items[i];
+      const c = cellOf[i];
+      for (let j = next[i]; j !== -1; j = next[j]) fn(a, items[j]);
+      const cx = c % cw;
+      const cy = (c - cx) / cw;
+      if (cx + 1 < cw) for (let j = head[c + 1]; j !== -1; j = next[j]) fn(a, items[j]);
+      if (cy + 1 < ch) {
+        const b = c + cw;
+        if (cx > 0) for (let j = head[b - 1]; j !== -1; j = next[j]) fn(a, items[j]);
+        for (let j = head[b]; j !== -1; j = next[j]) fn(a, items[j]);
+        if (cx + 1 < cw) for (let j = head[b + 1]; j !== -1; j = next[j]) fn(a, items[j]);
+      }
+    }
   }
 
   query(x, y, r, fn) {

@@ -189,3 +189,6 @@ Hunter** and **Spawn Tank** buttons for testing on demand.
 - **Building level:** in tight corridors and doorways, does the look-ahead
   show enough of what's round the corner? Is shoving at a doorway (a
   chokepoint) reliable when the horde funnels in?
+- **Massive hordes** (Horde size ×10–×25): does a shove still clear space in
+  a packed crowd? Does aim assist still pick the zombie you meant, or does it
+  jump around? Keep the debug read-out on and note the fps on your phone.
