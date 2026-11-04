@@ -1,4 +1,114 @@
-# FunLand2: Prototype 0, "HORDE"
+# FunLand2
+
+A series of small browser game prototypes. Each one is a static site with no
+build step and no dependencies.
+
+| Prototype | Folder | What it's testing |
+|---|---|---|
+| 0: HORDE | [`/`](index.html) | Twin-stick touch controls for top-down zombie horde survival |
+| 1: WOBBLE WAR | [`battle/`](battle/) | Funny, satisfying 2D physics units in a side-view battle simulator |
+| Road to Evac | [`evac/`](evac) | A metagame for a co-op zombie survivor game (simulated runs) |
+| Safehouse | [`safehouse/`](safehouse) | Another metagame: meta-progression for a co-op zombie mobile game |
+| Camp | [`camp/`](camp) | The first metagame prototype: a survivor camp with base building |
+
+# Prototype 1: "WOBBLE WAR"
+
+A simplified 2D side-view battle simulator in the spirit of Totally Accurate
+Battle Simulator. You place wobbly bean soldiers, press **FIGHT!**, and watch
+them bonk each other. **Prototype 1** is about making those physics-body units
+look and feel as funny and satisfying as possible.
+
+Play it at `battle/` (locally: `npm start`, then open
+`http://localhost:8080/battle/`). It works with a mouse or touch, in landscape
+on phones.
+
+## The units
+
+| Unit | Cost | Role |
+|---|---|---|
+| **Clubber** | 65 | Big overhead club swing. The hit launches beans cartwheeling through the air and knocks them down. Breaks into a yelling charge when close. |
+| **Squire** | 95 | Sword and shield. Raises the shield when archers aim at it and blocks hits from the front; a block stops the swing. Heavy: flies lower. Clubs come down over the top. |
+| **Archer** | 75 | Lobs arrows on a ballistic arc (and sometimes misses). Arrows stick and quiver in bodies, shields and the ground, and stay in the corpses. Squishy up close. |
+
+Rock-paper-scissors: archers shoot clubbers before they arrive, clubbers bonk
+squires over their shields, and squires walk through arrow rain under a raised
+shield. At equal gold the counter wins almost every time but loses a good share
+of its health, and mixed armies beat single-type ones (checked with headless
+simulations).
+
+
+## How the beans work
+
+Every bean is a small Verlet ragdoll: hip, chest and head particles make the
+bendy body, plus knees, feet, elbows, hands and a weapon tip. The "muscles"
+are spring forces toward animated targets: hold the hips up, keep the head over
+the hips, plant the feet in procedural steps, and swing the hands and weapon
+through attack poses. Every muscle is scaled by the bean's **consciousness**. A
+hit knocks some of it out, so the bean wobbles, sags or flops over. Then the
+muscles fade back in and it gets up, dizzy. Dead means consciousness zero
+forever: a limp ragdoll that drops its weapon.
+
+The jokes come from that one rule plus a few extras:
+- **Googly eyes:** each pupil is a little physics point pushed by gravity and
+  the head's acceleration, so it jiggles with every step and spins when hit.
+- **Faces:** angry brows when attacking, an "O" mouth for battle cries and
+  screams, a smile when cheering, shocked eyes that turn into X's (tongue out)
+  when dead.
+- **Squash and stretch** follows the hips' vertical acceleration.
+- **Bonks:** the clubber raises the club overhead, trembles for a beat, then
+  steps into a swing that launches beans up and away with a cartwheel. Launched
+  beans scream, stretch into sausages, windmill their arms and run in the air.
+  Medium hits cause a stumble with windmilling arms; corpses give a last wobble
+  and pile up.
+- **Juice:** hit-stop on big hits, screen shake, comic starbursts and dirt
+  clods, "BONK!" pop-ups, smooth slow motion (drawing blends between physics
+  steps), a final-blow slow-mo that keeps the victim in the shot, and the
+  winners hop and cheer.
+- **Hand of god:** drag a bean to pick it up. It dangles and flails, and you
+  can fling it.
+
+## Modes
+
+- **Campaign:** six rounds. Red's army is preset, and you have a gold budget
+  for blue. **Retry** replays your placement; **Change army** lets you edit it.
+  Beaten rounds can be replayed from the title card. Every round has several
+  winning armies and loses to the obvious wrong answer (checked by simulating
+  every affordable army).
+- **Sandbox:** place both armies (left of the field is blue, right is red) with
+  no budget. You can grab beans during the battle too.
+
+Controls: tap or click your side of the field to place the selected unit (a
+tap right next to a bean still places one). Drag a bean to grab it, drag
+elsewhere to pan, pinch or scroll to zoom; 🎥 reframes. The 🐢 button toggles
+slow motion. The ≡ menu pauses the battle. Keys: `1` `2` `3` pick a unit, `E`
+remove, `Space` fight, `S` slow-mo, `F` auto camera, `R` reset, `M` mute, `Esc`
+menu / resume.
+
+## Code map (battle/)
+
+```
+battle/index.html, style.css    page shell, storybook HUD, title, dock
+battle/src/config.js             world layout + team colours shared by everything
+battle/src/sim/physics.js        Verlet particles, constraints, ground, segment tests
+battle/src/sim/unit.js           the bean: skeleton, muscles, walking, attacks, eyes, AI
+battle/src/sim/unit-types.js     the three units: stats, weapons, attack poses
+battle/src/sim/battle.js         placement, fixed-step sim, melee hits, arrows, dropped gear, win check
+battle/src/campaign.js           the six rounds
+battle/src/render/units.js       drawing beans, faces, weapons, arrows
+battle/src/render/background.js  sky, parallax hills, castles, grass, dirt cross-section
+battle/src/render/effects.js     starbursts, sparks, dust, dirt, confetti, comic words
+battle/src/render/camera.js      auto-framing, pan/zoom, screen shake
+battle/src/audio.js              WebAudio synth: bonks, clanks, squeaky voices, horn
+battle/src/input.js              tap / grab / pan / pinch / wheel
+battle/src/main.js               game flow, sim events -> juice, frame loop
+```
+
+The simulation (`battle/src/sim/`) has no DOM code, runs at a fixed 120 Hz with
+a seeded RNG, and replays identically from the same placement, so it is tested
+headless in `tests/battle-*.test.js`. `window.__ww` exposes the game in the
+browser console.
+
+# Prototype 0: "HORDE"
 
 A top-down 2D zombie horde survival game for mobile browsers, going for a
 Left 4 Dead feel. **Prototype 0** is about nailing down the **twin-stick touch
@@ -117,10 +227,10 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
 
 ## Run it
 
-- **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` once this is on
-  the default branch (the Pages workflow only deploys from there). The
-  metagame prototypes are at `/evac/` (Road to Evac), `/safehouse/` (the
-  Safehouse) and `/camp/` (the v1 camp).
+- **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` (HORDE) once
+  this is on the default branch (the Pages workflow only deploys from there).
+  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/evac/`
+  (Road to Evac), `/safehouse/` (the Safehouse) and `/camp/` (the v1 camp).
 - **Locally:** `npm start` (or `python3 -m http.server 8080`), then open
   `http://localhost:8080`. To try it on a phone, open
   `http://<your-computer-ip>:8080` on the same network. Opening `index.html`
@@ -144,10 +254,11 @@ src/world/                 seeded city + building generators, collision, ray cas
 src/game/                  player, weapons, zombies, director, effects, game state
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX
+battle/                    WOBBLE WAR battle simulator (separate page; code map above)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, horde scaling, the three metagames)
+tests/                     node --test unit tests (stick math, touch controller rules, horde scaling, the three metagames, battle sim)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.
