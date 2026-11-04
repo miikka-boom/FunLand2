@@ -41,6 +41,17 @@ export function mulberry32(seed) {
   };
 }
 
+/** Fisher-Yates with a seeded PRNG: same seed, same order on every browser. */
+export function shuffle(arr, rnd) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    const t = arr[i];
+    arr[i] = arr[j];
+    arr[j] = t;
+  }
+  return arr;
+}
+
 export const rand = (a = 0, b = 1) => a + Math.random() * (b - a);
 export const randInt = (a, b) => Math.floor(rand(a, b + 1));
 export const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];

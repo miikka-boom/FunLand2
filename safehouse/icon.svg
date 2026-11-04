@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a0f1e"/>
+      <stop offset=".62" stop-color="#16203a"/>
+      <stop offset="1" stop-color="#2b3c5a"/>
+    </linearGradient>
+    <radialGradient id="lamp">
+      <stop offset="0" stop-color="#ffcf7a" stop-opacity=".7"/>
+      <stop offset=".5" stop-color="#ffcf7a" stop-opacity=".2"/>
+      <stop offset="1" stop-color="#ffcf7a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="red">
+      <stop offset="0" stop-color="#ff4b3a" stop-opacity=".8"/>
+      <stop offset="1" stop-color="#ff4b3a" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tile"><rect width="180" height="180" rx="36"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)" stroke="#15110d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <rect width="180" height="180" fill="url(#sky)" stroke="none"/>
+    <path d="M84 18h0M100 34h0M158 30h0M150 74h0M20 70h0M164 100h0" stroke="#dfe6ff" stroke-width="3.4" stroke-opacity=".8"/>
+    <circle cx="44" cy="30" r="14" fill="#efe9d0" stroke="none"/>
+    <circle cx="51" cy="24" r="12" fill="#0e1528" stroke="none"/>
+    <path d="M0 150v-40h12v-10h16v22h8v-30h18v38h72v-24h14v-12h18v20h22v36z" fill="#0c111d" stroke="none"/>
+    <rect y="148" width="180" height="32" fill="#211d19" stroke="none"/>
+    <circle cx="71" cy="88" r="46" fill="url(#lamp)" stroke="none"/>
+    <!-- Antenna with a red beacon -->
+    <path d="M124 54V18M117 30h14M119 40h10" fill="none" stroke-width="5.4"/>
+    <path d="M124 54V18M117 30h14M119 40h10" fill="none" stroke="#9aa6b2" stroke-width="2.4"/>
+    <circle cx="124" cy="16" r="12" fill="url(#red)" stroke="none"/>
+    <circle cx="124" cy="16" r="4" fill="#ff4b3a" stroke-width="2.4"/>
+    <!-- Building -->
+    <rect x="38" y="60" width="104" height="92" fill="#6b3f32"/>
+    <path d="M40 74h100M40 88h100M40 102h100M40 116h100M40 130h100M40 144h100M58 62v12M96 62v12M120 62v12M50 74v14M84 74v14M132 74v14M58 88v14M114 88v14M50 102v14M130 102v14M58 116v14M120 116v14M50 130v14M132 130v14" fill="none" stroke="#000" stroke-opacity=".28" stroke-width="2"/>
+    <rect x="32" y="50" width="116" height="13" rx="2" fill="#4a515b"/>
+    <path d="M36 46a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0m6 0a5 4 0 1 0 10 0a5 4 0 1 0-10 0" fill="none" stroke="#b8c2cb" stroke-width="1.6"/>
+    <!-- Lit window -->
+    <rect x="54" y="74" width="34" height="28" rx="2" fill="#ffd98a"/>
+    <path d="M71 76v24M56 88h30" fill="none" stroke="#9a5a22" stroke-width="3"/>
+    <path d="M58 79h8" fill="none" stroke="#fff6d6" stroke-width="3"/>
+    <rect x="50" y="101" width="42" height="5" rx="1.5" fill="#4a515b" stroke-width="3"/>
+    <!-- Boarded window -->
+    <rect x="100" y="74" width="28" height="28" rx="2" fill="#141820"/>
+    <path d="M97 80l34 8-1 7-34-8zM97 94l34-6 1 7-34 6z" fill="#a0703f" stroke-width="3"/>
+    <!-- Boarded door with sandbags -->
+    <rect x="70" y="110" width="40" height="40" fill="#1a1410"/>
+    <path d="M66 114l48 14-2 9-48-14zM66 136l48-12 2 9-48 12z" fill="#b07a45" stroke-width="3"/>
+    <path d="M70 117h0M109 129h0M70 141h0M110 130h0" stroke-width="3.4"/>
+    <g fill="#bba676" stroke-width="3">
+      <rect x="34" y="139" width="20" height="12" rx="5.6"/>
+      <rect x="52" y="139" width="20" height="12" rx="5.6"/>
+      <rect x="43" y="128" width="20" height="12" rx="5.6" fill="#a8925f"/>
+      <rect x="108" y="139" width="20" height="12" rx="5.6"/>
+      <rect x="126" y="139" width="20" height="12" rx="5.6"/>
+      <rect x="117" y="128" width="20" height="12" rx="5.6" fill="#a8925f"/>
+    </g>
+  </g>
+</svg>

@@ -35,7 +35,7 @@ export class Lighting {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, W, H);
     if (S.night) {
-      ctx.fillStyle = `rgba(3,5,10,${S.darkness})`;
+      ctx.fillStyle = `rgba(3,5,10,${Math.min(0.97, S.darkness + (game.world.map.darknessBoost || 0))})`;
       ctx.fillRect(0, 0, W, H);
     }
     ctx.setTransform(s, 0, 0, s, W / 2 - camX * s, H / 2 - camY * s);
@@ -54,7 +54,13 @@ export class Lighting {
       for (const l of map.lamps) {
         if (!pointInRect(l.x, l.y, vr, 170)) continue;
         if (l.broken && Math.sin(t * 13 + l.x) <= 0.6) continue;
-        this.radial(ctx, l.x, l.y, 165, 0.62);
+        this.radial(ctx, l.x, l.y, l.r || 165, l.k || 0.62);
+      }
+      for (const s of map.signs || []) {
+        if (pointInRect(s.x, s.y, vr, 60)) this.radial(ctx, s.x, s.y, 46, 0.32);
+      }
+      for (const g of map.glows || []) {
+        if (pointInRect(g.x, g.y, vr, 90)) this.radial(ctx, g.x, g.y, g.r, g.k);
       }
       for (const f of map.fires) {
         if (!pointInRect(f.x, f.y, vr, 260)) continue;

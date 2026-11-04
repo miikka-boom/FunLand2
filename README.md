@@ -16,13 +16,29 @@ and no dependencies.
   opens every feel parameter: stick modes and size, dead zones, fire ring, aim
   assist, smoothing, camera, speed, horde size and so on. There are presets
   for A/B testing, and **Copy tuning JSON** copies only what you changed.
-- **A run across a dark city**: start in a safe room (bottom left) and reach
-  the green safe room across town. A green arrow at the screen edge points to
-  it.
+- **Two levels**, picked on the title card or in the tuning panel:
+  - **Streets:** a run across a dark city, from a safe room (bottom left) to
+    the green safe room across town.
+  - **Building:** one dark floor of an office/hospital-style building:
+    corridors, offices, wards, cafeterias, lobbies, warehouse aisles and
+    restrooms, all furnished. Hallways are blocked by barricades of piled
+    furniture, so the route winds through rooms and doorways. Some offices
+    have glass fronts, so you see the horde before it reaches the door, and
+    some rooms are pitch dark. A shootable fire alarm is the indoor version
+    of the car alarm.
+
+  On both levels, a green arrow at the screen edge points to the safe room
+  and shows the walking distance.
 - **An AI Director**: build-up, peak and relax phases, wanderers, small groups,
   and mobs ("HERE THEY COME!") that spawn out of sight and come round corners.
   Shooting a car with a blinking red light sets off the **alarm**, which brings
   a three-wave panic event.
+- **Massive hordes** for stress tests: in the tuning panel, **Horde size** goes
+  up to ×25 (a log slider, so ×1–×3 still has fine steps), **Wanderer
+  density** to ×10, and zombie speed and damage to ×2.5 and ×5. The zombie
+  limit grows with the horde sliders (230 at the defaults, up to 3,000 alive),
+  and big mobs pour in from several directions at once. Turn on **Debug
+  read-out** to see the fps and how many zombies are alive out of the limit.
 - **Common infected** that shamble, notice you, sprint in packs, path around
   buildings with a flow field, crowd you and claw. Getting hit slows you down,
   and under 40 HP you limp.
@@ -45,7 +61,7 @@ and no dependencies.
   decals that stay, casings, tracers, screen shake and recoil, off-screen
   threat arrows.
 
-## Road to Evac: the metagame prototype
+## Road to Evac: a metagame prototype
 
 [`evac/`](evac) is a separate page with a metagame for a co-op zombie
 survivor game, prototyped on its own. It isn't connected to the action game:
@@ -73,11 +89,48 @@ The first metagame prototype, a survivor camp with base building
 ([`camp/`](camp), [docs/METAGAME-CAMP.md](docs/METAGAME-CAMP.md)), is still
 there for comparison at `/camp/`.
 
+## Safehouse: another metagame prototype
+
+[`safehouse/`](safehouse) is another separate page, built from the design doc
+*Safehouse: Meta-Progression Design for a Co-op Zombie Mobile Game*. It isn't
+connected to the action game or to the camp: a **PLAY · simulation** button
+runs a simulated co-op mission in place of a real one.
+
+- One screen with eight stations in a building cross-section. Tapping a
+  station opens a sheet with Upgrade, Craft and Collect. It works in
+  portrait and landscape.
+- Four resources: Scrap, Parts, Supplies and Fuel. Mission loot is banked at
+  every safe room, every player gets the full share, and payouts over a cap
+  turn into Scrap.
+- A Generator sets power capacity and the Fuel tank. Crafts draw power while
+  they run and burn Fuel when they start. Queued jobs start on their own,
+  also while you're away.
+- Upgrades are gated by the Barricade (stations can be at most one level
+  above it), by chapters cleared and by build slots. Cancelling refunds
+  everything.
+- The Loadout Crate fills three mission slots: a throwable, a heal and a
+  boost. Everyone gets a free bandage, and unused items come back.
+- Five named survivors play as bot teammates. They arrive in scripted
+  chapter finales and Radio Room rescue calls, and bonds grow with every
+  mission played together. A simulated friend shows how co-op shares the
+  best bonuses.
+- The Radio Room opens new chapters and adds daily orders, which stack up to
+  three.
+- The five-stage progression flow comes with a guide and a pacing log.
+- The tuning drawer (gear, top right) has time warp, cheats, forced mission
+  outcomes and live multipliers. `npm run safehouse:balance` simulates weeks
+  of play.
+
+Open `/safehouse/` (on Pages: `https://miikka-boom.github.io/FunLand2/safehouse/`).
+The design decisions, numbers, pacing results and the MissionLoadout /
+MissionReport contract are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
+
 ## Run it
 
 - **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` once this is on
   the default branch (the Pages workflow only deploys from there). The
-  metagame is at `/evac/` and the v1 camp at `/camp/`.
+  metagame prototypes are at `/evac/` (Road to Evac), `/safehouse/` (the
+  Safehouse) and `/camp/` (the v1 camp).
 - **Locally:** `npm start` (or `python3 -m http.server 8080`), then open
   `http://localhost:8080`. To try it on a phone, open
   `http://<your-computer-ip>:8080` on the same network. Opening `index.html`
@@ -97,13 +150,14 @@ src/settings.js            every tunable value + panel schema + presets
 src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
-src/world/                 seeded city generator, collision, ray casts, flow field
+src/world/                 seeded city + building generators, collision, ray casts, flow field
 src/game/                  player, weapons, zombies, director, effects, game state
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
+safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, both metagames)
+tests/                     node --test unit tests (stick math, touch controller rules, horde scaling, the three metagames)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

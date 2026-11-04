@@ -6,6 +6,7 @@
 import { Lighting } from './lighting.js';
 import { drawHud } from './hud.js';
 import { rrect, circle, hash01 } from './draw-utils.js';
+import { SKINS, SHIRTS } from '../game/zombies.js';
 import { TAU, rectsOverlap, pointInRect } from '../util.js';
 
 const GROUND = {
@@ -21,11 +22,35 @@ const GROUND = {
   construction: '#382f24',
 };
 
+// Interior floors by room type: base colour + optional pattern.
+const FLOORS = {
+  office: { color: '#2f3239' },
+  openoffice: { color: '#30333a', grid: 96, alpha: 0.04 },
+  conference: { color: '#2d2f36' },
+  ward: { color: '#3a3e3e', grid: 40, alpha: 0.06 },
+  lab: { color: '#3b3f40', grid: 40, alpha: 0.06 },
+  cafeteria: { color: '#3a3a37', checker: 40, color2: '#323230' },
+  lobby: { color: '#3d3a36', grid: 80, alpha: 0.07 },
+  warehouse: { color: '#363430', grid: 128, alpha: 0.05 },
+  storage: { color: '#34322e' },
+  restroom: { color: '#384042', grid: 20, alpha: 0.08 },
+  closet: { color: '#302e2b' },
+};
+
+/** One splayed corpse arm (subpath only; the caller strokes). */
+function corpseArm(ctx, c, ca, sa) {
+  ctx.moveTo(c.x - sa * c.r * 0.6 * c.flip, c.y + ca * c.r * 0.6 * c.flip);
+  ctx.lineTo(c.x + (ca * 0.6 - sa * 1.3 * c.flip) * c.r, c.y + (sa * 0.6 + ca * 1.3 * c.flip) * c.r);
+}
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.lighting = new Lighting();
+    // Per-frame scratch for batching the horde by colour (grows as needed).
+    this.zb = { zs: [], f: new Float64Array(256), ca: new Float64Array(256), sa: new Float64Array(256), sw: new Float64Array(256), reach: new Float64Array(256) };
+    this.corpseVis = [];
     this.dpr = 1;
     this.w = 1;
     this.h = 1;
@@ -55,6 +80,7 @@ export class Renderer {
     this.camY = camY;
     const setWorld = () => ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * (v.w / 2 - camX * s), dpr * (v.h / 2 - camY * s));
     setWorld();
+    ctx.lineCap = 'round';
     const vr = { x: camX - v.w / 2 / s - 30, y: camY - v.h / 2 / s - 30, w: v.w / s + 60, h: v.h / s + 60 };
     this.vr = vr;
 
@@ -100,10 +126,12 @@ export class Renderer {
 
   drawGround(ctx, game, vr) {
     const map = game.world.map;
-    ctx.fillStyle = GROUND.street;
+    const interior = map.theme === 'interior';
+    ctx.fillStyle = interior ? '#2b2c2f' : GROUND.street;
     ctx.fillRect(Math.max(0, vr.x), Math.max(0, vr.y), Math.min(map.w, vr.x + vr.w) - Math.max(0, vr.x), Math.min(map.h, vr.y + vr.h) - Math.max(0, vr.y));
+    if (interior) this.drawInteriorFloors(ctx, map, vr);
 
-    for (const b of map.blocks) {
+    for (const b of interior ? [] : map.blocks) {
       if (!rectsOverlap(b, vr)) continue;
       ctx.fillStyle = GROUND.sidewalk;
       ctx.fillRect(b.x, b.y, b.w, b.h);
@@ -217,10 +245,92 @@ export class Renderer {
           ctx.fillStyle = 'rgba(90,80,40,0.35)';
           for (let k = 0; k < 6; k++) ctx.fillRect(d.x + (hash01(d.x + k) - 0.5) * 40 * d.s, d.y + (hash01(d.y + k * 3) - 0.5) * 40 * d.s, 3, 2);
           break;
+        case 'papers':
+          ctx.fillStyle = 'rgba(220,215,200,0.32)';
+          for (let k = 0; k < 4; k++) {
+            const px = d.x + (hash01(d.x * 1.3 + k) - 0.5) * 30 * d.s;
+            const py = d.y + (hash01(d.y * 0.7 + k * 5) - 0.5) * 30 * d.s;
+            ctx.fillRect(px, py, 7, 9);
+          }
+          break;
+        case 'chair':
+          ctx.fillStyle = 'rgba(30,32,36,0.8)';
+          ctx.fillRect(d.x - 6, d.y - 6, 12, 12);
+          ctx.fillStyle = 'rgba(70,74,80,0.8)';
+          ctx.fillRect(d.x - 6, d.y - 8, 12, 3);
+          break;
+        case 'blood':
+          ctx.fillStyle = 'rgba(80,12,10,0.45)';
+          ctx.beginPath();
+          ctx.ellipse(d.x, d.y, 22 * d.s, 9 * d.s, d.a, 0, TAU);
+          ctx.fill();
+          break;
         default:
           break;
       }
     }
+  }
+
+  drawInteriorFloors(ctx, map, vr) {
+    for (const b of map.blocks) {
+      if (!rectsOverlap(b, vr)) continue;
+      ctx.fillStyle = '#2b2c2f';
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+    }
+    for (const c of map.corridors) {
+      if (!rectsOverlap(c, vr)) continue;
+      ctx.fillStyle = '#35383b';
+      ctx.fillRect(c.x, c.y, c.w, c.h);
+      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = c.x + 64; x < c.x + c.w; x += 64) {
+        ctx.moveTo(x, c.y);
+        ctx.lineTo(x, c.y + c.h);
+      }
+      for (let y = c.y + 64; y < c.y + c.h; y += 64) {
+        ctx.moveTo(c.x, y);
+        ctx.lineTo(c.x + c.w, y);
+      }
+      ctx.stroke();
+    }
+    for (const rm of map.rooms) {
+      if (!rectsOverlap(rm, vr)) continue;
+      const f = FLOORS[rm.type] || FLOORS.office;
+      ctx.fillStyle = f.color;
+      ctx.fillRect(rm.x, rm.y, rm.w, rm.h);
+      // Only pattern what's on screen.
+      const x0 = Math.max(rm.x, vr.x);
+      const y0 = Math.max(rm.y, vr.y);
+      const x1 = Math.min(rm.x + rm.w, vr.x + vr.w);
+      const y1 = Math.min(rm.y + rm.h, vr.y + vr.h);
+      if (f.checker) {
+        const s = f.checker;
+        ctx.fillStyle = f.color2;
+        for (let y = rm.y + Math.floor((y0 - rm.y) / s) * s; y < y1; y += s) {
+          for (let x = rm.x + Math.floor((x0 - rm.x) / s) * s; x < x1; x += s) {
+            if ((Math.round((x - rm.x) / s) + Math.round((y - rm.y) / s)) % 2) ctx.fillRect(x, y, Math.min(s, rm.x + rm.w - x), Math.min(s, rm.y + rm.h - y));
+          }
+        }
+      } else if (f.grid) {
+        const s = f.grid;
+        ctx.strokeStyle = `rgba(255,255,255,${f.alpha})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = rm.x + Math.ceil((x0 - rm.x) / s) * s; x < x1; x += s) {
+          ctx.moveTo(x, y0);
+          ctx.lineTo(x, y1);
+        }
+        for (let y = rm.y + Math.ceil((y0 - rm.y) / s) * s; y < y1; y += s) {
+          ctx.moveTo(x0, y);
+          ctx.lineTo(x1, y);
+        }
+        ctx.stroke();
+      }
+    }
+    // Thresholds so doorways show floor, not the void under the wall line.
+    ctx.fillStyle = '#323437';
+    for (const d of map.doors) if (rectsOverlap(d, vr)) ctx.fillRect(d.x, d.y, d.w, d.h);
   }
 
   // --- Props (low obstacles, drawn under the darkness) ----------------------------
@@ -327,6 +437,138 @@ export class Renderer {
           circle(ctx, o.x + o.w / 2, o.y + o.h / 2, o.w * 0.3);
           ctx.fill();
           break;
+        case 'desk': {
+          ctx.fillStyle = '#5b4a3a';
+          ctx.fillRect(o.x, o.y, o.w, o.h);
+          ctx.fillStyle = 'rgba(0,0,0,0.25)';
+          ctx.fillRect(o.x, o.y + o.h - 3, o.w, 3);
+          const horiz = o.w >= o.h;
+          const n = Math.max(1, Math.round((horiz ? o.w : o.h) / 64));
+          ctx.fillStyle = '#1c1f24';
+          for (let k = 0; k < n; k++) {
+            const mx = horiz ? o.x + ((k + 0.5) * o.w) / n - 9 : o.x + o.w / 2 - 4;
+            const my = horiz ? o.y + o.h / 2 - 4 : o.y + ((k + 0.5) * o.h) / n - 9;
+            ctx.fillRect(mx, my, horiz ? 18 : 8, horiz ? 8 : 18);
+          }
+          break;
+        }
+        case 'table':
+          ctx.fillStyle = '#5a5d61';
+          ctx.fillRect(o.x, o.y, o.w, o.h);
+          ctx.fillStyle = 'rgba(255,255,255,0.08)';
+          ctx.fillRect(o.x + 2, o.y + 2, o.w - 4, 3);
+          break;
+        case 'bed': {
+          ctx.fillStyle = '#6d7376';
+          ctx.fillRect(o.x, o.y, o.w, o.h);
+          ctx.fillStyle = '#b9bdb8';
+          ctx.fillRect(o.x + 3, o.y + 3, o.w - 6, o.h - 6);
+          ctx.fillStyle = '#dcdcd6';
+          if (o.w >= o.h) ctx.fillRect(o.x + 5, o.y + 6, 16, o.h - 12);
+          else ctx.fillRect(o.x + 6, o.y + 5, o.w - 12, 16);
+          if (hash01(o.x + o.y) < 0.4) {
+            ctx.fillStyle = 'rgba(110,20,16,0.6)';
+            ctx.beginPath();
+            circle(ctx, o.x + o.w * 0.55, o.y + o.h * 0.55, Math.min(o.w, o.h) * 0.22);
+            ctx.fill();
+          }
+          break;
+        }
+        case 'counter':
+          ctx.fillStyle = '#4a3d33';
+          ctx.fillRect(o.x, o.y, o.w, o.h);
+          ctx.fillStyle = 'rgba(255,255,255,0.1)';
+          if (o.w >= o.h) ctx.fillRect(o.x, o.y + 3, o.w, 4);
+          else ctx.fillRect(o.x + 3, o.y, 4, o.h);
+          break;
+        case 'couch':
+          ctx.fillStyle = '#4a2e2e';
+          ctx.fillRect(o.x, o.y, o.w, o.h);
+          ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          if (o.w >= o.h) for (let x = o.x + o.w / 3; x < o.x + o.w - 4; x += o.w / 3) { ctx.moveTo(x, o.y + 4); ctx.lineTo(x, o.y + o.h - 4); }
+          else for (let y = o.y + o.h / 3; y < o.y + o.h - 4; y += o.h / 3) { ctx.moveTo(o.x + 4, y); ctx.lineTo(o.x + o.w - 4, y); }
+          ctx.stroke();
+          break;
+        case 'plant': {
+          const cx = o.x + o.w / 2;
+          const cy = o.y + o.h / 2;
+          ctx.fillStyle = '#5b4a3a';
+          ctx.beginPath();
+          circle(ctx, cx, cy, o.w * 0.4);
+          ctx.fill();
+          ctx.fillStyle = '#2f5034';
+          for (let k = 0; k < 5; k++) {
+            ctx.beginPath();
+            circle(ctx, cx + Math.cos(k * 1.26) * o.w * 0.28, cy + Math.sin(k * 1.26) * o.w * 0.28, o.w * 0.24);
+            ctx.fill();
+          }
+          break;
+        }
+        case 'cabinet':
+          ctx.fillStyle = '#6a6e72';
+          ctx.fillRect(o.x, o.y, o.w, o.h);
+          ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          if (o.w >= o.h) for (let x = o.x + o.w / 3; x < o.x + o.w - 2; x += o.w / 3) { ctx.moveTo(x, o.y); ctx.lineTo(x, o.y + o.h); }
+          else for (let y = o.y + o.h / 3; y < o.y + o.h - 2; y += o.h / 3) { ctx.moveTo(o.x, y); ctx.lineTo(o.x + o.w, y); }
+          ctx.stroke();
+          break;
+        case 'vending':
+          ctx.fillStyle = o.color || '#7a2a2a';
+          ctx.fillRect(o.x, o.y, o.w, o.h);
+          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          ctx.fillRect(o.x + 3, o.y + 3, o.w - 6, o.h - 6);
+          break;
+        case 'barrel':
+          ctx.fillStyle = '#6b4a2a';
+          ctx.beginPath();
+          circle(ctx, o.x + o.w / 2, o.y + o.h / 2, o.w / 2);
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          circle(ctx, o.x + o.w / 2, o.y + o.h / 2, o.w / 2 - 4);
+          ctx.stroke();
+          break;
+        case 'alarmbox':
+          ctx.fillStyle = o.alarmDone ? '#5a2a26' : '#b02020';
+          ctx.fillRect(o.x, o.y, o.w, o.h);
+          ctx.fillStyle = 'rgba(255,255,255,0.7)';
+          ctx.fillRect(o.x + o.w / 2 - 2, o.y + o.h / 2 - 2, 4, 4);
+          break;
+        case 'barricade': {
+          // A jumble of desks, doors and cabinets jammed across the hall.
+          ctx.fillStyle = '#2e2924';
+          ctx.fillRect(o.x, o.y, o.w, o.h);
+          const cols = ['#5b4a3a', '#6a6e72', '#4a3d33', '#5a5d61', '#6b5233'];
+          for (let k = 0; k < 9; k++) {
+            const hx = hash01(o.seed + k * 1.7);
+            const hy = hash01(o.seed + k * 2.3 + 4);
+            const pw = 14 + hash01(o.seed + k * 3.1) * (o.w * 0.7);
+            const ph = 10 + hash01(o.seed + k * 4.9) * 26;
+            ctx.fillStyle = cols[k % cols.length];
+            ctx.fillRect(o.x + hx * (o.w - pw), o.y + hy * (o.h - ph), pw, ph);
+          }
+          ctx.strokeStyle = '#7a6a4a';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(o.x + 2, o.y + o.h * 0.2);
+          ctx.lineTo(o.x + o.w - 2, o.y + o.h * 0.55);
+          ctx.moveTo(o.x + o.w - 2, o.y + o.h * 0.35);
+          ctx.lineTo(o.x + 2, o.y + o.h * 0.85);
+          ctx.stroke();
+          break;
+        }
+        case 'glass':
+          ctx.fillStyle = 'rgba(150,210,240,0.16)';
+          ctx.fillRect(o.x, o.y, o.w, o.h);
+          ctx.fillStyle = 'rgba(190,235,255,0.45)';
+          if (o.w >= o.h) ctx.fillRect(o.x, o.y + o.h / 2 - 0.5, o.w, 1);
+          else ctx.fillRect(o.x + o.w / 2 - 0.5, o.y, 1, o.h);
+          break;
         default:
           break;
       }
@@ -391,13 +633,15 @@ export class Renderer {
   }
 
   drawCorpses(ctx, game, vr) {
-    for (const c of game.effects.corpses) {
-      if (!pointInRect(c.x, c.y, vr)) continue;
-      const fade = c.t > 48 ? Math.max(0, (50 - c.t) / 2) : 1;
-      ctx.globalAlpha = 0.85 * fade;
+    const vis = this.corpseVis;
+    vis.length = 0;
+    for (const c of game.effects.corpses) if (pointInRect(c.x, c.y, vr)) vis.push(c);
+    if (!vis.length) return;
+    // Body, head flung in the hit direction, one arm splayed. Settled corpses
+    // are batched by colour (one fill per colour); fading ones go one by one.
+    const one = (c) => {
       const ca = Math.cos(c.ang);
       const sa = Math.sin(c.ang);
-      // Body, head flung in the hit direction, one arm splayed.
       ctx.fillStyle = c.shirt;
       ctx.beginPath();
       ctx.ellipse(c.x, c.y, c.r * 1.15, c.r * 0.8, c.ang, 0, TAU);
@@ -408,10 +652,48 @@ export class Renderer {
       ctx.fill();
       ctx.strokeStyle = c.skin;
       ctx.lineWidth = c.r * 0.38;
-      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(c.x - sa * c.r * 0.6 * c.flip, c.y + ca * c.r * 0.6 * c.flip);
-      ctx.lineTo(c.x + (ca * 0.6 - sa * 1.3 * c.flip) * c.r, c.y + (sa * 0.6 + ca * 1.3 * c.flip) * c.r);
+      corpseArm(ctx, c, ca, sa);
+      ctx.stroke();
+    };
+    for (const c of vis) {
+      if (c.t <= 48) continue;
+      ctx.globalAlpha = 0.85 * Math.max(0, (50 - c.t) / 2);
+      one(c);
+    }
+    ctx.globalAlpha = 0.85;
+    const done = this._corpseColors || (this._corpseColors = new Set());
+    done.clear();
+    for (const c0 of vis) {
+      if (c0.t > 48 || done.has(c0.shirt)) continue;
+      done.add(c0.shirt);
+      ctx.fillStyle = c0.shirt;
+      ctx.beginPath();
+      for (const c of vis) {
+        if (c.t > 48 || c.shirt !== c0.shirt) continue;
+        ctx.moveTo(c.x + Math.cos(c.ang) * c.r * 1.15, c.y + Math.sin(c.ang) * c.r * 1.15);
+        ctx.ellipse(c.x, c.y, c.r * 1.15, c.r * 0.8, c.ang, 0, TAU);
+      }
+      ctx.fill();
+    }
+    done.clear();
+    for (const c0 of vis) {
+      if (c0.t > 48 || done.has(c0.skin)) continue;
+      done.add(c0.skin);
+      ctx.fillStyle = c0.skin;
+      ctx.beginPath();
+      for (const c of vis) {
+        if (c.t > 48 || c.skin !== c0.skin) continue;
+        circle(ctx, c.x + Math.cos(c.ang) * c.r * 1.2, c.y + Math.sin(c.ang) * c.r * 1.2, c.r * 0.5);
+      }
+      ctx.fill();
+      ctx.strokeStyle = c0.skin;
+      ctx.lineWidth = c0.r * 0.38;
+      ctx.beginPath();
+      for (const c of vis) {
+        if (c.t > 48 || c.skin !== c0.skin) continue;
+        corpseArm(ctx, c, Math.cos(c.ang), Math.sin(c.ang));
+      }
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -436,56 +718,122 @@ export class Renderer {
   }
 
   drawZombies(ctx, game, vr) {
-    ctx.lineCap = 'round';
     const t = game.time;
+    const x0 = vr.x;
+    const x1 = vr.x + vr.w;
+    const y0 = vr.y;
+    const y1 = vr.y + vr.h;
+    // Commons are batched by colour: a few dozen canvas calls for any horde
+    // size instead of three per zombie. Layers: arms, bodies, heads, hit flashes.
+    const b = this.zb;
+    let n = 0;
+    let specials = false;
+    let flashes = false;
     for (const z of game.zombies) {
-      if (!z.alive || z.x < vr.x || z.x > vr.x + vr.w || z.y < vr.y || z.y > vr.y + vr.h) continue;
-      if (z.type === 'hunter') {
-        if (z.mode !== 'pin') this.drawHunter(ctx, z, t);
+      if (!z.alive || z.x < x0 || z.x > x1 || z.y < y0 || z.y > y1) continue;
+      if (z.type !== 'common') {
+        specials = true;
         continue;
       }
-      if (z.type === 'tank') {
-        this.drawTank(ctx, z, t);
-        continue;
+      if (n >= b.ca.length) {
+        const grow = (a) => {
+          const g = new Float64Array(a.length * 2);
+          g.set(a);
+          return g;
+        };
+        b.f = grow(b.f);
+        b.ca = grow(b.ca);
+        b.sa = grow(b.sa);
+        b.sw = grow(b.sw);
+        b.reach = grow(b.reach);
       }
-      const r = z.r;
       let f = z.face;
       if (z.stagger > 0) f += Math.sin(t * 30 + z.id) * 0.35;
-      const ca = Math.cos(f);
-      const sa = Math.sin(f);
       const chasing = z.state === 'chase' && z.alertDelay <= 0;
+      b.zs[n] = z;
+      b.f[n] = f;
+      b.ca[n] = Math.cos(f);
+      b.sa[n] = Math.sin(f);
       // Arms: reach forward while hunting, hang and sway while shambling.
-      const swing = Math.sin(z.anim * (chasing ? 14 : 4)) * (chasing ? 0.25 : 0.4);
-      const reach = (chasing ? 1.25 : 0.75) + (z.windup > 0 ? 0.45 : 0);
-      const sideX = -sa * r * 0.62;
-      const sideY = ca * r * 0.62;
-      ctx.strokeStyle = z.skin;
-      ctx.lineWidth = r * 0.42;
-      ctx.beginPath();
-      for (const side of [-1, 1]) {
-        const sx = z.x + sideX * side;
-        const sy = z.y + sideY * side;
-        const sw = side * swing;
-        const ex = sx + (ca - sa * sw * 0.6) * r * reach;
-        const ey = sy + (sa + ca * sw * 0.6) * r * reach;
-        ctx.moveTo(sx, sy);
-        ctx.lineTo(ex, ey);
+      b.sw[n] = Math.sin(z.anim * (chasing ? 14 : 4)) * (chasing ? 0.25 : 0.4) * 0.6;
+      b.reach[n] = (chasing ? 1.25 : 0.75) + (z.windup > 0 ? 0.45 : 0);
+      if (z.hitFlash > 0) flashes = true;
+      n++;
+    }
+    const zs = b.zs;
+    const { f, ca, sa, sw, reach } = b;
+    if (n > 0) {
+      ctx.lineWidth = 0.42 * 11; // one width per batch (radii are 10-12)
+      for (let k = 0; k < SKINS.length; k++) {
+        let any = false;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const z = zs[i];
+          if (z.skinI !== k) continue;
+          any = true;
+          const r = z.r;
+          const sideX = -sa[i] * r * 0.62;
+          const sideY = ca[i] * r * 0.62;
+          const rr = r * reach[i];
+          for (let side = -1; side <= 1; side += 2) {
+            const sx = z.x + sideX * side;
+            const sy = z.y + sideY * side;
+            const s2 = side * sw[i];
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(sx + (ca[i] - sa[i] * s2) * rr, sy + (sa[i] + ca[i] * s2) * rr);
+          }
+        }
+        if (any) {
+          ctx.strokeStyle = SKINS[k];
+          ctx.stroke();
+        }
       }
-      ctx.stroke();
-      ctx.fillStyle = z.shirt;
-      ctx.beginPath();
-      ctx.ellipse(z.x, z.y, r * 0.78, r, f, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = z.skin;
-      ctx.beginPath();
-      circle(ctx, z.x + ca * r * 0.18, z.y + sa * r * 0.18, r * 0.52);
-      ctx.fill();
-      if (z.hitFlash > 0) {
+      for (let k = 0; k < SHIRTS.length; k++) {
+        let any = false;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const z = zs[i];
+          if (z.shirtI !== k) continue;
+          any = true;
+          const r = z.r;
+          ctx.moveTo(z.x + ca[i] * r * 0.78, z.y + sa[i] * r * 0.78);
+          ctx.ellipse(z.x, z.y, r * 0.78, r, f[i], 0, TAU);
+        }
+        if (any) {
+          ctx.fillStyle = SHIRTS[k];
+          ctx.fill();
+        }
+      }
+      for (let k = 0; k < SKINS.length; k++) {
+        let any = false;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const z = zs[i];
+          if (z.skinI !== k) continue;
+          any = true;
+          const r = z.r;
+          circle(ctx, z.x + ca[i] * r * 0.18, z.y + sa[i] * r * 0.18, r * 0.52);
+        }
+        if (any) {
+          ctx.fillStyle = SKINS[k];
+          ctx.fill();
+        }
+      }
+      if (flashes) {
         ctx.fillStyle = 'rgba(255,240,230,0.55)';
         ctx.beginPath();
-        circle(ctx, z.x, z.y, r * 1.05);
+        for (let i = 0; i < n; i++) if (zs[i].hitFlash > 0) circle(ctx, zs[i].x, zs[i].y, zs[i].r * 1.05);
         ctx.fill();
       }
+      for (let i = 0; i < n; i++) zs[i] = null; // don't keep dead zombies alive
+    }
+    if (!specials) return;
+    // Specials on top, with their own animated drawing.
+    for (const z of game.zombies) {
+      if (!z.alive || z.type === 'common' || z.x < x0 || z.x > x1 || z.y < y0 || z.y > y1) continue;
+      if (z.type === 'hunter') {
+        if (z.mode !== 'pin') this.drawHunter(ctx, z, t);
+      } else if (z.type === 'tank') this.drawTank(ctx, z, t);
     }
   }
 
@@ -852,18 +1200,57 @@ export class Renderer {
         ctx.fill();
       }
     }
-    // Lamp heads.
+    // Lamp heads (street lamps) / fluorescent fixtures (interiors).
     for (const l of game.world.map.lamps) {
       if (!pointInRect(l.x, l.y, vr)) continue;
       const on = !l.broken || Math.sin(t * 13 + l.x) > 0.6;
+      if (l.interior) {
+        ctx.fillStyle = on ? 'rgba(220,235,255,0.6)' : 'rgba(70,74,80,0.5)';
+        if (l.axis === 'v') ctx.fillRect(l.x - 3, l.y - 11, 6, 22);
+        else ctx.fillRect(l.x - 11, l.y - 3, 22, 6);
+        continue;
+      }
       ctx.fillStyle = on ? 'rgba(255,210,150,0.55)' : 'rgba(80,80,80,0.4)';
       ctx.beginPath();
       circle(ctx, l.x, l.y, 3);
       ctx.fill();
     }
-    // Alarm car going off: hazard lights.
+    const map = game.world.map;
+    if (map.signs) {
+      for (const s of map.signs) {
+        if (!pointInRect(s.x, s.y, vr, 20)) continue;
+        ctx.fillStyle = 'rgba(60,255,120,0.18)';
+        ctx.beginPath();
+        circle(ctx, s.x, s.y, 16);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(90,255,140,0.9)';
+        ctx.fillRect(s.x - 8, s.y - 3, 16, 6);
+      }
+    }
+    if (map.glows) {
+      for (const g2 of map.glows) {
+        if (!pointInRect(g2.x, g2.y, vr, 40)) continue;
+        ctx.fillStyle = g2.tint;
+        ctx.beginPath();
+        circle(ctx, g2.x, g2.y, 22);
+        ctx.fill();
+      }
+    }
+    // Alarm going off: car hazard lights / fire-alarm strobe.
     for (const o of game.world.obstacles) {
-      if (!o.alarmOn || !rectsOverlap(o, vr)) continue;
+      if (!o.alarmOn || !rectsOverlap(o, vr, 120)) continue;
+      if (o.kind === 'alarmbox') {
+        const on = Math.sin(t * 14) > 0;
+        if (on) {
+          ctx.fillStyle = 'rgba(255,60,50,0.35)';
+          ctx.beginPath();
+          circle(ctx, o.x + o.w / 2, o.y + o.h / 2, 60);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255,230,230,0.95)';
+          ctx.fillRect(o.x, o.y, o.w, o.h);
+        }
+        continue;
+      }
       if (Math.sin(t * 10) > 0) {
         ctx.fillStyle = 'rgba(255,170,60,0.9)';
         for (const [cx, cy] of [[o.x + 5, o.y + 5], [o.x + o.w - 5, o.y + 5], [o.x + 5, o.y + o.h - 5], [o.x + o.w - 5, o.y + o.h - 5]]) {
@@ -990,6 +1377,27 @@ export class Renderer {
         ctx.fillRect(o.x, o.y, o.w, Math.min(3, o.h));
         continue;
       }
+      if (o.kind === 'pillar') {
+        ctx.fillStyle = night ? '#57544e' : '#6a665f';
+        ctx.fillRect(o.x, o.y, o.w, o.h);
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fillRect(o.x + 6, o.y + 6, o.w - 12, o.h - 12);
+        continue;
+      }
+      if (o.kind === 'shelf') {
+        ctx.fillStyle = night ? '#373a40' : '#43474d';
+        ctx.fillRect(o.x, o.y, o.w, o.h);
+        const horiz = o.w >= o.h;
+        const len = horiz ? o.w : o.h;
+        for (let p = 4, k = 0; p < len - 10; p += 22, k++) {
+          const h = hash01(o.x * 0.37 + o.y * 0.11 + k);
+          if (h < 0.25) continue;
+          ctx.fillStyle = h < 0.6 ? '#6b5233' : '#7a6a4a';
+          if (horiz) ctx.fillRect(o.x + p, o.y + 4, 18, o.h - 8);
+          else ctx.fillRect(o.x + 4, o.y + p, o.w - 8, 18);
+        }
+        continue;
+      }
       ctx.fillStyle = night ? (o._nightColor || (o._nightColor = shade(o.color, 0.74))) : o.color;
       ctx.fillRect(o.x, o.y, o.w, o.h);
       // Parapet + roof surface.
@@ -1013,6 +1421,21 @@ export class Renderer {
         ctx.strokeStyle = 'rgba(0,0,0,0.35)';
         ctx.lineWidth = 1;
         ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      }
+    }
+    // Door jambs so openings read as doorways.
+    const doors = game.world.map.doors;
+    if (doors) {
+      ctx.fillStyle = '#2a2826';
+      for (const d of doors) {
+        if (!rectsOverlap(d, vr)) continue;
+        if (d.vertical) {
+          ctx.fillRect(d.x - 2, d.y - 3, d.w + 4, 4);
+          ctx.fillRect(d.x - 2, d.y + d.h - 1, d.w + 4, 4);
+        } else {
+          ctx.fillRect(d.x - 3, d.y - 2, 4, d.h + 4);
+          ctx.fillRect(d.x + d.w - 1, d.y - 2, 4, d.h + 4);
+        }
       }
     }
     // Safe room door frames (red steel).
