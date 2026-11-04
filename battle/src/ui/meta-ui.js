@@ -10,7 +10,7 @@ import { trophyStatus, claimable, claimTrophy } from '../meta/trophies.js';
 import { HATS, drawHat } from '../render/hats.js';
 import { UNIT_TYPES, UNIT_ORDER } from '../sim/unit-types.js';
 import { Battle, DT } from '../sim/battle.js';
-import { UnitRenderer, hatAnchor } from '../render/units.js';
+import { UnitRenderer } from '../render/units.js';
 
 const h = (tag, attrs = {}, ...kids) => {
   const el = document.createElement(tag);
@@ -383,7 +383,7 @@ export function createMetaUI(deps) {
     sBody.innerHTML = '';
     sBody.append(
       h('div', { class: 'sgroup' }, toggle('sound', 'Sound'), h('label', { class: 'slider' }, h('span', {}, 'Volume'), h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: S.volume, on: { input: (e) => actions.setSetting('volume', +e.target.value) } })), toggle('haptics', 'Vibration (Android)'), toggle('shake', 'Screen shake')),
-      actions.canInstall && actions.canInstall() ? h('button', { class: 'btn primary', type: 'button', on: { click: () => (click(), actions.installApp()) } }, '📲 Install on home screen') : h('p', { class: 'note' }, 'To install: use your browser menu → "Add to Home Screen". Then it plays full screen and offline.'),
+      installRow(),
       h(
         'div',
         { class: 'promise-card' },
@@ -394,6 +394,15 @@ export function createMetaUI(deps) {
       h('p', { class: 'links' }, h('a', { href: '../' }, '← FunLand2 Prototype 0: HORDE')),
     );
   }
+  /** Install: the browser's own prompt where there is one, otherwise how-to text. */
+  function installRow() {
+    const how = actions.installMethod ? actions.installMethod() : 'none';
+    if (how === 'installed') return h('p', { class: 'note' }, '📲 Installed: it plays full screen and offline.');
+    if (how === 'prompt') return h('button', { class: 'btn primary', type: 'button', on: { click: () => (click(), actions.installApp().then(() => ui.open === 'settings' && renderSettings())) } }, '📲 Install on home screen');
+    if (how === 'ios') return h('p', { class: 'note' }, '📲 To install: tap Share, then "Add to Home Screen". Then it plays full screen and offline.');
+    return h('p', { class: 'note' }, '📲 To install: use your browser menu → "Add to Home Screen" (or "Install app"). Then it plays full screen and offline.');
+  }
+
   function resetTap() {
     if (!ui.resetArmed) {
       ui.resetArmed = true;
@@ -517,10 +526,13 @@ export function createMetaUI(deps) {
       if (ui.open === 'hub') renderHub();
     },
     flash,
+    /** Install availability changed (the browser's prompt arrived or went away). */
+    installChanged() {
+      if (ui.open === 'settings') renderSettings();
+    },
     tick(dt) {
       if (ui.open === 'wardrobe') drawPreview(dt);
     },
   };
 }
 
-export { hatAnchor };

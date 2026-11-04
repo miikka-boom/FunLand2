@@ -439,11 +439,15 @@ export class Battle {
     const uy = u.uy;
     const nx = -uy; // across the head (the brim)
     const ny = ux;
-    const cx = u.head.x + ux * R * 0.95;
-    const cy = u.head.y + uy * R * 0.95;
+    // Same seat as the renderer's hatAnchor (render/hats.js), so the hat leaves from where it sat
+    const shape = u.type.shape || 'bean';
+    const base = shape === 'ball' ? u.chest : u.head;
+    const seat = shape === 'triangle' ? 0.45 : shape === 'brick' ? 0.95 : shape === 'ball' ? 1.0 : 0.92;
+    const cx = base.x + ux * R * seat;
+    const cy = base.y + uy * R * seat;
     const w = R * 1.5;
-    const vx = u.head.vx(dt) + dvx * 0.4;
-    const vy = u.head.vy(dt) + dvy * 0.4 - 220;
+    const vx = base.vx(dt) + dvx * 0.4;
+    const vy = base.vy(dt) + dvy * 0.4 - 220;
     const spin = (this.rng.next() - 0.5) * 500;
     const mk = (x, y, s) => {
       const p = new Particle(x, y, 0.3, 2.5);

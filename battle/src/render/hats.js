@@ -11,11 +11,13 @@
 //     f     optional facing, u.f (+1 / -1). Only the lopsided hats use it (pot
 //           handle, wizard tip, daisy leaf): they point backwards. Default +1.
 //
-// Local frame: origin at the anchor, -y = up, +x = forward when f = +1. The
-// head dome is roughly a circle of radius 1 centred at (0, 0.92), and the
-// googly eyes start about 0.4 below the anchor, so every brim stays above
-// y = 0.22. Static shapes are Path2D objects in R units, built once on first
-// use, so a hat costs a few fills and strokes and allocates nothing per frame.
+// Local frame: origin at the anchor, -y = up, +x = forward when f = +1. On a
+// bean the head dome is a circle of radius 1 centred at (0, 0.92) and the
+// googly eyes start about 0.4 below the anchor, so every hat's lower edge stays
+// within about y = 0.25 (outline included). Static shapes are Path2D objects in
+// R units, built once on first use, so a hat costs 4-18 fills and strokes and
+// allocates nothing per frame. Optional extras: hatAnchor(u) (where a unit's
+// hat goes) and the cx field of hatExtent (lopsided hats).
 
 export const HATS = [
   { id: 'none', name: 'No hat', price: 0, blurb: 'The classic bare bean.' },
@@ -1117,7 +1119,7 @@ export function drawHat(ctx, id, x, y, ang, size, pal, t, f = 1) {
     ctx.transform(-sa * sk * mx, ca * sk * mx, -ca * sk, -sa * sk, x - ca * d, y - sa * d);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    ctx.globalAlpha = 1;
+    // (globalAlpha is left alone, so a caller can fade a loose hat out)
     def.draw(ctx, def.g, pal || DEFAULT_PAL, Number.isFinite(t) ? t : 0);
   } catch (e) {
     // a cosmetic must never break a frame

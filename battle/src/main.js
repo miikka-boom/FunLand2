@@ -19,7 +19,7 @@ import { claimable } from './meta/trophies.js';
 import { armyPalette } from './meta/cosmetics.js';
 import { HATS } from './render/hats.js';
 import { createMetaUI } from './ui/meta-ui.js';
-import { registerPWA, canInstall, promptInstall } from './pwa.js';
+import { registerPWA, canInstall, promptInstall, installMethod } from './pwa.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const $ = (id) => document.getElementById(id);
@@ -1475,6 +1475,7 @@ const meta = createMetaUI({
       startAttract();
     },
     canInstall,
+    installMethod,
     installApp: () => promptInstall(),
   },
 });
@@ -1494,6 +1495,9 @@ registerPWA({
   onUpdateReady(applyUpdate) {
     if (!playing()) applyUpdate();
     else pendingUpdate = applyUpdate;
+  },
+  onInstallChange() {
+    meta.installChanged();
   },
 });
 requestAnimationFrame((t) => {

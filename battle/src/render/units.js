@@ -4,7 +4,9 @@
 import { TEAMS } from '../config.js';
 import { WEAPONS } from '../sim/unit-types.js';
 import { itemShieldFrame } from '../sim/battle.js';
-import { drawHat } from './hats.js';
+import { drawHat, hatAnchor } from './hats.js';
+
+const HAT_AT = {}; // reused: no allocation per hat
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -161,8 +163,8 @@ export class UnitRenderer {
     if (u.type.blast) drawFuse(ctx, u, time);
     this.drawFace(ctx, u, T, time);
     if (u.hat) {
-      const a = hatAnchor(u);
-      drawHat(ctx, u.hat, a[0], a[1], Math.atan2(u.uy, u.ux), u.R, T, time, u.f);
+      const a = hatAnchor(u, HAT_AT); // seat per body shape, follows squash & stretch
+      drawHat(ctx, u.hat, a.x, a.y, a.ang, u.R, T, time, u.f);
     }
 
     // --- near side: arm + held item ---------------------------------------------
@@ -485,15 +487,6 @@ function drawFoot(ctx, p, f, col, size = 1) {
 }
 
 const ZERO_FACE = { fw: 0, up: 0 };
-
-/** Where a hat sits: the top of the head, per body shape. */
-export function hatAnchor(u) {
-  const R = u.R;
-  const shape = u.type.shape;
-  const base = shape === 'ball' ? u.chest : u.head;
-  const k = shape === 'bean' || !shape ? 0.92 : shape === 'brick' ? 0.95 : 1.0;
-  return [base.x + u.ux * R * k, base.y + u.uy * R * k];
-}
 
 /** Squash & stretch around the hips along the body axis (shared by every shape). */
 function applySquash(ctx, u) {
@@ -1060,3 +1053,5 @@ export function drawBow(ctx, gx, gy, ax, ay, px, py, draw, stringHand, nockTeam,
 }
 
 export { OUTLINE };
+
+export { hatAnchor };
