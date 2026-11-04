@@ -335,14 +335,23 @@ function drawThreats(ctx, game, L) {
   const ps = game.worldToScreen(p.x, p.y);
   sectors.fill(0);
   let any = false;
+  // worldToScreen inlined: this runs for every hunting zombie, every frame.
+  const v = game.view;
+  const cam = game.camera;
+  const ox = v.w / 2 - (cam.x + cam.shakeX) * v.scale;
+  const oy = v.h / 2 - (cam.y + cam.shakeY) * v.scale;
   for (const z of game.zombies) {
     if (!z.alive || z.state !== 'chase') continue;
-    const d = Math.hypot(z.x - p.x, z.y - p.y);
-    if (d > (z.type === 'common' ? 850 : 1300)) continue;
-    const zs = game.worldToScreen(z.x, z.y);
-    if (zs.x > 0 && zs.x < L.w && zs.y > 0 && zs.y < L.h) continue;
+    const ddx = z.x - p.x;
+    const ddy = z.y - p.y;
+    const lim = z.type === 'common' ? 850 : 1300;
+    if (ddx * ddx + ddy * ddy > lim * lim) continue;
+    const d = Math.sqrt(ddx * ddx + ddy * ddy);
+    const zsx = z.x * v.scale + ox;
+    const zsy = z.y * v.scale + oy;
+    if (zsx > 0 && zsx < L.w && zsy > 0 && zsy < L.h) continue;
     if (z.type !== 'common') {
-      const ang = Math.atan2(zs.y - ps.y, zs.x - ps.x);
+      const ang = Math.atan2(zsy - ps.y, zsx - ps.x);
       const e = edgePoint(L, ps.x, ps.y, ang, z.type === 'tank' ? 26 : 22);
       const pulse = 0.7 + Math.sin(game.time * 8) * 0.3;
       ctx.fillStyle = z.type === 'tank' ? `rgba(255,40,30,${pulse})` : `rgba(190,140,255,${pulse})`;
@@ -353,7 +362,7 @@ function drawThreats(ctx, game, L) {
       ctx.fillText(z.type === 'tank' ? 'TANK' : 'HUNTER', e.x - Math.cos(ang) * 28, e.y - Math.sin(ang) * 22);
       continue;
     }
-    const ang = Math.atan2(zs.y - ps.y, zs.x - ps.x);
+    const ang = Math.atan2(zsy - ps.y, zsx - ps.x);
     const s = Math.floor(((ang + Math.PI) / TAU) * 24) % 24;
     sectors[s] += 1.2 - d / 850;
     any = true;
@@ -548,7 +557,7 @@ function drawDebug(ctx, game, input, ui, L) {
   const t = input.touch;
   const chasing = game.zombies.reduce((n, z) => n + (z.state === 'chase' ? 1 : 0), 0);
   const lines = [
-    `${ui.fps.toFixed(0)} fps  ${ui.frameMs.toFixed(1)}ms  ·  zombies ${game.zombies.length} (${chasing} hunting)  ·  particles ${game.effects.particles.length}`,
+    `${ui.fps.toFixed(0)} fps  ${ui.frameMs.toFixed(1)}ms  ·  zombies ${game.zombies.length}/${game.director.cap} (${chasing} hunting)  ·  particles ${game.effects.particles.length}`,
     `director ${d.phase}  intensity ${d.intensity.toFixed(2)}  next mob ${Math.max(0, d.mobT).toFixed(0)}s  near ${d.threatNear}  ·  hunter in ${Math.max(0, d.specialT).toFixed(0)}s  tank at ${Math.round(d.tankAt * 100)}% (route ${Math.round(game.progress * 100)}%)`,
     `input ${f.source}  move ${f.move.x.toFixed(2)},${f.move.y.toFixed(2)} (raw ${t.move.out.raw.toFixed(2)})  aim raw ${f.aimRaw.toFixed(2)}  fire ${f.fire ? 'Y' : '-'}  assist ${game.player.assist ? 'lock' : '-'}`,
   ];

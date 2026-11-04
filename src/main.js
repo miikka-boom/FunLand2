@@ -85,6 +85,10 @@ const panel = new SettingsPanel(panelEl, settings, {
   onClose: () => resume(),
   onChange: (key) => {
     if (key === 'volume' || key === '*') audio.setVolume(settings.volume);
+    if (key === 'level') {
+      game.newRun(settings.seed);
+      syncLevelPicker();
+    }
     layout = computeLayout(layout.w, layout.h, safe, settings);
     ui.layout = layout;
   },
@@ -142,6 +146,23 @@ function resume() {
 }
 
 startBtn.addEventListener('click', start);
+
+// Title-card level picker (doesn't start the game; the background shows the choice).
+const levelButtons = [...document.querySelectorAll('[data-level]')];
+function syncLevelPicker() {
+  for (const b of levelButtons) b.classList.toggle('active', b.dataset.level === settings.level);
+}
+for (const b of levelButtons) {
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (settings.level === b.dataset.level) return;
+    settings.level = b.dataset.level;
+    saveSettings(settings);
+    game.newRun(settings.seed);
+    syncLevelPicker();
+  });
+}
+syncLevelPicker();
 // "Tap to start" means anywhere on the card, not just the button.
 titleEl.addEventListener('click', () => {
   if (state === 'title') start();

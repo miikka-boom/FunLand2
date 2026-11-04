@@ -16,13 +16,29 @@ and no dependencies.
   opens every feel parameter: stick modes and size, dead zones, fire ring, aim
   assist, smoothing, camera, speed, horde size and so on. There are presets
   for A/B testing, and **Copy tuning JSON** copies only what you changed.
-- **A run across a dark city**: start in a safe room (bottom left) and reach
-  the green safe room across town. A green arrow at the screen edge points to
-  it.
+- **Two levels**, picked on the title card or in the tuning panel:
+  - **Streets:** a run across a dark city, from a safe room (bottom left) to
+    the green safe room across town.
+  - **Building:** one dark floor of an office/hospital-style building:
+    corridors, offices, wards, cafeterias, lobbies, warehouse aisles and
+    restrooms, all furnished. Hallways are blocked by barricades of piled
+    furniture, so the route winds through rooms and doorways. Some offices
+    have glass fronts, so you see the horde before it reaches the door, and
+    some rooms are pitch dark. A shootable fire alarm is the indoor version
+    of the car alarm.
+
+  On both levels, a green arrow at the screen edge points to the safe room
+  and shows the walking distance.
 - **An AI Director**: build-up, peak and relax phases, wanderers, small groups,
   and mobs ("HERE THEY COME!") that spawn out of sight and come round corners.
   Shooting a car with a blinking red light sets off the **alarm**, which brings
   a three-wave panic event.
+- **Massive hordes** for stress tests: in the tuning panel, **Horde size** goes
+  up to ×25 (a log slider, so ×1–×3 still has fine steps), **Wanderer
+  density** to ×10, and zombie speed and damage to ×2.5 and ×5. The zombie
+  limit grows with the horde sliders (230 at the defaults, up to 3,000 alive),
+  and big mobs pour in from several directions at once. Turn on **Debug
+  read-out** to see the fps and how many zombies are alive out of the limit.
 - **Common infected** that shamble, notice you, sprint in packs, path around
   buildings with a flow field, crowd you and claw. Getting hit slows you down,
   and under 40 HP you limp.
@@ -129,13 +145,13 @@ src/settings.js            every tunable value + panel schema + presets
 src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
-src/world/                 seeded city generator, collision, ray casts, flow field
+src/world/                 seeded city + building generators, collision, ray casts, flow field
 src/game/                  player, weapons, zombies, director, effects, game state
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX
 camp/                      camp metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
-tests/                     node --test unit tests (stick math, touch controller rules, camp and Safehouse economy)
+tests/                     node --test unit tests (stick math, touch controller rules, horde scaling, camp and Safehouse economy)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

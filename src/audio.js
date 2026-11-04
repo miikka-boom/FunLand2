@@ -293,7 +293,7 @@ export class Audio {
     this._tone({ type: 'sawtooth', f0: 55.8, dur: 3.2, gain: 0.16, attack: 0.6, filter: { freq: 260 } });
   }
 
-  alarm(x, y, dur) {
+  alarm(x, y, dur, kind = 'car') {
     if (!this._ok('alarm', 1)) return;
     this.alarmStop();
     const c = this.ctx;
@@ -302,14 +302,23 @@ export class Audio {
     const o = c.createOscillator();
     o.type = 'square';
     const t0 = c.currentTime;
-    for (let t = 0, k = 0; t < dur; t += 0.2, k++) o.frequency.setValueAtTime(k % 2 ? 1250 : 950, t0 + t);
     const f = c.createBiquadFilter();
     f.type = 'lowpass';
     f.frequency.value = 2600;
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.03);
-    g.gain.setValueAtTime(0.12, t0 + dur - 0.3);
+    if (kind === 'fire') {
+      // Fire alarm: a flat horn, gated on/off.
+      o.frequency.setValueAtTime(960, t0);
+      for (let t = 0; t < dur - 0.3; t += 0.3) {
+        g.gain.setValueAtTime(0.11, t0 + t);
+        g.gain.setValueAtTime(0.0001, t0 + t + 0.18);
+      }
+    } else {
+      for (let t = 0, k = 0; t < dur; t += 0.2, k++) o.frequency.setValueAtTime(k % 2 ? 1250 : 950, t0 + t);
+      g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.03);
+      g.gain.setValueAtTime(0.12, t0 + dur - 0.3);
+    }
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     o.connect(f);
     f.connect(g);

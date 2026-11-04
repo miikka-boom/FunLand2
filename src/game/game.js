@@ -1,9 +1,10 @@
 // Game state + per-frame orchestration.
 
 import { generateCity } from '../world/map-gen.js';
+import { generateBuilding } from '../world/building-gen.js';
 import { World, SpatialHash, FlowField } from '../world/world.js';
 import { Player, updatePlayer, shove, startReload, swapWeapon } from './player.js';
-import { updateZombies, resolveCrowd, alertZombie } from './zombies.js';
+import { updateZombies, resolveCrowd, alertZombie, ZHASH_CELL } from './zombies.js';
 import { updateSpecials, updateRocks, releasePin } from './specials.js';
 import { Director } from './director.js';
 import { Effects } from './effects.js';
@@ -21,14 +22,15 @@ export class Game {
   newRun(seed = this.settings.seed) {
     this.audio.alarmStop();
     this.audio.tankMusic(false);
-    let map = generateCity(seed);
+    const gen = this.settings.level === 'interior' ? generateBuilding : generateCity;
+    let map = gen(seed);
     let world = new World(map);
     // Paranoia: if the goal were ever unreachable, step the seed.
     for (let k = 1; k < 6; k++) {
       world.flow.compute(map.start.x, map.start.y);
       const er = map.endRoom.interior;
       if (Number.isFinite(world.flow.pathDist(er.x + er.w / 2, er.y + er.h / 2))) break;
-      map = generateCity(seed + k);
+      map = gen(seed + k);
       world = new World(map);
     }
     this.world = world;
@@ -43,9 +45,15 @@ export class Game {
     this.player = new Player(map.start.x, map.start.y);
     this.zombies = [];
     this.rocks = [];
-    this.zhash = new SpatialHash(map.w, map.h, 48);
+    this.zhash = new SpatialHash(map.w, map.h, ZHASH_CELL);
     this.effects = new Effects(map.w, map.h);
-    this.pickups = map.pickups.map((p) => ({ ...p, taken: false, bob: rand(0, 6) }));
+    // Any pickup that landed in an unreachable pocket is nudged to the nearest reachable spot.
+    world.flow.compute(map.start.x, map.start.y);
+    this.pickups = [];
+    for (const p of map.pickups) {
+      const spot = world.reachableSpot(p.x, p.y, world.flow);
+      if (spot) this.pickups.push({ ...p, x: spot.x, y: spot.y, taken: false, bob: rand(0, 6) });
+    }
     this.director = new Director(this);
     this.camera = { x: map.start.x, y: map.start.y, lookX: 0, lookY: 0, kickX: 0, kickY: 0, trauma: 0, shakeX: 0, shakeY: 0 };
     this.time = 0;
@@ -182,7 +190,7 @@ export class Game {
     this.director.update(dt);
     updateZombies(this, dt);
     updateSpecials(this, dt);
-    resolveCrowd(this);
+    resolveCrowd(this, dt);
     updateRocks(this, dt);
     const gd = this.goalField.pathDist(p.x, p.y);
     if (Number.isFinite(gd)) {

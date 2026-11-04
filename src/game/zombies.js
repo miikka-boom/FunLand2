@@ -3,10 +3,10 @@
 // Special infected (specials.js) share the array, hash and crowd physics; they
 // plug in through type/mass/knockScale and optional onHit/onDeath hooks.
 
-import { rand, pick, TAU, wrapAngle } from '../util.js';
+import { rand, TAU, wrapAngle, smoothstep } from '../util.js';
 
-const SKINS = ['#8d9a7e', '#9a917c', '#7f8c84', '#a39a86', '#86907a', '#958a7c'];
-const SHIRTS = ['#4a4f63', '#5c3b33', '#3e5241', '#6b6252', '#2f3540', '#6a4a5a', '#7b6a3a', '#3a3a3a', '#8a8378', '#4b2f2f'];
+export const SKINS = ['#8d9a7e', '#9a917c', '#7f8c84', '#a39a86', '#86907a', '#958a7c'];
+export const SHIRTS = ['#4a4f63', '#5c3b33', '#3e5241', '#6b6252', '#2f3540', '#6a4a5a', '#7b6a3a', '#3a3a3a', '#8a8378', '#4b2f2f'];
 const HIT_DAMAGE = 5;
 let nextId = 1;
 export const newId = () => nextId++;
@@ -22,6 +22,8 @@ export class Zombie {
     this.y = y;
     this.vx = 0;
     this.vy = 0;
+    this.px = x; // position before this frame's move (crowd velocity)
+    this.py = y;
     this.r = rand(10, 12);
     this.hp = 50;
     this.alive = true;
@@ -40,8 +42,11 @@ export class Zombie {
     this.losT = rand(0, 0.3);
     this.hasLOS = false;
     this.anim = rand(0, 10);
-    this.skin = pick(SKINS);
-    this.shirt = pick(SHIRTS);
+    // Palette indices let the renderer batch a horde by colour.
+    this.skinI = (Math.random() * SKINS.length) | 0;
+    this.shirtI = (Math.random() * SHIRTS.length) | 0;
+    this.skin = SKINS[this.skinI];
+    this.shirt = SHIRTS[this.shirtI];
     this.groanT = rand(3, 14);
     this.idleT = 0;
   }
@@ -67,8 +72,6 @@ export function updateZombies(game, dt) {
   hash.clear();
   for (const z of zombies) if (z.alive) hash.insert(z);
 
-  const reach = (z) => z.r + p.r + 8;
-
   for (const z of zombies) {
     if (!z.alive || z.type !== 'common') continue;
     z.hitFlash -= dt;
@@ -76,7 +79,8 @@ export function updateZombies(game, dt) {
     z.anim += dt;
     const dx = p.x - z.x;
     const dy = p.y - z.y;
-    const d = Math.hypot(dx, dy) || 1e-6;
+    const d = Math.sqrt(dx * dx + dy * dy) || 1e-6;
+    const reach = z.r + p.r + 8;
     let wantX = 0;
     let wantY = 0;
     let steer = 4;
@@ -129,19 +133,19 @@ export function updateZombies(game, dt) {
       }
       let sp = z.speed * S.zombieSpeed;
       // Ease in on contact so the crowd presses instead of jittering.
-      if (d < reach(z) + 4) sp *= 0.35;
+      if (d < reach + 4) sp *= 0.35;
       wantX = mx * sp;
       wantY = my * sp;
       steer = 7;
 
-      if (p.alive && d < reach(z) && z.windup <= 0 && z.attackCd <= 0) {
+      if (p.alive && d < reach && z.windup <= 0 && z.attackCd <= 0) {
         z.windup = 0.3;
       }
       if (z.windup > 0) {
         z.windup -= dt;
         if (z.windup <= 0) {
           z.attackCd = rand(0.8, 1.2);
-          if (p.alive && d < reach(z) + 8) game.hurtPlayer(HIT_DAMAGE * S.zombieDamage, z);
+          if (p.alive && d < reach + 8) game.hurtPlayer(HIT_DAMAGE * S.zombieDamage, z);
         }
       }
       z.groanT -= dt;
@@ -154,6 +158,8 @@ export function updateZombies(game, dt) {
     const k = 1 - Math.exp(-steer * dt);
     z.vx += (wantX - z.vx) * k;
     z.vy += (wantY - z.vy) * k;
+    z.px = z.x;
+    z.py = z.y;
     z.x += z.vx * dt;
     z.y += z.vy * dt;
     if (world.collide(z, z.r) && z.state === 'idle') z.heading += Math.PI * rand(0.6, 1.4);
@@ -164,34 +170,93 @@ export function updateZombies(game, dt) {
   }
 }
 
+// The zombie hash uses cells of 2 * SMALL_R, so hash.pairs() sees every
+// overlapping pair of small bodies; bigger ones (the Tank) query around
+// themselves instead.
+export const SMALL_R = 12;
+export const ZHASH_CELL = SMALL_R * 2;
+// Crowd queueing (see resolveCrowd) fades in between these survivor distances.
+const QUEUE_NEAR = 80;
+const QUEUE_FAR = 130;
+
+function separateSmall(z, o) {
+  if (z.r > SMALL_R || o.r > SMALL_R) return;
+  separate(z, o);
+}
+
+function separate(z, o) {
+  if (z.noCollide || o.noCollide) return;
+  let dx = o.x - z.x;
+  let dy = o.y - z.y;
+  const min = z.r + o.r;
+  let d2 = dx * dx + dy * dy;
+  if (d2 >= min * min) return;
+  if (d2 < 1e-6) {
+    // Spawned on the very same spot: split them in a random direction.
+    const a = Math.random() * TAU;
+    dx = Math.cos(a) * 1e-2;
+    dy = Math.sin(a) * 1e-2;
+    d2 = 1e-4;
+  }
+  const d = Math.sqrt(d2);
+  const pen = (min - d) / d;
+  // Heavier bodies yield less (a Tank walks through a crowd).
+  const wz = o.mass / (z.mass + o.mass);
+  const wo = z.mass / (z.mass + o.mass);
+  z.x -= dx * pen * wz;
+  z.y -= dy * pen * wz;
+  o.x += dx * pen * wo;
+  o.y += dy * pen * wo;
+}
+
 /**
  * Crowd physics for everything in the zombie array, after all AI moved:
  * mass-weighted separation, bodies pressing on the survivor, walls.
  * Bodies flagged noCollide (a Hunter mid-pounce or pinning) are skipped.
  */
-export function resolveCrowd(game) {
+export function resolveCrowd(game, dt) {
   const { player: p, world, zombies } = game;
   const hash = game.zhash;
 
+  // Re-hash at the post-move positions, then separate every overlapping pair
+  // once: small bodies via neighbouring cells, the Tank by its own query.
+  hash.clear();
+  for (const z of zombies) if (z.alive) hash.insert(z);
+  hash.pairs(separateSmall);
   for (const z of zombies) {
-    if (!z.alive || z.noCollide) continue;
-    hash.query(z.x, z.y, z.r + 26, (o) => {
-      if (o.id <= z.id || !o.alive || o.noCollide) return;
-      const dx = o.x - z.x;
-      const dy = o.y - z.y;
-      const min = z.r + o.r;
-      const d2 = dx * dx + dy * dy;
-      if (d2 >= min * min || d2 < 1e-6) return;
-      const d = Math.sqrt(d2);
-      const pen = (min - d) / d;
-      // Heavier bodies yield less (a Tank walks through a crowd).
-      const wz = o.mass / (z.mass + o.mass);
-      const wo = z.mass / (z.mass + o.mass);
-      z.x -= dx * pen * wz;
-      z.y -= dy * pen * wz;
-      o.x += dx * pen * wo;
-      o.y += dy * pen * wo;
+    if (!z.alive || z.r <= SMALL_R || z.noCollide) continue;
+    hash.query(z.x, z.y, z.r + SMALL_R + 2, (o) => {
+      if (o !== z && o.alive && (o.r <= SMALL_R || o.id > z.id)) separate(z, o);
     });
+  }
+
+  // Away from the survivor, a walking common's velocity becomes how far it
+  // really got (never faster than it was going): stuck behind bodies, it
+  // stops ramming them, so the back of a big horde queues up instead of
+  // crushing the crowd into a blob. The rows on you keep the old push (same
+  // press, damage and crowd shove as always), and knocked-back (staggered)
+  // bodies keep their momentum.
+  if (dt > 0) {
+    const inv = 1 / dt;
+    for (const z of zombies) {
+      if (!z.alive || z.type !== 'common' || z.stagger > 0) continue;
+      const ddx = z.x - p.x;
+      const ddy = z.y - p.y;
+      const d2 = ddx * ddx + ddy * ddy;
+      if (d2 < QUEUE_NEAR * QUEUE_NEAR) continue;
+      const a = d2 > QUEUE_FAR * QUEUE_FAR ? 1 : smoothstep(QUEUE_NEAR, QUEUE_FAR, Math.sqrt(d2));
+      let vx = (z.x - z.px) * inv;
+      let vy = (z.y - z.py) * inv;
+      const v2 = vx * vx + vy * vy;
+      const o2 = z.vx * z.vx + z.vy * z.vy;
+      if (v2 > o2) {
+        const f = Math.sqrt(o2 / v2);
+        vx *= f;
+        vy *= f;
+      }
+      z.vx += (vx - z.vx) * a;
+      z.vy += (vy - z.vy) * a;
+    }
   }
 
   // Bodies vs survivor: commons yield most but a crowd still shoves you;

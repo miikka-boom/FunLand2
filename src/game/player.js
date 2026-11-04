@@ -189,12 +189,17 @@ function applyAimAssist(game, p) {
   let bestScore = Infinity;
   let bestAng = 0;
   const targets = game.rocks.length ? game.zombies.concat(game.rocks) : game.zombies;
+  const ax = Math.cos(p.aimAngle);
+  const ay = Math.sin(p.aimAngle);
   for (const z of targets) {
     if (!z.alive) continue;
     const dx = z.x - p.x;
     const dy = z.y - p.y;
-    const d = Math.hypot(dx, dy);
-    if (d > range || d < 1) continue;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > range * range || d2 < 1) continue;
+    // Behind you can't be inside the cone (only something touching you can be that wide).
+    if (dx * ax + dy * ay < 0 && d2 > 6 * z.r * z.r) continue;
+    const d = Math.sqrt(d2);
     const a = Math.atan2(dy, dx);
     const diff = Math.abs(wrapAngle(a - p.aimAngle));
     // Close targets are big: widen the cone by their angular size.
