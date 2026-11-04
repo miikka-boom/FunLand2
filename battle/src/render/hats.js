@@ -189,6 +189,13 @@ function toPath(pts, close = true, p = new Path2D()) {
   return p;
 }
 
+/** One Path2D holding several (drawn with a single fill or stroke). */
+function merge(...paths) {
+  const p = new Path2D();
+  for (const q of paths) p.addPath(q);
+  return p;
+}
+
 function circle(p, x, y, r) {
   p.moveTo(x + r, y);
   p.arc(x, y, r, 0, TAU);
@@ -340,14 +347,22 @@ const DEFS = {
         ribs.moveTo(x, top(x) + 0.035);
         ribs.lineTo(x, bot(x) - 0.03);
       }
+      // the dome's shade stops at the cuff (everything above the cuff's top edge is convex)
+      const aboveCuff = join(
+        Array.from({ length: 11 }, (_, i) => [-1 + i * 0.2, top(-1 + i * 0.2)]),
+        [
+          [1, -3],
+          [-1, -3],
+        ],
+      );
+      const cuffPath = toPath(cuff);
       return {
-        cuff: toPath(cuff),
-        cuffShade: toPath(clip(cuff, halfPlane([0.52, -1], [0.52, 1]))),
+        cuff: cuffPath,
         ribs,
         dome: toPath(dome),
-        domeLine: toPath(arcPts(0, -0.05, 0.86, 0.7, Math.PI, TAU, 20), false),
         stripe: toPath(clip(curvedBand(-0.46, -0.29, 0.06), dome)),
-        shade: toPath(clip(dome, disc(1.12, 0.2, 0.98))),
+        shade: merge(toPath(clip(clip(dome, disc(1.12, 0.2, 0.98)), aboveCuff)), toPath(clip(cuff, halfPlane([0.52, -1], [0.52, 1])))),
+        outline: merge(toPath(arcPts(0, -0.05, 0.86, 0.7, Math.PI + 0.07, TAU - 0.07, 20), false), cuffPath),
         hi: toPath(arcPts(0, -0.05, 0.64, 0.52, Math.PI * 1.13, Math.PI * 1.4, 6), false),
         bobBack: fluff(0, -0.86, 0.28, OW),
         bob: fluff(0, -0.86, 0.28),
@@ -365,15 +380,11 @@ const DEFS = {
       ctx.translate(-jx, -jy);
       fill(ctx, g.dome, pal.body);
       fill(ctx, g.stripe, pal.light);
+      fill(ctx, g.cuff, pal.shade);
+      line(ctx, g.ribs, pal.body, 0.055);
       fill(ctx, g.shade, 'rgba(0,10,40,0.2)');
       line(ctx, g.hi, 'rgba(255,255,255,0.4)', 0.1);
-      line(ctx, g.domeLine, pal.dark, OW);
-      fill(ctx, g.cuff, pal.shade);
-      ctx.globalAlpha = 0.45;
-      line(ctx, g.ribs, pal.dark, 0.06);
-      ctx.globalAlpha = 1;
-      fill(ctx, g.cuffShade, 'rgba(0,10,40,0.2)');
-      line(ctx, g.cuff, pal.dark, OW);
+      line(ctx, g.outline, pal.dark, OW);
     },
   },
 
@@ -409,7 +420,6 @@ const DEFS = {
         petalsDn,
         heart: toPath(heart),
         heartShade: toPath(clip(heart, disc(cx + 0.12, cy + 0.12, 0.17, 16))),
-        heartHi: circle(new Path2D(), cx - 0.05, cy - 0.05, 0.04),
       };
     },
     draw(ctx, g, pal, t) {
@@ -424,7 +434,6 @@ const DEFS = {
       fill(ctx, g.petalsUp, '#ffffff');
       fill(ctx, g.heart, '#ffc21f');
       fill(ctx, g.heartShade, '#e8950f');
-      fill(ctx, g.heartHi, '#fff1a8');
       line(ctx, g.heart, '#a8650b', OW);
     },
   },
@@ -499,6 +508,7 @@ const DEFS = {
         const strip = join([[B[i] * 1.05, 0.4]], mer(B[i], true), mer(B[i + 1], false), [[B[i + 1] * 1.05, 0.4]]);
         gores.push(toPath(clip(strip, dome)));
       }
+      gores[0] = merge(gores[0], gores.pop()); // the two green side panels
       return {
         dome: toPath(dome),
         gores,
@@ -516,8 +526,8 @@ const DEFS = {
       };
     },
     draw(ctx, g, pal, t) {
-      const C = ['#3fb85a', '#e8453c', '#ffcf33', '#3a7bea', '#3fb85a'];
-      for (let i = 0; i < 5; i++) fill(ctx, g.gores[i], C[i]);
+      const C = ['#3fb85a', '#e8453c', '#ffcf33', '#3a7bea'];
+      for (let i = 0; i < 4; i++) fill(ctx, g.gores[i], C[i]);
       fill(ctx, g.shade, 'rgba(10,10,40,0.2)');
       line(ctx, g.hi, 'rgba(255,255,255,0.45)', 0.1);
       line(ctx, g.dome, '#2c2f3a', OW);
@@ -557,26 +567,21 @@ const DEFS = {
       );
       const handle = toPath(capsule([-0.72, -0.22], [-1.74, -0.6], 0.1, 6));
       circle(handle, -1.61, -0.553, 0.045);
+      const r = 0.2;
+      const bodyLine = join([[-0.84, 0.03]], arcPts(-0.84 + r, -0.64 + r, r, r, Math.PI, Math.PI * 1.5, 4), arcPts(0.84 - r, -0.64 + r, r, r, -Math.PI / 2, 0, 4), [[0.84, 0.03]]);
+      const hi = new Path2D();
+      hi.moveTo(-0.58, -0.48);
+      hi.lineTo(-0.58, -0.04);
+      hi.moveTo(-0.4, -0.48);
+      hi.lineTo(-0.4, -0.28);
+      const lipPath = toPath(lip);
       return {
         body: toPath(body),
-        bodyShade: toPath(clip(body, halfPlane([0.48, -1], [0.48, 1]))),
-        hi: toPath(
-          [
-            [-0.58, -0.48],
-            [-0.58, -0.04],
-          ],
-          false,
-        ),
-        hi2: toPath(
-          [
-            [-0.4, -0.48],
-            [-0.4, -0.28],
-          ],
-          false,
-        ),
+        hi,
         seam: toPath(quad([-0.82, -0.46], [0, -0.42], [0.82, -0.46], 6), false),
-        lip: toPath(lip),
-        lipShade: toPath(clip(lip, halfPlane([0.5, -1], [0.5, 1]))),
+        lip: lipPath,
+        shade: merge(toPath(clip(clip(body, halfPlane([0.48, -1], [0.48, 1])), halfPlane([-1, 0.02], [1, 0.02]))), toPath(clip(lip, halfPlane([0.5, -1], [0.5, 1])))),
+        outline: merge(toPath(bodyLine, false), lipPath),
         handle,
         handleHi: toPath(
           [
@@ -597,13 +602,10 @@ const DEFS = {
       line(ctx, g.bracket, '#4f5a68', OW * 0.8);
       fill(ctx, g.body, '#c3cad4');
       line(ctx, g.seam, 'rgba(80,92,110,0.35)', 0.05);
-      fill(ctx, g.bodyShade, 'rgba(40,55,80,0.22)');
-      line(ctx, g.hi, 'rgba(255,255,255,0.75)', 0.1);
-      line(ctx, g.hi2, 'rgba(255,255,255,0.6)', 0.05);
-      line(ctx, g.body, '#596472', OW);
+      line(ctx, g.hi, 'rgba(255,255,255,0.72)', 0.08);
       fill(ctx, g.lip, '#d9dee6');
-      fill(ctx, g.lipShade, 'rgba(40,55,80,0.22)');
-      line(ctx, g.lip, '#596472', OW);
+      fill(ctx, g.shade, 'rgba(40,55,80,0.22)');
+      line(ctx, g.outline, '#596472', OW);
     },
   },
 
@@ -617,10 +619,12 @@ const DEFS = {
       toPath(clip(curvedBand(-0.9, -0.72, 0.05), cone), true, bands);
       toPath(clip(curvedBand(-0.47, -0.28, 0.06), cone), true, bands);
       const base = rrect(-0.84, 0.02, 0.84, 0.19, 0.05, 3);
+      const basePath = toPath(base);
       return {
         cone: toPath(cone),
         bands,
-        shade: toPath(clip(cone, halfPlane([0.03, -1.4], [0.26, 0.3]))),
+        shade: merge(toPath(clip(clip(cone, halfPlane([0.03, -1.4], [0.26, 0.3])), halfPlane([-1, 0.02], [1, 0.02]))), toPath(clip(base, halfPlane([0.5, -1], [0.5, 1])))),
+        outline: merge(toPath(cone, false), basePath),
         hi: toPath(
           [
             [-0.1, -1.04],
@@ -628,19 +632,16 @@ const DEFS = {
           ],
           false,
         ),
-        base: toPath(base),
-        baseShade: toPath(clip(base, halfPlane([0.5, -1], [0.5, 1]))),
+        base: basePath,
       };
     },
     draw(ctx, g) {
       fill(ctx, g.cone, '#ff7d1e');
       fill(ctx, g.bands, '#f7f5ef');
-      fill(ctx, g.shade, 'rgba(140,40,0,0.25)');
-      line(ctx, g.hi, 'rgba(255,255,255,0.55)', 0.09);
-      line(ctx, g.cone, '#9b3c06', OW);
       fill(ctx, g.base, '#e2600d');
-      fill(ctx, g.baseShade, 'rgba(120,30,0,0.25)');
-      line(ctx, g.base, '#9b3c06', OW);
+      fill(ctx, g.shade, 'rgba(130,35,0,0.25)');
+      line(ctx, g.hi, 'rgba(255,255,255,0.55)', 0.09);
+      line(ctx, g.outline, '#9b3c06', OW);
     },
   },
 
@@ -657,11 +658,14 @@ const DEFS = {
           [[0, 0.22]],
         ),
       );
+      const top = oval(new Path2D(), 0, -0.98, 0.58, 0.1);
+      const brimPath = toPath(brim);
       return {
         crown: toPath(crown),
         band: toPath(clip(curvedBand(-0.2, 0.06, 0.03), crown)),
-        top: oval(new Path2D(), 0, -0.98, 0.58, 0.1),
-        shade: toPath(clip(crown, halfPlane([0.26, -1.2], [0.24, 0.4]))),
+        top,
+        shade: merge(toPath(clip(clip(crown, halfPlane([0.26, -1.2], [0.24, 0.4])), halfPlane([-1, 0.08], [1, 0.08]))), toPath(clip(brim, halfPlane([0.55, -1], [0.55, 1])))),
+        outline: merge(toPath(crown, false), top, brimPath),
         hi: toPath(
           [
             [-0.36, -0.86],
@@ -669,21 +673,17 @@ const DEFS = {
           ],
           false,
         ),
-        brim: toPath(brim),
-        brimShade: toPath(clip(brim, halfPlane([0.55, -1], [0.55, 1]))),
+        brim: brimPath,
       };
     },
     draw(ctx, g) {
       fill(ctx, g.crown, '#2e2b36');
       fill(ctx, g.band, '#d23a55');
+      fill(ctx, g.top, '#4a4657');
+      fill(ctx, g.brim, '#38343f');
       fill(ctx, g.shade, 'rgba(0,0,0,0.3)');
       line(ctx, g.hi, 'rgba(255,255,255,0.22)', 0.1);
-      line(ctx, g.crown, '#111015', OW);
-      fill(ctx, g.top, '#4a4657');
-      line(ctx, g.top, '#111015', OW);
-      fill(ctx, g.brim, '#38343f');
-      fill(ctx, g.brimShade, 'rgba(0,0,0,0.3)');
-      line(ctx, g.brim, '#111015', OW);
+      line(ctx, g.outline, '#111015', OW);
     },
   },
 
@@ -691,7 +691,8 @@ const DEFS = {
     sym: true,
     ext: { w: 2.71, h: 1.1, cx: 0, cy: -0.29 },
     build() {
-      const crown = symmetric(join(bez([0, -0.68], [0.18, -0.82], [0.38, -0.84], [0.46, -0.72], 8), bez([0.46, -0.72], [0.58, -0.56], [0.6, -0.2], [0.56, 0.1], 8), [[0, 0.1]]));
+      const side = join(bez([0, -0.68], [0.18, -0.82], [0.38, -0.84], [0.46, -0.72], 8), bez([0.46, -0.72], [0.58, -0.56], [0.6, -0.2], [0.56, 0.1], 8));
+      const crown = symmetric(join(side, [[0, 0.1]]));
       const brim = symmetric(
         join(
           [[0, 0.08]],
@@ -699,28 +700,25 @@ const DEFS = {
           bez([1.32, -0.24], [1.34, 0.0], [0.9, 0.23], [0, 0.23], 10),
         ),
       );
+      const brimPath = toPath(brim);
       return {
         crown: toPath(crown),
         band: toPath(clip(curvedBand(-0.12, 0.08, 0.02), crown)),
         crease: toPath(bez([0, -0.68], [0.02, -0.5], [-0.02, -0.38], [0, -0.3], 5), false),
-        shade: toPath(clip(crown, halfPlane([0.28, -1.2], [0.26, 0.4]))),
-        hi: toPath(bez([-0.38, -0.66], [-0.46, -0.5], [-0.46, -0.3], [-0.42, -0.16], 5), false),
-        brim: toPath(brim),
-        brimShade: toPath(clip(brim, halfPlane([0.62, -1], [0.66, 1]))),
-        brimHi: toPath(bez([-1.26, -0.18], [-1.1, 0.02], [-0.8, 0.1], [-0.55, 0.11], 6), false),
+        shade: merge(toPath(clip(clip(crown, halfPlane([0.28, -1.2], [0.26, 0.4])), halfPlane([-1, 0.07], [1, 0.07]))), toPath(clip(brim, halfPlane([0.62, -1], [0.66, 1])))),
+        hi: merge(toPath(bez([-0.38, -0.66], [-0.46, -0.5], [-0.46, -0.3], [-0.42, -0.16], 5), false), toPath(bez([-1.26, -0.18], [-1.1, 0.02], [-0.8, 0.1], [-0.55, 0.11], 6), false)),
+        brim: brimPath,
+        outline: merge(toPath(join(mirror(side), side), false), brimPath),
       };
     },
     draw(ctx, g) {
       fill(ctx, g.crown, '#c98c4c');
       fill(ctx, g.band, '#5a3415');
-      fill(ctx, g.shade, 'rgba(80,40,0,0.25)');
-      line(ctx, g.hi, 'rgba(255,230,190,0.55)', 0.09);
       line(ctx, g.crease, 'rgba(90,52,21,0.6)', 0.06);
-      line(ctx, g.crown, '#5a3415', OW);
       fill(ctx, g.brim, '#bf8243');
-      fill(ctx, g.brimShade, 'rgba(80,40,0,0.25)');
-      line(ctx, g.brimHi, 'rgba(255,230,190,0.5)', 0.07);
-      line(ctx, g.brim, '#5a3415', OW);
+      fill(ctx, g.shade, 'rgba(80,40,0,0.25)');
+      line(ctx, g.hi, 'rgba(255,230,190,0.55)', 0.08);
+      line(ctx, g.outline, '#5a3415', OW);
     },
   },
 
@@ -755,8 +753,7 @@ const DEFS = {
         hornShade: toPath(clip(horn, disc(0.68, -0.72, 0.62))),
         rings,
         dome: toPath(dome),
-        band: toPath(clip(curvedBand(-0.03, 0.4, 0.06), dome)),
-        ridge: toPath(clip(halfPlane([0.09, 1], [0.09, -1]), clip(dome, halfPlane([-0.09, -1], [-0.09, 1])))),
+        bronze: merge(toPath(clip(curvedBand(-0.03, 0.4, 0.06), dome)), toPath(clip(halfPlane([0.09, 1], [0.09, -1]), clip(dome, halfPlane([-0.09, -1], [-0.09, 1]))))),
         shade: toPath(clip(dome, disc(1.02, 0.28, 0.86))),
         hi: toPath(arcPts(0, 0.14, 0.6, 0.54, Math.PI * 1.13, Math.PI * 1.38, 6), false),
         rivets,
@@ -768,8 +765,7 @@ const DEFS = {
       line(ctx, g.rings, '#c2a56c', 0.06);
       line(ctx, g.horns, '#8c7448', OW);
       fill(ctx, g.dome, '#b6bfca');
-      fill(ctx, g.ridge, '#d79c3d');
-      fill(ctx, g.band, '#d79c3d');
+      fill(ctx, g.bronze, '#d79c3d');
       fill(ctx, g.shade, 'rgba(20,30,50,0.22)');
       line(ctx, g.hi, 'rgba(255,255,255,0.65)', 0.1);
       fill(ctx, g.rivets, '#fbe3a0');
@@ -787,12 +783,11 @@ const DEFS = {
       star(stars, 0.06, -0.6, 0.15, -1.2);
       star(stars, -0.1, -1.04, 0.1, -1.5);
       star(stars, 0.28, -0.3, 0.09, -1.8);
-      const moon = join(arcPts(-0.24, -0.36, 0.12, 0.12, -1.9, 1.9, 8).reverse(), arcPts(-0.19, -0.38, 0.1, 0.1, 1.75, -1.75, 8));
+      toPath(join(arcPts(-0.24, -0.36, 0.12, 0.12, -1.9, 1.9, 8).reverse(), arcPts(-0.19, -0.38, 0.1, 0.1, 1.75, -1.75, 8)), true, stars); // moon
       const brim = arcPts(0, 0.13, 1.02, 0.09, 0, TAU, 24);
       return {
         band: toPath(clip(curvedBand(-0.2, -0.03, 0.04), lower)),
         stars,
-        moon: toPath(moon),
         shade: toPath(clip(lower, halfPlane([0.04, -1.4], [0.27, 0.3]))),
         brim: toPath(brim),
         brimShade: toPath(clip(brim, halfPlane([0.55, -1], [0.6, 1]))),
@@ -816,7 +811,6 @@ const DEFS = {
       ctx.fill();
       fill(ctx, g.band, '#ffd04a');
       fill(ctx, g.stars, '#ffe36b');
-      fill(ctx, g.moon, '#ffe36b');
       fill(ctx, g.shade, 'rgba(20,0,60,0.25)');
       ctx.strokeStyle = '#23175c';
       ctx.lineWidth = OW;
@@ -856,7 +850,7 @@ const DEFS = {
         circle(knobs, x + Math.sign(x) * 0.02, y - 0.035, 0.045);
         circle(knobs, x - Math.sign(x) * 0.02, y + 0.035, 0.045);
       }
-      const skull = new Path2D();
+      const skull = knobs; // bone ends and skull share one fill
       circle(skull, 0, -0.45, 0.19);
       toPath(rrect(-0.11, -0.38, 0.11, -0.25, 0.04, 2), true, skull);
       const face = new Path2D();
@@ -877,7 +871,6 @@ const DEFS = {
         shade: toPath(clip(hat, disc(1.25, 0.5, 0.95))),
         hi: toPath(bez([-0.36, -0.82], [-0.5, -0.7], [-0.62, -0.52], [-0.8, -0.42], 6), false),
         bones,
-        knobs,
         skull,
         face,
       };
@@ -889,7 +882,6 @@ const DEFS = {
       line(ctx, g.trim, '#e8b931', 0.08);
       line(ctx, g.hat, '#0f0c12', OW);
       line(ctx, g.bones, '#f4f1e8', 0.08);
-      fill(ctx, g.knobs, '#f4f1e8');
       fill(ctx, g.skull, '#f4f1e8');
       fill(ctx, g.face, '#2c2732');
     },
@@ -901,8 +893,7 @@ const DEFS = {
     build() {
       return {
         ring: oval(new Path2D(), 0, -0.66, 0.7, 0.19),
-        hi: toPath(arcPts(0, -0.66, 0.7, 0.19, Math.PI * 1.05, Math.PI * 1.45, 6), false),
-        hi2: toPath(arcPts(0, -0.66, 0.7, 0.19, Math.PI * 0.3, Math.PI * 0.55, 4), false),
+        hi: merge(toPath(arcPts(0, -0.66, 0.7, 0.19, Math.PI * 1.05, Math.PI * 1.45, 6), false), toPath(arcPts(0, -0.66, 0.7, 0.19, Math.PI * 0.3, Math.PI * 0.55, 4), false)),
       };
     },
     draw(ctx, g, pal, t) {
@@ -911,8 +902,7 @@ const DEFS = {
       line(ctx, g.ring, 'rgba(255,236,140,0.3)', 0.36);
       line(ctx, g.ring, '#c48a10', 0.21);
       line(ctx, g.ring, '#ffd84a', 0.13);
-      line(ctx, g.hi, '#fff8d6', 0.06);
-      line(ctx, g.hi2, '#fff8d6', 0.05);
+      line(ctx, g.hi, '#fff8d6', 0.055);
       ctx.translate(0, -b);
     },
   },
@@ -938,8 +928,12 @@ const DEFS = {
       const gems = new Path2D();
       oval(gems, -0.42, 0.04, 0.085, 0.07);
       oval(gems, 0.42, 0.04, 0.085, 0.07);
+      const ruby = oval(new Path2D(), 0, 0.05, 0.12, 0.085);
+      const crownPath = toPath(crown);
       return {
-        crown: toPath(crown),
+        crown: crownPath,
+        outline: merge(crownPath, balls),
+        gemLine: merge(ruby, gems),
         band: toPath(clip(clip(crown, halfPlane([1, -0.11], [-1, -0.11])), halfPlane([-1, -0.04], [1, -0.04]))),
         shade: toPath(clip(crown, halfPlane([0.36, -1], [0.4, 1]))),
         hi: toPath(
@@ -950,7 +944,7 @@ const DEFS = {
           false,
         ),
         balls,
-        ruby: oval(new Path2D(), 0, 0.05, 0.12, 0.085),
+        ruby,
         gems,
         glint: circle(new Path2D(), -0.035, 0.02, 0.03),
       };
@@ -960,13 +954,11 @@ const DEFS = {
       fill(ctx, g.band, '#e2a923');
       fill(ctx, g.shade, 'rgba(140,80,0,0.25)');
       line(ctx, g.hi, 'rgba(255,250,200,0.75)', 0.08);
-      line(ctx, g.crown, '#8a5a0a', OW);
       fill(ctx, g.balls, '#fff0a0');
-      line(ctx, g.balls, '#8a5a0a', OW * 0.8);
+      line(ctx, g.outline, '#8a5a0a', OW);
       fill(ctx, g.ruby, '#e0213f');
       fill(ctx, g.gems, '#2f6fe8');
-      line(ctx, g.ruby, '#6e0a1c', 0.05);
-      line(ctx, g.gems, '#14347a', 0.05);
+      line(ctx, g.gemLine, '#2a1238', 0.05);
       fill(ctx, g.glint, '#ffffff');
     },
   },
@@ -1033,6 +1025,8 @@ const DEFS = {
       cross.lineTo(0, -1.36);
       cross.moveTo(-0.09, -1.26);
       cross.lineTo(0.09, -1.26);
+      const orb = circle(new Path2D(), 0, -0.98, 0.13);
+      const circletPath = toPath(circlet);
       const sparkle = new Path2D();
       sparkle.moveTo(0, -1);
       sparkle.quadraticCurveTo(0.08, -0.08, 1, 0);
@@ -1043,19 +1037,16 @@ const DEFS = {
         cap: toPath(cap),
         capShade: toPath(clip(cap, disc(0.9, 0.0, 0.72))),
         capHi: toPath(arcPts(0, -0.02, 0.48, 0.6, Math.PI * 1.15, Math.PI * 1.38, 5), false),
-        arches,
+        arches: merge(arches, cross),
         pearls,
-        circlet: toPath(circlet),
+        gold: merge(points, orb, circletPath),
         circletShade: toPath(clip(circlet, halfPlane([0.45, -1], [0.45, 1]))),
-        points,
         ruby: oval(new Path2D(), 0, -0.04, 0.13, 0.095),
         gems: oval(oval(new Path2D(), -0.52, -0.05, 0.08, 0.065), 0.52, -0.05, 0.08, 0.065),
         emeralds: oval(oval(new Path2D(), -0.25, -0.03, 0.06, 0.05), 0.25, -0.03, 0.06, 0.05),
         ermine: toPath(ermine),
         ermineShade: toPath(clip(ermine, halfPlane([0.52, -1], [0.56, 1]))),
         spots,
-        orb: circle(new Path2D(), 0, -0.98, 0.13),
-        cross,
         sparkle,
       };
     },
@@ -1066,18 +1057,12 @@ const DEFS = {
       fill(ctx, g.capShade, 'rgba(60,0,20,0.3)');
       line(ctx, g.capHi, 'rgba(255,190,210,0.5)', 0.09);
       line(ctx, g.cap, '#5c0b20', OW);
-      line(ctx, g.arches, EDGE, 0.2);
-      line(ctx, g.arches, GOLD, 0.12);
+      line(ctx, g.arches, EDGE, 0.19);
+      line(ctx, g.arches, GOLD, 0.11);
       fill(ctx, g.pearls, '#fffbea');
-      line(ctx, g.cross, EDGE, 0.15);
-      line(ctx, g.cross, GOLD, 0.08);
-      fill(ctx, g.orb, GOLD);
-      line(ctx, g.orb, EDGE, OW);
-      fill(ctx, g.points, GOLD);
-      line(ctx, g.points, EDGE, OW);
-      fill(ctx, g.circlet, GOLD);
+      fill(ctx, g.gold, GOLD);
       fill(ctx, g.circletShade, 'rgba(140,80,0,0.25)');
-      line(ctx, g.circlet, EDGE, OW);
+      line(ctx, g.gold, EDGE, OW);
       fill(ctx, g.ruby, '#e0213f');
       fill(ctx, g.gems, '#2f6fe8');
       fill(ctx, g.emeralds, '#1fb86a');
@@ -1116,21 +1101,20 @@ export function drawHat(ctx, id, x, y, ang, size, pal, t, f = 1) {
     }
     ctx.save();
     saved = true;
-    ctx.translate(x, y);
-    ctx.rotate(ang + Math.PI / 2);
     // Symmetric hats mirror so their lit side faces the light (upper left), like the bodies do;
     // lopsided ones follow the facing instead.
+    const sa = Math.sin(ang);
+    const ca = Math.cos(ang);
     let mx = 1;
     if (def.sym) {
-      if (0.6 * Math.sin(ang) - 0.8 * Math.cos(ang) > 0) mx = -1;
+      if (0.6 * sa - 0.8 * ca > 0) mx = -1;
     } else if (f < 0) mx = -1;
-    ctx.scale(size * mx, size);
-    if (def.k) {
-      // grow about the brim line, so a bigger hat never slides down over the eyes
-      ctx.translate(0, PIVOT);
-      ctx.scale(def.k, def.k);
-      ctx.translate(0, -PIVOT);
-    }
+    // translate(x, y) . rotate(ang + PI/2) . scale(size * mx, size), then the hat's own
+    // scale k about the brim line (a bigger hat never slides down over the eyes), in one call
+    const k = def.k || 1;
+    const sk = size * k;
+    const d = PIVOT * (1 - k) * size;
+    ctx.transform(-sa * sk * mx, ca * sk * mx, -ca * sk, -sa * sk, x - ca * d, y - sa * d);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     ctx.globalAlpha = 1;
