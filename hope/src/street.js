@@ -230,7 +230,8 @@ export class Street {
         this._keys[`b${i}`] = key;
         this.bEls[i].innerHTML = buildingSvg(b.id, lv);
         this.bEls[i].classList.toggle('mine', lv > 0);
-        this.wallEls[i].innerHTML = lv > 0 && !b.final ? wallSvg(lv, { gate: i === 0 }) : '';
+        // The sealed overpass gets the full concrete wall: the street is closed.
+        this.wallEls[i].innerHTML = lv > 0 ? wallSvg(b.final ? 5 : lv, { gate: i === 0 }) : '';
         this.propEls[i].classList.toggle('on', lv > 0);
       }
       this.bEls[i].classList.toggle('next', i === reclaimed && !m.s.sealed);
