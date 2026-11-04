@@ -92,38 +92,28 @@ there for comparison at `/camp/`.
 ## Safehouse: another metagame prototype
 
 [`safehouse/`](safehouse) is another separate page, built from the design doc
-*Safehouse: Meta-Progression Design for a Co-op Zombie Mobile Game*. It isn't
-connected to the action game or to the camp: a **PLAY · simulation** button
-runs a simulated co-op mission in place of a real one.
+*Safehouse: Meta-Progression Design for a Co-op Zombie Mobile Game* and then
+cut down to its core. It isn't connected to the action game or to the other
+prototypes: a **PLAY** button runs a simulated mission in place of a real one.
 
-- One screen with eight stations in a building cross-section. Tapping a
-  station opens a sheet with Upgrade, Craft and Collect. It works in
-  portrait and landscape.
-- Four resources: Scrap, Parts, Supplies and Fuel. Mission loot is banked at
-  every safe room, every player gets the full share, and payouts over a cap
-  turn into Scrap.
-- A Generator sets power capacity and the Fuel tank. Crafts draw power while
-  they run and burn Fuel when they start. Queued jobs start on their own,
-  also while you're away.
-- Upgrades are gated by the Barricade (stations can be at most one level
-  above it), by chapters cleared and by build slots. Cancelling refunds
-  everything.
-- The Loadout Crate fills three mission slots: a throwable, a heal and a
-  boost. Everyone gets a free bandage, and unused items come back.
-- Five named survivors play as bot teammates. They arrive in scripted
-  chapter finales and Radio Room rescue calls, and bonds grow with every
-  mission played together. A simulated friend shows how co-op shares the
-  best bonuses.
-- The Radio Room opens new chapters and adds daily orders, which stack up to
-  three.
-- The five-stage progression flow comes with a guide and a pacing log.
-- The tuning drawer (gear, top right) has time warp, cheats, forced mission
-  outcomes and live multipliers. `npm run safehouse:balance` simulates weeks
-  of play.
+- One screen: four rooms, each answering one question a squad asks before a
+  mission. The Workshop is "what do we carry?", the Infirmary "how do we
+  heal?", the Barracks "who comes with us?" and the Radio Room "where do we
+  go next?". Next to them is the next mission with its chance and PLAY.
+- One resource, Scrap. Missions bring it home, banked at every safe room, so
+  a wipe keeps what you already brought in.
+- Three levels per room on real-time timers, one upgrade at a time. Every
+  level makes the squad stronger.
+- Crafted throwables and heals go along on the next mission. Unused ones stay
+  in the crate.
+- Three named survivors: Nadia from the start, Theo and Grace rescued in
+  chapter finales. They move in once the Barracks has a bunk.
+- Twelve missions in four chapters, and a one-line hint for what to do next.
 
-Open `/safehouse/` (on Pages: `https://miikka-boom.github.io/FunLand2/safehouse/`).
-The design decisions, numbers, pacing results and the MissionLoadout /
-MissionReport contract are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
+The gear (top right) has testing tools: skip time, add Scrap, force outcomes,
+reset. Open `/safehouse/` (on Pages:
+`https://miikka-boom.github.io/FunLand2/safehouse/`). The rules, numbers and
+what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
 
 ## Run it
 
