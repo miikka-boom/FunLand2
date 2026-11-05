@@ -26,6 +26,7 @@ import {
   FINALE_SCRAP,
   STAR_SCRAP,
   LOSS_SCRAP,
+  WORN,
   RESCUE_ODDS,
   RUN_MINUTES,
   CONVOY,
@@ -61,6 +62,7 @@ export function newState(now, rng = Math.random) {
     story: 0, // index of the next story run; STORY_TOTAL once the street is sealed
     stars: Array(STORY_TOTAL).fill(0),
     sealed: false,
+    worn: { i: -1, n: 0 }, // losses in a row on story run i: each one thins them out
     gate: { visitors: [], on: false, nextAt: 0 },
     convoy: { on: false, readyAt: 0, told: false },
     tut: { done: false, seen: {} }, // Mae: the guided start and one-time tips
@@ -180,10 +182,18 @@ export class Meta {
     return ROLE_ORDER.filter((r) => !have.has(r));
   }
 
+  /** The roles you have fewest of (counting whoever is already at the gate): newcomers lean that way. */
+  neededRoles() {
+    const n = Object.fromEntries(ROLE_ORDER.map((r) => [r, 0]));
+    for (const p of [...this.s.people, ...this.s.gate.visitors]) n[p.role]++;
+    const min = Math.min(...Object.values(n));
+    return ROLE_ORDER.filter((r) => n[r] === min);
+  }
+
   _newcomer({ odds: starOdds, origin, role = null, stars = null, level = this.recruitLevel() }) {
     const st = stars || rollStars(this.rng, starOdds);
     const avoid = new Set([...this.s.people, ...this.s.gate.visitors, ...this.s.candidates].map((p) => p.first));
-    return generatePerson(this.rng, { id: this.s.nextId++, stars: st, role, level, prefer: this.missingRoles(), preferChance: 0.6, origin, avoid });
+    return generatePerson(this.rng, { id: this.s.nextId++, stars: st, role, level, prefer: this.neededRoles(), preferChance: 0.6, origin, avoid });
   }
 
   // --- The gate ------------------------------------------------------------------------------
@@ -371,13 +381,15 @@ export class Meta {
     if (!d) return null;
     const b = this.building(d.building);
     const finale = d.type === 'finale';
+    const worn = this.worn(i);
     return {
       i,
       name: d.name,
       type: d.type,
       tag: d.tag,
       text: d.text,
-      rec: Math.round(d.rec * this.tuning.difficulty),
+      rec: Math.round(d.rec * this.tuning.difficulty * (1 - WORN.step * worn)),
+      worn,
       scrap: Math.round(d.baseScrap * (finale ? FINALE_SCRAP : 1)),
       building: b,
       reclaims: finale ? b.id : null,
@@ -387,6 +399,12 @@ export class Meta {
       steps: d.steps,
       level: d.type === 'run' ? 'city' : 'interior',
     };
+  }
+
+  /** How thinned out story run i is: losses in a row on it, up to WORN.max. */
+  worn(i) {
+    const w = this.s.worn;
+    return w && w.i === i ? Math.min(WORN.max, w.n) : 0;
   }
 
   favored(run) {
@@ -509,6 +527,13 @@ export class Meta {
         out.hurt = p.id;
       }
       out.medicSaved = medic && mates.length > 0;
+    }
+
+    // A loss thins them out for the next try; a win starts the next run fresh.
+    if (!run.patrol) {
+      const w = s.worn;
+      s.worn = result.won ? { i: -1, n: 0 } : { i: run.i, n: (w && w.i === run.i ? w.n : 0) + 1 };
+      out.worn = result.won ? 0 : Math.min(WORN.max, s.worn.n);
     }
 
     // The story moves on; rescues bring someone home; a finale takes a building back.

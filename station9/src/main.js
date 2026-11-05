@@ -331,7 +331,10 @@ function resultTips(res, out) {
   const quiet = () => !modals.isOpen;
   if (!res.won) {
     const hurt = out.hurt ? meta.person(out.hurt) : null;
-    const lines = [{ text: 'We lost that one. It happens. Everyone still learned something, and we kept half the scrap.', expr: 'worried' }];
+    const lines = [
+      { text: 'We lost that one. It happens. Everyone still learned something, and we kept half the scrap.', expr: 'worried' },
+      { text: 'And we thinned them out. Every try makes the next one easier.', expr: 'wink' },
+    ];
     if (hurt) lines.push({ text: `${hurt.first} got hurt and needs a rest: they’ll sit out the next run. Bring a Medic and nobody gets hurt.`, expr: 'worried', target: () => (street.people.get(hurt.id) || {}).el });
     else if (out.medicSaved) lines.push({ text: 'And see that? Our Medic kept everyone on their feet.', expr: 'proud' });
     tutor.tip('loss', lines, { when: quiet });

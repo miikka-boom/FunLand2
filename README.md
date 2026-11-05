@@ -213,7 +213,8 @@ with a **simulated PLAY button** in place of the action game.
 - Simpler rules: you pick who you are and always go; three roles (Fighter,
   Scout, Medic), one tag per run; scrap is the only currency; five buildings
   with three levels; PLAY always plays the next run. A lost run sends one
-  teammate to rest for a run.
+  teammate to rest for a run and thins the enemy out, so the next try is
+  easier.
 - The testing drawer (gear, top right) can skip the guided start or start
   over, and has forced outcomes, time warp, cheats and live sliders.
   `npm run station9:balance` simulates players.

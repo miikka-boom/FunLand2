@@ -5701,6 +5701,16 @@ body.mopen #toasts {
   min-width: 120px;
 }
 
+.mt-l .worn {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(125, 255, 161, 0.14);
+  color: var(--good);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
 /* --- Results: XP pips --------------------------------------------------------------------- */
 
 .xpips {

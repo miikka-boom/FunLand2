@@ -101,7 +101,7 @@ After the guided start Mae only speaks when something is new, once each:
 | Tip | When |
 |---|---|
 | A hard run | the crew screen shows Hard or Deadly odds: what the bar means and what to do about it |
-| The first loss | after its results: you keep half the scrap and the XP; who got hurt and that a Medic stops that |
+| The first loss | after its results: you keep half the scrap and the XP, and the next try is easier; who got hurt and that a Medic stops that |
 | Resting | the first crew screen with someone resting |
 | An Elite | the first three-star visitor |
 | No bed | the first time you try to take someone in with no bed: the Bunks screen opens |
@@ -164,10 +164,14 @@ anywhere, and that tap still counts.
   everyone at home XP after every run.
 - **You** are one of three Skilled people offered at the start, one per
   role. You always go on runs and you never get hurt.
-- Newcomers arrive a level behind your best people, so they're useful soon.
-  No two people share a first name.
+- Newcomers arrive a level behind your best people, so they're useful soon,
+  and lean toward the roles you have fewest of (60% of the time), so the
+  crew doesn't end up all Medics. No two people share a first name.
 - **Losing a run** sends one teammate (never you) to rest for the next run,
-  unless a Medic came along.
+  unless a Medic came along. It also **thins them out**: the next try at the
+  same run needs 10% less power, up to 30% after three losses in a row. A
+  win resets it. The crew screen shows it ("thinned −10%") and so do the
+  results, so a loss always counts for something and a losing streak ends.
 
 ## The street
 
@@ -219,11 +223,12 @@ does what Mae suggests and has three sessions a day. Over 40 seeds:
 | Rosie's Diner | 2 (the guided start) |
 | Hardware Store | 6 (6–7) |
 | Iron Gym | 10 (10–11) |
-| K-HOPE Radio | 15 (14–16) |
-| The Overpass (sealed) | 19 (18–21) |
+| K-HOPE Radio | 14 (13–15) |
+| The Overpass (sealed) | 19 (18–20) |
 
-So the street is sealed after about 19 runs (16–29), with around five
-losses on the way. That's about one and a half hours of real runs at five
+So the street is sealed after about 19 runs (15–23), with around five
+losses on the way (at most nine). A player who only does what Mae's hint
+bar says gets the same numbers. That's about one and a half hours of real runs at five
 minutes each. Station 9 is meant to be short and complete: a first session
 that ends with a building back and a full idea of the loop, then a handful
 of sessions to finish.

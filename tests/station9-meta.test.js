@@ -348,3 +348,33 @@ test('everyone who goes on a run has it counted', () => {
   const { result } = play(meta, 'win');
   for (const id of result.crew) assert.equal(meta.person(id).runs, 1);
 });
+
+test('every loss thins them out: the next try at the same run needs 10% less, up to 30%; a win resets it', () => {
+  const { meta } = started(5, { people: 3 });
+  play(meta, 'win');
+  play(meta, 'win');
+  const base = meta.nextRun();
+  assert.equal(base.worn, 0);
+  const { out } = play(meta, 'lose');
+  assert.equal(out.worn, 1);
+  assert.equal(meta.nextRun().rec, Math.round(STORY[base.i].rec * 0.9));
+  for (let k = 0; k < 4; k++) play(meta, 'lose');
+  assert.equal(meta.nextRun().worn, 3);
+  assert.equal(meta.nextRun().rec, Math.round(STORY[base.i].rec * 0.7));
+  play(meta, 'win');
+  const next = meta.nextRun();
+  assert.equal(next.i, base.i + 1);
+  assert.equal(next.worn, 0);
+  assert.equal(next.rec, STORY[next.i].rec);
+});
+
+test('newcomers lean toward the roles you have fewest of', () => {
+  const { meta } = started(9, { people: 1 });
+  const you = meta.you().role;
+  for (let k = 0; k < 4; k++) add(meta, { role: you });
+  const others = ROLE_ORDER.filter((r) => r !== you);
+  assert.deepEqual(meta.neededRoles(), others);
+  let lean = 0;
+  for (let k = 0; k < 200; k++) if (others.includes(meta._newcomer({ odds: GATE.odds, origin: 'gate' }).role)) lean++;
+  assert.ok(lean > 140, `${lean}/200 of the roles we lack`);
+});

@@ -171,6 +171,8 @@ export const FINALE_SCRAP = 2;
 export const STAR_SCRAP = [0, 1, 1.25, 1.5];
 /** A lost run still brings home half the scrap. */
 export const LOSS_SCRAP = 0.5;
+/** Every loss thins them out: the next try at the same run needs 10% less power, up to 30%. */
+export const WORN = { step: 0.1, max: 3 };
 /** Who rescues bring: Skilled or Elite. */
 export const RESCUE_ODDS = [0, 0.75, 0.25];
 

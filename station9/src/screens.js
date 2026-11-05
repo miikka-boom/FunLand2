@@ -132,7 +132,7 @@ export function crew(meta, ctx) {
     `<div class="slots">${slots.join('')}</div>` +
     (bench.length ? `<div class="bench">${bench.map((p) => personMini(meta, p, run, 'add')).join('')}</div>` : '') +
     `<div class="cr-foot"><div class="meter tone-${o.risk.tone}"><div class="mt-bar"><i style="width:${fill}%"></i><u style="left:70%"></u></div>` +
-    `<span class="mt-l">${icon('power')}<b>${o.power}</b> vs <b>${run.rec}</b> needed · <b class="rk">${o.risk.label}</b></span></div>` +
+    `<span class="mt-l">${icon('power')}<b>${o.power}</b> vs <b>${run.rec}</b> needed${run.worn ? ` <em class="worn">thinned −${run.worn * 10}%</em>` : ''} · <b class="rk">${o.risk.label}</b></span></div>` +
     `${btn(`${icon('play')} GO`, 'start', {}, 'primary big go')}</div></div>`
   );
 }
@@ -159,6 +159,7 @@ export function results(meta, result, out) {
   const news = [];
   if (out.rescued) news.push(`<div class="r-new">${icon('heart')}<span><b>${esc(out.rescued.first)}</b> is waiting at the gate</span></div>`);
   if (out.arrived && out.arrived.length && !out.rescued) news.push(`<div class="r-new">${icon('gate')}<span>Someone knocked while you were out</span></div>`);
+  if (!won && out.worn) news.push(`<div class="r-new">${icon('skull')}<span>We thinned them out: the next try needs <b>${out.worn * 10}%</b> less</span></div>`);
   if (out.medicSaved) news.push(`<div class="r-new">${icon('cross')}<span>Your Medic kept everyone on their feet</span></div>`);
   const back = out.back.map((id) => meta.person(id)).filter(Boolean);
   if (back.length) news.push(`<div class="r-new">${icon('check')}<span>${back.map((p) => esc(p.first)).join(', ')} rested up</span></div>`);
