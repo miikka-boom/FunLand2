@@ -1,0 +1,24 @@
+{
+  "name": "FunLand2 · Station 9 (metagame prototype)",
+  "short_name": "Station 9",
+  "description": "A guided base-building and people metagame prototype for the Horde co-op zombie game",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0c0f1c",
+  "theme_color": "#0c0f1c",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "../icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

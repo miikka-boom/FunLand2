@@ -7,6 +7,7 @@ build step and no dependencies.
 |---|---|---|
 | 0: HORDE | [`/`](index.html) | Twin-stick touch controls for top-down zombie horde survival |
 | 1: WOBBLE WAR | [`battle/`](battle/) | Funny, satisfying 2D physics units in a side-view battle simulator |
+| Station 9 | [`station9/`](station9) | A simpler, guided take on Hope Street, with a tutor character (Mae) who shows you around |
 | Hope Street | [`hope/`](hope) | A metagame with base building and randomly generated people: take them in, pick a crew of four for each run |
 | Road to Evac | [`evac/`](evac) | A metagame for a co-op zombie survivor game (simulated runs) |
 | Safehouse | [`safehouse/`](safehouse) | Another metagame: meta-progression for a co-op zombie mobile game |
@@ -194,6 +195,33 @@ and no dependencies.
   decals that stay, casings, tracers, screen shake and recoil, off-screen
   threat arrows.
 
+## Station 9: a guided metagame prototype
+
+[`station9/`](station9) is a simpler take on Hope Street, built to test
+onboarding and a **tutor character**. Like the others it runs on its own,
+with a **simulated PLAY button** in place of the action game.
+
+- **Mae**, the firehouse's retired captain, and Biscuit, her dog, show you
+  around. She talks one short line at a time (with a little synthesized
+  voice and changing expressions), dims the screen around the one thing to
+  tap and points at it. The first session is scripted in six checkpoints
+  and picks up where you left off after a reload.
+- The HUD starts empty and each piece appears when Mae introduces it. After
+  the guided start she keeps a hint bar on screen (tap it for the next step)
+  and gives one-time tips when something new happens: a first loss, an
+  Elite at the gate, the convoy.
+- Simpler rules: you pick who you are and always go; three roles (Fighter,
+  Scout, Medic), one tag per run; scrap is the only currency; five buildings
+  with three levels; PLAY always plays the next run. A lost run sends one
+  teammate to rest for a run.
+- The testing drawer (gear, top right) can skip the guided start or start
+  over, and has forced outcomes, time warp, cheats and live sliders.
+  `npm run station9:balance` simulates players.
+
+Open `/station9/` (on Pages: `https://miikka-boom.github.io/FunLand2/station9/`).
+Mae's script, the tips, the numbers and the contract with the game are in
+[docs/STATION-9.md](docs/STATION-9.md).
+
 ## Hope Street: a metagame prototype
 
 [`hope/`](hope) is a separate page built around **base building** and
@@ -278,9 +306,9 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
 
 - **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` (HORDE) once
   this is on the default branch (the Pages workflow only deploys from there).
-  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/hope/`
-  (Hope Street), `/evac/` (Road to Evac), `/safehouse/` (the Safehouse) and
-  `/camp/` (the v1 camp).
+  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at
+  `/station9/` (Station 9), `/hope/` (Hope Street), `/evac/` (Road to Evac),
+  `/safehouse/` (the Safehouse) and `/camp/` (the v1 camp).
 - **Locally:** `npm start` (or `python3 -m http.server 8080`), then open
   `http://localhost:8080`. To try it on a phone, open
   `http://<your-computer-ip>:8080` on the same network. Opening `index.html`
@@ -305,11 +333,12 @@ src/game/                  player, AI teammate, weapons, zombies, director, effe
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR battle simulator (separate page; code map above)
+station9/                  Station 9 metagame prototype (separate page; map in docs/STATION-9.md)
 hope/                      Hope Street metagame prototype (separate page; map in docs/HOPE-STREET.md)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, horde scaling, the four metagames, battle sim)
+tests/                     node --test unit tests (stick math, touch controller rules, horde scaling, the five metagames, battle sim)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

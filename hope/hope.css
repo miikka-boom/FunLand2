@@ -134,6 +134,12 @@ code {
 /* Stacking: street objects (sorted by depth inside), then the fog, then labels on top. */
 .layer.objects {
   z-index: 1;
+  /* Taps go through to the buildings behind; only people catch them. */
+  pointer-events: none;
+}
+
+.layer.objects .pp {
+  pointer-events: auto;
 }
 
 .back .sk,
