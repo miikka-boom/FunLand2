@@ -88,6 +88,12 @@ export class Lighting {
       for (const k of game.pickups) {
         if (!k.taken && pointInRect(k.x, k.y, vr, 40)) this.radial(ctx, k.x, k.y, 38, 0.45);
       }
+      // Unopened stashes give off a faint glow (the secret doesn't: you have to spot its glint).
+      if (game.loot) {
+        for (const s of game.loot.stashes) {
+          if (!s.opened && s.tier !== 'secret' && pointInRect(s.x, s.y, vr, 40)) this.radial(ctx, s.x, s.y, 30, 0.3);
+        }
+      }
       for (const o of game.world.obstacles) {
         if (o.alarmOn && Math.sin(t * 10) > 0 && rectsOverlap(o, vr, 150)) this.radial(ctx, o.x + o.w / 2, o.y + o.h / 2, 140, 0.75);
       }

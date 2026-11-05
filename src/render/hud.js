@@ -4,6 +4,7 @@
 import { FONT, rrect, circle } from './draw-utils.js';
 import { TAU, clamp } from '../util.js';
 import { ALLY } from '../game/ally.js';
+import { ARMOR_MAX, ADRENALINE_TIME } from '../game/loot.js';
 
 let vignette = null;
 let vignetteKey = '';
@@ -40,6 +41,7 @@ export function drawHud(ctx, game, input, ui, renderer) {
   if (game.ally) drawAllyPanel(ctx, game, L);
   if (game.ally && game.ally.alive && !ui.title) drawAllyMarker(ctx, game, L);
   drawWeapon(ctx, game, L, ui);
+  if (!ui.title) drawBuffs(ctx, game, L);
   drawStats(ctx, game, L);
   drawButtons(ctx, game, L, input.touch);
 
@@ -169,7 +171,7 @@ function drawButtons(ctx, game, L, touch) {
   btnCircle(ctx, r, pressed.has('reload'));
   if (w.reloading) {
     const total = w.def.reloadType === 'shell' ? w.def.reload : w.def.reload;
-    const k = w.def.reloadType === 'shell' ? w.mag / w.def.mag : 1 - w.reloadT / total;
+    const k = w.def.reloadType === 'shell' ? w.mag / w.cap : 1 - w.reloadT / total;
     ctx.strokeStyle = 'rgba(255,210,120,0.9)';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -242,7 +244,8 @@ function drawHealth(ctx, game, L) {
   ctx.fillText(String(hp), b.x + 10, b.y + 17);
   ctx.fillStyle = 'rgba(255,255,255,0.5)';
   ctx.font = `600 10px ${FONT}`;
-  const tag = game.settings.godMode ? 'HP · GOD' : p.hp < 40 && p.alive ? 'HP · LIMPING' : 'HP';
+  const limping = p.hp < 40 && p.alive && !(p.adrenT > 0);
+  const tag = game.settings.godMode ? 'HP · GOD' : limping ? 'HP · LIMPING' : 'HP';
   ctx.fillText(tag, b.x + 50, b.y + 17);
   const bx = b.x + 10;
   const by = b.y + 31;
@@ -251,6 +254,44 @@ function drawHealth(ctx, game, L) {
   ctx.fillRect(bx, by, bw, 6);
   ctx.fillStyle = col;
   ctx.fillRect(bx, by, bw * clamp(f, 0, 1), 6);
+  if (p.armor > 0) {
+    // Armor: a blue strip under the bar, and its number after the tag.
+    ctx.fillStyle = 'rgba(134,200,255,0.25)';
+    ctx.fillRect(bx, by + 8, bw, 3);
+    ctx.fillStyle = '#86c8ff';
+    ctx.fillRect(bx, by + 8, bw * clamp(p.armor / ARMOR_MAX, 0, 1), 3);
+    const tw = ctx.measureText(tag).width;
+    const full = ` · ARMOR ${Math.ceil(p.armor)}`;
+    const room = b.x + b.w - 8 - (b.x + 50 + tw);
+    ctx.fillText(ctx.measureText(full).width <= room ? full : ` · ${Math.ceil(p.armor)}`, b.x + 50 + tw, b.y + 17);
+  }
+}
+
+/** Scavenged buffs under the weapon panel: hot rounds, adrenaline, extended mags. */
+function drawBuffs(ctx, game, L) {
+  const p = game.player;
+  const chips = [];
+  if (p.hot > 0) chips.push({ text: `HOT ROUNDS ${p.hot}`, color: '#ffa451' });
+  if (p.adrenT > 0) chips.push({ text: `ADRENALINE ${Math.ceil(p.adrenT)}s`, color: '#ffe066', k: p.adrenT / ADRENALINE_TIME });
+  if (p.magMult > 1) chips.push({ text: 'EXT MAGS', color: '#9df0ff' });
+  if (!chips.length) return;
+  const b = L.byId.swap;
+  let y = b.y + b.h + 6;
+  ctx.font = `800 10px ${FONT}`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'right';
+  for (const c of chips) {
+    const w = ctx.measureText(c.text).width + 16;
+    const x = b.x + b.w - w;
+    panel(ctx, x, y, w, 18);
+    if (c.k !== undefined) {
+      ctx.fillStyle = 'rgba(255,224,102,0.18)';
+      ctx.fillRect(x + 2, y + 2, (w - 4) * clamp(c.k, 0, 1), 14);
+    }
+    ctx.fillStyle = c.color;
+    ctx.fillText(c.text, x + w - 8, y + 9.5);
+    y += 22;
+  }
 }
 
 /** Teammate status under your health: HP, DOWN (bleeding out) or DIED. */
@@ -376,7 +417,7 @@ function drawWeapon(ctx, game, L, ui) {
   const mw = ctx.measureText(magTxt).width;
   ctx.font = `600 12px ${FONT}`;
   ctx.fillStyle = 'rgba(255,255,255,0.45)';
-  ctx.fillText(`/ ${w.def.mag}`, b.x + 14 + mw, b.y + 33);
+  ctx.fillText(`/ ${w.cap}`, b.x + 14 + mw, b.y + 33);
   if (w.reloading) {
     ctx.fillStyle = '#ffd27a';
     ctx.font = `700 10px ${FONT}`;
@@ -552,6 +593,13 @@ function drawEnd(ctx, game, L) {
     lines.push(
       `hunters ${st.hunters} (skeets ${st.skeets}, deadstops ${st.deadstops}, pinned ${st.pins})   ·   tank ${st.tanks ? 'down' : game.director.tankSpawned ? 'survived' : '-'}`,
     );
+  }
+  if (game.lootOn && game.loot) {
+    const T = game.loot.totals;
+    const parts = [`supplies ${st.stashes}/${T.stash}`];
+    if (T.room) parts.push(`boarded rooms ${st.rooms}/${T.room}`);
+    if (T.secret) parts.push(st.secrets ? 'secret FOUND' : 'secret not found');
+    lines.push(parts.join('   ·   '));
   }
   if (game.ally) {
     const a = game.ally;

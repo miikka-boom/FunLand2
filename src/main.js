@@ -86,8 +86,8 @@ const panel = new SettingsPanel(panelEl, settings, {
   onChange: (key) => {
     const all = key === '*'; // presets / reset all
     if (key === 'volume' || all) audio.setVolume(settings.volume);
-    if (key === 'level' || all) {
-      if (game.level !== settings.level) game.newRun(settings.seed);
+    if (key === 'level' || key === 'loot' || all) {
+      if (game.level !== settings.level || game.lootOn !== settings.loot) game.newRun(settings.seed);
       syncLevelPicker();
     }
     if (key === 'ally' || key === 'allyWeapon' || all) game.syncAlly();

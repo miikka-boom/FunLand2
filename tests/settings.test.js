@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { DEFAULTS, parseSaved, serializeSettings } from '../src/settings.js';
+
+test('the AI teammate is off by default', () => {
+  assert.equal(DEFAULTS.ally, false);
+});
+
+test('saves hold only what differs from the defaults, and load back', () => {
+  const s = { ...DEFAULTS, ally: true, viewSize: 520, level: 'interior' };
+  const saved = JSON.parse(serializeSettings(s));
+  assert.deepEqual(saved, { _v: 2, ally: true, viewSize: 520, level: 'interior' });
+  assert.deepEqual({ ...DEFAULTS, ...parseSaved(saved) }, s);
+  assert.deepEqual(JSON.parse(serializeSettings({ ...DEFAULTS })), { _v: 2 });
+});
+
+test('old full saves: the old teammate default gives way to the new one, real choices stay', () => {
+  // Format 1 stored every value, so ally:true there is just the old default.
+  const old = { ...DEFAULTS, ally: true, viewSize: 520 };
+  const s = { ...DEFAULTS, ...parseSaved(old) };
+  assert.equal(s.ally, false);
+  assert.equal(s.viewSize, 520);
+  // Turned on again after the change, it's saved in the new format and sticks.
+  assert.equal(parseSaved({ _v: 2, ally: true }).ally, true);
+});
+
+test('bad saves are ignored key by key', () => {
+  assert.deepEqual(parseSaved(null), {});
+  assert.deepEqual(parseSaved('nope'), {});
+  assert.deepEqual(parseSaved({ _v: 2, viewSize: 'big', bogus: 1, laser: false }), { laser: false });
+});

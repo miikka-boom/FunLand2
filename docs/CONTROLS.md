@@ -125,9 +125,10 @@ Hunter** and **Spawn Tank** buttons for testing on demand.
 
 ## AI teammate
 
-A bot survivor fights alongside you (on by default; **Teammate** in the
-tuning panel turns it off or changes its gun and accuracy). It's there to test
-how the controls hold up with someone else in the fight.
+A bot survivor can fight alongside you. It's off by default (solo is the
+baseline): turn it on under **Teammate** in the tuning panel, which also sets
+its gun and accuracy. It's there to test how the controls hold up with
+someone else in the fight.
 
 - **Follows** a spot behind and to one side of you, a little ahead of where
   you're going, so it keeps pace. It steps out of your line of fire when you
@@ -148,6 +149,52 @@ how the controls hold up with someone else in the fight.
   revives it, it dies for the rest of the run.
 - Zombies go for whichever survivor is nearer. A Tank's punch and rocks hurt
   it too; Hunters only ever pounce on you.
+
+## Scavenging: rewards for leaving the route
+
+Each map hides finds off the straight line from the start to the safe room
+(**Stashes + secrets** under **Level** in the tuning panel; on by default).
+"Off the route" is measured as the detour: the walk start → find → safe room,
+minus the walk start → safe room. Placement is seeded from the map, so the
+same map always has the same finds.
+
+- **Searching:** stand on a find to search it: 0.7 s for a stash, 0.9 s for a
+  boarded room's case, 1.3 s for the secret. A gold ring shows the progress.
+  You can shoot while you search. Stepping off pauses it (the progress drains
+  slowly), and being pinned stops it.
+- **Supply stashes:** 5 on the streets, 4 in the building, one per stretch of
+  the route, each in the best nook there (alleys, courtyards, lots, back rooms;
+  at least ~380 u of detour). One item each: armor +50, 60 hot rounds,
+  adrenaline or a medkit, sometimes a medkit as well. They glow faintly and
+  glint every few seconds when you have line of sight.
+- **Boarded rooms (2 per map):** a dead-end room with its door nailed shut.
+  On the streets it's carved into a building with a doorway on its open side;
+  in the building it's a one-door room. Three shoves break the boards, and so
+  do bullets (they take 40% of a bullet's damage). Each hit is a bit noisy, and
+  breaking them is loud: it alerts zombies within 700 u. 2–3 zombies are shut
+  in with the case. The case holds two good items (full armor, 150 hot rounds,
+  extended mags, +25 max HP or adrenaline) plus a medkit.
+- **The secret (1 per map):** a manhole cover pushed slightly off its hole
+  (streets) or a floor hatch left ajar (building), far off the route (the
+  building prefers a pitch-dark room). There's no glow and no arrow, only a
+  faint glint every ~4 s. It holds extended mags or +25 max HP, plus full armor
+  and 150 hot rounds.
+- **Survivor chalk:** white arrows on the ground lead from the main route
+  toward both boarded rooms (an X at the tail) and about half the stashes (a
+  crate at the tail), one every ~300 u.
+- **What the loot does (for the rest of the run):**
+  - **Armor** (blue strip under your HP, up to 100) soaks damage before HP.
+  - **Hot rounds** (orange tracers, counter under the gun panel) are spent one
+    per trigger pull: ×1.5 damage and +1 pierce.
+  - **Adrenaline** (20 s, yellow pulse): +22% run speed, no limp or slow-down
+    from hits, reloads 40% faster, shoves recover 40% faster.
+  - **Extended mags:** every magazine +50%, refilled on the spot. A second one
+    turns into 150 hot rounds.
+  - **+25 max HP** heals 25 too.
+  - **Medkits** pop out next to the case and follow the normal rule (taken
+    when you're hurt), so you can leave them for later.
+- The end screen tallies supplies, boarded rooms and whether you found the
+  secret.
 
 ## Camera
 
@@ -218,6 +265,10 @@ how the controls hold up with someone else in the fight.
 - **Massive hordes** (Horde size ×10–×25): does a shove still clear space in
   a packed crowd? Does aim assist still pick the zombie you meant, or does it
   jump around? Keep the debug read-out on and note the fps on your phone.
+- **Scavenging:** do you notice the chalk arrows, and do you follow them? Is a
+  detour worth the extra hordes it costs? Does breaking into a boarded room
+  feel risky but worth it? Did anyone find the secret without being told? Is
+  standing still for 0.7 s to search tense, or just annoying?
 - **AI teammate:** does it get in your way, or stand in doorways you need?
   Is reviving (stand next to it, don't shoot, 3 s) easy to do in a fight? It
   often shoots Hunters before they pounce, so practise deadstops with it off

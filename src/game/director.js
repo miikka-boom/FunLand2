@@ -74,12 +74,12 @@ export class Director {
       const y = rand(40, g.world.h - 40);
       if (Math.hypot(x - start.x, y - start.y) < 650) continue;
       if (pointInRect(x, y, startRoom.outer, 40) || pointInRect(x, y, endRoom.outer, 20)) continue;
-      if (!g.world.isFree(x, y, 12)) continue;
+      if (!g.world.isFree(x, y, 12) || g.world.sealedAt(x, y)) continue;
       const group = Math.random() < 0.3 ? randInt(2, 5) : 1;
       for (let j = 0; j < group && placed < n; j++) {
         const zx = x + rand(-40, 40);
         const zy = y + rand(-40, 40);
-        if (!g.world.isFree(zx, zy, 11)) continue;
+        if (!g.world.isFree(zx, zy, 11) || g.world.sealedAt(zx, zy)) continue;
         g.zombies.push(new Zombie(zx, zy, false));
         placed++;
       }
@@ -268,6 +268,7 @@ export class Director {
       if (pd < minD || pd > maxD) continue;
       W.cellCenter(i, c);
       if (pointInRect(c.x, c.y, startRoom.outer, 30) || pointInRect(c.x, c.y, endRoom.outer, 30)) continue;
+      if (W.sealedAt(c.x, c.y)) continue; // nailed-shut rooms: nothing new appears in there
       if (pointInRect(c.x, c.y, view)) {
         if (Math.hypot(c.x - p.x, c.y - p.y) < 380) continue;
         if (W.segmentClear(p.x, p.y, c.x, c.y)) continue;
@@ -318,7 +319,7 @@ export class Director {
     for (let k = 0; k < 8; k++) {
       const tx = x + rand(-46, 46);
       const ty = y + rand(-46, 46);
-      if (g.world.isFree(tx, ty, 11)) {
+      if (g.world.isFree(tx, ty, 11) && !g.world.sealedAt(tx, ty)) {
         zx = tx;
         zy = ty;
         break;

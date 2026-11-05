@@ -2,6 +2,7 @@
 
 import { generateCity } from '../world/map-gen.js';
 import { generateBuilding } from '../world/building-gen.js';
+import { addScavenging } from '../world/scavenge-gen.js';
 import { World, SpatialHash, FlowField } from '../world/world.js';
 import { Player, updatePlayer, shove, startReload, swapWeapon } from './player.js';
 import { updateZombies, resolveCrowd, alertZombie, ZHASH_CELL } from './zombies.js';
@@ -9,6 +10,7 @@ import { updateSpecials, updateRocks, releasePin } from './specials.js';
 import { Director } from './director.js';
 import { Ally, updateAlly, hurtAlly, allySpotNear } from './ally.js';
 import { Effects } from './effects.js';
+import { initLoot, spawnSleepers, updateLoot } from './loot.js';
 import { dampFactor, pointInRect, rand } from '../util.js';
 
 export class Game {
@@ -33,6 +35,12 @@ export class Game {
       const er = map.endRoom.interior;
       if (Number.isFinite(world.flow.pathDist(er.x + er.w / 2, er.y + er.h / 2))) break;
       map = gen(seed + k);
+      world = new World(map);
+    }
+    // Stashes, boarded rooms and a secret off the route (changes the map, so rebuild the world).
+    this.lootOn = !!this.settings.loot;
+    if (this.lootOn) {
+      addScavenging(map, map.seed);
       world = new World(map);
     }
     this.world = world;
@@ -70,12 +78,15 @@ export class Game {
       kills: 0, shots: 0, hits: 0, shoves: 0, damage: 0, hordes: 0, time: 0,
       hunters: 0, skeets: 0, deadstops: 0, pins: 0, breakFrees: 0, tanks: 0, rocksShot: 0,
       allyKills: 0, allySaves: 0, allyDowns: 0, revives: 0,
+      stashes: 0, rooms: 0, secrets: 0, boards: 0,
     };
+    initLoot(this, map);
     this.killCredit = null; // 'ally' while the teammate's bullets/shoves land
     this.world.flow.compute(this.player.x, this.player.y);
     this.ally = null;
     this.syncAlly();
     this.director.populate();
+    spawnSleepers(this);
   }
 
   /** Spawn or remove the AI teammate to match the setting (a dead one stays dead until the next run). */
@@ -134,12 +145,19 @@ export class Game {
   hurtPlayer(dmg, z, opts = {}) {
     const p = this.player;
     if (!p.alive || this.won) return;
-    if (!this.settings.godMode) p.hp -= dmg;
+    let soaked = 0;
+    if (!this.settings.godMode) {
+      // Armor takes the hit first.
+      soaked = Math.min(p.armor, dmg);
+      p.armor -= soaked;
+      p.hp -= dmg - soaked;
+    }
     this.stats.damage += dmg;
     const slow = opts.slow === undefined ? 0.35 : opts.slow;
     if (slow > 0) p.slowT = Math.max(p.slowT, slow);
     p.hurtT = 0.25;
-    this.hurtFlash = Math.min(1, this.hurtFlash + (opts.pinned ? 0.18 : 0.45));
+    const flash = opts.pinned ? 0.18 : 0.45;
+    this.hurtFlash = Math.min(1, this.hurtFlash + (soaked >= dmg && dmg > 0 ? flash * 0.35 : flash));
     this.addTrauma(opts.pinned ? 0.08 : 0.22);
     if (z) {
       const dx = p.x - z.x;
@@ -153,7 +171,8 @@ export class Game {
       }
       this.effects.blood(p.x, p.y, dx / d, dy / d, 2, 120);
     }
-    this.audio.hurt();
+    if (soaked > 0 && soaked >= dmg) this.audio.armorHit();
+    else this.audio.hurt();
     this.haptic(35);
     this.director.addIntensity(dmg / 32);
     if (p.hp <= 0) {
@@ -231,8 +250,11 @@ export class Game {
     for (let i = 0; i < this.zombies.length; i++) if (this.zombies[i].alive) this.zombies[j++] = this.zombies[i];
     this.zombies.length = j;
 
+    updateLoot(this, dt);
+
     // Pickups.
     for (const k of this.pickups) {
+      if (k.pop !== undefined && k.pop < 1) k.pop = Math.min(1, k.pop + dt * 3);
       if (k.taken || !p.alive) continue;
       if (Math.hypot(k.x - p.x, k.y - p.y) < p.r + 14 && p.hp < p.maxHp) {
         k.taken = true;

@@ -266,6 +266,47 @@ export class Audio {
     this._tone({ f0: 990, dur: 0.12, gain: 0.2, at: 0.07 });
   }
 
+  // --- scavenging -----------------------------------------------------------------------
+
+  /** Rummaging through a stash (repeats while you search). */
+  rummage() {
+    if (!this._ok('rummage', 0.12)) return;
+    this._noise({ dur: 0.07, type: 'bandpass', freq: 1300 + Math.random() * 900, q: 0.9, gain: 0.13, rate: 0.8 + Math.random() * 0.5 });
+  }
+
+  stashOpen(tier) {
+    if (!this._ok('stash', 0.2)) return;
+    // Lid creak, then a chime: bigger finds get a longer one.
+    this._tone({ type: 'sawtooth', f0: 220, f1: 150, dur: 0.12, gain: 0.07, filter: { freq: 1200 } });
+    const notes = tier === 'secret' ? [523, 659, 784, 1046, 1318, 1568] : tier === 'room' ? [523, 784, 1046, 1568] : [660, 880, 1320];
+    notes.forEach((f, i) => this._tone({ type: 'triangle', f0: f, dur: 0.28, gain: 0.16, at: 0.06 + i * 0.075 }));
+  }
+
+  boardHit(x, y) {
+    if (!this._ok('boardHit', 0.06)) return;
+    const s = this._spatial(x, y, 1100);
+    const out = this._out(s.pan, 0.3 + s.gain * 0.7);
+    this._noise({ dur: 0.12, type: 'lowpass', freq: 320, gain: 0.7, out });
+    this._tone({ f0: 130, f1: 70, dur: 0.11, gain: 0.35, out });
+    this._noise({ dur: 0.04, type: 'bandpass', freq: 2200, q: 1.5, gain: 0.25, out });
+  }
+
+  boardBreak(x, y) {
+    if (!this._ok('boardBreak', 0.2)) return;
+    const s = this._spatial(x, y, 1600);
+    const out = this._out(s.pan, 0.35 + s.gain * 0.65);
+    this._noise({ dur: 0.32, type: 'bandpass', freq: 800, sweepTo: 300, q: 0.8, gain: 0.8, out });
+    this._noise({ dur: 0.08, type: 'highpass', freq: 2500, gain: 0.4, out });
+    this._tone({ f0: 95, f1: 40, dur: 0.3, gain: 0.45, out });
+  }
+
+  /** Armor soaked a hit. */
+  armorHit() {
+    if (!this._ok('armorHit', 0.1)) return;
+    this._tone({ type: 'square', f0: 980, f1: 720, dur: 0.05, gain: 0.05 });
+    this._noise({ dur: 0.05, type: 'highpass', freq: 3200, gain: 0.18 });
+  }
+
   win() {
     if (!this._ok('win')) return;
     [523, 659, 784, 1046].forEach((f, i) => this._tone({ type: 'triangle', f0: f, dur: 0.35, gain: 0.22, at: i * 0.11 }));

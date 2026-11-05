@@ -139,15 +139,16 @@ and no dependencies.
   for A/B testing, and **Copy tuning JSON** copies only what you changed.
   Every setting you've changed gets a dot and its own **Default** button, and
   **Reset all to defaults** is at the bottom.
-- **An AI teammate**: a bot survivor (olive jacket, green ring) runs with you.
+- **An AI teammate** (off by default; turn it on under **Teammate** in the
+  tuning panel): a bot survivor (olive jacket, green ring) runs with you.
   It follows a step behind and shoots what threatens you first: a Tank's rock,
   a Hunter on you or about to pounce, then zombies on you. It shoves zombies off
   itself, shoves a Hunter off you, keeps its distance from the Tank and heals
   itself once. Zombies go for whichever of you is nearer. At 0 HP it goes
   **down** instead of dying and keeps shooting from the floor while it bleeds
   out (45 s). Stand next to it without shooting for 3 s to revive it. It never
-  shoots through you and never sets off alarms. You can turn it off, or change
-  its gun and accuracy, under **Teammate** in the tuning panel.
+  shoots through you and never sets off alarms. The **Teammate** section also
+  sets its gun and accuracy.
 - **Two levels**, picked on the title card or in the tuning panel:
   - **Streets:** a run across a dark city, from a safe room (bottom left) to
     the green safe room across town.
@@ -161,6 +162,24 @@ and no dependencies.
 
   On both levels, a green arrow at the screen edge points to the safe room
   and shows the walking distance.
+- **Scavenging off the route**: heading straight for the safe room isn't the
+  only way through. Each map hides finds in the detours, spread along the run:
+  - **Supply stashes** (olive crates, 5 on the streets, 4 in the building) in
+    alleys, courtyards, parking lots and back rooms. Stand on one for 0.7 s to
+    search it.
+  - **Boarded rooms** (2 per map): a dead-end room with its door nailed shut.
+    Shove the boards three times (or shoot them) to break in. It's loud, and
+    whatever was shut in there comes out. Inside is a better stash.
+  - **One secret per map**: a loose manhole cover (streets) or floor hatch
+    (building) somewhere remote. Only a glint gives it away. It holds the best
+    loot.
+  - **Survivor chalk arrows** on the ground lead from the main route to the
+    boarded rooms and about half of the stashes.
+  - The loot lasts for the run: armor (soaks damage before HP), hot rounds
+    (×1.5 damage, +1 pierce, orange tracers), adrenaline (20 s of speed, no
+    slow-down from hits, quicker reloads and shoves), extended mags (+50%),
+    +25 max HP, and medkits. The end screen shows what you found. Turn it off
+    under **Level** in the tuning panel.
 - **An AI Director**: build-up, peak and relax phases, wanderers, small groups,
   and mobs ("HERE THEY COME!") that spawn out of sight and come round corners.
   Shooting a car with a blinking red light sets off the **alarm**, which brings
@@ -272,15 +291,15 @@ src/settings.js            every tunable value + panel schema + presets
 src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
-src/world/                 seeded city + building generators, collision, ray casts, flow field
-src/game/                  player, AI teammate, weapons, zombies, director, effects, game state
+src/world/                 seeded city + building generators, scavenging pass (stashes, boarded rooms, secret, chalk), collision, ray casts, flow field
+src/game/                  player, AI teammate, weapons, zombies, director, loot, effects, game state
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR battle simulator (separate page; code map above)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, horde scaling, the three metagames, battle sim)
+tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging placement, the three metagames, battle sim)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

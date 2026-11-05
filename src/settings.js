@@ -5,6 +5,7 @@ const STORAGE_KEY = 'funland2.p0.tuning.v1';
 
 export const DEFAULTS = Object.freeze({
   level: 'city', // 'city' (streets) | 'interior' (building floor)
+  loot: true, // stashes, boarded rooms and a secret off the main route
 
   // --- Sticks -------------------------------------------------------------
   moveMode: 'dynamic', // 'dynamic' (base follows thumb) | 'floating' | 'fixed'
@@ -56,7 +57,7 @@ export const DEFAULTS = Object.freeze({
   tankSpeed: 1.0, // 1.0 = 182 u/s, just under your run speed: kite it, don't stop
 
   // --- AI teammate --------------------------------------------------------
-  ally: true, // a bot survivor that fights alongside you
+  ally: false, // a bot survivor that fights alongside you (off: solo is the baseline)
   allyWeapon: 'rifle', // smg | rifle | shotgun | hunting
   allyAccuracy: 0.7, // aim error and reaction time: 0 = sloppy, 1 = sharp
 
@@ -99,6 +100,7 @@ export const SCHEMA = [
           ['interior', 'Building – interior floor'],
         ],
       },
+      { key: 'loot', label: 'Stashes + secrets off the route (restarts the run)', type: 'toggle' },
     ],
   },
   {
@@ -244,16 +246,36 @@ function pickControlDefaults() {
   return out;
 }
 
+// Saves hold only what differs from the defaults (format 2), so a changed
+// default reaches everyone who never touched that setting. Format 1 (no _v)
+// stored every value; there, a value equal to a default that has changed
+// since is dropped, so the new default applies (the teammate used to be on).
+const SAVE_FORMAT = 2;
+const CHANGED_DEFAULTS = { ally: true };
+
+/** Saved JSON -> the values to apply over the defaults. */
+export function parseSaved(saved) {
+  const out = {};
+  if (!saved || typeof saved !== 'object') return out;
+  const legacy = saved._v === undefined;
+  for (const k of Object.keys(DEFAULTS)) {
+    if (!(k in saved) || typeof saved[k] !== typeof DEFAULTS[k]) continue;
+    if (legacy && k in CHANGED_DEFAULTS && saved[k] === CHANGED_DEFAULTS[k]) continue;
+    out[k] = saved[k];
+  }
+  return out;
+}
+
+/** What saveSettings writes. */
+export function serializeSettings(s) {
+  return JSON.stringify({ _v: SAVE_FORMAT, ...diffFromDefaults(s) });
+}
+
 export function loadSettings() {
   const s = { ...DEFAULTS };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const saved = JSON.parse(raw);
-      for (const k of Object.keys(DEFAULTS)) {
-        if (k in saved && typeof saved[k] === typeof DEFAULTS[k]) s[k] = saved[k];
-      }
-    }
+    if (raw) Object.assign(s, parseSaved(JSON.parse(raw)));
   } catch {
     // Private mode / blocked storage: run with defaults.
   }
@@ -265,7 +287,7 @@ export function saveSettings(s) {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+      localStorage.setItem(STORAGE_KEY, serializeSettings(s));
     } catch {
       // ignore
     }

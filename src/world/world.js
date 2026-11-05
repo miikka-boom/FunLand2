@@ -1,10 +1,13 @@
 // Collision, ray casts, navigation grid and the horde flow field.
 
-import { clamp, rayRect } from '../util.js';
+import { clamp, rayRect, pointInRect } from '../util.js';
 
 const BP_CELL = 128;
 const BP_PAD = 34; // >= largest entity radius
 export const NAV_CELL = 32;
+// Strict worlds (level analysis) also block cells a body can't stand in, so
+// slivers between buildings don't count as passages.
+const STRICT_R = 11;
 const INF = 0x3fffffff;
 
 const DIRS = [
@@ -54,14 +57,18 @@ export function resolveCircleRect(e, r, o) {
 }
 
 export class World {
-  constructor(map) {
+  /** opts.strict: block cells without room for a body (for placement analysis, not the live game). */
+  constructor(map, opts = {}) {
     this.map = map;
+    this.strict = !!opts.strict;
     this.w = map.w;
     this.h = map.h;
     this.obstacles = map.obstacles;
     this.moveBlockers = this.obstacles.filter((o) => o.move);
     this.shotBlockers = this.obstacles.filter((o) => o.shot);
     this.sightBlockers = this.obstacles.filter((o) => o.sight);
+    // Boarded-up rooms (scavenging): shut until their boards are broken.
+    this.sealed = map.sealed || [];
 
     // Broadphase: each cell lists blockers overlapping it (padded), so an
     // entity only needs to test its own cell.
@@ -93,6 +100,9 @@ export class World {
     // (>= one cell thick) always cover a centre, so centre-based marking is
     // enough and keeps the gaps between scattered furniture walkable.
     for (const o of this.moveBlockers) {
+      // Boards stop bodies but read as a doorway to the flow field: what's
+      // shut in presses against them, and nothing reroutes when they break.
+      if (o.navOpen) continue;
       let x0;
       let x1;
       let y0;
@@ -115,6 +125,14 @@ export class World {
       y1 = Math.min(this.navH - 1, y1);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) this.blocked[y * this.navW + x] = 1;
     }
+    if (this.strict) {
+      const c = { x: 0, y: 0 };
+      for (let i = 0; i < n; i++) {
+        if (this.blocked[i]) continue;
+        this.cellCenter(i, c);
+        if (!this.isFree(c.x, c.y, STRICT_R)) this.blocked[i] = 1;
+      }
+    }
     // Prefer the middle of corridors: small cost next to walls.
     for (let y = 0; y < this.navH; y++) {
       for (let x = 0; x < this.navW; x++) {
@@ -130,6 +148,31 @@ export class World {
         }
       }
     }
+  }
+
+  /** Take an obstacle out of the world (broken boards). The nav grid never had it. */
+  removeObstacle(o) {
+    for (const list of [this.obstacles, this.moveBlockers, this.shotBlockers, this.sightBlockers]) {
+      const i = list.indexOf(o);
+      if (i >= 0) list.splice(i, 1);
+    }
+    const x0 = clamp(Math.floor((o.x - BP_PAD) / BP_CELL), 0, this.bpW - 1);
+    const x1 = clamp(Math.floor((o.x + o.w + BP_PAD) / BP_CELL), 0, this.bpW - 1);
+    const y0 = clamp(Math.floor((o.y - BP_PAD) / BP_CELL), 0, this.bpH - 1);
+    const y1 = clamp(Math.floor((o.y + o.h + BP_PAD) / BP_CELL), 0, this.bpH - 1);
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const cell = this.bp[y * this.bpW + x];
+        const i = cell.indexOf(o);
+        if (i >= 0) cell.splice(i, 1);
+      }
+    }
+  }
+
+  /** Inside a room that's still boarded shut (no spawning or warping in there). */
+  sealedAt(x, y) {
+    for (const s of this.sealed) if (!s.open && (pointInRect(x, y, s.interior, 4) || pointInRect(x, y, s.door, 4))) return true;
+    return false;
   }
 
   navIndex(x, y) {

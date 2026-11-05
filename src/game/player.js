@@ -5,6 +5,7 @@ import { aimTau, smoothAngle } from '../input/stick-math.js';
 import { DEG, clamp, rand, randSpread, rayCircle, smoothstep, wrapAngle } from '../util.js';
 import { damageZombie, alertZombie } from './zombies.js';
 import { HUNTER, deadstop, struggle, damageRock } from './specials.js';
+import { hotDef, shootBoards, shoveBoards } from './loot.js';
 
 export const SHOVE_REACH = 52;
 export const SHOVE_HALF_ANGLE = 65 * DEG;
@@ -25,7 +26,8 @@ export class Player {
     this.aimActive = false;
     this.aimHoldT = 0;
     this.aimRaw = 0;
-    this.weapons = WEAPONS.map((def) => ({ def, mag: def.mag, reloading: false, reloadT: 0 }));
+    // cap = magazine size (EXTENDED MAGS raises it for the run).
+    this.weapons = WEAPONS.map((def) => ({ def, mag: def.mag, cap: def.mag, reloading: false, reloadT: 0 }));
     this.wi = 0;
     this.cooldown = 0;
     this.bloom = 0;
@@ -46,6 +48,11 @@ export class Player {
     this.pinImmuneT = 0;
     this.knockT = 0; // sent flying: little control for a moment
     this.shoveActiveT = 0; // shove still "live" for deadstopping a pouncing Hunter
+    // Scavenged for the run (see loot.js).
+    this.armor = 0; // soaks damage before HP
+    this.hot = 0; // hot rounds left: x1.5 damage, +1 pierce
+    this.adrenT = 0; // adrenaline seconds left
+    this.magMult = 1;
   }
 
   get weapon() {
@@ -63,7 +70,9 @@ export function updatePlayer(game, dt, input) {
   p.swapT -= dt;
   p.shoveCd -= dt;
   p.recoil *= Math.exp(-14 * dt);
-  p.shoveFatigue = Math.max(0, p.shoveFatigue - dt * 0.35);
+  p.adrenT = Math.max(0, p.adrenT - dt);
+  const adren = p.adrenT > 0;
+  p.shoveFatigue = Math.max(0, p.shoveFatigue - dt * (adren ? 0.8 : 0.35));
   p.knockT -= dt;
   p.pinImmuneT -= dt;
   p.shoveActiveT -= dt;
@@ -82,8 +91,11 @@ export function updatePlayer(game, dt, input) {
 
   // --- Movement ------------------------------------------------------------------
   let speed = S.moveSpeed;
-  if (p.hp < 40) speed *= 0.8; // limping
-  if (p.slowT > 0) speed *= 0.55; // tagged by a hit
+  if (adren) speed *= 1.22; // adrenaline: faster, and hits don't slow you
+  else {
+    if (p.hp < 40) speed *= 0.8; // limping
+    if (p.slowT > 0) speed *= 0.55; // tagged by a hit
+  }
   const control = p.knockT > 0 ? 0.15 : 1; // knocked flying by a Tank
   const tx = input.move.x * speed * control;
   const ty = input.move.y * speed * control;
@@ -153,12 +165,12 @@ export function updatePlayer(game, dt, input) {
       if (def.reloadType === 'shell') {
         w.mag++;
         game.audio.shell();
-        if (w.mag >= def.mag) {
+        if (w.mag >= w.cap) {
           w.reloading = false;
           game.audio.pump();
-        } else w.reloadT += def.reload;
+        } else w.reloadT += def.reload * reloadScale(p);
       } else {
-        w.mag = def.mag;
+        w.mag = w.cap;
         w.reloading = false;
         game.audio.reloadDone();
       }
@@ -228,11 +240,14 @@ function applyAimAssist(game, p) {
   p.assist = best;
 }
 
+/** Adrenaline reloads faster. */
+const reloadScale = (p) => (p.adrenT > 0 ? 0.6 : 1);
+
 export function startReload(game, p) {
   const w = p.weapon;
-  if (w.reloading || w.mag >= w.def.mag) return;
+  if (w.reloading || w.mag >= w.cap) return;
   w.reloading = true;
-  w.reloadT = w.def.reloadType === 'shell' ? w.def.reload + 0.15 : w.def.reload;
+  w.reloadT = (w.def.reloadType === 'shell' ? w.def.reload + 0.15 : w.def.reload) * reloadScale(p);
   game.audio.reloadStart();
 }
 
@@ -264,6 +279,9 @@ function fire(game, p) {
   p.cooldown += 1 / def.rate;
   w.mag--;
   game.stats.shots++;
+  // Hot rounds: one per trigger pull (a shotgun blast is one round).
+  const sdef = p.hot > 0 ? hotDef(def) : def;
+  if (p.hot > 0) p.hot--;
 
   const spd = Math.hypot(p.vx, p.vy);
   const moveFrac = clamp(spd / S.moveSpeed, 0, 1);
@@ -283,7 +301,7 @@ function fire(game, p) {
     } else {
       ang = p.fireAngle + randSpread() * spread;
     }
-    if (hitscan(game, p, mx, my, ang, def)) anyHit = true;
+    if (hitscan(game, p, mx, my, ang, sdef)) anyHit = true;
   }
   if (anyHit) game.stats.hits++;
   p.bloom = Math.min(def.bloomMax, p.bloom + def.bloom);
@@ -306,8 +324,8 @@ const hitList = [];
 /**
  * One bullet from shooter p along ang: hits zombies/rocks (piercing per the
  * weapon), draws the tracer, sparks off walls. Shots that stop on an alarm
- * car / fire alarm set it off, unless alarms is false (the AI teammate never
- * trips alarms).
+ * car / fire alarm set it off, and on boards chip them, unless alarms is
+ * false (the AI teammate never trips alarms or breaks into rooms).
  */
 export function hitscan(game, p, mx, my, ang, def, alarms = true) {
   const world = game.world;
@@ -361,6 +379,7 @@ export function hitscan(game, p, mx, my, ang, def, alarms = true) {
     // Spark off the surface, facing back toward the shooter.
     game.effects.sparks(x1 - dx * 2, y1 - dy * 2, -dx, -dy, def.pellets > 1 ? 2 : 4);
     if (alarms && wall.obstacle.alarm) game.director.triggerAlarm(wall.obstacle);
+    if (alarms && wall.obstacle.boards) shootBoards(game, wall.obstacle, def, dx, dy, x1, y1);
   }
   return n > 0;
 }
@@ -377,7 +396,7 @@ export function shove(game) {
   // Rapid shoves tire you out (L4D-style), so it can't be spammed forever.
   p.shoveFatigue = now - p.lastShove < 1.1 ? Math.min(p.shoveFatigue + 0.14, 0.75) : p.shoveFatigue;
   p.lastShove = now;
-  p.shoveCdMax = 0.42 + p.shoveFatigue;
+  p.shoveCdMax = (0.42 + p.shoveFatigue) * (p.adrenT > 0 ? 0.6 : 1);
   p.shoveCd = p.shoveCdMax;
   // The shove stays live briefly, so a Hunter arriving a moment later is still stopped.
   p.shoveActiveT = game.settings.deadstopWindow;
@@ -432,6 +451,7 @@ export function shove(game) {
     damageZombie(game, z, 8, dx / d, dy / d, 340, rand(0.75, 0.95), false);
     alertZombie(game, z, 0);
   });
+  hits += shoveBoards(game, p, ang, SHOVE_REACH, SHOVE_HALF_ANGLE);
   game.stats.shoves++;
   game.effects.shoveArc(p.x, p.y, ang, SHOVE_REACH + p.r);
   game.audio.shove(hits > 0);

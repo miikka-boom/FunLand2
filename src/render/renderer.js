@@ -9,6 +9,7 @@ import { rrect, circle, hash01 } from './draw-utils.js';
 import { SKINS, SHIRTS } from '../game/zombies.js';
 import { ALLY } from '../game/ally.js';
 import { TAU, rectsOverlap, pointInRect } from '../util.js';
+import { drawFloors, drawChalk, drawLoot, drawLootBright, drawBoards } from './loot-render.js';
 
 const GROUND = {
   street: '#24272b',
@@ -185,6 +186,7 @@ export class Renderer {
     if (sw > 0 && sh > 0) ctx.drawImage(fx.decal, sx, sy, sw, sh, sx / ds, sy / ds, sw / ds, sh / ds);
 
     this.drawProps(ctx, game, vr);
+    drawLoot(ctx, game, vr);
     this.drawPickups(ctx, game, vr);
     this.drawCorpses(ctx, game, vr);
     this.drawGroundParticles(ctx, game, vr);
@@ -204,6 +206,8 @@ export class Renderer {
     }
 
     this.drawBright(ctx, game, vr);
+    drawLootBright(ctx, game, vr);
+    this.drawBuffAura(ctx, game);
     this.drawRoofs(ctx, game, vr);
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -244,6 +248,8 @@ export class Renderer {
         ctx.stroke();
       }
     }
+
+    drawFloors(ctx, map, vr);
 
     // Safe room floors.
     for (const room of [map.startRoom, map.endRoom]) {
@@ -352,6 +358,9 @@ export class Renderer {
           ctx.beginPath();
           ctx.ellipse(d.x, d.y, 22 * d.s, 9 * d.s, d.a, 0, TAU);
           ctx.fill();
+          break;
+        case 'chalk':
+          drawChalk(ctx, d);
           break;
         default:
           break;
@@ -707,6 +716,16 @@ export class Renderer {
   drawPickups(ctx, game, vr) {
     for (const k of game.pickups) {
       if (k.taken || !pointInRect(k.x, k.y, vr)) continue;
+      // Spilled from a stash: pops out (overshoots, then settles).
+      const popping = k.pop !== undefined && k.pop < 1;
+      if (popping) {
+        const u = k.pop;
+        const sc = 0.2 + u * 0.8 + Math.sin(u * Math.PI) * 0.35;
+        ctx.save();
+        ctx.translate(k.x, k.y);
+        ctx.scale(sc, sc);
+        ctx.translate(-k.x, -k.y);
+      }
       const bob = Math.sin(game.time * 3 + k.bob) * 1.5;
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(k.x - 9, k.y - 5, 20, 14);
@@ -717,7 +736,21 @@ export class Renderer {
       ctx.fillStyle = '#d0302a';
       ctx.fillRect(k.x - 2, k.y - 6 + bob, 4, 11);
       ctx.fillRect(k.x - 6, k.y - 2.5 + bob, 12, 4);
+      if (popping) ctx.restore();
     }
+  }
+
+  /** Adrenaline: a quick yellow pulse around you while it lasts. */
+  drawBuffAura(ctx, game) {
+    const p = game.player;
+    if (!p.alive || !(p.adrenT > 0)) return;
+    const fade = Math.min(1, p.adrenT / 2); // fades out over its last 2 s
+    const k = (game.time * 2.2) % 1;
+    ctx.strokeStyle = `rgba(255,224,102,${(1 - k) * 0.45 * fade})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    circle(ctx, p.x, p.y, p.r + 4 + k * 16);
+    ctx.stroke();
   }
 
   drawCorpses(ctx, game, vr) {
@@ -1452,6 +1485,10 @@ export class Renderer {
         ctx.fillRect(o.x, o.y, o.w, o.h);
         ctx.fillStyle = 'rgba(255,255,255,0.12)';
         ctx.fillRect(o.x, o.y, o.w, Math.min(3, o.h));
+        continue;
+      }
+      if (o.kind === 'boards') {
+        drawBoards(ctx, o, game.time);
         continue;
       }
       if (o.kind === 'pillar') {

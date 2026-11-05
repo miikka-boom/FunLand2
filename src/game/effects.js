@@ -54,14 +54,14 @@ export class Effects {
     }
   }
 
-  /** Rock / concrete chunks (no blood). */
-  debris(x, y, n = 8) {
+  /** Rock / concrete chunks (no blood); pass a palette for splinters etc. */
+  debris(x, y, n = 8, palette = null) {
     for (let i = 0; i < n; i++) {
       const a = Math.random() * TAU;
       const s = rand(60, 260);
       this._p({
         kind: 'debris', x, y, z: rand(4, 16), vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(60, 200),
-        size: rand(2.5, 5.5), life: 1.6, max: 1.6, color: Math.random() < 0.5 ? '#6f6a63' : '#8a847b', rot: rand(0, TAU), spin: rand(-14, 14),
+        size: rand(2.5, 5.5), life: 1.6, max: 1.6, color: palette ? pick(palette) : Math.random() < 0.5 ? '#6f6a63' : '#8a847b', rot: rand(0, TAU), spin: rand(-14, 14),
       });
     }
     this._p({ kind: 'dust', x, y, vx: 0, vy: 0, life: 0.7, max: 0.7, size: 14 });
@@ -83,6 +83,15 @@ export class Effects {
       kind: 'casing', x, y, z: 12, vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(70, 140),
       life: 6, max: 6, rot: rand(0, TAU), spin: rand(-20, 20), shell, bounced: false,
     });
+  }
+
+  /** A ring of glittering sparks (a stash popping open). */
+  sparkle(x, y, n = 12) {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + rand(-0.2, 0.2);
+      const s = rand(90, 190);
+      this._p({ kind: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.25, 0.5), max: 0.5, size: rand(1.4, 2.4) });
+    }
   }
 
   smoke(x, y, size = 10) {
