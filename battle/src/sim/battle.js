@@ -21,6 +21,8 @@ export class Battle {
   constructor(seed = 1) {
     this.seed = seed;
     this.rng = new Rng(seed);
+    // Cosmetic-only randomness (hat spin) has its own stream, so looks never change a fight
+    this.fxRng = new Rng((seed ^ 0x9e3779b9) >>> 0);
     this.units = [];
     this.arrows = [];
     this.items = [];
@@ -36,6 +38,8 @@ export class Battle {
     this.sorted = [];
     this.sortedDead = [];
     this.blasts = []; // bombs waiting to go off (chain reactions run one step apart)
+    // Cosmetic hats per team: { unitTypeId | 'all': hatId }. Hats pop off when a bean gets bonked.
+    this.hats = { blue: {}, red: {} };
     this.stats = { hits: 0, blocks: 0, arrows: 0, kills: 0 };
   }
 
@@ -55,6 +59,9 @@ export class Battle {
     const s = seed == null ? (this.rng.next() * 2 ** 31) | 0 : seed;
     const u = new Unit(type, team, x, ln, this.nextId++, s);
     u.placeSeed = s;
+    const hats = this.hats[team] || {};
+    const hat = hats[typeId] || hats.all;
+    u.hat = hat && hat !== 'none' ? hat : null;
     this.units.push(u);
     // Keep the crowd drawn back-to-front
     this.units.sort((a, b) => a.lane - b.lane || a.id - b.id);
@@ -423,6 +430,40 @@ export class Battle {
       if (d > 0 && d < u.type.spread) return true;
     }
     return false;
+  }
+
+  /** Knock a unit's hat off: it becomes a loose item that tumbles to the ground. */
+  popHat(u, dvx = 0, dvy = 0) {
+    if (!u.hat) return;
+    const dt = this.dt;
+    const R = u.R;
+    const ux = u.ux;
+    const uy = u.uy;
+    const nx = -uy; // across the head (the brim)
+    const ny = ux;
+    // Same seat as the renderer's hatAnchor (render/hats.js), so the hat leaves from where it sat
+    const shape = u.type.shape || 'bean';
+    const base = shape === 'ball' ? u.chest : u.head;
+    const seat = shape === 'triangle' ? 0.45 : shape === 'brick' ? 0.95 : shape === 'ball' ? 1.0 : 0.92;
+    const cx = base.x + ux * R * seat;
+    const cy = base.y + uy * R * seat;
+    const w = R * 1.5;
+    const vx = base.vx(dt) + dvx * 0.4;
+    const vy = base.vy(dt) + dvy * 0.4 - 220;
+    const spin = (this.fxRng.next() - 0.5) * 500;
+    const mk = (x, y, s) => {
+      const p = new Particle(x, y, 0.3, 2.5);
+      p.setVel(vx - ny * spin * s, vy + nx * spin * s, dt);
+      p.ground = u.ground;
+      p.friction = 0.4;
+      p.bounce = 0.35;
+      return p;
+    };
+    const a = mk(cx - (nx * w) / 2, cy - (ny * w) / 2, -1);
+    const b = mk(cx + (nx * w) / 2, cy + (ny * w) / 2, 1);
+    this.items.push({ kind: 'hat', hat: u.hat, team: u.team, f: u.f, R, a, b, con: new Dist(a, b, w), age: 0 });
+    u.hat = null;
+    this.emit('hatOff', cx, cy, { unit: u });
   }
 
   queueBlast(u) {

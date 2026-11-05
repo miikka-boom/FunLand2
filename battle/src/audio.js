@@ -709,6 +709,29 @@ function drop(b) {
   b.noise({ type: 'lowpass', f: 400, at: 0.02, d: 0.05, g: 0.15 });
 }
 
+// Jellybean pling: two quick bright notes
+function coin(b) {
+  const f = 1320 * (0.95 + b.pitch * 0.1);
+  b.tone({ type: 'triangle', f, a: 0.002, d: 0.06, g: 0.28 });
+  b.tone({ type: 'triangle', f: f * 1.5, at: 0.055, a: 0.002, d: 0.16, g: 0.3 });
+  b.tone({ f: f * 3, at: 0.055, a: 0.002, d: 0.08, g: 0.06 });
+}
+
+// A star lands: sparkly rising chime with a soft thump
+function star(b) {
+  const f = 660 * (1 + (b.pitch - 0.5) * 0.5);
+  for (let i = 0; i < 3; i++) b.tone({ type: 'triangle', f: f * [1, 1.25, 1.5][i], at: i * 0.045, a: 0.003, d: 0.22, g: 0.22 });
+  b.tone({ f: f * 4, to: f * 6, glide: 0.2, at: 0.1, a: 0.01, d: 0.25, g: 0.05 });
+  b.noise({ type: 'lowpass', f: 300, a: 0.002, d: 0.06, g: 0.25 });
+}
+
+// A hat pops off: cork-like pop
+function pop(b) {
+  const f = 520 + b.pitch * 200;
+  b.tone({ f: f * 0.5, to: f * 1.6, glide: 0.035, a: 0.001, d: 0.06, g: 0.4 });
+  b.noise({ type: 'bandpass', f: 2200, q: 2, a: 0.001, d: 0.025, g: 0.25 });
+}
+
 function ui(b) {
   b.tone({ f: 1900, to: 1300, glide: 0.02, a: 0.001, d: 0.03, g: 0.25 });
   b.noise({ type: 'bandpass', f: 4000, q: 1, a: 0.001, d: 0.01, g: 0.1 });
@@ -748,6 +771,9 @@ const SOUNDS = {
   boom: { fn: boom, gap: 0.04, max: 4, level: 1.4, trim: 0.9, hit: true },
   quake: { fn: quake, gap: 0.06, max: 3, level: 1.2, trim: 0.95, hit: true },
   fuse: { fn: fuse, gap: 0.08, max: 3, level: 0.5, trim: 0.9 },
+  coin: { fn: coin, gap: 0.05, max: 3, level: 1.5, trim: 0.7, jit: 0.02 },
+  star: { fn: star, gap: 0.1, max: 3, level: 2, trim: 0.8, jit: 0 },
+  pop: { fn: pop, gap: 0.05, max: 3, level: 0.8, trim: 0.9, jit: 0.04 },
 };
 
 export const SOUND_NAMES = Object.keys(SOUNDS);

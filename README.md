@@ -7,6 +7,7 @@ build step and no dependencies.
 |---|---|---|
 | 0: HORDE | [`/`](index.html) | Twin-stick touch controls for top-down zombie horde survival |
 | 1: WOBBLE WAR | [`battle/`](battle/) | Funny, satisfying 2D physics units in a side-view battle simulator |
+| Hope Street | [`hope/`](hope) | A metagame with base building and randomly generated people: take them in, pick a crew of four for each run |
 | Road to Evac | [`evac/`](evac) | A metagame for a co-op zombie survivor game (simulated runs) |
 | Safehouse | [`safehouse/`](safehouse) | Another metagame: meta-progression for a co-op zombie mobile game |
 | Camp | [`camp/`](camp) | The first metagame prototype: a survivor camp with base building |
@@ -78,40 +79,82 @@ The jokes come from that one rule plus a few extras:
 - **Hand of god:** drag a bean to pick it up. It dangles and flails, and you
   can fling it.
 
-## Modes
+## A fair free-to-play game
 
-- **Campaign:** nine rounds (three of them introduce the Spiker, the Bomb and
-  the Brick). Red's army is preset, and you have a gold budget for blue. **Retry** replays your placement; **Change army** lets you edit it.
-  Beaten rounds can be replayed from the title card. Every round has several
-  winning armies and loses to the obvious wrong answer (checked by simulating
-  every affordable army).
-- **Sandbox:** place both armies (left of the field is blue, right is red) with
-  no budget. You can grab beans during the battle too.
+Wobble War is set up as a free mobile game of the good kind. Everything that
+wins battles is earned by playing; money (if it is ever connected) only buys
+looks.
 
-Controls: pick one of the six unit cards, then tap or click your side of the
+- **Hub:** the home screen runs a silent demo battle behind the menu. **PLAY**
+  continues the campaign. The other tiles are Map, Daily, Sandbox, Wardrobe and
+  Trophies; ⚙ opens the settings.
+- **Campaign:** 30 levels in three worlds (Green Hills, Pointy Pass, Brick
+  Fortress). Each world ends with a boss army in matching hats. Red's army is
+  preset and you get a gold budget. Winning gives ★, and spending less gives
+  ★★ and ★★★; the HUD shows your stars live while you place. Clearing a world
+  unlocks its units everywhere: Spiker and Bomb after World 1, the Brick after
+  World 2. Every level was simulated headless: several affordable armies win,
+  and the star thresholds come from the cheapest winning army found.
+- **Daily challenge:** one level from the worlds you have reached, with today's
+  enemies in matching hats. The first win of the day pays bonus Jellybeans.
+  There is no streak, so missing a day costs nothing.
+- **Jellybeans:** the one currency. You earn them from first clears, new
+  stars, small replay wins, the daily and trophies. You spend them only on
+  cosmetics.
+- **Wardrobe:** a hat per unit type (15 hats) and an army colour (6 colours),
+  with a live preview you can poke. Buying takes two deliberate taps, so
+  purchases are never accidental. Hats pop off when their bean gets bonked;
+  they use their own random numbers, so a hat never changes how a battle goes.
+- **Trophies:** 16 goals that reward laughing at the physics: Frequent Flyer,
+  Pincushion, Chain Reaction, Boing!, Yeet and others. Each pays Jellybeans
+  when you claim it. Battle feats count in the campaign and the daily, not in
+  the Sandbox, where both armies are yours.
+- **Supporter Pack:** an optional thank-you with a gold colour and a crown. It
+  is cosmetic only, and purchases aren't connected in this prototype.
+- **No** energy, timers, ads, loot boxes, pay-to-win or nag screens. The promise
+  is written in Settings.
+- **Tutorial:** on level 1, a pointer shows where to tap, then FIGHT.
+- **Phone app:** installable to the home screen (manifest + icons), plays
+  offline through a service worker, and updates itself only while you are in
+  the menus. It vibrates on big hits on Android, and settings cover sound,
+  volume, vibration and screen shake.
+- **Sandbox:** place both armies with no budget, using the units you have
+  unlocked. You can grab beans during the battle too.
+
+Progress is saved in `localStorage` (`wobblewar.profile.v1`). Settings → Reset
+progress erases it.
+
+Controls: pick one of your unit cards, then tap or click your side of the
 field to place it (a tap right next to a bean still places one). Drag a bean to
 grab it (a lit bomb stays lit: throw it), drag elsewhere to pan, pinch or
 scroll to zoom; 🎥 reframes. The 🐢 button toggles slow motion. The ≡ menu
-pauses the battle. Keys: `1`–`6` pick a unit, `E` remove, `Space` fight, `S`
-slow-mo, `F` auto camera, `R` reset, `M` mute, `Esc` menu / resume.
+pauses the battle (resume, restart, settings, main menu). Keys: `1`–`6` pick a unit, `E` remove, `Space` fight, `S`
+slow-mo, `F` auto camera, `R` reset, `M` mute, `Esc` pause / back.
 
 ## Code map (battle/)
 
 ```
-battle/index.html, style.css    page shell, storybook HUD, title, dock
+battle/index.html, style.css    page shell, storybook HUD, dock, results, menus
 battle/src/config.js             world layout + team colours shared by everything
 battle/src/sim/physics.js        Verlet particles, constraints, ground, segment tests
 battle/src/sim/unit.js           the ragdoll: skeleton, muscles, walking, attacks, pounce, fuse, eyes, AI
 battle/src/sim/unit-types.js     the six units: shape, size, stats, weapons/abilities, attack poses
 battle/src/sim/battle.js         placement, fixed-step sim, melee hits, pounces, shockwaves, explosions, arrows, win check
-battle/src/campaign.js           the nine rounds
+battle/src/meta/levels.js        the 30 campaign levels (simulation-checked budgets and star thresholds)
+battle/src/meta/profile.js       the save: Jellybeans, stars, cosmetics, stats, settings (pure, migrates old saves)
+battle/src/meta/economy.js       the fair-F2P rules: unlocks, rewards, stars, daily challenge
+battle/src/meta/trophies.js      16 trophies and claiming
+battle/src/meta/cosmetics.js     army colours, buying and equipping hats/colours
+battle/src/ui/meta-ui.js         hub, world map, level card, wardrobe (live preview), trophies, settings, pause
+battle/src/render/hats.js        the hats (vector, drawn in each unit's frame)
+battle/src/pwa.js, battle/sw.js  install + offline + updates (bump VERSION in sw.js on every deploy)
 battle/src/render/units.js       drawing beans, bricks, wedges and balls, faces, weapons, arrows, fuses
 battle/src/render/background.js  sky, parallax hills, castles, grass, dirt cross-section
 battle/src/render/effects.js     starbursts, sparks, dust, dirt, confetti, comic words
 battle/src/render/camera.js      auto-framing, pan/zoom, screen shake
 battle/src/audio.js              WebAudio synth: bonks, clanks, squeaky voices, horn
 battle/src/input.js              tap / grab / pan / pinch / wheel
-battle/src/main.js               game flow, sim events -> juice, frame loop
+battle/src/main.js               game flow, rewards, stats for trophies, sim events -> juice, frame loop
 ```
 
 The simulation (`battle/src/sim/`) has no DOM code, runs at a fixed 120 Hz with
@@ -212,6 +255,32 @@ and no dependencies.
   decals that stay, casings, tracers, screen shake and recoil, off-screen
   threat arrows.
 
+## Hope Street: a metagame prototype
+
+[`hope/`](hope) is a separate page built around **base building** and
+**randomly generated people**. It isn't connected to the action game: a
+**simulated PLAY button** stands in for a run.
+
+- You hold a firehouse on one street. Strangers come to the gate, each with
+  a generated face, name, age, former job, role (Bruiser, Shooter, Medic,
+  Scout or Mechanic), grade (★ to ★★★) and traits like Night owl or Clumsy.
+  Take them in if you have a bed.
+- For every run you pick a crew of up to four. Each run's tags favor certain
+  roles and traits, and injuries rotate people out for a few days. People
+  level up by playing; training at home helps the rest.
+- Story runs reclaim the street one building at a time. Each building
+  becomes a facility: beds, a kitchen (XP), a workshop (power), training, an
+  infirmary and a radio (better visitors). Upgrades are instant.
+- Two currencies (scrap and gems). Two wait rewards, both people: a visitor
+  at the gate every 30 minutes and a convoy with a skilled survivor every 8
+  hours.
+- The testing drawer (gear, top right) has forced outcomes, time warp,
+  cheats and live sliders. `npm run hope:balance` simulates days of play.
+
+Open `/hope/` (on Pages: `https://miikka-boom.github.io/FunLand2/hope/`).
+The design, numbers and the RunLoadout / RunResult contract with the game
+are in [docs/HOPE-STREET.md](docs/HOPE-STREET.md).
+
 ## Road to Evac: a metagame prototype
 
 [`evac/`](evac) is a separate page with a metagame for a co-op zombie
@@ -270,8 +339,9 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
 
 - **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` (HORDE) once
   this is on the default branch (the Pages workflow only deploys from there).
-  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/evac/`
-  (Road to Evac), `/safehouse/` (the Safehouse) and `/camp/` (the v1 camp).
+  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/hope/`
+  (Hope Street), `/evac/` (Road to Evac), `/safehouse/` (the Safehouse) and
+  `/camp/` (the v1 camp).
 - **Locally:** `npm start` (or `python3 -m http.server 8080`), then open
   `http://localhost:8080`. To try it on a phone, open
   `http://<your-computer-ip>:8080` on the same network. Opening `index.html`
@@ -296,10 +366,11 @@ src/game/                  player, AI teammate, weapons, zombies, director, loot
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR battle simulator (separate page; code map above)
+hope/                      Hope Street metagame prototype (separate page; map in docs/HOPE-STREET.md)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging placement, the three metagames, battle sim)
+tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging placement, the four metagames, battle sim)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.
