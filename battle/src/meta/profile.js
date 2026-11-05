@@ -12,7 +12,7 @@
 // is reproducible (and testable); only newProfile() without a seed uses
 // Math.random, to pick that seed.
 
-import { CARDS, STARTER_DECK, DECK_SIZE, MAX_LEVEL } from '../sim/cards.js';
+import { cardById, STARTER_DECK, DECK_SIZE, MAX_LEVEL } from '../sim/cards.js';
 import { ARENAS, arenaIndex, addCards, cardState, kingLevelForXp, KING_LEVELS } from './collection.js';
 
 export const PROFILE_KEY = 'wobblewar.profile.v1'; // same key as v1: the save upgrades in place
@@ -196,14 +196,14 @@ function fromV2(raw) {
 
   // Cards: known ids only, levels 1..MAX_LEVEL. Starter cards are always owned.
   for (const [id, c] of Object.entries(obj(raw.cards))) {
-    if (!CARDS[id]) continue;
+    if (!cardById(id)) continue; // (own keys only: 'toString' is not a card)
     const src = obj(c);
     p.cards[id] = { level: Math.max(1, Math.min(MAX_LEVEL, num(src.level, 1))), count: num(src.count) };
   }
   // Deck: exactly 8 unique owned cards, else repaired with starter cards.
   const deck = [];
   for (const id of Array.isArray(raw.deck) ? raw.deck : []) {
-    if (typeof id === 'string' && p.cards[id] && !deck.includes(id) && deck.length < DECK_SIZE) deck.push(id);
+    if (cardById(id) && p.cards[id] && !deck.includes(id) && deck.length < DECK_SIZE) deck.push(id);
   }
   for (const id of STARTER_DECK) if (deck.length < DECK_SIZE && !deck.includes(id)) deck.push(id);
   p.deck = deck;
@@ -346,12 +346,4 @@ export function pushNotice(p, notice) {
 /** Take the oldest notice (removes it), or null. */
 export function popNotice(p) {
   return p.notices.length ? p.notices.shift() : null;
-}
-
-// Legacy: economy.js / trophies.js (removed in the integration phase) still
-// import this. v2 profiles have no campaign stars.
-export function totalStars(p) {
-  let s = 0;
-  for (const v of Object.values(obj(p.stars))) s += num(v);
-  return s;
 }

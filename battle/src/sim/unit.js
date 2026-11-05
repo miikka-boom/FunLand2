@@ -8,7 +8,7 @@
 // the muscles fade back in and it gets up again. Dead = conscious 0 forever.
 
 import { WORLD } from '../config.js';
-import { Particle, Dist, hingeLimit, springTo } from './physics.js';
+import { Particle, Dist, springTo } from './physics.js';
 import { BODY, WEAPONS } from './unit-types.js';
 import { levelMul } from './cards.js';
 import { Rng } from './rng.js';

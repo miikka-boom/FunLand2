@@ -12,9 +12,10 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <meta name="description" content="A wobbly 2D physics battle game. Free, fair, no ads: everything that wins battles is earned by playing.">
+  <meta name="description" content="A wobbly real-time card battler: drop ragdoll beans onto the field, bonk the enemy towers, climb the arenas. Free and fair: no ads, no energy, nothing that wins is for sale.">
   <title>Wobble War</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="hub.css">
   <script>
     (function () {
       var d = document.documentElement;
@@ -39,19 +40,20 @@
     })();
   </script>
 </head>
-<body>
+<body class="mode-attract">
   <canvas id="game" aria-label="Battlefield"></canvas>
 
-  <div id="hud" class="hud" aria-live="polite">
+  <!-- Sandbox: the free-placement toy -->
+  <div id="hud" class="hud sandbox-only" aria-live="polite">
     <div class="hud-top">
       <div class="team-bar blue">
-        <span class="tag" id="tag-blue">BLUE</span>
+        <span class="tag">BLUE</span>
         <div class="bar"><i id="bar-blue"></i></div>
         <b class="count" id="count-blue">0</b>
       </div>
       <div class="round">
         <span class="dash"></span>
-        <div class="badge" id="round-badge">ROUND 1</div>
+        <div class="badge">SANDBOX</div>
         <span class="dash"></span>
       </div>
       <div class="team-bar red">
@@ -63,17 +65,17 @@
     <div class="hud-sub" id="hud-sub"></div>
   </div>
 
-  <div class="corner-btns">
+  <div class="corner-btns sandbox-only">
     <button id="mute-btn" class="icon-btn" type="button" title="Sound (M)" aria-label="Toggle sound">🔊</button>
     <button id="menu-btn" class="icon-btn" type="button" title="Menu (Esc)" aria-label="Menu">≡</button>
   </div>
 
-  <div id="dock" class="dock">
+  <div id="dock" class="dock hidden">
     <div class="cards" id="cards"></div>
     <div class="dock-actions">
       <button id="reframe" class="tool hidden" type="button" title="Show the whole field (F)" aria-label="Show the whole field">🎥<span>Reframe</span></button>
       <button id="erase" class="tool" type="button" title="Remove units (E)" aria-label="Remove units">✖<span>Remove</span></button>
-      <button id="clear" class="tool" type="button" title="Clear your side" aria-label="Clear">⟲<span>Clear</span></button>
+      <button id="clear" class="tool" type="button" title="Clear the field" aria-label="Clear">⟲<span>Clear</span></button>
       <button id="fight" class="fight" type="button" title="Start the battle (Space)">FIGHT!</button>
     </div>
   </div>
@@ -85,24 +87,90 @@
   </div>
 
   <div id="result" class="result hidden">
-    <div class="ribbon" id="result-title">VICTORY!</div>
-    <div class="rstars" id="result-stars"></div>
-    <div class="rreward" id="result-reward"></div>
+    <div class="ribbon" id="result-title">BLUE WINS!</div>
     <p id="result-sub"></p>
-    <div class="rnotes" id="result-notes"></div>
     <div class="row">
       <button id="home" class="btn" type="button" aria-label="Main menu">⌂</button>
-      <button id="retry" class="btn" type="button">Retry</button>
-      <button id="edit" class="btn" type="button">Change army</button>
-      <button id="next" class="btn primary" type="button">Next level ▸</button>
+      <button id="retry" class="btn primary" type="button">Again</button>
+      <button id="edit" class="btn" type="button">Change armies</button>
     </div>
   </div>
 
-  <div id="coach" class="coach hidden" aria-live="polite"><div class="say"></div></div>
+  <!-- Match: the battle screen -->
+  <div id="mhud" class="mhud match-only" aria-live="polite">
+    <div class="mh-top">
+      <div class="mh-side blue">
+        <i class="mh-lvl" id="mh-lvl-blue">1</i>
+        <b class="mh-name" id="mh-name-blue">You</b>
+        <span class="crowns" id="mh-crowns-blue"></span>
+      </div>
+      <div class="mh-clock" id="mh-clock"><small id="mh-clock-label">TIME</small><b id="mh-time">2:00</b></div>
+      <div class="mh-side red">
+        <span class="crowns" id="mh-crowns-red"></span>
+        <b class="mh-name" id="mh-name-red">Bot</b>
+        <i class="mh-lvl" id="mh-lvl-red">1</i>
+      </div>
+      <button id="mh-pause" class="icon-btn mh-pause" type="button" title="Pause (Esc)" aria-label="Pause">❚❚</button>
+    </div>
+    <div class="mh-tray" id="mh-tray">
+      <div class="mh-next" aria-label="Next card"><small>NEXT</small><canvas id="mh-next"></canvas></div>
+      <div class="mh-main">
+        <div class="mh-hand" id="mh-hand"></div>
+        <div class="mh-mana">
+          <span class="mana-drop"><b id="mh-mana-num">5</b></span>
+          <div class="mana-bar"><i id="mh-mana-fill"></i><span class="mana-ticks"></span></div>
+          <span class="mana-x2" id="mh-x2">×2</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="mh-banner" class="mh-banner"></div>
+  <div id="aim-tip" class="aim-tip"></div>
+  <div id="drag-card" class="drag-card"><canvas></canvas></div>
+
+  <div id="vs" class="vs hidden">
+    <div class="vs-side blue"><small>KING LEVEL <b id="vs-lvl-blue">1</b></small><b id="vs-name-blue">You</b></div>
+    <div class="vs-mid">VS</div>
+    <div class="vs-side red"><small>KING LEVEL <b id="vs-lvl-red">1</b></small><b id="vs-name-red">Bot</b><span class="vs-bot">🤖 computer player</span></div>
+    <div class="vs-arena" id="vs-arena">Green Hills</div>
+  </div>
+
+  <div id="mresult" class="mresult hidden">
+    <div class="mr-card">
+      <div class="ribbon" id="mr-title">VICTORY!</div>
+      <div class="mr-score">
+        <div class="mr-side blue"><b id="mr-name-blue">You</b><span class="crowns big" id="mr-crowns-blue"></span></div>
+        <div class="mr-dash">–</div>
+        <div class="mr-side red"><b id="mr-name-red">Bot</b><span class="crowns big" id="mr-crowns-red"></span></div>
+      </div>
+      <p class="mr-reason" id="mr-reason"></p>
+      <div class="mr-rewards">
+        <span class="pill trophies" id="mr-trophies"><i class="ico">🏆</i><b>+0</b></span>
+        <span class="pill gold" id="mr-gold"><i class="coin"></i><b>+0</b></span>
+      </div>
+      <div class="mr-note hidden" id="mr-note"></div>
+      <button id="mr-ok" class="btn primary big mr-ok" type="button">OK</button>
+    </div>
+  </div>
+
+  <div id="pause" class="modal hidden">
+    <div class="card pause-card">
+      <h3 id="pause-title">Paused</h3>
+      <button id="p-resume" class="btn primary big" type="button">▶ Resume</button>
+      <button id="p-surrender" class="btn danger" type="button">🏳 Surrender</button>
+      <button id="p-home" class="btn" type="button">⌂ Main menu</button>
+      <button id="p-sound" class="btn" type="button">🔊 Sound: on</button>
+    </div>
+  </div>
+
+  <div id="coach" class="coach hidden" aria-live="polite">
+    <div class="say"><span class="say-text"></span><button class="say-skip" type="button" aria-label="Skip the tips">Skip ✕</button></div>
+    <i class="coach-hand">👆</i>
+  </div>
 
   <div id="toast" class="toast"></div>
 
-  <div id="rotate">Turn your phone sideways for a bigger battlefield</div>
+  <div id="rotate"><i class="rot-phone" aria-hidden="true"></i><b class="rot-full">Turn your phone sideways to play</b><span class="rot-pill">Turn your phone sideways for a bigger battlefield</span></div>
   <div id="boot-error"></div>
 
   <script type="module" src="src/main.js"></script>

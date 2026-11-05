@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Wobble War",
   "short_name": "Wobble War",
-  "description": "A wobbly 2D physics battle game. Place your beans, press FIGHT and enjoy the bonks. Plays offline.",
+  "description": "A wobbly real-time card battler: drop ragdoll beans onto the field, bonk the enemy towers and climb the arenas. Free and fair, plays offline.",
   "lang": "en",
   "dir": "ltr",
   "start_url": "./",

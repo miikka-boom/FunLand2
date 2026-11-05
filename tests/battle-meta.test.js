@@ -332,6 +332,13 @@ test('migration v2: damaged saves are repaired without losing what is valid', ()
   good.cards.brick = { level: 1, count: 0 };
   good.deck[3] = 'brick';
   assert.deepEqual(migrate(clone(good)).deck, good.deck);
+
+  // Object built-ins are not cards: a save naming them must not put them in the collection or the deck
+  const junk = migrate({ v: 2, cards: { toString: { level: 3, count: 2 }, constructor: { level: 1 }, squire: { level: 2, count: 1 } }, deck: ['toString', '__proto__', 'constructor', 'squire'] });
+  assertValid(junk);
+  assert.ok(!Object.prototype.hasOwnProperty.call(junk.cards, 'toString') && !Object.prototype.hasOwnProperty.call(junk.cards, 'constructor'));
+  assert.deepEqual(junk.deck, ['squire', ...STARTER_DECK.filter((id) => id !== 'squire')]);
+  assert.equal(junk.cards.squire.level, 2);
 });
 
 test('grant: one reward shape for chests, trail, shop and badges', () => {
