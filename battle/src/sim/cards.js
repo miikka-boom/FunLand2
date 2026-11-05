@@ -129,7 +129,7 @@ export const CARDS = {
     kind: 'spell',
     spell: 'cheeseWheel',
     radius: 40,
-    mana: 2,
+    mana: 3, // (2 was too much: one roll knocks a whole push down)
     rarity: 'epic',
     arena: 1,
     desc: 'A giant wheel of cheese rolls toward the enemy, bowling beans over.',
@@ -154,7 +154,7 @@ export const CARDS = {
     unit: 'bomb',
     count: 3,
     spread: [-40, 0, 40],
-    mana: 5,
+    mana: 4,
     rarity: 'rare',
     arena: 2,
     desc: 'Three bombs. Keep them apart, or one sets off the rest.',
@@ -165,7 +165,7 @@ export const CARDS = {
     kind: 'unit',
     unit: 'megabomb',
     count: 1,
-    mana: 5,
+    mana: 3, // (its blast flings your own push too: it has to be cheap to be worth it)
     rarity: 'epic',
     arena: 2,
     desc: 'A huge, slow bomb with a huge, loud blast. Hurts towers too.',
@@ -177,7 +177,7 @@ export const CARDS = {
     unit: 'squire',
     count: 3,
     spread: [-28, 0, 28],
-    mana: 6,
+    mana: 7,
     rarity: 'epic',
     arena: 2,
     desc: 'Three Squires, shields up. Arrows bounce, clubs come down on top.',
@@ -211,4 +211,5 @@ export const MAX_LEVEL = 9;
 /** Stat multiplier for a card (or tower) level: +10% per level, compounding. */
 export const levelMul = (level) => 1.1 ** (Math.max(1, Math.min(MAX_LEVEL, level | 0 || 1)) - 1);
 
-export const cardById = (id) => CARDS[id] || null;
+/** The card with this id, or null (own keys only: a saved deck with 'toString' in it is not a card). */
+export const cardById = (id) => (typeof id === 'string' && Object.prototype.hasOwnProperty.call(CARDS, id) ? CARDS[id] : null);

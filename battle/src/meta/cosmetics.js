@@ -3,7 +3,19 @@
 // items come only from the (optional, cosmetic-only) Supporter Pack.
 
 import { TEAMS } from '../config.js';
-import { spendBeans } from './profile.js';
+import { UNIT_IDS, spendBeans } from './profile.js';
+
+// The units that can wear a hat, in wardrobe order (sim/unit-types.js ids).
+export const HAT_UNITS = [
+  { id: 'clubber', name: 'Clubber' },
+  { id: 'squire', name: 'Squire' },
+  { id: 'archer', name: 'Archer' },
+  { id: 'spiker', name: 'Spiker' },
+  { id: 'bomb', name: 'Bomb' },
+  { id: 'brick', name: 'Brick' },
+  { id: 'bruiser', name: 'Bruiser' },
+  { id: 'megabomb', name: 'Mega Bomb' },
+].filter((u) => UNIT_IDS.includes(u.id));
 
 // Every colour stays clearly different from the red enemy.
 export const COLORS = [
@@ -45,7 +57,7 @@ export function equipColor(p, id) {
 }
 
 export function equipHat(p, unitId, hatId) {
-  if (!p.owned.hats.includes(hatId)) return false;
+  if (!UNIT_IDS.includes(unitId) || !p.owned.hats.includes(hatId)) return false;
   const before = p.equipped.hats[unitId];
   p.equipped.hats[unitId] = hatId;
   if (hatId !== 'none' && before !== hatId) p.stats.hatsEquipped++;

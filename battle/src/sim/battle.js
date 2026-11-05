@@ -1,24 +1,44 @@
 // The battle: units, arrows, dropped weapons, phases and events.
 // Pure simulation (no DOM), fixed timestep, seeded RNG -> it runs headless in
 // tests and replays identically from the same placement.
+//
+// Two modes. 'sandbox' (the default) is the free-placement toy: place beans,
+// start(), the side with beans left wins. 'arena' is a card match: the fight
+// is on from the start, units drop in from the sky (addUnit opts.drop), march
+// on the enemy towers (sim/towers.js), spells fly (sim/spells.js), corpses
+// fade away, and sim/match.js decides who wins.
 
 import { WORLD, enemyOf } from '../config.js';
 import { Particle, Dist, integrate, collideGround, clampGround, hingeLimit, segSeg, springTo } from './physics.js';
-import { UNIT_TYPES, WEAPONS } from './unit-types.js';
+import { UNIT_TYPES } from './unit-types.js';
 import { Unit } from './unit.js';
 import { Rng } from './rng.js';
+import { Tower, TOWER_TAKES, updateTowers, damageTower, rectDist, segRect } from './towers.js';
+import { updateSpells } from './spells.js';
 
 export const DT = 1 / 120;
 const ITER = 4;
 const DRAG = 0.9995;
 const G = WORLD.gravity;
-const ARROW_LEN = 30;
 const MAX_STUCK_GROUND = 160;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const tmp = { d2: 0, s: 0, t: 0, x1: 0, y1: 0, x2: 0, y2: 0 };
 
+// Arena tuning
+export const MELEE_SIGHT = 230; // melee units notice enemy beans this close (along x)...
+export const RANGED_SIGHT = 60; // ...ranged ones this much beyond their preferred range
+export const DROP_HEIGHT = 290; // played units fall from this high (px above their lane)...
+export const DROP_VY = 140; // ...with a little push downward (px/s)
+export const DEPLOY_T = 1.0; // and act this long after the card was played
+export const CORPSE_FADE_AT = 4; // seconds dead before a corpse starts to fade
+export const CORPSE_FADE_T = 1; // fade duration; then it's removed
+export const ITEM_FADE_AT = 4; // dropped weapons and hats likewise
+export const ARROW_FADE_AT = 6; // arrows stuck in the dirt (arena)
+const MAX_TOWER_ARROWS = 24;
+
 export class Battle {
-  constructor(seed = 1) {
+  constructor(seed = 1, opts = {}) {
+    this.mode = opts && opts.mode === 'arena' ? 'arena' : 'sandbox';
     this.seed = seed;
     this.rng = new Rng(seed);
     // Cosmetic-only randomness (hat spin) has its own stream, so looks never change a fight
@@ -27,7 +47,12 @@ export class Battle {
     this.arrows = [];
     this.items = [];
     this.events = [];
-    this.phase = 'place'; // place | battle | over
+    this.towers = []; // arena: Guard Towers and Castles (sim/towers.js)
+    this.spells = []; // active spell entities (sim/spells.js)
+    this.shots = []; // castle cannonballs in flight
+    this.crowns = { blue: 0, red: 0 }; // arena: towers taken (a castle = 3)
+    // Arena: no placement, the fight is on from the start
+    this.phase = this.mode === 'arena' ? 'battle' : 'place'; // place | battle | over
     this.time = 0;
     this.battleTime = 0;
     this.winner = null;
@@ -52,20 +77,49 @@ export class Battle {
 
   // --- placement ---------------------------------------------------------------
 
-  addUnit(typeId, team, x, lane = null, seed = null) {
-    const type = UNIT_TYPES[typeId];
+  /**
+   * opts: { level: card level (hp and damage +10% per level), drop: fall in
+   * from the sky and stand still for DEPLOY_T before joining the fight }.
+   */
+  addUnit(typeId, team, x, lane = null, seed = null, opts = null) {
+    const type = Object.prototype.hasOwnProperty.call(UNIT_TYPES, typeId) ? UNIT_TYPES[typeId] : null;
     if (!type) return null;
     const ln = lane == null ? this.rng.next() : clamp(lane, 0, 1);
     const s = seed == null ? (this.rng.next() * 2 ** 31) | 0 : seed;
-    const u = new Unit(type, team, x, ln, this.nextId++, s);
+    const u = new Unit(type, team, x, ln, this.nextId++, s, (opts && opts.level) || 1);
     u.placeSeed = s;
     const hats = this.hats[team] || {};
     const hat = hats[typeId] || hats.all;
     u.hat = hat && hat !== 'none' ? hat : null;
+    if (opts && opts.drop) this.dropIn(u);
     this.units.push(u);
     // Keep the crowd drawn back-to-front
     this.units.sort((a, b) => a.lane - b.lane || a.id - b.id);
     return u;
+  }
+
+  /** Lift a new unit into the sky: it falls, lands with a wobble, yells, then goes. */
+  dropIn(u) {
+    const h = DROP_HEIGHT * u.rng.range(0.94, 1.06);
+    const dt = this.dt;
+    for (const p of u.parts) {
+      p.teleport(0, -h);
+      p.setVel(0, DROP_VY, dt);
+    }
+    u.deployT = DEPLOY_T;
+    u.dropping = true;
+    u.dropHop = true;
+    u.hopAt = this.battleTime + DEPLOY_T - 0.25; // the battle-cry hop, then off it goes at DEPLOY_T
+    u.lookX = u.hip.x + u.f * 200;
+    u.lookY = u.ground;
+    this.emit('drop', u.hip.x, u.hip.y, { unit: u });
+  }
+
+  /** A Guard Tower ('guard') or Castle ('castle'); level = the side's King Level. */
+  addTower(kind, team, x, level = 1) {
+    const t = new Tower(kind, team, x, level, this.nextId++);
+    this.towers.push(t);
+    return t;
   }
 
   removeUnit(u) {
@@ -73,6 +127,19 @@ export class Battle {
     if (i >= 0) this.units.splice(i, 1);
     if (this.grab && this.grab.unit === u) this.grab = null;
     this.arrows = this.arrows.filter((a) => a.host !== u);
+    if (this.mode !== 'arena') return;
+    // Arena: forget it everywhere, so long matches don't hold on to the dead
+    for (const a of this.arrows) {
+      if (a.target === u) a.target = null;
+      if (a.from === u) a.from = null;
+    }
+    for (const o of this.units) {
+      if (o.target === u) o.target = null;
+      if (o.lastHitBy === u) o.lastHitBy = null;
+    }
+    for (const t of this.towers) if (t.target === u) t.target = null;
+    const k = this.blasts.indexOf(u);
+    if (k >= 0) this.blasts.splice(k, 1);
   }
 
   clearTeam(team) {
@@ -180,6 +247,7 @@ export class Battle {
       }
     }
     for (const it of this.items) {
+      it.age += dt;
       integrate(it.a, dt, G, DRAG);
       integrate(it.b, dt, G, DRAG);
       collideGround(it.a, dt);
@@ -207,6 +275,7 @@ export class Battle {
 
     this.separate(dt);
     this.walls(dt);
+    if (this.towers.length) this.towerWalls(dt);
 
     if (this.phase === 'battle' || this.phase === 'over') {
       for (const u of units) {
@@ -216,10 +285,36 @@ export class Battle {
       }
     }
     this.updateArrows(dt);
+    if (this.towers.length || this.shots.length) updateTowers(this, dt);
+    if (this.spells.length) updateSpells(this, dt);
 
     for (const u of units) u.post(dt, this);
 
-    if (this.phase === 'battle') this.checkEnd();
+    if (this.mode === 'arena') this.reap(dt);
+    else if (this.phase === 'battle') this.checkEnd();
+  }
+
+  /** Arena housekeeping: fade out and remove the dead, old weapons and old arrows. */
+  reap(dt) {
+    for (let i = this.units.length - 1; i >= 0; i--) {
+      const u = this.units[i];
+      if (u.alive) continue;
+      if (u.gone) {
+        if (u.exploded) this.removeUnit(u);
+        continue;
+      }
+      if (u.deadT < CORPSE_FADE_AT) continue;
+      u.fade = Math.max(0, u.fade - dt / CORPSE_FADE_T);
+      if (u.fade <= 0) this.removeUnit(u);
+    }
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const it = this.items[i];
+      if (it.age < ITEM_FADE_AT) continue;
+      it.fade = Math.max(0, (it.fade ?? 1) - dt / CORPSE_FADE_T);
+      if (it.fade > 0) continue;
+      this.items.splice(i, 1);
+      if (it.kind === 'shield') this.arrows = this.arrows.filter((a) => a.item !== it);
+    }
   }
 
   shieldTiltOf(u) {
@@ -300,8 +395,9 @@ export class Battle {
 
   /** Soft world walls at the castles: beans bounce off them instead of leaving the world. */
   walls(dt) {
-    const lo = -150;
-    const hi = WORLD.width + 150;
+    // The arena is framed whole on screen: keep everyone inside the picture
+    const lo = this.mode === 'arena' ? 12 : -150;
+    const hi = this.mode === 'arena' ? WORLD.width - 12 : WORLD.width + 150;
     for (const u of this.units) {
       if (u.asleep) continue;
       const x = u.hip.x;
@@ -323,7 +419,94 @@ export class Battle {
     }
   }
 
+  /**
+   * Standing towers are walls to the other team: bodies, limbs and weapons are
+   * pushed out to the side the bean is on and lose the speed that was carrying
+   * them in. Teammates walk past their own towers (drawn in front of them).
+   * A Castle backs onto the edge of the world: there is no room behind it, so
+   * it is a wall all the way up (nobody gets flung over it into the gap and
+   * stuck off screen) and always puts enemies back out on the field side.
+   */
+  towerWalls(dt) {
+    for (const t of this.towers) {
+      if (!t.alive) continue;
+      const x0 = t.x - t.w / 2;
+      const x1 = t.x + t.w / 2;
+      const castle = t.kind === 'castle';
+      const top = castle ? -Infinity : -t.h;
+      for (const u of this.units) {
+        if (u.team === t.team || u.asleep || u.gone) continue;
+        if (u.hip.x < x0 - 110 || u.hip.x > x1 + 110) continue;
+        const side = castle ? t.f : u.hip.x < t.x ? -1 : 1;
+        let hit = 0;
+        for (const p of u.parts) {
+          if (p.y + p.r < top) continue; // flying over it
+          const lim = side < 0 ? x0 - p.r : x1 + p.r;
+          if ((p.x - lim) * side >= 0) continue;
+          const vx = p.x - p.px;
+          p.x = lim;
+          // Into the wall: a dull, damped bounce. Along it: keep sliding.
+          p.px = vx * side < 0 ? p.x + vx * 0.25 : p.x - vx;
+          if (p === u.hip) hit = Math.max(hit, Math.abs(vx) / dt);
+        }
+        for (const ft of u.feet) {
+          const lim = side < 0 ? x0 - 2 : x1 + 2;
+          if ((ft.x - lim) * side < 0) ft.x = lim;
+        }
+        if (hit > 300) this.emit('land', u.hip.x, u.ground, { unit: u, power: Math.min(1.2, hit / 900) });
+      }
+    }
+  }
+
+  /** Is a standing tower of `team` strictly between x0 and x1? */
+  towerBetween(team, x0, x1) {
+    const a = Math.min(x0, x1);
+    const b = Math.max(x0, x1);
+    for (const t of this.towers) if (t.alive && t.team === team && t.x > a && t.x < b) return true;
+    return false;
+  }
+
+  /**
+   * Arena targeting: the nearest enemy bean in sight along x (melee
+   * MELEE_SIGHT, ranged preferred range + RANGED_SIGHT), else the nearest
+   * standing enemy tower. The Brick only ever goes for towers, and melee beans
+   * don't chase someone standing behind an enemy tower: the tower comes first.
+   */
+  findArenaTarget(u) {
+    const foe = enemyOf(u.team);
+    let best = null;
+    if (u.type.targets !== 'towers') {
+      const sight = u.type.ranged ? u.preferRange + RANGED_SIGHT : MELEE_SIGHT;
+      let bestScore = Infinity;
+      for (const e of this.units) {
+        if (e.team !== foe || !e.alive) continue;
+        const d = Math.abs(e.hip.x - u.hip.x);
+        if (d > sight) continue;
+        if (!u.type.ranged && this.towerBetween(foe, u.hip.x, e.hip.x)) continue;
+        let score = d + Math.abs(e.lane - u.lane) * 20;
+        if (e === u.target) score -= 30;
+        score += ((e.id * 7919 + u.id * 104729) % 23) - 11;
+        if (score < bestScore) {
+          bestScore = score;
+          best = e;
+        }
+      }
+    }
+    if (best) return best;
+    let bd = Infinity;
+    for (const t of this.towers) {
+      if (t.team !== foe || !t.alive) continue;
+      const d = Math.abs(t.x - u.hip.x);
+      if (d < bd) {
+        bd = d;
+        best = t;
+      }
+    }
+    return best;
+  }
+
   findTarget(u) {
+    if (this.mode === 'arena') return this.findArenaTarget(u);
     const foe = enemyOf(u.team);
     let best = null;
     let bestScore = Infinity;
@@ -358,7 +541,7 @@ export class Battle {
         if (segSeg(u.chest.x, u.chest.y, tx, ty, sh.x - sh.ax * sh.half, sh.y - sh.ay * sh.half, sh.x + sh.ax * sh.half, sh.y + sh.ay * sh.half, tmp).d2 < pad) {
           // BOING: bounced off the shield, seeing stars
           a.done = true;
-          e.takeHit(this, { damage: 4, dvx: u.f * 70, dvy: -20, x: tmp.x2, y: tmp.y2, stun: 0.1, kind: 'block', from: u, spin: 0.2 });
+          e.takeHit(this, { damage: 4 * u.dmgMul, dvx: u.f * 70, dvy: -20, x: tmp.x2, y: tmp.y2, stun: 0.1, kind: 'block', from: u, spin: 0.2 });
           for (const p of u.parts) p.setVel(-u.f * 230, -260, dt);
           u.conscious = Math.max(0, u.conscious - 0.75);
           u.downT = Math.max(u.downT, 0.5);
@@ -376,11 +559,24 @@ export class Battle {
       const k = (lethal ? 1.2 : 1) * this.rng.range(0.9, 1.1);
       const hx = tmp.x2;
       const hy = tmp.y2;
-      e.takeHit(this, { damage: D.damage * this.rng.range(0.9, 1.1), dvx: u.f * D.launch[0] * k, dvy: -D.launch[1] * k, x: hx, y: hy, stun: D.stun, kind: 'spike', from: u, spin: 0.4, flip: 140 });
+      e.takeHit(this, { damage: D.damage * this.rng.range(0.9, 1.1) * u.dmgMul, dvx: u.f * D.launch[0] * k, dvy: -D.launch[1] * k, x: hx, y: hy, stun: D.stun, kind: 'spike', from: u, spin: 0.4, flip: 140 });
       // The spiker rebounds off its victim
       for (const p of u.parts) p.setVel(-u.f * 120, -180, dt);
       this.stats.hits++;
       this.emit('hit', hx, hy, { kind: 'spike', power: 1.05, dirX: u.f * 0.8, dirY: -0.6, unit: e, from: u, killed: !e.alive });
+      return;
+    }
+    // Point-first into an enemy tower
+    for (const t of this.towers) {
+      if (t.team === u.team || !t.alive) continue;
+      const pad = u.R * 0.45 + 4;
+      const hit = segRect(u.chest.x, u.chest.y, tx, ty, t.x - t.w / 2 - pad, -t.h - pad, t.x + t.w / 2 + pad, WORLD.laneDepth + 40);
+      if (!hit) continue;
+      a.done = true;
+      const hx = clamp(hit.x, t.x - t.w / 2, t.x + t.w / 2);
+      damageTower(this, t, D.damage * this.rng.range(0.9, 1.1) * u.dmgMul * TOWER_TAKES.spike, hx, hit.y, 'spike', u);
+      for (const p of u.parts) p.setVel(-u.f * 170, -220, dt); // boing off the stone
+      u.conscious = Math.max(0, u.conscious - 0.3);
       return;
     }
   }
@@ -401,7 +597,7 @@ export class Battle {
       const dir = Math.sign(dx) || u.f;
       const live = e.alive ? 1 : 0.6;
       e.takeHit(this, {
-        damage: Q.damage * k,
+        damage: Q.damage * k * u.dmgMul,
         dvx: dir * Q.launch[0] * k * live,
         dvy: -Q.launch[1] * (0.45 + 0.55 * k) * live,
         x: e.hip.x,
@@ -419,6 +615,14 @@ export class Battle {
       const k = 1 - ad / Q.radius;
       it.a.addVel(0, -320 * k, dt);
       it.b.addVel(0, -360 * k, dt);
+    }
+    // Towers shake too (stone: reduced splash)
+    for (const t of this.towers) {
+      if (t.team === u.team || !t.alive) continue;
+      const ad = Math.max(0, Math.abs(t.x - x) - t.w / 2);
+      if (ad > Q.radius) continue;
+      const k = 1 - ad / Q.radius;
+      damageTower(this, t, Q.damage * k * u.dmgMul * (Q.vsTower ?? TOWER_TAKES.quake), clamp(x, t.x - t.w / 2, t.x + t.w / 2), -12, 'quake', u);
     }
   }
 
@@ -516,17 +720,21 @@ export class Battle {
         const delay = e.type.blast.chain;
         if (left > delay) e.act = { phase: 'fuse', t: e.type.blast.fuse - delay, hits: new Set(), done: false };
       }
+      // In a match your own living beans are only shoved, not floored, by your
+      // bombs (at full strength the bomb cards were too self-defeating to use);
+      // the sandbox keeps the full chaos.
+      const soft = friend && e.alive && this.mode === 'arena' ? 0.35 : 1;
       e.takeHit(this, {
-        damage: X.damage * k * (friend ? X.friendly : 1) * (e.mass >= 3 ? X.vsGiant || 1 : 1),
-        dvx: nx * sp,
-        dvy: ny * sp,
+        damage: X.damage * k * (friend ? X.friendly : 1) * (e.mass >= 3 ? X.vsGiant || 1 : 1) * u.dmgMul,
+        dvx: nx * sp * soft,
+        dvy: ny * sp * soft,
         x: cx,
         y: cy,
-        stun: 0.3 + 1.0 * k,
+        stun: (0.3 + 1.0 * k) * soft,
         kind: 'blast',
         from: u,
         spin: 0.5,
-        flip: 120 * k * Math.sign(nx || 1),
+        flip: 120 * k * Math.sign(nx || 1) * soft,
       });
     }
     for (const it of this.items) {
@@ -537,12 +745,20 @@ export class Battle {
         p.addVel(((p.x - cx) / (d || 1)) * 300 * k, -420 * k, dt);
       }
     }
+    // Enemy towers in the blast (a wall right next to it takes nearly all of it)
+    for (const t of this.towers) {
+      if (t.team === u.team || !t.alive) continue;
+      const d = rectDist(t, cx, cy);
+      if (d > X.radius) continue;
+      const k = 1 - (0.5 * d) / X.radius;
+      damageTower(this, t, X.damage * k * u.dmgMul * (X.vsTower ?? TOWER_TAKES.blast), clamp(cx, t.x - t.w / 2, t.x + t.w / 2), clamp(cy, -t.h, 0), 'blast', u);
+    }
   }
 
   /** Swept test of a swinging weapon against enemy shields and bodies. */
   resolveMelee(u) {
     if (!u.tip || !u.act) return;
-    const W = WEAPONS[u.type.weapon];
+    const W = u.W;
     const A = u.type.attack;
     const h = u.hand[u.mainHand];
     const t = u.tip;
@@ -594,7 +810,7 @@ export class Battle {
       if (!hit) continue;
       u.act.hits.add(e.id);
       if (!A.cleave) u.act.done = true;
-      const dmg = A.damage * (0.55 + 0.45 * sf) * this.rng.range(0.9, 1.1);
+      const dmg = A.damage * (0.55 + 0.45 * sf) * this.rng.range(0.9, 1.1) * u.dmgMul;
       const lethal = e.hp - dmg <= 0;
       const tl = tipSpeed || 1;
       let dvx;
@@ -635,13 +851,41 @@ export class Battle {
       this.emit('hit', hx, hy, { kind: u.type.weapon === 'club' ? 'bonk' : 'slash', power, dirX: kx, dirY: ky, unit: e, from: u, killed: !e.alive });
       if (!A.cleave) return;
     }
+    if (this.towers.length && !u.act.done) this.meleeTower(u, ax, ay, sf);
+  }
+
+  /** The weapon against enemy tower walls: one hit per swing, and it bounces off the stone. */
+  meleeTower(u, ax, ay, sf) {
+    const W = u.W;
+    const A = u.type.attack;
+    const t = u.tip;
+    const dt = this.dt;
+    const pad = W.tipR + 2;
+    for (const tw of this.towers) {
+      if (tw.team === u.team || !tw.alive || u.act.hits.has(tw.id)) continue;
+      if (Math.abs(tw.x - u.hip.x) > tw.w / 2 + 160) continue;
+      const x0 = tw.x - tw.w / 2 - pad;
+      const x1 = tw.x + tw.w / 2 + pad;
+      const hit = segRect(ax, ay, t.x, t.y, x0, -tw.h - pad, x1, WORLD.laneDepth + 40) || segRect(t.px, t.py, t.x, t.y, x0, -tw.h - pad, x1, WORLD.laneDepth + 40);
+      if (!hit) continue;
+      u.act.hits.add(tw.id);
+      if (!A.cleave) u.act.done = true;
+      const dmg = A.damage * (0.55 + 0.45 * sf) * this.rng.range(0.9, 1.1) * u.dmgMul * TOWER_TAKES.melee;
+      const hx = clamp(hit.x, tw.x - tw.w / 2, tw.x + tw.w / 2);
+      damageTower(this, tw, dmg, hx, hit.y, u.type.weapon, u);
+      // Thunk: the weapon rebounds and the swing's kick goes back into the bean
+      t.addVel(-t.vx(dt) * 0.9, -t.vy(dt) * 0.6 - 80, dt);
+      u.hip.addVel(-u.f * 40 * sf, 0, dt);
+      this.stats.hits++;
+      return;
+    }
   }
 
   blockHit(u, e, x, y, sf) {
     const A = u.type.attack;
     u.act.hits.add(e.id);
     u.act.done = true;
-    const dmg = A.damage * (0.55 + 0.45 * sf) * (A.shieldPierce ?? 0.3);
+    const dmg = A.damage * (0.55 + 0.45 * sf) * (A.shieldPierce ?? 0.3) * u.dmgMul;
     const knock = A.knock * sf * 0.45;
     e.takeHit(this, { damage: dmg, dvx: u.f * knock, dvy: -knock * 0.25, x, y, stun: A.stun * 0.3, kind: 'block', from: u, spin: 0.2 });
     // Weapon bounces off, attacker wobbles
@@ -659,18 +903,28 @@ export class Battle {
 
   // --- arrows ------------------------------------------------------------------
 
-  /** Ballistic launch toward a target's predicted chest. */
+  /** Ballistic launch toward a target's predicted chest (or a tower's upper body). */
   solveAim(u, t) {
     const A = u.type.attack;
-    if (t.type.shield) t.guardT = Math.max(t.guardT, 0.3); // "incoming!" -> shield up
-    const bowX = u.chest.x;
-    const bowY = u.chest.y;
-    let tx = t.chest.x;
-    let ty = t.chest.y;
-    const tvx = t.alive ? clamp(t.hip.vx(this.dt), -200, 200) : 0;
+    let bowX = u.chest.x;
+    let bowY = u.chest.y;
+    let ax;
+    let ay;
+    let tvx = 0;
+    if (t.isTower) {
+      ax = t.x + (bowX < t.x ? -t.w : t.w) * 0.3;
+      ay = -t.h * 0.72;
+    } else {
+      if (t.type.shield) t.guardT = Math.max(t.guardT, 0.3); // "incoming!" -> shield up
+      ax = t.chest.x;
+      ay = t.chest.y;
+      tvx = t.alive ? clamp(t.hip.vx(this.dt), -200, 200) : 0;
+    }
+    let tx = ax;
+    let ty = ay;
     if (!u.act.elev) {
       const d0 = Math.abs(tx - bowX);
-      u.act.elev = d0 < 170 ? 0.1 + (d0 / 170) * 0.25 : u.rng.range(0.45, 0.8);
+      u.act.elev = d0 < 170 ? 0.1 + (d0 / 170) * 0.25 : u.rng.range(0.55, 0.85); // lobs that read at arena range
     }
     let elev = u.act.elev;
     let speed = A.maxSpeed;
@@ -699,8 +953,12 @@ export class Battle {
       }
       ang = dx >= 0 ? -e : Math.PI + e;
       const flight = dist / Math.max(60, speed * Math.cos(e));
-      tx = t.chest.x + tvx * flight;
-      ty = t.chest.y;
+      tx = ax + tvx * flight;
+      ty = ay;
+      // The arrow leaves from the bow at arm's length, not from the chest: aim from there
+      const reach = u.armLen * 0.92 + 6;
+      bowX = u.chest.x + Math.cos(ang) * reach;
+      bowY = u.chest.y + Math.sin(ang) * reach;
     }
     return { ang, speed };
   }
@@ -720,7 +978,8 @@ export class Battle {
       ang,
       team: u.team,
       from: u,
-      damage: A.damage * u.rng.range(0.9, 1.1),
+      damage: A.damage * u.rng.range(0.9, 1.1) * u.dmgMul,
+      stun: A.stun,
       state: 'fly',
       ground: WORLD.groundY + this.rng.next() * WORLD.laneDepth + 3,
       host: null,
@@ -733,21 +992,35 @@ export class Battle {
 
   updateArrows(dt) {
     const foe = { blue: 'red', red: 'blue' };
+    const arena = this.mode === 'arena';
     let groundStuck = 0;
     for (let i = this.arrows.length - 1; i >= 0; i--) {
       const a = this.arrows[i];
       a.age += dt;
       if (a.state === 'ground') {
         groundStuck++;
-        if (groundStuck > MAX_STUCK_GROUND) a.fade = true;
+        if (groundStuck > MAX_STUCK_GROUND || (arena && this.time - a.stuckAt > ARROW_FADE_AT)) a.fade = true;
         if (a.fade) {
           a.alpha = (a.alpha ?? 1) - dt * 1.5;
           if (a.alpha <= 0) this.arrows.splice(i, 1);
         }
         continue;
       }
+      if (a.state === 'tower') {
+        // The tower fell: its arrows sink with the rubble and fade away
+        if (a.fade || !a.host.alive) {
+          a.fade = true;
+          a.alpha = (a.alpha ?? 1) - dt * 1.6;
+          if (a.alpha <= 0) {
+            this.arrows.splice(i, 1);
+            const k = a.host.arrows.indexOf(a);
+            if (k >= 0) a.host.arrows.splice(k, 1);
+          }
+        }
+        continue;
+      }
       if (a.state !== 'fly') continue;
-      if (a.target && a.target.alive && a.target.type.shield) a.target.guardT = Math.max(a.target.guardT, 0.25);
+      if (a.target && a.target.alive && a.target.type && a.target.type.shield) a.target.guardT = Math.max(a.target.guardT, 0.25);
       a.vy += G * dt;
       const nx = a.x + a.vx * dt;
       const ny = a.y + a.vy * dt;
@@ -779,6 +1052,15 @@ export class Battle {
           done = true;
           break;
         }
+      }
+      if (done) continue;
+      for (const t of this.towers) {
+        if (t.team !== foe[a.team] || !t.alive || Math.abs(t.x - nx) > t.w / 2 + 40) continue;
+        const hit = segRect(a.x, a.y, nx, ny, t.x - t.w / 2, -t.h, t.x + t.w / 2, WORLD.laneDepth + 10);
+        if (!hit) continue;
+        this.stickInTower(a, t, hit.x, hit.y);
+        done = true;
+        break;
       }
       if (done) continue;
       if (ny >= a.ground) {
@@ -831,12 +1113,29 @@ export class Battle {
       dvy: (a.vy / sp) * 20 - 10,
       x: c.x1,
       y: c.y1,
-      stun: a.from ? a.from.type.attack.stun : 0.16,
+      stun: a.stun ?? 0.16, // carried by the arrow: its shooter may be a tower, or gone
       kind: 'arrow',
       from: a.from,
       spin: 3.2,
     });
     this.emit('hit', c.x1, c.y1, { kind: 'arrow', power: 0.4, dirX: a.vx / sp, dirY: a.vy / sp, unit: e, from: a.from, killed: !e.alive });
+  }
+
+  /** An arrow (or a rain arrow, damage 0) thunks into a tower wall and stays there. */
+  stickInTower(a, t, x, y) {
+    a.state = 'tower';
+    a.stuckAt = this.time;
+    a.host = t;
+    a.lx = x + Math.cos(a.ang) * 6 - t.x; // tip a few px into the stone, relative to the tower base
+    a.ly = y + Math.sin(a.ang) * 6;
+    t.arrows.push(a);
+    if (t.arrows.length > MAX_TOWER_ARROWS) {
+      const old = t.arrows.shift();
+      const k = this.arrows.indexOf(old);
+      if (k >= 0) this.arrows.splice(k, 1);
+    }
+    if (a.damage > 0) damageTower(this, t, a.damage * TOWER_TAKES.arrow, x, y, a.from && a.from.isTower ? 'bolt' : 'arrow', a.from);
+    else this.emit('arrowTower', x, y, { tower: t, dirX: Math.sign(a.vx) });
   }
 
   stickInShield(a, e, x, y) {
@@ -858,6 +1157,10 @@ export class Battle {
     const hand = e.hand[1 - e.mainHand];
     hand.addVel(Math.sign(a.vx) * 90, 0, this.dt);
     e.conscious = Math.max(0, e.conscious - 0.05);
+    // Heavy crossbow bolts punch partly through (otherwise a shield would make a bean tower-proof)
+    if (a.pierce && a.damage > 0) {
+      e.takeHit(this, { damage: a.damage * a.pierce, dvx: Math.sign(a.vx) * 30, dvy: 0, x, y, stun: 0.05, kind: 'block', from: a.from, spin: 0.2 });
+    }
     this.stats.blocks++;
     this.emit('block', x, y, { kind: 'arrow', power: 0.35, dirX: -Math.sign(a.vx), dirY: -0.2, unit: e });
   }
@@ -874,6 +1177,11 @@ export class Battle {
   }
 
   arrowPoseRaw(a) {
+    if (a.state === 'tower') {
+      // A fallen tower's arrows sink with the rubble while they fade
+      const sink = a.host.downT > 0 ? Math.min(60, a.host.downT * 110) : 0;
+      return { x: a.host.x + a.lx, y: a.ly + sink, ang: a.ang };
+    }
     if (a.state === 'body') {
       const e = a.host;
       const p = a.seg === 0 ? e.hip : e.chest;
@@ -901,6 +1209,7 @@ export class Battle {
 
   dropWeapon(u) {
     const kind = u.type.weapon;
+    const W = u.W;
     const mk = (x, y, vx, vy, m, r) => {
       const p = new Particle(x, y, m, r);
       p.setVel(vx, vy, this.dt);
@@ -913,8 +1222,8 @@ export class Battle {
     const h = u.hand[u.mainHand];
     if (u.tip) {
       const a = mk(h.x, h.y, h.vx(dt), h.vy(dt), 0.5, 2.5);
-      const b = mk(u.tip.x, u.tip.y, u.tip.vx(dt), u.tip.vy(dt), WEAPONS[kind].tipMass, WEAPONS[kind].tipR);
-      this.items.push({ kind, team: u.team, a, b, con: new Dist(a, b, WEAPONS[kind].len), age: 0 });
+      const b = mk(u.tip.x, u.tip.y, u.tip.vx(dt), u.tip.vy(dt), W.tipMass, W.tipR);
+      this.items.push({ kind, team: u.team, a, b, con: new Dist(a, b, W.len), age: 0, scale: u.type.weaponScale || 1 });
       // Detach the weapon from the corpse
       u.parts.splice(u.parts.indexOf(u.tip), 1);
       u.cons.splice(u.cons.indexOf(u.tipCon), 1);
@@ -924,7 +1233,7 @@ export class Battle {
     if (kind === 'bow') {
       const bh = u.hand[1];
       const ang = u.aimAng + Math.PI / 2;
-      const half = WEAPONS.bow.half;
+      const half = W.half;
       const a = mk(bh.x - Math.cos(ang) * half, bh.y - Math.sin(ang) * half, bh.vx(dt) + 30, bh.vy(dt) - 60, 0.3, 2);
       const b = mk(bh.x + Math.cos(ang) * half, bh.y + Math.sin(ang) * half, bh.vx(dt) - 30, bh.vy(dt) - 60, 0.3, 2);
       this.items.push({ kind: 'bow', team: u.team, a, b, con: new Dist(a, b, half * 2), age: 0, side: u.f });

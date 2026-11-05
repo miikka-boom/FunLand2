@@ -9,6 +9,11 @@
 //   bg.drawFront(ctx, view);  // a few grass tufts over the unit feet
 //
 // view = { w, h, dpr, cam: { x, y, zoom }, t }  (CSS px, world px, seconds)
+//
+// Arena matches: createBackground({ seed, castles: false, theme: 0..4 }). The
+// castles are then drawn by render/towers.js (which reuses the castle art
+// exported below), a middle-line marker shows where each half ends, and the
+// theme tints sky, mountains, hills and grass for the arena you play in.
 
 import { WORLD, TEAMS } from '../config.js';
 
@@ -20,7 +25,7 @@ const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 
 /** Deterministic PRNG (mulberry32). Returns a function producing [0, 1). */
-function mulberry32(seed) {
+export function mulberry32(seed) {
   let s = seed >>> 0;
   return function rnd() {
     s = (s + 0x6d2b79f5) >>> 0;
@@ -51,6 +56,39 @@ const darken = (c, t) => mix(c, '#000000', t);
 function rgba(hex, a) {
   const [r, g, b] = rgbOf(hex);
   return `rgba(${r},${g},${b},${a})`;
+}
+
+/**
+ * Re-colour for an arena theme: op = { h: hue shift (deg), s: saturation x,
+ * l: lightness +, tint: '#rrggbb', k: how much of the tint }. Build time only.
+ */
+function tone(hex, op) {
+  if (!op || typeof hex !== 'string' || hex[0] !== '#') return hex;
+  let [r, g, b] = rgbOf(hex).map((v) => v / 255);
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  let h = 0;
+  let sat = 0;
+  let l = (mx + mn) / 2;
+  if (mx !== mn) {
+    const d = mx - mn;
+    sat = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h /= 6;
+  }
+  h = (((h + (op.h || 0) / 360) % 1) + 1) % 1;
+  sat = clamp(sat * (op.s ?? 1), 0, 1);
+  l = clamp(l + (op.l || 0), 0, 1);
+  const q = l < 0.5 ? l * (1 + sat) : l + sat - l * sat;
+  const p = 2 * l - q;
+  const ch = (t) => {
+    t = ((t % 1) + 1) % 1;
+    const v = t < 1 / 6 ? p + (q - p) * 6 * t : t < 0.5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p;
+    return Math.round(clamp(v, 0, 1) * 255);
+  };
+  let out = '#' + [ch(h + 1 / 3), ch(h), ch(h - 1 / 3)].map((v) => v.toString(16).padStart(2, '0')).join('');
+  if (op.tint && op.k) out = mix(out, op.tint, op.k);
+  return out;
 }
 
 // --- Small path helpers -------------------------------------------------------------
@@ -134,7 +172,7 @@ function polyBounds(pts) {
  * offscreen canvas. It is re-painted only when the needed resolution drifts
  * out of range, at a sqrt(2)-quantised scale, so smooth zooming reuses it.
  */
-class Cached {
+export class Cached {
   constructor({ x = 0, y = 0, w, h, maxPx = 3e6, repeat = null, slack = 0.93, paint }) {
     this.x = x; // unit rect covered by the canvas
     this.y = y;
@@ -206,14 +244,14 @@ function fillPattern(ctx, cache, view, ox, oy, s, y0, y1) {
 
 const SKY = { top: '#5ea8de', mid: '#94cbeb', low: '#d5edf3' };
 const CLOUD = { light: '#fffdf7', mid: '#f4efe5', shade: '#dfe4ea', under: '#b9c7d8' };
-const STONE = {
+export const STONE = {
   mortar: '#8b857d',
   blocks: ['#bdb7ae', '#b2aca3', '#c7c1b8', '#a8a299', '#b8b2a8'],
   dark: '#6f6962',
   light: '#d8d3ca',
   slit: '#3a3430',
 };
-const WOOD = { base: '#8e5a2e', dark: '#6b4121', light: '#a8713d', iron: '#3b3b3f' };
+export const WOOD = { base: '#8e5a2e', dark: '#6b4121', light: '#a8713d', iron: '#3b3b3f' };
 const DIRT = {
   crack: '#4a2915',
   browns: ['#b8743a', '#a9672f', '#c4823f', '#9d5d2b', '#b06b34', '#bf7a3a'],
@@ -251,6 +289,87 @@ const LAYERS = [
     trees: { gap: 26, h: [42, 82], density: 1.0, dark: '#468636', mid: '#5c9e40', light: '#7fbd52', trunk: '#7a5232' },
   },
 ];
+
+// --- Arena themes -------------------------------------------------------------------
+// Cheap re-colourings of the same scenery, one per arena. Everything is applied
+// once at build time (layer colours, a wash over the grass caches), so a themed
+// background costs exactly the same per frame as the plain one.
+//   mountains / hills / trees: tone() ops; tall: mountain height x; snow: snow
+//   line per mountain layer (share of the peak); pointy: mostly conifers;
+//   grass: [wash colour, alpha] laid over the grass and the front tufts.
+
+export const ARENA_THEMES = [
+  { id: 0, name: 'Green Hills' },
+  {
+    id: 1,
+    name: 'Pointy Pass',
+    sky: { top: '#4c93d4', mid: '#8cc0e6', low: '#d6ecf1' },
+    mountains: { s: 0.7, l: -0.02, tint: '#8d96a8', k: 0.3 },
+    tall: 1.22,
+    snow: [0.26, 0],
+    hills: { h: 16, s: 0.82, l: -0.02, tint: '#6f9f8a', k: 0.16 },
+    pointy: true,
+    grass: ['#4f9a6a', 0.14],
+  },
+  {
+    id: 2,
+    name: 'Boom Ridge',
+    sky: { top: '#6b9fd0', mid: '#e7c49b', low: '#fae1ba' },
+    mountains: { h: -10, s: 0.9, tint: '#c98a6a', k: 0.5 },
+    tall: 1.08,
+    hills: { h: -24, s: 0.82, l: 0.01, tint: '#c2ad62', k: 0.32 },
+    trees: { h: -18, s: 0.85, tint: '#8f9a4a', k: 0.25 },
+    grass: ['#d9b45a', 0.26],
+  },
+  {
+    id: 3,
+    name: 'Brick Fortress',
+    sky: { top: '#5a8ccd', mid: '#b5c4e4', low: '#f5d6c4' },
+    mountains: { tint: '#a8788e', k: 0.36 },
+    hills: { h: -14, s: 1, l: -0.02, tint: '#9b8a4a', k: 0.16 },
+    trees: { h: -62, s: 1.15, l: 0.02, tint: '#d0763a', k: 0.3 }, // autumn leaves
+    grass: ['#b7a046', 0.15],
+  },
+  {
+    id: 4,
+    name: 'Wobble Summit',
+    sky: { top: '#2d5cb6', mid: '#7ea4e0', low: '#e6e1f7' },
+    mountains: { h: 12, s: 0.6, l: 0.06, tint: '#c9c6ec', k: 0.3 },
+    tall: 1.32,
+    snow: [0.55, 0.42],
+    hills: { h: 30, s: 0.72, l: 0.02, tint: '#86bdb6', k: 0.3 },
+    trees: { h: 34, s: 0.7, tint: '#4f8f86', k: 0.25 },
+    pointy: true,
+    grass: ['#d4efe8', 0.22],
+  },
+];
+
+/** The layer list re-coloured for a theme (the default theme returns LAYERS as is). */
+function themeLayers(th) {
+  if (!th || !th.id) return LAYERS;
+  return LAYERS.map((cfg, i) => {
+    const c = { ...cfg };
+    const mtn = cfg.kind === 'mountains';
+    const op = mtn ? th.mountains : th.hills;
+    for (const k of mtn ? ['base', 'lit', 'gully', 'haze'] : ['light', 'mid', 'base']) c[k] = tone(cfg[k], op);
+    if (cfg.trees) {
+      c.trees = { ...cfg.trees };
+      for (const k of ['dark', 'mid', 'light', 'trunk']) c.trees[k] = tone(cfg.trees[k], k === 'trunk' ? op : th.trees || op);
+    }
+    if (mtn && th.tall) {
+      c.hMin *= th.tall;
+      c.hMax *= th.tall;
+      c.top = Math.ceil(c.top * th.tall);
+    }
+    if (mtn && th.snow && th.snow[i]) {
+      c.snow = th.snow[i];
+      c.snowLit = mix(c.lit, '#ffffff', 0.85);
+      c.snowShade = mix(c.base, '#eef3fb', 0.6);
+    }
+    if (!mtn && th.pointy) c.pointy = true;
+    return c;
+  });
+}
 
 /** Screen px per layer unit: between "fixed size" and "zooms with the world". */
 function layerScale(d, view, fr) {
@@ -477,6 +596,34 @@ function drawPeak(g, pk, x, cfg) {
     g.quadraticCurveTo(gx + hw * 0.07, gy + h * len * 0.5, gx, gy);
     g.fill();
   }
+  if (cfg.snow) {
+    // Snow cap with a ragged lower edge: shaded everywhere, lit on the left face
+    const sl = ay + h * cfg.snow;
+    const cap = () => {
+      g.beginPath();
+      g.moveTo(x - hw, ay - 12);
+      const n = 10;
+      for (let i = 0; i <= n; i++) {
+        const dip = (Math.sin(pk.x * 0.37 + i * 2.3) * 0.5 + 0.5) * h * 0.1;
+        g.lineTo(x - hw * 0.8 + hw * 1.6 * (i / n), sl + (i % 2 ? dip : -dip * 0.5));
+      }
+      g.lineTo(x + hw, ay - 12);
+      g.closePath();
+    };
+    cap();
+    g.fillStyle = cfg.snowShade;
+    g.fill();
+    g.beginPath();
+    left();
+    g.quadraticCurveTo(ax - rr * 0.2, ay - rr * 0.15, ax + rr * 0.2, ay + rr * 0.2);
+    for (const [rx, ry] of pk.ridge) g.lineTo(ax + rx, ay + ry);
+    g.lineTo(ax + pk.ridge[3][0], 2);
+    g.closePath();
+    g.clip();
+    cap();
+    g.fillStyle = cfg.snowLit;
+    g.fill();
+  }
   g.restore();
 }
 
@@ -508,7 +655,7 @@ function genHills(cfg, rnd) {
         const v = 0.55 + rnd() * 0.45; // 1 = on the ridge line, lower = further down the face
         const ht = lerp(T.h[0], T.h[1], rnd()) * (0.8 + 0.25 * v);
         const r = rnd();
-        const type = r < 0.5 ? 'round' : r < 0.85 ? 'cypress' : 'pine';
+        const type = cfg.pointy ? (r < 0.12 ? 'round' : r < 0.45 ? 'cypress' : 'pine') : r < 0.5 ? 'round' : r < 0.85 ? 'cypress' : 'pine';
         hp.trees.push({ x: hp.x + (u * hp.w) / 2, y: -hp.h * humpY(u) * v + ht * 0.05, ht, type });
       }
     }
@@ -842,12 +989,12 @@ function drawBirds(ctx, flocks, view, fr, cover) {
 
 // --- Sky ----------------------------------------------------------------------------------
 
-function drawSky(ctx, view, fr, cover) {
+function drawSky(ctx, view, fr, cover, sky = SKY) {
   const yH = anchorY(0.1, fr);
   const g = ctx.createLinearGradient(0, yH - view.h * 1.05, 0, yH);
-  g.addColorStop(0, SKY.top);
-  g.addColorStop(0.6, SKY.mid);
-  g.addColorStop(1, SKY.low);
+  g.addColorStop(0, sky.top);
+  g.addColorStop(0.6, sky.mid);
+  g.addColorStop(1, sky.low);
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, view.w, Math.min(view.h, fr.gTop + 8, cover));
@@ -891,7 +1038,7 @@ function tuft(g, x, y, sc, rnd, cols) {
   g.fill();
 }
 
-function paintGrass(g, rnd) {
+function paintGrass(g, rnd, wash = null) {
   const W = GRASS_W;
   const top = WORLD.grassTop;
   const front = WORLD.grassFront;
@@ -1064,6 +1211,17 @@ function paintGrass(g, rnd) {
     wrapX(cx, 12, W, (xx) => tuft(g, xx, lipTop + 2, 1.15, mulberry32(seed), ['#6aa936', '#bfe271']));
     x += 7 + rnd() * 16;
   }
+  washOver(g, wash, -4, GRASS_Y0, W + 8, GRASS_Y1 - GRASS_Y0);
+}
+
+/** Arena theme: tint everything already painted in a cache (build time only). */
+function washOver(g, wash, x, y, w, h) {
+  if (!wash) return;
+  g.save();
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = rgba(wash[0], wash[1]);
+  g.fillRect(x, y, w, h);
+  g.restore();
 }
 
 // --- Front tufts (drawn over the units' feet) -----------------------------------------
@@ -1072,7 +1230,7 @@ const FRONT_W = 832;
 const FRONT_Y0 = 8;
 const FRONT_Y1 = WORLD.grassFront + 10;
 
-function paintFront(g, rnd) {
+function paintFront(g, rnd, wash = null) {
   const W = FRONT_W;
   let x = rnd() * 40;
   while (x < W - 20) {
@@ -1086,6 +1244,7 @@ function paintFront(g, rnd) {
     });
     x += 45 + rnd() * 110;
   }
+  washOver(g, wash, -4, FRONT_Y0, W + 8, FRONT_Y1 - FRONT_Y0);
 }
 
 // --- Dirt cross-section (world layer) -------------------------------------------------
@@ -1300,11 +1459,11 @@ function drawDirt(ctx, D, view, fr) {
 
 // --- Castles (world layer) ------------------------------------------------------------
 
-const CASTLE_BASE = -6;
-const CASTLE_BOX = { x: -126, y: -244, w: 252, h: 254 };
+export const CASTLE_BASE = -6;
+export const CASTLE_BOX = { x: -126, y: -244, w: 252, h: 254 };
 
 /** Running-bond stone blocks in a rect, one fill per block colour. */
-function stoneBlocks(g, x0, y0, x1, y1, rnd, rowH = 10) {
+export function stoneBlocks(g, x0, y0, x1, y1, rnd, rowH = 10) {
   g.fillStyle = STONE.mortar;
   g.fillRect(x0, y0, x1 - x0, y1 - y0);
   const buckets = STONE.blocks.map(() => []);
@@ -1333,7 +1492,7 @@ function stoneBlocks(g, x0, y0, x1, y1, rnd, rowH = 10) {
 }
 
 /** Side light on a round tower: bright left, shaded right. */
-function roundShade(g, x0, y0, x1, y1) {
+export function roundShade(g, x0, y0, x1, y1) {
   const gr = g.createLinearGradient(x0, 0, x1, 0);
   gr.addColorStop(0, 'rgba(255,248,232,0.22)');
   gr.addColorStop(0.35, 'rgba(255,248,232,0)');
@@ -1343,7 +1502,7 @@ function roundShade(g, x0, y0, x1, y1) {
   g.fillRect(x0, y0, x1 - x0, y1 - y0);
 }
 
-function merlons(g, x0, x1, y, h, rnd) {
+export function merlons(g, x0, x1, y, h, rnd) {
   const n = Math.max(2, Math.round((x1 - x0 + 6) / 15));
   const step = (x1 - x0) / n;
   const mw = step * 0.62;
@@ -1354,7 +1513,7 @@ function merlons(g, x0, x1, y, h, rnd) {
   }
 }
 
-function coneRoof(g, cx, baseY, hw, h, T) {
+export function coneRoof(g, cx, baseY, hw, h, T) {
   const ay = baseY - h;
   const sag = hw * 0.16; // eave curves down at the middle (seen slightly from below)
   const flank = (side) => {
@@ -1420,7 +1579,7 @@ function bannerShape(g, cx, top, w, h, k) {
   g.closePath();
 }
 
-function banner(g, cx, top, w, h, T) {
+export function banner(g, cx, top, w, h, T) {
   // Hanging rod.
   g.fillStyle = '#5a4430';
   g.fillRect(cx - w / 2 - 2.5, top - 2, w + 5, 2.6);
@@ -1528,7 +1687,7 @@ function castleDoor(g, cx, base, w, h) {
   g.stroke();
 }
 
-function arrowSlit(g, cx, y, h) {
+export function arrowSlit(g, cx, y, h) {
   g.fillStyle = STONE.light;
   g.fillRect(cx - 3.5, y - 1.5, 7, h + 3);
   g.fillStyle = STONE.slit;
@@ -1541,7 +1700,7 @@ function arrowSlit(g, cx, y, h) {
   g.fill();
 }
 
-function bush(g, x, y, r, rnd) {
+export function bush(g, x, y, r, rnd) {
   const lobes = [];
   for (let i = 0; i < 4; i++) lobes.push([x + (i - 1.5) * r * 0.62 + (rnd() - 0.5) * r * 0.3, y - r * (0.5 + rnd() * 0.45), r * (0.55 + rnd() * 0.35)]);
   g.fillStyle = '#4b8a33';
@@ -1560,7 +1719,7 @@ function bush(g, x, y, r, rnd) {
 }
 
 // Castle layout in "forward" coords: +x points toward the battlefield.
-const CASTLE = {
+export const CASTLE_LAYOUT = {
   rear: { a: -112, b: -64, top: -140, roof: 46 },
   keep: { a: -50, b: 2, top: -164, roof: 52 },
   front: { a: 62, b: 108, top: -124, roof: 42 },
@@ -1569,16 +1728,17 @@ const CASTLE = {
 };
 
 /** Flag pole position (local coords) for a team, used for the waving flag. */
-function flagPole(team) {
-  const k = CASTLE.keep;
+export function flagPole(team) {
+  const k = CASTLE_LAYOUT.keep;
   const cx = ((k.a + k.b) / 2) * TEAMS[team].dir;
   const ay = k.top - 2 - k.roof;
   return { x: cx, y0: ay - 2, y1: ay - 26 };
 }
 
-function drawCastle(g, team, seed) {
-  const T = TEAMS[team];
-  const dir = T.dir;
+/** The castle in local coords (base on y = CASTLE_BASE, centre x = 0). pal: team palette override. */
+export function drawCastle(g, team, seed, pal = null) {
+  const T = pal || TEAMS[team];
+  const dir = TEAMS[team].dir; // a palette override (army colour) keeps the team's facing
   const rnd = mulberry32(seed);
   const span = (a, b) => (dir > 0 ? [a, b] : [-b, -a]);
   const base = CASTLE_BASE;
@@ -1612,26 +1772,26 @@ function drawCastle(g, team, seed) {
   const roofOn = (tw, x0, x1) => coneRoof(g, (x0 + x1) / 2, tw.top + 1, (x1 - x0) / 2 + 8, tw.roof, T);
 
   // Keep (behind the wall).
-  const [k0, k1] = tower(CASTLE.keep);
+  const [k0, k1] = tower(CASTLE_LAYOUT.keep);
   const kc = (k0 + k1) / 2;
   g.fillStyle = STONE.slit;
   g.beginPath();
-  circlePath(g, kc, CASTLE.keep.top + 30, 5.5);
+  circlePath(g, kc, CASTLE_LAYOUT.keep.top + 30, 5.5);
   g.fill();
   g.strokeStyle = STONE.light;
   g.lineWidth = 1.6;
   g.beginPath();
-  g.arc(kc, CASTLE.keep.top + 30, 6.2, 0, TAU);
-  g.moveTo(kc - 5.5, CASTLE.keep.top + 30);
-  g.lineTo(kc + 5.5, CASTLE.keep.top + 30);
-  g.moveTo(kc, CASTLE.keep.top + 24.5);
-  g.lineTo(kc, CASTLE.keep.top + 35.5);
+  g.arc(kc, CASTLE_LAYOUT.keep.top + 30, 6.2, 0, TAU);
+  g.moveTo(kc - 5.5, CASTLE_LAYOUT.keep.top + 30);
+  g.lineTo(kc + 5.5, CASTLE_LAYOUT.keep.top + 30);
+  g.moveTo(kc, CASTLE_LAYOUT.keep.top + 24.5);
+  g.lineTo(kc, CASTLE_LAYOUT.keep.top + 35.5);
   g.stroke();
-  arrowSlit(g, kc, CASTLE.keep.top + 46, 12);
+  arrowSlit(g, kc, CASTLE_LAYOUT.keep.top + 46, 12);
 
   // Curtain wall with crenellations and a walkway shadow.
-  const [w0, w1] = span(CASTLE.wall.a, CASTLE.wall.b);
-  const wt = CASTLE.wall.top;
+  const [w0, w1] = span(CASTLE_LAYOUT.wall.a, CASTLE_LAYOUT.wall.b);
+  const wt = CASTLE_LAYOUT.wall.top;
   stoneBlocks(g, w0, wt, w1, base, rnd, 10);
   merlons(g, w0, w1, wt, 10, rnd);
   const wg = g.createLinearGradient(0, wt, 0, base);
@@ -1647,8 +1807,8 @@ function drawCastle(g, team, seed) {
   g.fillRect(w0 - 2, base - 9, w1 - w0 + 4, 9);
 
   // Side towers (in front of the wall).
-  const [r0, r1] = tower(CASTLE.rear);
-  const [f0, f1] = tower(CASTLE.front);
+  const [r0, r1] = tower(CASTLE_LAYOUT.rear);
+  const [f0, f1] = tower(CASTLE_LAYOUT.front);
   // Ambient occlusion where the towers meet the wall.
   const aoEdges = [];
   for (const [t0, t1] of [[r0, r1], [f0, f1]]) {
@@ -1662,19 +1822,19 @@ function drawCastle(g, team, seed) {
     g.fillStyle = ao;
     g.fillRect(side > 0 ? x : x - 10, wt + 10, 10, base - wt - 10);
   }
-  arrowSlit(g, (r0 + r1) / 2, CASTLE.rear.top + 22, 13);
-  arrowSlit(g, (f0 + f1) / 2, CASTLE.front.top + 22, 12);
+  arrowSlit(g, (r0 + r1) / 2, CASTLE_LAYOUT.rear.top + 22, 13);
+  arrowSlit(g, (f0 + f1) / 2, CASTLE_LAYOUT.front.top + 22, 12);
 
   // Roofs.
-  roofOn(CASTLE.keep, k0, k1);
-  roofOn(CASTLE.rear, r0, r1);
-  roofOn(CASTLE.front, f0, f1);
+  roofOn(CASTLE_LAYOUT.keep, k0, k1);
+  roofOn(CASTLE_LAYOUT.rear, r0, r1);
+  roofOn(CASTLE_LAYOUT.front, f0, f1);
 
   // Banners on the towers, door toward the battlefield.
-  banner(g, (r0 + r1) / 2, CASTLE.rear.top + 46, 22, 46, T);
-  banner(g, (f0 + f1) / 2, CASTLE.front.top + 44, 20, 40, T);
-  const dc = CASTLE.door.c * dir;
-  castleDoor(g, dc, base, CASTLE.door.w, CASTLE.door.h);
+  banner(g, (r0 + r1) / 2, CASTLE_LAYOUT.rear.top + 46, 22, 46, T);
+  banner(g, (f0 + f1) / 2, CASTLE_LAYOUT.front.top + 44, 20, 40, T);
+  const dc = CASTLE_LAYOUT.door.c * dir;
+  castleDoor(g, dc, base, CASTLE_LAYOUT.door.w, CASTLE_LAYOUT.door.h);
   // Small banner beside the door, on the wall.
   banner(g, dc - 34 * dir, wt + 18, 16, 30, T);
 
@@ -1715,7 +1875,7 @@ function makeCastle(team, seed) {
 }
 
 /** The team flag, waving: a swallowtail cloth rippling with fold shading. */
-function drawFlag(g, x, y, T, t, phase) {
+export function drawFlag(g, x, y, T, t, phase) {
   const L = 40;
   const H0 = 19;
   const H1 = 15;
@@ -1786,14 +1946,85 @@ function drawCastles(ctx, castles, view, fr) {
   }
 }
 
+// --- Middle line (arena) ---------------------------------------------------------------
+
+/**
+ * Where your half ends: a chalk stripe painted across the grass at WORLD.mid
+ * and a little stake with a two-colour pennant on the far edge. Drawn before
+ * the units (they walk over it).
+ */
+function drawMidline(ctx, view) {
+  const { cam, w, h, dpr, t } = view;
+  const z = cam.zoom;
+  const sx = (WORLD.mid - cam.x) * z + w / 2;
+  if (sx < -40 * z || sx > w + 40 * z) return;
+  const sy = -cam.y * z + h / 2;
+  if (sy + WORLD.grassTop * z > h) return;
+  ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * sx, dpr * sy); // world px, origin (mid, 0)
+  const k = Math.max(1, 0.75 / z); // a touch wider when zoomed far out so it still reads
+  const y0 = WORLD.grassTop + 1;
+  const y1 = WORLD.grassFront - 6;
+  const n = 6;
+  ctx.fillStyle = 'rgba(255,252,232,0.6)';
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a = y0 + ((y1 - y0) * i) / n;
+    const b = a + ((y1 - y0) / n) * 0.6;
+    const wa = lerp(1.6, 3, (a - y0) / (y1 - y0)) * k;
+    const wb = lerp(1.6, 3, (b - y0) / (y1 - y0)) * k;
+    ctx.moveTo(-wa, a);
+    ctx.lineTo(wa, a);
+    ctx.lineTo(wb, b);
+    ctx.lineTo(-wb, b);
+    ctx.closePath();
+  }
+  ctx.fill();
+  // Stake on the far edge with a pennant: blue half toward blue, red toward red
+  const base = WORLD.grassTop + 3;
+  const top = base - 46;
+  ctx.fillStyle = 'rgba(40,70,20,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(1, base + 0.5, 5, 1.6, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = WOOD.dark;
+  ctx.fillRect(-1.6, top, 3.2, base - top);
+  ctx.fillStyle = WOOD.light;
+  ctx.fillRect(-1.6, top, 1.2, base - top);
+  const wave = Math.sin(t * 3.1) * 1.6;
+  const pen = (dir, col) => {
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.moveTo(0, top + 2);
+    ctx.quadraticCurveTo(dir * 9, top + 3 + wave, dir * 17, top + 7 + wave * 1.4);
+    ctx.quadraticCurveTo(dir * 9, top + 10 + wave, 0, top + 14);
+    ctx.closePath();
+    ctx.fill();
+  };
+  pen(-1, TEAMS.blue.body);
+  pen(1, TEAMS.red.body);
+  ctx.fillStyle = '#e9c65a';
+  ctx.beginPath();
+  circlePath(ctx, 0, top - 1, 2.6);
+  ctx.fill();
+}
+
 // --- Public API ----------------------------------------------------------------------
 
+/**
+ * opts: { seed, castles: true (false in arena matches: render/towers.js draws
+ * them), midline: !castles (the middle-line marker), theme: 0..4 (ARENA_THEMES) }.
+ */
 export function createBackground(opts = {}) {
   const seed = (opts.seed == null ? 20240611 : opts.seed) >>> 0;
-  const layers = LAYERS.map((cfg, i) => makeLayer(cfg, seed + 101 * (i + 1)));
+  const theme = ARENA_THEMES[clamp(opts.theme | 0, 0, ARENA_THEMES.length - 1)] || ARENA_THEMES[0];
+  const sky = theme.sky || SKY;
+  const wash = theme.grass || null;
+  const layers = themeLayers(theme).map((cfg, i) => makeLayer(cfg, seed + 101 * (i + 1)));
   const clouds = makeClouds(seed + 7);
   const birds = makeBirds(seed + 11);
-  const castles = [makeCastle('blue', seed + 31), makeCastle('red', seed + 57)];
+  const withCastles = opts.castles !== false;
+  const midline = opts.midline ?? !withCastles;
+  const castles = withCastles ? [makeCastle('blue', seed + 31), makeCastle('red', seed + 57)] : [];
   const grass = new Cached({
     x: 0,
     y: GRASS_Y0,
@@ -1802,7 +2033,7 @@ export function createBackground(opts = {}) {
     maxPx: 3e6,
     repeat: 'repeat-x',
     slack: 0.85,
-    paint: (g) => paintGrass(g, mulberry32(seed + 13)),
+    paint: (g) => paintGrass(g, mulberry32(seed + 13), wash),
   });
   const front = new Cached({
     x: 0,
@@ -1812,7 +2043,7 @@ export function createBackground(opts = {}) {
     maxPx: 1.5e6,
     repeat: 'repeat-x',
     slack: 0.85,
-    paint: (g) => paintFront(g, mulberry32(seed + 19)),
+    paint: (g) => paintFront(g, mulberry32(seed + 19), wash),
   });
   const dirt = makeDirt(seed + 17);
 
@@ -1851,7 +2082,7 @@ export function createBackground(opts = {}) {
         covers[i] = cover;
         cover = Math.min(cover, placed[i].solidY + 2);
       }
-      drawSky(ctx, view, fr, cover);
+      drawSky(ctx, view, fr, cover, sky);
       drawClouds(ctx, clouds, view, fr);
       drawBirds(ctx, birds, view, fr, cover);
       layers.forEach((L, i) => drawLayer(ctx, L, placed[i], view, fr, covers[i]));
@@ -1863,7 +2094,8 @@ export function createBackground(opts = {}) {
       grass.update(z * view.dpr, fr);
       fillPattern(ctx, grass, view, w / 2 - cam.x * z, h / 2 - cam.y * z, z, gy0, gy0 + grass.h * z);
     }
-    drawCastles(ctx, castles, view, fr);
+    if (midline) drawMidline(ctx, view);
+    if (castles.length) drawCastles(ctx, castles, view, fr);
     ctx.restore();
   }
 
@@ -1897,5 +2129,8 @@ export function createBackground(opts = {}) {
     ctx.restore();
   }
 
-  return { drawBack, drawFront };
+  return { drawBack, drawFront, theme: theme.id, themeName: theme.name };
 }
+
+// Small colour / path helpers, shared with the arena renderers (towers, cards, chests).
+export { mix, lighten, darken, rgba, circlePath };

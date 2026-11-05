@@ -24,12 +24,12 @@ function army(b, list) {
 test('idle units stand at their stance height, upright, without drifting', () => {
   const b = new Battle(3);
   army(b, [
-    ['clubber', 'blue', 500],
-    ['squire', 'blue', 600],
-    ['archer', 'blue', 700],
-    ['clubber', 'red', 1300],
-    ['squire', 'red', 1400],
-    ['archer', 'red', 1500],
+    ['clubber', 'blue', 400],
+    ['squire', 'blue', 500],
+    ['archer', 'blue', 600],
+    ['clubber', 'red', 900],
+    ['squire', 'red', 1000],
+    ['archer', 'red', 1100],
   ]);
   const x0 = b.units.map((u) => u.hip.x);
   run(b, 6);
@@ -83,7 +83,7 @@ test('arrows fly in an arc and stick into the body they hit', () => {
   const b = new Battle(5);
   army(b, [
     ['archer', 'blue', 600],
-    ['clubber', 'red', 1150],
+    ['clubber', 'red', 900], // just past the archer's preferred range (230-300)
   ]);
   const target = b.units.find((u) => u.team === 'red');
   target.speed = 0; // a sitting duck
@@ -161,7 +161,7 @@ test('melee units squeeze past their own archers to reach the enemy', () => {
   army(b, [
     ['archer', 'blue', 700, 0.5],
     ['clubber', 'blue', 640, 0.5], // behind the archer, same lane
-    ['squire', 'red', 1500, 0.5],
+    ['squire', 'red', 1000, 0.5], // close enough that the archer stops to shoot
   ]);
   const club = b.units.find((u) => u.type.id === 'clubber');
   const archer = b.units.find((u) => u.type.id === 'archer');
@@ -208,14 +208,14 @@ test('snapshot keeps the placement for retry', () => {
   const b = new Battle(19);
   army(b, [
     ['clubber', 'blue', 500, 0.3],
-    ['archer', 'red', 1500, 0.7],
+    ['archer', 'red', 1200, 0.7],
   ]);
   const snap = b.snapshot();
   assert.deepEqual(
     snap.map((s) => [s.type, s.team, s.x, s.lane]),
     [
       ['clubber', 'blue', 500, 0.3],
-      ['archer', 'red', 1500, 0.7],
+      ['archer', 'red', 1200, 0.7],
     ],
   );
   const c = new Battle(19);
@@ -372,7 +372,7 @@ test('a held clubber stops leaning into its charge', () => {
 test('every unit shape stands at its own height without drifting', () => {
   const b = new Battle(31);
   const types = ['clubber', 'squire', 'archer', 'spiker', 'bomb', 'brick'];
-  types.forEach((t, i) => b.addUnit(t, 'blue', 300 + i * 100, 0.5));
+  types.forEach((t, i) => b.addUnit(t, 'blue', 250 + i * 80, 0.5)); // all inside the blue zone
   const x0 = b.units.map((u) => u.hip.x);
   run(b, 5);
   const heights = {};
