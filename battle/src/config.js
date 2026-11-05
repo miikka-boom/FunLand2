@@ -5,7 +5,9 @@
 // line (lane 0) is y = 0, so everything in the air has a negative y.
 
 export const WORLD = {
-  width: 2000,
+  // One arena, framed whole on a landscape phone: castle, guard tower, the
+  // middle line, then the enemy's guard tower and castle.
+  width: 1500,
   // Units stand on "lanes" between y = 0 and y = laneDepth. Lanes only add a
   // little depth to crowds (draw order + a few px of height); fights are 2D.
   groundY: 0,
@@ -15,9 +17,17 @@ export const WORLD = {
   grassTop: -16,
   grassFront: 34,
   // Castle centres (each castle is ~220 px wide, ~230 px tall incl. flag).
-  castleX: { blue: 115, red: 1885 },
-  // Where each side may place units.
-  zone: { blue: [240, 900], red: [1100, 1760] },
+  castleX: { blue: 100, red: 1400 },
+  // Guard tower centres (arena matches): one in front of each castle.
+  towerX: { blue: 330, red: 1170 },
+  // The middle of the field: each side deploys units on its own half.
+  mid: 750,
+  // Where each side may play unit cards in a match (spells go anywhere).
+  deploy: { blue: [40, 720], red: [780, 1460] },
+  // Once the enemy guard tower falls, your unit zone reaches this far.
+  pocket: { blue: 1050, red: 450 },
+  // Sandbox: where each side may place units.
+  zone: { blue: [230, 700], red: [800, 1270] },
   gravity: 1150,
 };
 
