@@ -116,8 +116,8 @@ export class Battle {
   }
 
   /** A Guard Tower ('guard') or Castle ('castle'); level = the side's King Level. */
-  addTower(kind, team, x, level = 1) {
-    const t = new Tower(kind, team, x, level, this.nextId++);
+  addTower(kind, team, x, level = 1, hpMul = 1) {
+    const t = new Tower(kind, team, x, level, this.nextId++, hpMul);
     this.towers.push(t);
     return t;
   }

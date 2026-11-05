@@ -518,6 +518,7 @@
 
 .hb-tab.hb-hint {
   animation: hb-pulse 1s ease-in-out infinite;
+  transform-origin: 50% 100%; /* (grows up from the screen edge, never past it) */
 }
 
 /* --- panels ---------------------------------------------------------------------------------- */
@@ -592,6 +593,16 @@
 
 .hb-fine.center {
   text-align: center;
+}
+
+.hb-save-warn {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 2px solid #b0392f;
+  background: #ffe9e4;
+  color: #7a1714;
+  font: 700 clamp(11px, 3.2vh, 13px) system-ui, sans-serif;
 }
 
 .hb-fine a {
@@ -971,8 +982,22 @@
   bottom: calc(100% + 4px);
 }
 
+/* The "Upgrade a card!" hint sits on the Cards tab itself (over its icon): above the tab
+   it would cover the Small Chest's timer on the Battle tab, and panel content elsewhere */
 .hb-coach.c-tab {
-  bottom: calc(100% + 6px);
+  bottom: auto;
+  top: 3px;
+  padding: 2px 8px;
+  border-width: 2px;
+  border-radius: 10px;
+  font-size: clamp(11px, 3.3vh, 14px);
+  box-shadow: 0 2px 0 rgba(58, 40, 22, 0.4);
+  animation: none;
+}
+
+.hb-coach.c-tab::after {
+  margin-left: -6px;
+  border-width: 6px;
 }
 
 /* --- modals ---------------------------------------------------------------------------------- */
@@ -1104,6 +1129,25 @@
   position: static;
   transform: none;
   margin-top: 4px;
+}
+
+.hb-gain-name {
+  max-width: 100%;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 800 clamp(10px, 3vh, 12px) Georgia, serif;
+  color: inherit;
+}
+
+/* Copies ready, gold short: a neutral note, not the green "go" */
+.hb-upready.short {
+  padding: 1px 6px;
+  background: linear-gradient(#e8dcc4, #b9a27c);
+  color: #3a2816;
+  text-shadow: none;
+  animation: none;
 }
 
 .hb-gain-hat b {

@@ -5,7 +5,7 @@
 //   drawSpellsBack(ctx, battle, t);   // ground marks: boulder shadow + target, wheel shadow (before the units)
 //   drawSpells(ctx, battle, t);       // boulders and wheels (after the units)
 //   drawShots(ctx, battle);           // cannonballs in flight (after the units)
-//   drawZone(ctx, x0, x1, ok, { team, t });
+//   drawZone(ctx, x0, x1, ok, { team, t, zoom });
 //   drawSpellAim(ctx, x, radius, team, ok, t);
 //   const ghosts = new DeployGhosts(unitRenderer);
 //   ghosts.draw(ctx, cardId, x, team, { ok, t, zone, hats, level });
@@ -486,13 +486,15 @@ export function drawZone(ctx, x0, x1, ok = true, opts = {}) {
   const t = num(opts.t, 0);
   const top = WORLD.grassTop + 1;
   const front = WORLD.grassFront - 2;
+  // Lines keep their width on screen (a phone frames the whole field at ~0.45 zoom)
+  const px = 1 / clamp(num(opts.zoom, 1), 0.2, 4);
   ctx.save();
-  ctx.globalAlpha = (ok ? 0.26 : 0.18) * k;
+  ctx.globalAlpha = (ok ? 0.4 : 0.2) * k;
   ctx.fillStyle = col;
   ctx.fillRect(x0, top, x1 - x0, front - top);
   const g = ctx.createLinearGradient(0, top - H, 0, top);
   g.addColorStop(0, rgba(col, 0));
-  g.addColorStop(1, rgba(col, (ok ? 0.2 : 0.14) * k));
+  g.addColorStop(1, rgba(col, (ok ? 0.3 : 0.14) * k));
   ctx.globalAlpha = 1;
   ctx.fillStyle = g;
   ctx.fillRect(x0, top - H, x1 - x0, H);
@@ -512,15 +514,34 @@ export function drawZone(ctx, x0, x1, ok = true, opts = {}) {
     ctx.stroke();
     ctx.restore();
   }
+  if (ok) {
+    // Your side: a bright outline along the grass and solid edges (with a dark under-stroke to read on light grass)
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x0, top);
+    ctx.lineTo(x1, top);
+    for (const x of [x0, x1]) {
+      ctx.moveTo(x, front);
+      ctx.lineTo(x, top - H * 0.55);
+    }
+    ctx.globalAlpha = 0.3 * k;
+    ctx.strokeStyle = '#10243f';
+    ctx.lineWidth = 5 * px;
+    ctx.stroke();
+    ctx.globalAlpha = 0.95 * k;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5 * px;
+    ctx.stroke();
+  }
   ctx.globalAlpha = (ok ? 0.85 : 0.5) * k;
   ctx.strokeStyle = ok ? '#ffffff' : NO;
-  ctx.lineWidth = 2.5;
-  ctx.setLineDash([9, 8]);
-  ctx.lineDashOffset = -t * 14;
+  ctx.lineWidth = Math.max(2.5, 2 * px);
+  ctx.setLineDash([9 * px, 8 * px]);
+  ctx.lineDashOffset = -t * 14 * px;
   ctx.beginPath();
   for (const x of [x0, x1]) {
-    ctx.moveTo(x, front);
-    ctx.lineTo(x, top - H * 0.7);
+    ctx.moveTo(x, top - H * 0.55);
+    ctx.lineTo(x, top - H * 0.85);
   }
   ctx.stroke();
   ctx.setLineDash([]);

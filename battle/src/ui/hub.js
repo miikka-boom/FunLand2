@@ -201,7 +201,7 @@ export function createHub(deps) {
   const kingBtn = h('button', { class: 'hb-king', type: 'button', 'aria-label': 'King Level', on: { click: tap(() => kingSheet()) } }, h('span', { class: 'hb-king-badge' }, kingRing, icon('crown', 'hb-king-crown'), kingLv), h('span', { class: 'hb-who' }, nameEl, kingSub));
   const goldNum = h('b', {}, '0');
   const beanNum = h('b', {}, '0');
-  const goldPill = h('button', { class: 'hb-pill gold', type: 'button', 'aria-label': 'Gold', on: { click: tap(() => toast('Gold: for card upgrades and shop cards. Earned from matches, chests, the Trail and badges.')) } }, h('span', { class: 'hb-pill-in' }, coin(), goldNum));
+  const goldPill = h('button', { class: 'hb-pill gold', type: 'button', 'aria-label': 'Gold', on: { click: tap(() => toast('Gold: for card upgrades and shop cards. Earned from matches, chests, the daily gift, the Trail and badges.')) } }, h('span', { class: 'hb-pill-in' }, coin(), goldNum));
   const beanPill = h('button', { class: 'hb-pill beans', type: 'button', 'aria-label': 'Jellybeans', on: { click: tap(() => toast('Jellybeans: for army colours and hats only. Earned from badges, the Trail and Big Chests.')) } }, h('span', { class: 'hb-pill-in' }, bean(), beanNum));
   const top = h('header', { class: 'hb-top' }, kingBtn, h('span', { class: 'hb-spacer' }), goldPill, beanPill, fullscreenBtn(), h('button', { class: 'hb-iconbtn', type: 'button', 'aria-label': 'Settings', on: { click: tap(() => (more.section('settings'), switchTab('more'))) } }, icon('gear')));
 
@@ -443,6 +443,7 @@ export function createHub(deps) {
     setTutorial,
     renderTutorial: () => renderTutorial(),
     current: () => (ui.open ? ui.tab : null),
+    saveOk: typeof deps.saveOk === 'function' ? deps.saveOk : () => true,
   };
   const opener = createChestOpener(H);
   const cards = createCardsScreen(H);
@@ -672,6 +673,10 @@ export function createHub(deps) {
     current: () => (ui.open ? ui.tab : null),
     /** True while a modal (or a modal state like picking a deck slot) is up. */
     hasModal: () => ui.stack.length > 0,
+    /** A short message over the menu (the game's own toast is hidden while the menu is up). */
+    toast,
+    /** True while a full-screen show (the chest opening) hides the whole Battle tab. */
+    covered: () => ui.stack.some((m) => m.el && m.el.classList.contains('hb-full')),
     refresh() {
       if (!ui.open) return;
       screens[ui.tab].render();

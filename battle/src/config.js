@@ -24,8 +24,9 @@ export const WORLD = {
   mid: 750,
   // Where each side may play unit cards in a match (spells go anywhere).
   deploy: { blue: [40, 720], red: [780, 1460] },
-  // Once the enemy guard tower falls, your unit zone reaches this far.
-  pocket: { blue: 1050, red: 450 },
+  // Once the enemy guard tower falls, your unit zone reaches this far: up to its
+  // rubble, so a push can land within reach of the castle behind it.
+  pocket: { blue: 1150, red: 350 },
   // Sandbox: where each side may place units.
   zone: { blue: [230, 700], red: [800, 1270] },
   gravity: 1150,

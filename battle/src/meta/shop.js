@@ -5,7 +5,11 @@
 // The day's stock is rolled from (p.seed, date, arena) where the arena is
 // remembered when the day starts (p.shop.arena), so reaching a new arena
 // mid-day doesn't reshuffle offers you were looking at. A clock moved back a
-// day or two keeps the newer day's shop (no second free gift that way).
+// day or two keeps the newer day's shop (no second free gift that way); a
+// clock moved further back is taken as a clock that was wrong before, and the
+// shop follows it. (So someone who keeps moving their device clock by days can
+// collect extra gifts, like they could with any timer kept on the device. This
+// is an offline game against bots: only an honest clock is protected.)
 
 import { CARDS } from '../sim/cards.js';
 import { bestArena, cardsUpTo } from './collection.js';

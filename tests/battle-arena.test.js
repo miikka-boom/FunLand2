@@ -149,7 +149,7 @@ test('spells damage towers at a reduced rate and wake a sleeping castle', () => 
     const dmg = ev.filter((e) => e.type === 'towerHit' && e.tower === g).reduce((s, e) => s + e.damage, 0);
     const full = id === 'boulder' ? SPELLS.boulder.damage : id === 'arrowRain' ? SPELLS.arrowRain.damage * SPELLS.arrowRain.volleys : SPELLS.wheel.damage;
     assert.ok(Math.abs(dmg - full * TOWER_TAKES.spell) < 1e-6, `${id}: ${dmg} vs ${full * TOWER_TAKES.spell}`);
-    assert.ok(TOWER_TAKES.spell >= 0.3 && TOWER_TAKES.spell <= 0.4);
+    assert.ok(TOWER_TAKES.spell >= 0.3 && TOWER_TAKES.spell <= 0.6, 'stone shrugs off spells, but a nearly-down tower can be finished with them');
     assert.equal(b.spells.length, 0, `${id} should be over`);
   }
   // A boulder on the sleeping castle wakes it up
@@ -488,7 +488,9 @@ test('zones: units on your own half, spells anywhere, and the pocket once the en
   assert.deepEqual(m.zone('blue'), [WORLD.deploy.blue[0], WORLD.pocket.blue]);
   assert.deepEqual(m.zone('red'), WORLD.deploy.red);
   assert.equal(m.canPlay('blue', unit, 1000), '');
-  assert.equal(m.canPlay('blue', unit, 1100), 'zone');
+  assert.equal(m.canPlay('blue', unit, WORLD.pocket.blue - 10), '');
+  assert.equal(m.canPlay('blue', unit, WORLD.pocket.blue + 10), 'zone');
+  assert.ok(WORLD.pocket.blue >= WORLD.castleX.red - CASTLE.w / 2 - CASTLE.range, 'the pocket reaches into the castle\'s range');
   const id0 = m.battle.nextId;
   const id = s.hand[unit];
   assert.ok(m.play('blue', unit, 1040));
@@ -837,12 +839,15 @@ test('archers shooting a tower come within its reach, so the tower can shoot bac
     const t = tower(b, 'red', kind);
     const a = tank(b.addUnit('archer', 'blue', 760, 0.5));
     a.preferRange = 300; // the longest an archer gets: it used to stand out of the Guard Tower's range and plink it forever
-    const ev = run(b, 14);
+    // (where it stands over the last 6 s: a cannonball hop knocks it back out for a moment, then it walks back in)
+    const at = [];
+    const ev = run(b, 14, (i) => void (i * DT > 8 && at.push(Math.abs(a.hip.x - t.x))));
     const arrows = ev.filter((e) => e.type === 'towerHit' && e.tower === t && e.kind === 'arrow').length;
     const shots = ev.filter((e) => (e.type === 'towerShot' || e.type === 'cannonFire') && e.tower === t && e.target === a).length;
     assert.ok(arrows >= 3, `${kind}: ${arrows} arrows landed`);
     assert.ok(shots >= 3, `${kind}: shot back ${shots} times`);
-    assert.ok(Math.abs(a.hip.x - t.x) <= t.range, `${kind}: archer ${Math.abs(a.hip.x - t.x).toFixed(0)} px out`);
+    const inReach = at.filter((d) => d <= t.range).length / at.length;
+    assert.ok(inReach > 0.6, `${kind}: archer in reach ${(inReach * 100).toFixed(0)}% of the time`);
   }
   // Against beans they still keep their own range
   const b = arena(63);

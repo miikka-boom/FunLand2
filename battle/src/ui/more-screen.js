@@ -116,6 +116,7 @@ export function createMoreScreen(H) {
         toggle('shake', 'Screen shake'),
       ),
       installRow(),
+      H.saveOk && !H.saveOk() ? h('p', { class: 'hb-save-warn' }, "⚠️ Progress can't be saved on this browser: its storage is full or blocked (private mode?). Chests, cards and trophies are lost when the game closes.") : null,
       h(
         'button',
         { class: 'hb-btn danger' + (ui.resetArmed ? ' armed' : ''), type: 'button', on: { click: H.tap(resetTap) } },
@@ -169,10 +170,10 @@ export function createMoreScreen(H) {
         { class: 'hb-fair' },
         li('No money, ever, for power.', 'Every card and every level is earned by playing. Nothing that wins battles is for sale.'),
         li('Two currencies, both earned.', 'Gold upgrades cards and buys shop cards. Jellybeans only buy looks: army colours and hats.'),
-        li('Two free chests.', 'The Small Chest refills every 3 hours, the Big Chest every 12. No slots, no paid timers, no chests for sale. Tap one to see exactly what can be inside.'),
-        li('Honest opponents.', 'You play computer players (bots), matched to your deck level. We never pretend they are people.'),
-        li('Gentle losses.', 'You never drop out of an arena you reached, and a loss still pays a little gold.'),
-        li('No ads, no energy.', 'Play as much or as little as you like. Missing a day costs you nothing.'),
+        li('Two free chests.', 'The Small Chest refills every 3 hours, the Big Chest every 12. No slots, no paid timers, no chests for sale, and coming back a little late costs nothing. Tap a refilling chest to see exactly what can be inside.'),
+        li('Honest opponents.', 'You play computer players (bots), matched card by card to your deck and never above it. Upgrades are a real edge. We never pretend they are people.'),
+        li('Gentle losses.', 'You never drop out of an arena you reached, and a loss still pays a little gold (giving up pays none).'),
+        li('No ads, no energy.', 'Play as much or as little as you like. No streaks and no penalties: a day off never takes anything away.'),
         li('Supporter Pack?', 'Optional, cosmetic only, and not even for sale yet.'),
       ),
     ];

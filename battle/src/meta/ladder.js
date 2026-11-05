@@ -8,7 +8,7 @@
 
 import { CARDS, CARD_ORDER } from '../sim/cards.js';
 import { ARENAS, arenaIndex, bestArena, unlockedCards } from './collection.js';
-import { addGold, grant, rngFrom } from './profile.js';
+import { addGold, grant, pushNotice, rngFrom } from './profile.js';
 
 export { ARENAS, arenaIndex, bestArena };
 
@@ -38,9 +38,15 @@ export function arenaProgress(p) {
 const whole = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.floor(Number(v)) || 0));
 const count = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : 0);
 
+// Losses that pay no gold: giving up, and a match left while behind (settlePending).
+// (Otherwise a few seconds of BATTLE -> surrender would out-earn playing.)
+export const NO_GOLD_REASONS = ['surrender', 'left'];
+
 /**
  * Record a finished match (m.result(team) from sim/match.js):
- * { outcome: 'win'|'loss'|'draw', crowns, enemyCrowns, towers?, cardsPlayed?, spells? }.
+ * { outcome: 'win'|'loss'|'draw', crowns, enemyCrowns, reason?, towers?, cardsPlayed?, spells? }.
+ * reason is the match's endReason (or 'left', see settlePending): a loss by
+ * surrender or by leaving pays no gold.
  * Optional towers / cardsPlayed / spells are added to stats (pass them here OR
  * count them from battle events, not both). towers defaults to what the crowns
  * imply (1 crown = 1 tower, 3 crowns = castle + guard tower).
@@ -64,7 +70,9 @@ export function recordMatch(p, res) {
   delta = after - before;
   p.trophies = after;
   p.best = Math.max(p.best, after);
-  const gold = addGold(p, outcome === 'win' ? M.gold.win + M.gold.perCrown * crowns + M.gold.perArena * arenaBefore : M.gold[outcome]);
+  const noGold = outcome === 'loss' && NO_GOLD_REASONS.includes(r.reason);
+  const gold = addGold(p, noGold ? 0 : outcome === 'win' ? M.gold.win + M.gold.perCrown * crowns + M.gold.perArena * arenaBefore : M.gold[outcome]);
+  p.pending = null; // (this match, or one that was left, is settled)
 
   const S = p.stats;
   S.matches++;
@@ -79,7 +87,57 @@ export function recordMatch(p, res) {
   const arena = bestArena(p);
   const newArena = arena > bestBefore ? arena : -1;
   const newCards = newArena >= 0 ? CARD_ORDER.filter((id) => CARDS[id].arena > bestBefore && CARDS[id].arena <= arena) : [];
-  return { outcome, crowns, enemyCrowns, before, after, delta, floored, gold, arena, newArena, newCards, floor: arenaFloor(after), best: p.best };
+  return { outcome, crowns, enemyCrowns, before, after, delta, floored, gold, noGold, arena, newArena, newCards, floor: arenaFloor(after), best: p.best };
+}
+
+// --- matches that never finished ----------------------------------------------------------
+//
+// A ladder match writes a small record when it starts and keeps its crowns up
+// to date; recordMatch clears it. If the page is reloaded or the app killed
+// mid-match, the next start settles it: left while behind on crowns counts as
+// a loss (no reload to dodge one), otherwise it is simply dropped (a phone
+// that closed the game in the background costs nothing).
+
+/** A ladder match starts: remember it. Returns its id. */
+export function startPending(p, opponent, now) {
+  const t = Number.isFinite(now) ? Math.max(0, Math.floor(now)) : 0;
+  const id = `${p.stats.matches}:${t}`;
+  p.pending = { id, opponent: String(opponent || '').slice(0, 40), startedAt: t, blue: 0, red: 0 };
+  return id;
+}
+
+/** Crowns changed in the running match (only if it is still the pending one). Returns true if updated. */
+export function updatePending(p, id, crowns) {
+  const q = p.pending;
+  if (!q || q.id !== id || !crowns) return false;
+  q.blue = whole(crowns.blue, 0, 3);
+  q.red = whole(crowns.red, 0, 3);
+  return true;
+}
+
+/**
+ * At start-up: settle a match that never finished. Returns null if there was
+ * none, else { lost, opponent, blue, red, rec } (rec = recordMatch's result
+ * for a loss, else null). Queues a one-time notice either way.
+ */
+export function settlePending(p) {
+  const q = p.pending;
+  if (!q) return null;
+  p.pending = null;
+  const who = q.opponent || 'your opponent';
+  const lost = q.red > q.blue;
+  // settled names a match that was COUNTED here (as a loss): a window still playing it
+  // must not count it again. A dropped one counted nothing, so that window may still record it.
+  p.settled = lost ? q.id : '';
+  let rec = null;
+  if (lost) {
+    rec = recordMatch(p, { outcome: 'loss', crowns: q.blue, enemyCrowns: q.red, reason: 'left' });
+    const lose = rec && rec.delta < 0 ? `: −${-rec.delta} trophies` : '';
+    pushNotice(p, { kind: 'interrupted', title: 'MATCH INTERRUPTED', text: `Your last match against ${who} was interrupted while they led ${q.red}-${q.blue}, so it counts as a loss${lose}.` });
+  } else {
+    pushNotice(p, { kind: 'interrupted', title: 'MATCH INTERRUPTED', text: `Your last match against ${who} was interrupted. You weren't behind, so it doesn't count: no trophies lost.` });
+  }
+  return { lost, opponent: q.opponent, blue: q.blue, red: q.red, rec };
 }
 
 // --- Trophy Trail ------------------------------------------------------------------
@@ -87,7 +145,9 @@ export function recordMatch(p, res) {
 // Milestones by best trophies, claimable once each, forever. Reward shapes:
 // grant() rewards ({ gold }, { beans }, { cards: { id: n } }, { hat, refund }),
 // or { random: rarity, n } = n copies of one unlocked card of that rarity.
-// Every card of a new arena is handed out shortly after its gate.
+// Every card of a new arena is handed out shortly after its gate, with enough
+// copies to upgrade it to about level 4 (near a typical deck there), so a new
+// card is playable at once instead of weeks later.
 export const TRAIL = [
   { at: 10, reward: { gold: 50 } },
   { at: 40, reward: { random: 'common', n: 10 } },
@@ -98,18 +158,18 @@ export const TRAIL = [
   { at: 220, reward: { gold: 150 } },
   { at: 260, reward: { random: 'common', n: 15 } },
   // Pointy Pass
-  { at: 300, reward: { cards: { bruiser: 2 } } },
-  { at: 330, reward: { cards: { brick: 1 } } },
-  { at: 370, reward: { cards: { cheeseWheel: 1 } } },
+  { at: 300, reward: { cards: { bruiser: 12 } } },
+  { at: 330, reward: { cards: { brick: 8 } } },
+  { at: 370, reward: { cards: { cheeseWheel: 8 } } },
   { at: 420, reward: { gold: 250 } },
   { at: 470, reward: { beans: 80 } },
   { at: 520, reward: { random: 'rare', n: 4 } },
   { at: 570, reward: { hat: 'beanie', refund: 120 } },
   { at: 610, reward: { random: 'common', n: 25 } },
   // Boom Ridge
-  { at: 650, reward: { cards: { bombSquad: 2 } } },
-  { at: 690, reward: { cards: { megaBomb: 1 } } },
-  { at: 730, reward: { cards: { shieldWall: 1 } } },
+  { at: 650, reward: { cards: { bombSquad: 12 } } },
+  { at: 690, reward: { cards: { megaBomb: 8 } } },
+  { at: 730, reward: { cards: { shieldWall: 8 } } },
   { at: 800, reward: { gold: 400 } },
   { at: 860, reward: { beans: 120 } },
   { at: 920, reward: { random: 'epic', n: 1 } },

@@ -124,7 +124,8 @@ export function createChestOpener(H) {
       h('b', { class: 'hb-co-n' }, '×' + fmt(c.n)),
       c.isNew ? h('span', { class: 'hb-new big' }, 'NEW CARD!') : null,
       h('div', { class: 'hb-co-prog' }, h('small', {}, `Level ${c.level}`), h('span', { class: 'hb-bar' + (c.canUpgradeAfter ? ' full' : '') }, fill, barTxt)),
-      c.canUpgradeAfter ? h('span', { class: 'hb-upready big' }, icon('up'), 'Upgrade ready!') : null,
+      // (copies AND gold: copies alone say how much gold is still missing)
+      c.canUpgrade ? h('span', { class: 'hb-upready big' }, icon('up'), 'Upgrade ready!') : c.canUpgradeAfter && c.goldNeed > 0 ? h('span', { class: 'hb-upready big short' }, `Copies ready · needs ${fmt(c.goldNeed)} more gold`) : null,
     );
     const r = h('div', { class: `hb-co-reveal r-${c.rarity}` }, h('div', { class: 'hb-co-cardwrap' }, h('span', { class: 'hb-co-glow' }), cardCanvas(c.id, w, { level: c.level, name: true })), info);
     S.stage.append(r);
@@ -171,7 +172,8 @@ export function createChestOpener(H) {
       t.style.animationDelay = (0.08 * k).toFixed(2) + 's';
       box.append(t);
     });
-    const ups = g.cards.filter((c) => c.canUpgradeAfter).length;
+    const ups = g.cards.filter((c) => c.canUpgrade).length;
+    const short = g.cards.filter((c) => c.canUpgradeAfter && !c.canUpgrade).length;
     const done = h('button', { class: 'hb-btn primary big', type: 'button', on: { click: (e) => (e.stopPropagation(), !H.guarded() && (H.sfx('ui'), H.closeTop())) } }, 'Collect');
     S.stage.append(
       h(
@@ -180,7 +182,11 @@ export function createChestOpener(H) {
         h('div', { class: 'hb-kicker light' }, (NAMES[S.kind] || 'Chest').toUpperCase()),
         h('h2', {}, 'You got'),
         box,
-        ups ? h('p', { class: 'hb-co-tip' }, ups > 1 ? `${ups} cards are ready to upgrade: visit the Cards tab!` : 'A card is ready to upgrade: visit the Cards tab!') : null,
+        ups
+          ? h('p', { class: 'hb-co-tip' }, ups > 1 ? `${ups} cards are ready to upgrade: visit the Cards tab!` : 'A card is ready to upgrade: visit the Cards tab!')
+          : short
+            ? h('p', { class: 'hb-co-tip' }, short > 1 ? `${short} cards have the copies for an upgrade: they need more gold.` : 'A card has the copies for an upgrade: it needs more gold.')
+            : null,
         h('div', { class: 'hb-row' }, done),
       ),
     );

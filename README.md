@@ -98,23 +98,29 @@ Wobble War is a free game of the good kind: no money anywhere in power.
   about 30 cards in 4 stacks with at least one rare stack, a 35% chance of an
   epic stack once you have epic cards unlocked, and 10 Jellybeans). Both are ready on your first visit. They never
   stack, never need a slot and can't be sped up, and matches never give chests.
+  Opening one a little late costs nothing: up to a quarter of its timer of
+  lateness comes off the next wait.
   They grow in higher arenas (+25% gold and +20% cards per arena), only drop
   cards you have unlocked, and a tap on a waiting chest shows its exact ranges
   and odds.
 - **Matches pay trophies and gold:** a win is +27, +30 or +33 trophies (by
-  crowns) and 12 gold + 4 per crown + 4 per arena; a loss is −18 trophies and
-  3 gold; a draw is 0 trophies and 6 gold.
+  crowns) and 12 gold + 4 per crown + 4 per arena after the first; a loss is
+  −18 trophies and 3 gold (giving up pays no gold); a draw is 0 trophies and
+  6 gold. A match left unfinished (a reload, the app closed) counts as a loss
+  next time only if the bot was ahead on crowns; otherwise it is dropped.
 - **Gentle losses:** you never drop out of an arena you reached (each arena's
   gate is a trophy floor).
 - **Arenas:** Green Hills (0 trophies), Pointy Pass (300), Boom Ridge (650),
   Brick Fortress (1000) and Wobble Summit (1500), each with its own scenery.
   A new arena unlocks its cards in chests and the shop, and the **Trophy
   Trail** (32 rewards up to 1600 trophies, claimable forever by your best
-  trophies) hands each new card out right after its gate.
+  trophies) hands each new card out right after its gate, with enough copies
+  to bring it to about level 4.
 - **Honest opponents:** bots with names like Captain Bonk, labelled "computer
-  player". Their card levels follow your deck's level (never above it by
-  chance), their King Level follows yours, and their skill follows your
-  trophies.
+  player". Their card levels mirror your deck card by card (never above any
+  of yours), capped at the level usual for your trophies, so upgrading past
+  that is a real edge; their King Level works the same way, and their skill
+  follows your trophies.
 - **Upgrades** cost copies of the card plus gold, and earn King XP; each King
   Level makes your towers 10% stronger. Costs are always shown.
 - **Daily shop** (by your local date): a free gift and three card offers for
@@ -242,7 +248,14 @@ in random decks, the archetype decks against the starter deck, and a scripted
 new player against the Training Dummy. `--n 24` for a bigger sample (about 5
 minutes), `--only cards,mirror` for some sections, `--seed S`, `--skill K`,
 `--json FILE`, and `--set GUARD.hp=600,CARDS.brick.mana=6` to try numbers
-before changing them in the files.
+before changing them in the files (`WORLD.pocket.blue=1150` works too).
+
+With today's numbers (`--n 8`, seed 1), equal-skill matches end by a castle
+falling in about a quarter of cases and go to the tiebreak in about a fifth
+(they used to be about half tiebreaks and no castles at all), a 0.6 bot takes
+the castle of a 0.3 bot in about a third of matches, the scripted new player
+takes the Training Dummy's practice castle almost every time, and one level up
+still wins 94-100%. Every card's win rate sits between about 42% and 61%.
 
 # Prototype 0: "HORDE"
 

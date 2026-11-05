@@ -1,6 +1,8 @@
 // The two menu chests. No chests from matches: a Small Chest that refills
 // every 3 hours and a Big Chest every 12 hours, both ready on the first visit.
-// They never stack, need no slot and can't be sped up.
+// They never stack, need no slot and can't be sped up. Coming back a little
+// late costs nothing: up to a quarter of a period of lateness comes off the
+// next wait (so a twice-a-day player gets both Big Chests a day, not 1.25).
 //
 // Contents are honest and reproducible: rolled from (p.seed, kind, how many
 // of that kind you opened), only cards unlocked for you drop, and chestOdds()
@@ -11,6 +13,8 @@ import { bestArena, unlockedCards } from './collection.js';
 import { grant, rngFrom } from './profile.js';
 
 const HOUR = 3600 * 1000;
+// Share of a period that a late open may take off the next wait.
+export const CHEST_GRACE = 0.25;
 
 // gold: range before arena scaling; cards: total before scaling; rare: chance
 // each stack is rare; minRare: rare stacks guaranteed; epic: chance one stack
@@ -132,6 +136,19 @@ export function chestState(p, kind, now) {
 }
 
 /**
+ * When the next chest of this kind is ready after opening one at `t`: one
+ * period on, minus the time it sat ready (up to CHEST_GRACE of a period).
+ * A chest that waited longer than a whole period (a day away, the first
+ * visit) gets no grace: nothing was missed, and it never comes early.
+ */
+export function nextReadyAt(kind, readyAt, t) {
+  const c = CHESTS[kind];
+  const late = t - readyAt;
+  const grace = late > 0 && late <= c.period ? Math.min(late, c.period * CHEST_GRACE) : 0;
+  return t + c.period - grace;
+}
+
+/**
  * Open a ready chest: pays its contents, restarts its timer and counts it.
  * Returns null if not ready, else
  * { kind, gold, beans, cards: [{ id, n, rarity, isNew, levelBefore, countBefore, level, count, need, canUpgradeAfter }] }
@@ -142,7 +159,7 @@ export function openChest(p, kind, now) {
   if (!st || !st.ready) return null;
   const roll = rollChest(p, kind);
   const g = grant(p, { gold: roll.gold, beans: roll.beans, cards: roll.cards.map((x) => ({ id: x.id, n: x.n })) });
-  p.chests[kind].readyAt = clock(now) + CHESTS[kind].period;
+  p.chests[kind].readyAt = nextReadyAt(kind, st.readyAt, clock(now));
   p.chests.opened[kind]++;
   p.stats.chests++;
   return { kind, gold: g.gold, beans: g.beans, cards: g.cards };

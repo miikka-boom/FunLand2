@@ -197,8 +197,9 @@ button {
 }
 
 .icon-btn {
-  width: calc(38px * var(--ui-scale));
-  height: calc(38px * var(--ui-scale));
+  /* (at least 40 px: a mouse needs a fair target too) */
+  width: max(40px, calc(40px * var(--ui-scale)));
+  height: max(40px, calc(40px * var(--ui-scale)));
   border-radius: 10px;
   border: 2px solid var(--ink-soft);
   background: var(--parch);
@@ -593,6 +594,18 @@ button {
   border-radius: 8px;
   font: 13px/1.4 ui-monospace, monospace;
   z-index: 99;
+  cursor: pointer; /* (a tap dismisses it) */
+}
+#boot-error.soft {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  background: rgba(20, 40, 60, 0.82);
+  color: #fff;
+  font: 600 14px/1.3 system-ui, sans-serif;
+  border-radius: 999px;
+  padding: 8px 16px;
+  pointer-events: none;
 }
 
 .result p:empty {

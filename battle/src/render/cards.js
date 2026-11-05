@@ -427,27 +427,38 @@ function paintFace(cv, card, opts) {
   g.restore();
 }
 
-/** Grey (locked) or dimmed (not enough mana) copy of a face, by pixels. */
+/**
+ * Grey (locked) or dimmed (not enough mana) copy of a face, with blend modes
+ * (no getImageData: reading pixels back from a GPU canvas stalls the frame):
+ * desaturate by `grey`, darken by `dark`, lift the blue a touch, then keep
+ * the face's own alpha.
+ */
 function tint(src, kind) {
   const cv = document.createElement('canvas');
-  cv.width = src.width;
-  cv.height = src.height;
+  const w = (cv.width = src.width);
+  const h = (cv.height = src.height);
   const g = cv.getContext('2d');
-  g.drawImage(src, 0, 0);
-  const img = g.getImageData(0, 0, cv.width, cv.height);
-  const d = img.data;
   const grey = kind === 'locked' ? 1 : 0.65;
   const dark = kind === 'locked' ? 0.62 : 0.58;
-  for (let i = 0; i < d.length; i += 4) {
-    const l = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
-    d[i] = (d[i] + (l - d[i]) * grey) * dark;
-    d[i + 1] = (d[i + 1] + (l - d[i + 1]) * grey) * dark;
-    d[i + 2] = (d[i + 2] + (l - d[i + 2]) * grey) * dark + (kind === 'locked' ? 6 : 14);
-  }
-  g.putImageData(img, 0, 0);
+  const v = Math.round(255 * dark);
+  g.drawImage(src, 0, 0);
+  g.globalCompositeOperation = 'saturation';
+  g.globalAlpha = grey;
+  g.fillStyle = '#808080';
+  g.fillRect(0, 0, w, h);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'multiply';
+  g.fillStyle = `rgb(${v},${v},${v})`;
+  g.fillRect(0, 0, w, h);
+  g.globalCompositeOperation = 'lighter';
+  g.fillStyle = `rgb(0,0,${kind === 'locked' ? 6 : 14})`;
+  g.fillRect(0, 0, w, h);
+  g.globalCompositeOperation = 'destination-in';
+  g.drawImage(src, 0, 0);
+  g.globalCompositeOperation = 'source-over';
   if (kind === 'locked') {
-    const u = cv.width / 100;
-    padlock(g, cv.width / 2, cv.height * 0.44, 11 * u);
+    const u = w / 100;
+    padlock(g, w / 2, h * 0.44, 11 * u);
   }
   return cv;
 }

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { CARDS, CARD_ORDER, STARTER_DECK, DECK_SIZE, MAX_LEVEL } from '../battle/src/sim/cards.js';
 import { HATS } from '../battle/src/render/hats.js';
 import {
-  newProfile, migrate, loadProfile, saveProfile, addBeans, spendBeans, addGold, spendGold, grant, popNotice, pushNotice, rngFrom, hashStr,
+  newProfile, migrate, loadProfile, saveProfile, addBeans, spendBeans, addGold, spendGold, grant, popNotice, pushNotice, rngFrom, hashStr, looksV2,
   PROFILE_KEY, PROFILE_VERSION, UNIT_IDS, V1_BADGE_IDS, VETERAN_GIFT, DUPLICATE_REFUND,
 } from '../battle/src/meta/profile.js';
 import {
@@ -19,11 +19,12 @@ import {
 } from '../battle/src/meta/collection.js';
 import {
   ARENAS, arenaIndex, arenaFloor, arenaProgress, MATCH_REWARDS, recordMatch, TRAIL, trailStatus, claimTrail, claimableTrail,
+  startPending, updatePending, settlePending,
 } from '../battle/src/meta/ladder.js';
-import { CHESTS, CHEST_KINDS, chestState, openChest, chestOdds, rollChest, readyChests } from '../battle/src/meta/chests.js';
+import { CHESTS, CHEST_KINDS, CHEST_GRACE, chestState, openChest, chestOdds, rollChest, readyChests } from '../battle/src/meta/chests.js';
 import { SHOP, dayKey, shopToday, claimFree, buyOffer, msToRestock } from '../battle/src/meta/shop.js';
 import { BADGES, badgeStatus, claimableBadges, claimBadge } from '../battle/src/meta/badges.js';
-import { makeOpponent, BOT_NAMES, LEVEL_FLOOR, ARCHETYPES, TUTORIAL_OPPONENT } from '../battle/src/meta/opponents.js';
+import { makeOpponent, BOT_NAMES, LEVEL_FLOOR, LEVEL_CURVE, levelCap, ARCHETYPES, TUTORIAL_OPPONENT } from '../battle/src/meta/opponents.js';
 import { COLORS, HAT_UNITS, buyItem, equipColor, equipHat, armyPalette, grantSupporter } from '../battle/src/meta/cosmetics.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -351,13 +352,15 @@ test('grant: one reward shape for chests, trail, shop and badges', () => {
   assert.deepEqual(g.cards.map((c) => c.id), ['archers', 'brick']);
   const [arch, brick] = g.cards;
   assert.deepEqual(arch, {
-    id: 'archers', n: 3, rarity: 'common', isNew: false, levelBefore: 1, countBefore: 0, level: 1, count: 3, need: 2, canUpgradeAfter: true,
+    id: 'archers', n: 3, rarity: 'common', isNew: false, levelBefore: 1, countBefore: 0, level: 1, count: 3, need: 2, canUpgradeAfter: true, canUpgrade: true, goldNeed: 0,
   });
   assert.equal(brick.isNew, true);
   assert.equal(brick.levelBefore, 0);
   assert.equal(brick.level, 1);
   assert.equal(brick.count, 1, 'the first copy IS the card; the second is a spare');
   assert.equal(brick.canUpgradeAfter, true, 'epics need 1 copy for level 2');
+  assert.equal(brick.canUpgrade, false, 'an epic upgrade costs 50 gold: copies ready, gold short');
+  assert.equal(brick.goldNeed, 50 - 40);
   assert.ok(p.owned.hats.includes('party') && p.owned.colors.includes('green'));
   // Duplicates pay Jellybeans instead
   const d = grant(p, { hat: 'party', refund: 120 });
@@ -500,6 +503,35 @@ test('collection: cards unlock by the best arena reached', () => {
   for (let a = 0; a < ARENAS.length; a++) for (const id of cardsUpTo(a)) assert.ok(CARDS[id].arena <= a);
 });
 
+test('migration: a v2 save written back by an old v1 window stays a v2 profile (no progress wiped)', () => {
+  // The old v1 code adopts a v2 save, spreads it into its own shape, sets v back to 1
+  // and turns the numeric trophies into {} (git 4aeb2e6 profile.js migrate), then saves it.
+  const v2 = newProfile(55);
+  v2.tutorial = 1;
+  v2.gold = v2.goldEarned = 1500;
+  v2.trophies = v2.best = 700;
+  v2.cards.bruiser = { level: 2, count: 3 };
+  v2.king.xp = 160;
+  v2.king.level = kingLevelForXp(160);
+  v2.road.claimed = { 10: true, 40: true };
+  v2.badges.firstWin = { claimed: true };
+  const mangled = { ...clone(v2), v: 1, trophies: {}, stars: {}, cleared: {}, daily: { done: {} } };
+  assert.ok(looksV2(mangled) && !looksV2({ v: 1, beans: 3, stars: { 0: 3 }, trophies: {} }));
+  const p = migrate(clone(mangled));
+  assertValid(p);
+  assert.deepEqual([p.gold, p.best, p.cards.bruiser.level, p.king.xp, p.road.claimed[40], p.badges.firstWin.claimed], [1500, 700, 2, 160, true, true]);
+  assert.equal(p.trophies, 650, 'trophies fall back to the gate of the best arena');
+  assert.ok(!p.notices.some((n) => n.kind === 'veteran'), 'no second veteran gift');
+});
+
+test('migration: a v1 save with no campaign stars gets no "0 gold" veteran notice', () => {
+  const p = migrate({ v: 1, beans: 120, earned: 300, stars: {}, stats: { battles: 12 }, trophies: {} });
+  assertValid(p);
+  assert.equal(p.gold, 0);
+  assert.deepEqual(p.notices, []);
+  assert.equal(p.beans, 120, 'the Jellybeans still carry over');
+});
+
 // --- ladder ------------------------------------------------------------------------------
 
 test('ladder: arenas, trophies and match gold', () => {
@@ -576,6 +608,69 @@ test('ladder: crossing a gate opens the arena and its cards once', () => {
   assert.equal(pr.frac, 0.5);
   assert.equal(arenaProgress(at(2000)).next, -1);
   assert.equal(arenaProgress(at(2000)).frac, 1);
+});
+
+test('ladder: giving up (or leaving while behind) pays no gold; a real loss still pays a little', () => {
+  const p = at(300);
+  const s = recordMatch(p, { outcome: 'loss', crowns: 0, enemyCrowns: 3, reason: 'surrender' });
+  assert.deepEqual([s.gold, s.noGold, s.delta], [0, true, 0], 'at an arena floor: no trophies and no gold to farm');
+  assert.equal(recordMatch(p, { outcome: 'loss', crowns: 0, enemyCrowns: 1, reason: 'left' }).gold, 0);
+  assert.equal(recordMatch(p, { outcome: 'loss', crowns: 0, enemyCrowns: 1, reason: 'time' }).gold, MATCH_REWARDS.gold.loss);
+  assert.equal(recordMatch(p, { outcome: 'win', crowns: 3, enemyCrowns: 0, reason: 'surrender' }).gold, 12 + 4 * 3 + 4, 'the other side giving up pays a normal win');
+  assert.equal(p.gold, MATCH_REWARDS.gold.loss + 12 + 4 * 3 + 4);
+});
+
+test('ladder: a match that never finished is settled on the next start (behind = a loss, else nothing)', () => {
+  // Left while behind: a loss through recordMatch, no gold, a one-time notice
+  const p = at(400);
+  const id = startPending(p, 'Admiral Noodle', NOW);
+  assert.deepEqual(p.pending, { id, opponent: 'Admiral Noodle', startedAt: NOW, blue: 0, red: 0 });
+  assert.equal(updatePending(p, id, { blue: 0, red: 1 }), true);
+  assert.equal(updatePending(p, 'another', { blue: 3, red: 0 }), false, 'only the running match updates it');
+  const s = memStore();
+  saveProfile(p, s);
+  const back = loadProfile(s); // (a reload)
+  assert.deepEqual(back.pending, p.pending);
+  const r = settlePending(back);
+  assert.equal(r.lost, true);
+  assert.deepEqual([back.trophies, back.stats.matches, back.stats.losses, back.gold], [400 + MATCH_REWARDS.loss, 1, 1, 0]);
+  assert.equal(back.pending, null);
+  assert.equal(back.settled, id);
+  assert.equal(back.notices.length, 1);
+  assert.equal(back.notices[0].kind, 'interrupted');
+  assert.match(back.notices[0].text, /Admiral Noodle.*counts as a loss/);
+  assert.equal(settlePending(back), null, 'settled once');
+  assertValid(back);
+
+  // Not behind (ahead, or even): dropped, no trophies, still a gentle notice
+  for (const crowns of [{ blue: 1, red: 0 }, { blue: 1, red: 1 }, { blue: 0, red: 0 }]) {
+    const q = at(400);
+    const qid = startPending(q, 'Chef Chickpea', NOW);
+    updatePending(q, qid, crowns);
+    const r2 = settlePending(q);
+    assert.equal(r2.lost, false);
+    assert.deepEqual([q.trophies, q.stats.matches, q.gold, q.pending], [400, 0, 0, null]);
+    assert.equal(q.settled, '', 'nothing was counted: a window still playing it may record it');
+    assert.match(q.notices[0].text, /doesn't count/);
+  }
+  // A finished match clears it; junk in a save is dropped
+  const f = at(400);
+  startPending(f, 'X', NOW);
+  recordMatch(f, { outcome: 'win', crowns: 1, enemyCrowns: 0 });
+  assert.equal(f.pending, null);
+  assert.equal(settlePending(f), null);
+  for (const junk of [5, 'x', [], { id: '' }, { id: 7 }]) assert.equal(migrate({ ...clone(at(10)), pending: junk }).pending, null);
+  assert.deepEqual(migrate({ ...clone(at(10)), pending: { id: 'a', opponent: 3, startedAt: -5, blue: 9, red: '2' } }).pending, { id: 'a', opponent: '', startedAt: 0, blue: 3, red: 2 });
+});
+
+test('trophy trail: new arena cards come with enough copies to reach about level 4', () => {
+  const p = at(1000);
+  for (const m of trailStatus(p)) if (m.claimable) claimTrail(p, m.at);
+  p.gold = 1e6;
+  for (const id of ['bruiser', 'brick', 'cheeseWheel', 'bombSquad', 'megaBomb', 'shieldWall']) {
+    while (upgradeCard(p, id).ok);
+    assert.ok(p.cards[id].level >= 4, `${id} reaches level ${p.cards[id].level}`);
+  }
 });
 
 test('trophy trail: well-formed, every new card handed out after its gate', () => {
@@ -699,6 +794,38 @@ test('chests: a clock moved back clamps the timer, never grows it', () => {
   assert.equal(chestState(q, 'big', NOW + 2 * HOUR).readyAt, NOW + 12 * HOUR);
   assert.equal(chestState(q, 'big', NOW + HOUR).readyAt, NOW + 12 * HOUR);
   assert.equal(chestState(q, 'big', NOW - HOUR).readyAt, NOW + 11 * HOUR, 'more than a period away: clamped');
+});
+
+test('chests: a little lateness comes off the next wait (twice a day gets both Big Chests), never more', () => {
+  const p = newProfile(24);
+  openChest(p, 'big', NOW); // first open: no grace (it waited since forever)
+  assert.equal(p.chests.big.readyAt, NOW + 12 * HOUR);
+  // 8:00 / 20:00 sessions that drift: an hour late, the next is still 12 h after it was ready
+  openChest(p, 'big', NOW + 13 * HOUR);
+  assert.equal(p.chests.big.readyAt, NOW + 24 * HOUR);
+  // ...and the evening session an hour early is not the problem: it is ready again at 24 h
+  assert.equal(chestState(p, 'big', NOW + 23 * HOUR).ready, false);
+  // At most a quarter of a period comes off
+  openChest(p, 'big', NOW + 30 * HOUR);
+  assert.equal(p.chests.big.readyAt, NOW + 30 * HOUR + 12 * HOUR * (1 - CHEST_GRACE));
+  // Longer than a whole period away: no grace, and never an early chest
+  const q = newProfile(25);
+  openChest(q, 'small', NOW);
+  openChest(q, 'small', NOW + 10 * HOUR);
+  assert.equal(q.chests.small.readyAt, NOW + 13 * HOUR);
+  // Simulated twice-a-day player with +-75 min drift over 30 days: 2 Big Chests a day
+  const r = newProfile(26);
+  let t = NOW;
+  let opened = 0;
+  const rng = rngFrom('drift');
+  for (let day = 0; day < 30; day++) {
+    for (const h of [8, 20]) {
+      const at = NOW + (day * 24 + h) * HOUR + rng.int(-75, 75) * 60e3;
+      if (at > t) t = at;
+      if (openChest(r, 'big', t)) opened++;
+    }
+  }
+  assert.ok(opened >= 58, `opened ${opened} Big Chests in 30 days`);
 });
 
 test('chests: contents are deterministic from the seed and the chest counter', () => {
@@ -970,13 +1097,17 @@ test('opponents: fair decks, levels, King Level and skill for every arena', () =
       for (const id of o.deck) assert.ok(CARDS[id] && CARDS[id].arena <= arena, `${id} unlocked at arena ${arena}`);
       assert.ok(o.deck.some((id) => CARDS[id].kind === 'spell') && o.deck.filter((id) => CARDS[id].kind === 'unit').length >= 4);
       const floor = LEVEL_FLOOR[arena];
-      const base = Math.max(floor, Math.round(deckLevel(p)));
+      const cap = levelCap(trophies);
       assert.deepEqual(Object.keys(o.levels).sort(), o.deck.slice().sort());
-      for (const id of o.deck) {
-        const lv = o.levels[id];
-        assert.ok(Number.isInteger(lv) && lv >= floor && lv <= MAX_LEVEL && Math.abs(lv - base) <= 1, `level ${lv} vs base ${base}`);
-      }
-      assert.ok(Math.abs(o.kingLevel - p.king.level) <= 1 && o.kingLevel >= 1 && o.kingLevel <= 9);
+      // Card by card (best for best): never above your card, never under the curve or your card minus one
+      const mine = p.deck.map((id) => p.cards[id].level).sort((a, b) => b - a);
+      const theirs = o.deck.map((id) => o.levels[id]).sort((a, b) => b - a);
+      theirs.forEach((lv, k) => {
+        assert.ok(Number.isInteger(lv) && lv >= 1 && lv <= MAX_LEVEL, `level ${lv}`);
+        assert.ok(lv <= mine[k], `bot card ${k} at ${lv} is above yours (${mine[k]})`);
+        assert.ok(lv >= Math.min(mine[k], Math.floor(cap)) - 1 && lv >= Math.min(floor, mine[k]), `bot card ${k} at ${lv}: yours ${mine[k]}, cap ${cap}`);
+      });
+      assert.ok(o.kingLevel <= p.king.level && o.kingLevel >= Math.min(p.king.level, Math.floor(cap)) - 1 && o.kingLevel >= 1 && o.kingLevel <= 9);
       assert.ok(o.skill >= 0.25 && o.skill <= 0.95);
       assert.ok(Math.abs(o.skill - (0.3 + 0.6 * Math.min(1, trophies / 1500))) <= 0.051, `skill ${o.skill} at ${trophies}`);
       skillSum += o.skill;
@@ -993,6 +1124,46 @@ test('opponents: fair decks, levels, King Level and skill for every arena', () =
   assert.ok(names.size >= 25, 'plenty of different names');
   assert.ok(BOT_NAMES.length >= 38 && new Set(BOT_NAMES).size === BOT_NAMES.length);
   for (const n of BOT_NAMES) for (const w of AVOID) assert.ok(!n.includes(w));
+});
+
+test('opponents: a deliberately low card does not weaken the bot, and upgrading above the curve is an edge', () => {
+  // Seven cards at level 5 and one kept at level 1: the bot fields one weak card too, not eight
+  const fair = at(700, 90);
+  const sandbag = at(700, 90);
+  for (const id of fair.deck) fair.cards[id].level = sandbag.cards[id].level = 5;
+  sandbag.cards[sandbag.deck[0]].level = 1;
+  for (const p of [fair, sandbag]) p.king.xp = KING_LEVELS[3];
+  let low = 0;
+  for (let s = 0; s < 40; s++) {
+    const a = Object.values(makeOpponent(fair, s).levels).sort((x, y) => y - x);
+    const b = Object.values(makeOpponent(sandbag, s).levels).sort((x, y) => y - x);
+    for (let k = 0; k < 7; k++) assert.ok(b[k] >= 4, `the other seven stay at 4-5 (got ${b})`);
+    assert.equal(b[7], 1, 'the bot brings a level-1 card of its own');
+    low += a.reduce((x, y) => x + y, 0) - b.reduce((x, y) => x + y, 0);
+  }
+  assert.ok(low / 40 < 4.5, 'on average only the one card differs');
+  // Above the curve: at 300 trophies (cap 4) a level-7 deck meets level 3-4 bots
+  const strong = at(300, 91);
+  for (const id of strong.deck) strong.cards[id].level = 7;
+  strong.king.xp = KING_LEVELS[5]; // King Level 7
+  for (let s = 0; s < 20; s++) {
+    const o = makeOpponent(strong, s);
+    for (const lv of Object.values(o.levels)) assert.ok(lv >= 3 && lv <= 4, `capped at ${lv}`);
+    assert.ok(o.kingLevel >= 3 && o.kingLevel <= 4);
+  }
+  // Never above you: a deck averaging x.75 or x.875 used to round the bot up
+  const odd = at(2000, 92);
+  odd.deck.forEach((id, k) => (odd.cards[id].level = k < 6 ? 6 : 5)); // 5.75
+  for (let s = 0; s < 40; s++) {
+    const o = makeOpponent(odd, s);
+    const avg = Object.values(o.levels).reduce((x, y) => x + y, 0) / 8;
+    assert.ok(avg <= 5.75, `bot average ${avg}`);
+  }
+  // The arena floor never lifts a bot card above yours (Wobble Summit floor 4, an all-level-1 deck)
+  const lazy = at(1500, 93);
+  for (let s = 0; s < 20; s++) for (const lv of Object.values(makeOpponent(lazy, s).levels)) assert.equal(lv, 1);
+  assert.deepEqual(LEVEL_CURVE[0], [0, 2]);
+  assert.equal(levelCap(475), 4.5);
 });
 
 // --- fair play & cosmetics ------------------------------------------------------------------

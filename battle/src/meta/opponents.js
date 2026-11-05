@@ -1,7 +1,10 @@
 // Computer opponents. Every match is against a bot (the UI never pretends
 // otherwise), matched fairly: its cards are the ones unlocked at your arena,
-// its card levels follow your deck level (with a gentle floor per arena), its
-// King Level is near yours and its skill follows your trophies.
+// its card levels mirror your deck card by card (your best level for its best
+// card, and so on), but never above the level expected at your trophy count
+// (LEVEL_CURVE), so upgrading beyond it is a real edge; its King Level works
+// the same way and its skill follows your trophies. It is never above you:
+// not on any card, not by rounding, not by the arena floor.
 //
 //   makeOpponent(p, seed = p.stats.matches) -> { name, deck, levels, kingLevel, skill, hats, archetype, arena, tutorial, bot: true }
 //
@@ -12,7 +15,7 @@
 
 import { CARDS, DECK_SIZE, MAX_LEVEL } from '../sim/cards.js';
 import { HATS } from '../render/hats.js';
-import { ARENAS, arenaIndex, cardsUpTo, deckLevel, kingLevelForXp, MAX_KING_LEVEL } from './collection.js';
+import { ARENAS, arenaIndex, cardsUpTo, kingLevelForXp, MAX_KING_LEVEL } from './collection.js';
 import { UNIT_IDS, rngFrom } from './profile.js';
 
 export const BOT_NAMES = [
@@ -24,8 +27,13 @@ export const BOT_NAMES = [
   'Bouncy Bea', 'Kernel Popcorn',
 ];
 
-// Card level floor per arena (gentle: you won't meet level-1 bots at the top).
+// Card level floor per arena (gentle: you won't meet level-1 bots at the top,
+// unless your own cards are level 1: the floor never goes above your level).
 export const LEVEL_FLOOR = [1, 1, 2, 3, 4];
+// The card (and King) level a bot brings at a trophy count, at most: about
+// the median player's deck there. [trophies, level], straight lines between.
+// Under it the bot mirrors you; above it your upgrades are your edge.
+export const LEVEL_CURVE = [[0, 2], [300, 4], [650, 5], [1000, 6], [1500, 7], [2500, 9]];
 
 // Deck styles, cards in order of preference. Cards not unlocked yet are
 // skipped and the deck is topped up from the rest of the unlocked pool.
@@ -41,10 +49,37 @@ export const TUTORIAL_OPPONENT = {
   name: 'Training Dummy',
   deck: ['clubbers', 'squire', 'archers', 'spikers', 'bomb', 'clubberGang', 'arrowRain', 'boulder'],
   skill: 0.05,
+  castle: 0.5, // a practice castle with half the health: the first match can end with it falling
 };
 
 const HAT_IDS = HATS.filter((h) => !h.supporter && h.id !== 'none').map((h) => h.id);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+/** The level cap for a trophy count (fractional: 4.5 = half the cards at 5). */
+export function levelCap(trophies) {
+  const t = Math.max(0, Number(trophies) || 0);
+  const C = LEVEL_CURVE;
+  for (let i = 1; i < C.length; i++) {
+    const [t1, l1] = C[i];
+    if (t <= t1) {
+      const [t0, l0] = C[i - 1];
+      return l0 + ((l1 - l0) * (t - t0)) / (t1 - t0);
+    }
+  }
+  return C[C.length - 1][1];
+}
+
+/**
+ * Your levels, high to low, each capped by the curve: { levels: [8], king }.
+ * A fractional cap rounds up for a share of the cards (from rng).
+ */
+function capped(p, rng) {
+  const cap = levelCap(p.trophies);
+  const roll = () => Math.floor(cap) + (rng.next() < cap - Math.floor(cap) ? 1 : 0);
+  const mine = p.deck.map((id) => (p.cards[id] ? p.cards[id].level : 1)).sort((a, b) => b - a);
+  while (mine.length < DECK_SIZE) mine.push(mine.length ? mine[mine.length - 1] : 1);
+  return { mine, levels: mine.map((l) => Math.min(l, roll())), king: Math.min(kingLevelForXp(p.king.xp), roll()) };
+}
 
 /** A sensible 8-card deck for an archetype from the cards an arena unlocked. */
 export function buildDeck(arena, archetype, rng) {
@@ -71,6 +106,7 @@ export function makeOpponent(p, seed = p.stats.matches) {
       levels: Object.fromEntries(t.deck.map((id) => [id, 1])),
       kingLevel: 1,
       skill: t.skill,
+      castle: t.castle,
       hats: Object.fromEntries(UNIT_IDS.map((u) => [u, 'cone'])),
       archetype: 'tutorial',
       arena: 0,
@@ -82,16 +118,21 @@ export function makeOpponent(p, seed = p.stats.matches) {
   const archetype = rng.pick(Object.keys(ARCHETYPES));
   const deck = buildDeck(arena, archetype, rng);
 
-  // Levels: around your deck level, never under the arena floor.
+  // Levels: card by card your own (best for best), capped by the curve for your
+  // trophies. Never above yours: in bot-vs-bot sims one level up wins ~95% of
+  // matches, so a random +1 would decide the match before it starts. A few cards
+  // a level lower give you a small edge instead; the arena floor only stops
+  // those drops (it is never above your own card).
+  // (Mirroring card by card, not the deck's average: a level-1 card in your deck
+  // gives the bot a level-1 card too, rather than weakening all eight of its.)
   const floor = LEVEL_FLOOR[Math.min(arena, LEVEL_FLOOR.length - 1)];
-  // Not above your average (rounding toward you): in bot-vs-bot sims one level up
-  // wins ~95% of matches, so a random +1 would decide the match before it starts.
-  // A few cards a level lower give you a small edge instead.
-  const base = clamp(Math.round(deckLevel(p) - 0.25), floor, MAX_LEVEL);
+  const lv = capped(p, rng);
   const levels = {};
-  for (const id of deck) levels[id] = clamp(base - (rng.chance(0.25) ? 1 : 0), floor, MAX_LEVEL);
-  const king = kingLevelForXp(p.king.xp);
-  const kingLevel = clamp(king - (rng.chance(0.2) ? 1 : 0), 1, MAX_KING_LEVEL);
+  deck.forEach((id, k) => {
+    const cap = lv.levels[k];
+    levels[id] = clamp(cap - (rng.chance(0.25) ? 1 : 0), Math.min(floor, lv.mine[k]), MAX_LEVEL);
+  });
+  const kingLevel = clamp(lv.king - (rng.chance(0.2) ? 1 : 0), 1, MAX_KING_LEVEL);
 
   // Skill: 0.3 at 0 trophies up to 0.9 at the top arena, a little noise.
   const top = ARENAS[ARENAS.length - 1].trophies;

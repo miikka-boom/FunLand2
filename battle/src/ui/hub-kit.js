@@ -231,11 +231,14 @@ export function amountChip(kind, n, cls = '') {
   return h('span', { class: `hb-amt hb-amt-${kind}${cls ? ' ' + cls : ''}` }, ic, h('b', {}, (n > 0 ? '+' : '') + fmt(n)));
 }
 
-/** A small card with its count and NEW! / upgrade badges (chest summary, rewards). */
+/** A small card with its count, its name and NEW! / upgrade badges (chest summary, rewards). */
 export function gainTile(c, w) {
-  const tile = h('div', { class: `hb-gain r-${c.rarity}` }, cardCanvas(c.id, w, { mini: true }), h('b', { class: 'hb-gain-n' }, '×' + fmt(c.n)));
+  const card = CARDS[c.id];
+  const tile = h('div', { class: `hb-gain r-${c.rarity}`, style: `max-width:${Math.round(w + 16)}px` }, cardCanvas(c.id, w, { mini: true }), h('b', { class: 'hb-gain-n' }, '×' + fmt(c.n)), h('small', { class: 'hb-gain-name' }, card ? card.name : c.id));
   if (c.isNew) tile.append(h('span', { class: 'hb-new' }, 'NEW!'));
-  else if (c.canUpgradeAfter) tile.append(h('span', { class: 'hb-upready' }, icon('up'), 'Upgrade'));
+  // (green only when it can really be upgraded: copies AND gold)
+  else if (c.canUpgrade || (c.canUpgrade == null && c.canUpgradeAfter)) tile.append(h('span', { class: 'hb-upready' }, icon('up'), 'Upgrade'));
+  else if (c.canUpgradeAfter) tile.append(h('span', { class: 'hb-upready short' }, 'Copies ✓'));
   return tile;
 }
 

@@ -16,7 +16,8 @@
 //   --only LIST  sections: mirror, skill, levels, cards, decks, newbie
 //   --json FILE  write all match results as JSON
 //   --set LIST   try numbers before committing them, e.g. --set GUARD.hp=800,CARDS.brick.mana=6
-//                (roots: GUARD, CASTLE, TOWER_TAKES, SPELLS, UNIT_TYPES, CARDS, BOT_TUNING)
+//                (roots: GUARD, CASTLE, TOWER_TAKES, SPELLS, UNIT_TYPES, CARDS, BOT_TUNING, WORLD,
+//                e.g. WORLD.pocket.blue=1150)
 //
 // A match is ~0.3-1 s of CPU (a full 3:00 match is 21,600 fixed steps). Workers
 // run node --single-threaded (no GC / JIT helper threads), so --jobs 2 really
@@ -41,6 +42,7 @@ import { GUARD, CASTLE, TOWER_TAKES } from '../src/sim/towers.js';
 import { SPELLS } from '../src/sim/spells.js';
 import { UNIT_TYPES } from '../src/sim/unit-types.js';
 import { Rng } from '../src/sim/rng.js';
+import { WORLD } from '../src/config.js';
 
 const SELF = fileURLToPath(import.meta.url);
 
@@ -87,12 +89,12 @@ class Newbie {
 const levelsOf = (deck, level) => Object.fromEntries(deck.map((id) => [id, level]));
 
 /**
- * job: { id, seed, blue: P, red: P }, P = { deck, level, king?, skill?, aggro?, tuning?, newbie? }
+ * job: { id, seed, blue: P, red: P }, P = { deck, level, king?, skill?, aggro?, tuning?, newbie?, castle? }
  * Returns { id, winner, reason, time, crowns, down: towers destroyed, hp: { 'blue-guard': health fraction, ... },
  *   played: { team: { cardId: times } }, full: { team: seconds spent at full mana } }.
  */
 export function runMatch(job) {
-  const side = (P, team) => ({ name: team, deck: P.deck, levels: levelsOf(P.deck, P.level || 1), kingLevel: P.king || P.level || 1 });
+  const side = (P, team) => ({ name: team, deck: P.deck, levels: levelsOf(P.deck, P.level || 1), kingLevel: P.king || P.level || 1, castle: P.castle });
   const m = new Match({ seed: job.seed, blue: side(job.blue, 'blue'), red: side(job.red, 'red') });
   const ctl = ['blue', 'red'].map((team) => {
     const P = job[team];
@@ -124,7 +126,7 @@ export function runMatch(job) {
 
 // --- workers ------------------------------------------------------------------------------
 
-const ROOTS = { GUARD, CASTLE, TOWER_TAKES, SPELLS, UNIT_TYPES, CARDS, BOT_TUNING };
+const ROOTS = { GUARD, CASTLE, TOWER_TAKES, SPELLS, UNIT_TYPES, CARDS, BOT_TUNING, WORLD };
 
 /** Apply --set patches ('GUARD.hp=800,CARDS.brick.mana=6') to the live tuning objects. */
 function applySets(list) {
@@ -321,7 +323,8 @@ async function main() {
     add('skill 0.6 vs 0.3', pairJobs('s63', 2 * A.n, seed, S(STARTER_DECK, 0.6), S(STARTER_DECK, 0.3)));
     add('skill 0.3 vs 0.05', pairJobs('s305', 2 * A.n, seed, S(STARTER_DECK, 0.3), S(STARTER_DECK, 0.05)));
   }
-  if (want('newbie')) add('newbie vs Training Dummy (0.05)', pairJobs('newbie', 2 * A.n, seed, S(STARTER_DECK, 0, 1, { newbie: true }), S(STARTER_DECK, 0.05)));
+  // (the Training Dummy: meta/opponents.js TUTORIAL_OPPONENT, skill 0.05 and a half-health practice castle)
+  if (want('newbie')) add('newbie vs Training Dummy (0.05)', pairJobs('newbie', 2 * A.n, seed, S(STARTER_DECK, 0, 1, { newbie: true }), S(STARTER_DECK, 0.05, 1, { castle: 0.5 })));
   if (want('levels')) {
     add('level 2 vs level 1', pairJobs('lv21', 2 * A.n, seed, S(STARTER_DECK, K, 2), S(STARTER_DECK, K, 1)));
     add('level 6 vs level 5', pairJobs('lv65', 2 * A.n, seed, S(STARTER_DECK, K, 6), S(STARTER_DECK, K, 5)));
@@ -360,7 +363,11 @@ async function main() {
   const pairs = sections.filter((s) => s.name !== 'mirror' && s.name !== 'cards');
   if (pairs.length) {
     console.log('== Head to head (A vs B, sides alternate; draws count half) ==');
-    for (const s of pairs) console.log(`  ${s.name.padEnd(34)} A wins ${fmtScore(score(s.results, s.jobs))}`);
+    for (const s of pairs) {
+      const o = outcomeStats(s.results);
+      const r = (k) => pct((o.reasons[k] || 0) / o.n).trim();
+      console.log(`  ${s.name.padEnd(34)} A wins ${fmtScore(score(s.results, s.jobs))}   castle ${r('castle')}, tiebreak ${r('tiebreak')}, towers ${o.meanDown.toFixed(2)}`);
+    }
     console.log('');
   }
 

@@ -99,6 +99,10 @@ export function newProfile(seed) {
     owned: { hats: ['none'], colors: ['blue'] },
     equipped: { color: 'blue', hats: Object.fromEntries(UNIT_IDS.map((id) => [id, 'none'])) },
     tutorial: 0, // tutorial steps finished (0 = first match not played yet)
+    // A ladder match in progress (ladder.js startPending): a reload or a killed app
+    // mid-match is settled from it on the next start. settled = the last one counted that way (as a loss).
+    pending: null, // { id, opponent, startedAt, blue, red }
+    settled: '',
     settings: { ...SETTINGS },
     supporter: false,
     notices: [], // one-off messages for the UI: { kind, ... }
@@ -156,13 +160,20 @@ function cleanNotices(raw) {
 }
 
 /**
+ * A save that has the v2 shape whatever its `v` says: a window still running
+ * the v1 code adopts a v2 save, sets v back to 1 (and mangles trophies) and
+ * writes it back. It is still a v2 profile, not a campaign to migrate again.
+ */
+export const looksV2 = (raw) => isObj(raw) && ((isObj(raw.cards) && Array.isArray(raw.deck)) || isObj(raw.king) || isObj(raw.road));
+
+/**
  * Bring any saved data up to a valid v2 profile without losing progress.
  * v1 (or unversioned) saves are migrated, v2 saves are filled in and
  * sanitized, junk gives a fresh profile.
  */
 export function migrate(raw) {
   if (!isObj(raw)) return newProfile();
-  return Number(raw.v) >= 2 ? fromV2(raw) : fromV1(raw);
+  return Number(raw.v) >= 2 || looksV2(raw) ? fromV2(raw) : fromV1(raw);
 }
 
 function fromV1(raw) {
@@ -177,11 +188,9 @@ function fromV1(raw) {
   // Campaign stars become gold; the campaign itself is gone.
   let stars = 0;
   for (const v of Object.values(obj(raw.stars))) stars += Math.min(3, num(v));
-  const played = stars > 0 || Object.keys(obj(raw.cleared)).length > 0 || p.stats.battles > 0 || p.earned > 0;
-  if (played) {
-    const gold = addGold(p, Math.min(VETERAN_GIFT.max, stars * VETERAN_GIFT.perStar));
-    p.notices.push({ kind: 'veteran', gold, stars });
-  }
+  // (no stars, no gift: a sandbox-only player gets no "0 gold for your 0 stars")
+  const gold = addGold(p, Math.min(VETERAN_GIFT.max, stars * VETERAN_GIFT.perStar));
+  if (gold > 0) p.notices.push({ kind: 'veteran', gold, stars });
   p.tutorial = 0;
   return p;
 }
@@ -237,10 +246,18 @@ function fromV2(raw) {
   p.stats = cleanStats(raw.stats);
   cleanCosmetics(p, raw);
   p.tutorial = num(raw.tutorial);
+  p.pending = cleanPending(raw.pending);
+  p.settled = typeof raw.settled === 'string' ? raw.settled.slice(0, 40) : '';
   p.settings = cleanSettings(raw.settings);
   p.supporter = raw.supporter === true;
   p.notices = cleanNotices(raw.notices);
   return p;
+}
+
+function cleanPending(raw) {
+  if (!isObj(raw) || typeof raw.id !== 'string' || !raw.id) return null;
+  const name = typeof raw.opponent === 'string' ? raw.opponent.slice(0, 40) : '';
+  return { id: raw.id.slice(0, 40), opponent: name, startedAt: num(raw.startedAt), blue: Math.min(3, num(raw.blue)), red: Math.min(3, num(raw.red)) };
 }
 
 export function loadProfile(storage) {
@@ -301,9 +318,10 @@ export function spendGold(p, n) {
  * Gold first, then Jellybeans, then cards, then cosmetics. A hat or colour you
  * already own pays `refund` (default DUPLICATE_REFUND) Jellybeans instead.
  * Returns a normalized summary for the UI:
- * { gold, beans, cards: [{ id, n, rarity, isNew, levelBefore, countBefore, level, count, need, canUpgradeAfter }], hat, color, refund }
- * where beans includes any refund, hat/color are the newly owned ids (or null)
- * and canUpgradeAfter means "enough copies for the next level" after this reward.
+ * { gold, beans, cards: [{ id, n, rarity, isNew, levelBefore, countBefore, level, count, need, canUpgradeAfter, canUpgrade, goldNeed }], hat, color, refund }
+ * where beans includes any refund, hat/color are the newly owned ids (or null),
+ * canUpgradeAfter means "enough copies for the next level" after this reward,
+ * canUpgrade "copies AND gold" and goldNeed the gold still missing (0 if none).
  */
 export function grant(p, reward) {
   const r = isObj(reward) ? reward : {};
@@ -318,7 +336,7 @@ export function grant(p, reward) {
   }
   for (const c of out.cards) {
     const s = cardState(p, c.id);
-    Object.assign(c, { level: s.level, count: s.count, need: s.need, canUpgradeAfter: s.ready });
+    Object.assign(c, { level: s.level, count: s.count, need: s.need, canUpgradeAfter: s.ready, canUpgrade: s.canUpgrade, goldNeed: s.ready ? Math.max(0, s.gold - p.gold) : 0 });
     delete c.ready;
   }
   const refund = r.refund == null ? DUPLICATE_REFUND : r.refund;

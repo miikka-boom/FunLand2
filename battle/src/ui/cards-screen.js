@@ -98,7 +98,8 @@ export function createCardsScreen(H) {
   // --- swapping a card into the deck -------------------------------------------------------
   function startSwap(id) {
     ui.swap = id;
-    ui.swapEntry = H.openModal(null, { onClose: () => endSwap(false) });
+    // (closed by the back button or Escape: draw the screen without the swap header again)
+    ui.swapEntry = H.openModal(null, { onClose: () => endSwap(true) });
     render();
   }
   function endSwap(rerender = true) {

@@ -132,7 +132,8 @@ test('effects: arena kinds spawn, update, follow and draw', () => {
 });
 
 test('a real match renders: units (fade, hp bars, tower arrows), towers, spells', () => {
-  const m = new Match({ seed: 4, blue: { deck: STARTER_DECK, kingLevel: 2 }, red: { deck: STARTER_DECK, kingLevel: 1 } });
+  // (seed: a match where an arrow sticks in a tower within the 45 s; it depends on the tower tuning)
+  const m = new Match({ seed: 10, blue: { deck: STARTER_DECK, kingLevel: 2 }, red: { deck: STARTER_DECK, kingLevel: 1 } });
   const ctx = mockCanvas(1688, 780).getContext('2d');
   const units = new UnitRenderer({ showHp: true });
   const tr = createTowerRenderer();

@@ -17,12 +17,12 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 /** Guard Tower at level 1 (hp and damage +10% per King Level). */
 export const GUARD = {
-  hp: 480, // (bot-vs-bot balance: defence is strong in one lane, so a tower can't be a fortress)
+  hp: 420, // (bot-vs-bot balance: defence is strong in one lane, so a tower can't be a fortress)
   w: 64,
   h: 150,
   range: 300, // along x from the tower's centre
   reload: 0.8, // seconds between bolts
-  damage: 12, // a lone Clubber pair still reaches it and gets a few bonks in
+  damage: 10, // a lone Clubber pair still reaches it and gets a few bonks in
   boltSpeed: 860, // px/s, a flat crossbow shot
   aimNoise: 0.02, // radians
   stun: 0.18,
@@ -30,14 +30,19 @@ export const GUARD = {
   crowns: 1,
 };
 
-/** Castle at level 1. Asleep until its Guard Tower falls or it takes damage. */
+/**
+ * Castle at level 1. Asleep until its Guard Tower falls or it takes damage.
+ * (Tuned with battle/tools/balance-arena.mjs so a push through the pocket can
+ * finish it: at 1100 hp / 28 damage no castle fell in 0.6-vs-0.3 bot matches
+ * and half of the even ones went to a 0-0 tiebreak.)
+ */
 export const CASTLE = {
-  hp: 1100,
+  hp: 700,
   w: 170,
   h: 150,
   range: 300,
-  reload: 1.1,
-  damage: 28,
+  reload: 1.5,
+  damage: 18,
   splash: 40, // px around the impact (plus the bean's own radius)
   shotSpeed: 660,
   ballR: 7,
@@ -48,10 +53,12 @@ export const CASTLE = {
 };
 
 /** Share of each kind of damage a tower takes (stone shrugs off splash and spells). */
-export const TOWER_TAKES = { melee: 1, spike: 1, arrow: 1, blast: 0.5, quake: 0.5, spell: 0.35 };
+// (spell 0.5: a Boulder and an Arrow Rain can finish a tower that is nearly down)
+export const TOWER_TAKES = { melee: 1, spike: 1, arrow: 1, blast: 0.5, quake: 0.5, spell: 0.5 };
 
 export class Tower {
-  constructor(kind, team, x, level = 1, id = 0) {
+  /** hpMul: a practice tower (the Training Dummy's castle) has less health. */
+  constructor(kind, team, x, level = 1, id = 0, hpMul = 1) {
     const S = kind === 'castle' ? CASTLE : GUARD;
     this.id = id;
     this.isTower = true; // units, towers and spells all show up as `target` / `from`
@@ -62,7 +69,7 @@ export class Tower {
     this.h = S.h;
     this.level = Math.max(1, level | 0 || 1);
     this.dmgMul = levelMul(this.level);
-    this.hp = S.hp * this.dmgMul;
+    this.hp = S.hp * this.dmgMul * (hpMul > 0 && hpMul <= 1 ? hpMul : 1);
     this.maxHp = this.hp;
     this.alive = true;
     this.active = kind === 'guard'; // castles sleep until woken

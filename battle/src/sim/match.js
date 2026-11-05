@@ -28,7 +28,10 @@ const isTeam = (team) => team === 'blue' || team === 'red'; // (not just any key
 const cleanLevel = (l) => Math.max(1, Math.min(MAX_LEVEL, Math.floor(+l) || 1));
 
 export class Match {
-  /** opts: { seed, blue: Side, red: Side }; Side = { name, deck: [8 ids], levels: { id: level }, kingLevel, hats? } */
+  /**
+   * opts: { seed, blue: Side, red: Side }; Side = { name, deck: [8 ids], levels: { id: level }, kingLevel, hats?, castle? }
+   * castle: health share of a practice castle (0..1], e.g. the Training Dummy's 0.5.
+   */
   constructor({ seed = 1, blue = {}, red = {} } = {}) {
     this.seed = seed >>> 0 || 1;
     this.rng = new Rng((this.seed * 2654435761) ^ 0x5bd1e995); // hand shuffles and drop lanes
@@ -48,7 +51,8 @@ export class Match {
       this.sides[team] = this.makeSide(team, S);
       this.battle.hats[team] = { ...(S.hats || {}) };
       const lvl = this.sides[team].kingLevel;
-      this.battle.addTower('castle', team, WORLD.castleX[team], lvl);
+      const practice = Number(S.castle);
+      this.battle.addTower('castle', team, WORLD.castleX[team], lvl, practice > 0 && practice < 1 ? Math.max(0.2, practice) : 1);
       this.battle.addTower('guard', team, WORLD.towerX[team], lvl);
     }
   }

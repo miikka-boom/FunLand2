@@ -178,7 +178,7 @@ export function deckAvgMana(p) {
   return p.deck.reduce((s, id) => s + (cardById(id) ? cardById(id).mana : 0), 0) / p.deck.length;
 }
 
-/** Average card level of the deck (unrounded). Bots follow this. */
+/** Average card level of the deck (unrounded). (Bots mirror the deck card by card: opponents.js.) */
 export function deckLevel(p) {
   if (!p.deck.length) return 1;
   return p.deck.reduce((s, id) => s + (p.cards[id] ? p.cards[id].level : 1), 0) / p.deck.length;

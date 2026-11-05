@@ -22,9 +22,10 @@ import { cardFace } from './render/cards.js';
 import { Effects } from './render/effects.js';
 import { BattleAudio } from './audio.js';
 import { Input } from './input.js';
-import { loadProfile, saveProfile, newProfile, rngFrom, PROFILE_KEY } from './meta/profile.js';
+import { loadProfile, saveProfile, newProfile, rngFrom, PROFILE_KEY, PROFILE_VERSION } from './meta/profile.js';
 import { ARENAS, arenaIndex, kingLevelForXp } from './meta/collection.js';
-import { recordMatch } from './meta/ladder.js';
+import { recordMatch, startPending, updatePending, settlePending } from './meta/ladder.js';
+import { readyChests } from './meta/chests.js';
 import { makeOpponent, buildDeck, ARCHETYPES, BOT_NAMES } from './meta/opponents.js';
 import { armyPalette } from './meta/cosmetics.js';
 import { HATS } from './render/hats.js';
@@ -42,9 +43,11 @@ const FINAL_SLOW = 1.1; // slow-mo on the blow that ends a match
 const ZONE_SNAP = 40; // world px: a unit card released this close outside the zone snaps in
 const DRAG_SLOP = 9; // CSS px a finger may wander on a card and still count as a tap
 const GUARD_MS = 400; // a second tap this soon must not hit what just appeared under it
+const LIFT_BAND = 56; // CSS px above the hand: a card just lifted out of it says nothing yet about where it goes
 
 // --- profile ------------------------------------------------------------------------
 
+let hub = null; // ui/hub.js (created at boot, below)
 const store = (() => {
   try {
     return window.localStorage;
@@ -53,10 +56,25 @@ const store = (() => {
   }
 })();
 let profile = loadProfile(store);
+// A match that never finished (reload, app killed): left while behind counts as a loss,
+// otherwise it is dropped; a notice says which (ladder.js settlePending).
+settlePending(profile);
 let savedStats = { ...profile.stats }; // stats as of our last save
+let saveFailed = false; // the last save didn't stick (storage full or blocked): say so once
+let saveWarned = false;
 function persist() {
-  saveProfile(profile, store);
+  const ok = !!store && saveProfile(profile, store);
   savedStats = { ...profile.stats };
+  saveFailed = !ok;
+  if (ok) saveWarned = false;
+  else if (!saveWarned && hub) {
+    saveWarned = true;
+    // (the game's toast is hidden under the menu: there, the menu's own toast says it)
+    setTimeout(() => {
+      if (hub.isOpen()) hub.toast("Progress can't be saved: this browser's storage is full or blocked");
+      else toast("Progress can't be saved", 'This browser has storage full or blocked: chests, cards and trophies will be lost when you close the game', 4.5);
+    }, 400);
+  }
 }
 persist(); // write a migrated (v1 -> v2) save back at once, with its veteran-gift notice
 
@@ -79,10 +97,16 @@ const arenaBgs = new Map();
 const fx = new Effects({ seed: 11 });
 const audio = new BattleAudio();
 
-/** The arena scenery for a theme (built once each: the tinting happens at build time). */
+/**
+ * The arena scenery for a theme (the tinting happens at build time). Only the one in use
+ * is kept: each holds ~20 MB of cached tiles, and a session rarely changes arena.
+ */
 function arenaBg(theme) {
   const k = clamp(theme | 0, 0, ARENAS.length - 1);
-  if (!arenaBgs.has(k)) arenaBgs.set(k, createBackground({ seed: 7 + k * 13, castles: false, theme: k }));
+  if (!arenaBgs.has(k)) {
+    arenaBgs.clear(); // (the old scenery's canvases go with it)
+    arenaBgs.set(k, createBackground({ seed: 7 + k * 13, castles: false, theme: k }));
+  }
   return arenaBgs.get(k);
 }
 
@@ -95,6 +119,9 @@ const game = {
   bg: sandboxBg,
   frameT: 0, // attract: next check of the hub's insets
   frameKey: '',
+  dirty: false, // draw one frame even while the demo rests behind another tab
+  attractDt: 0, // time saved up between the demo's (30 fps) frames
+  pendingId: '', // match: its profile.pending record (ladder.js startPending)
   intro: 0, // seconds of VS screen left
   introAt: 0,
   fightOn: false, // the match clock has started
@@ -123,8 +150,6 @@ const game = {
   grabNoticeShown: false,
   zoneToastT: -9,
 };
-
-let hub = null; // ui/hub.js (created at boot, below)
 
 const playing = () => game.mode === 'match' || game.mode === 'sandbox';
 const inMatch = () => game.mode === 'match' && game.match;
@@ -156,8 +181,10 @@ function resize() {
     else camera.clampView();
   } else frameArena(true);
   hand.size();
+  game.dirty = true; // (resizing cleared the canvas: draw it again even if the demo is resting)
   // Turned upright: the rotate prompt covers the field (style.css), so the match waits for you
-  if (W < H && W <= 700 && canAct()) pauseGame();
+  // (during the VS intro too: pauseGame freezes the intro's countdown)
+  if (W < H && W <= 700 && inMatch()) pauseGame();
 }
 window.addEventListener('resize', resize);
 if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
@@ -264,6 +291,7 @@ function setMode(mode) {
   pause.hide();
   mresult.hide();
   coach.stop();
+  coach.on = false;
   aim.cancel();
   hand.select(-1);
   vs.hide();
@@ -338,6 +366,9 @@ function startMatch() {
   hand.size();
   frameArena(true);
   vs.show(m, opp, kingLevel);
+  // A ladder match is remembered until it ends: a reload mid-match is settled on the next start
+  game.pendingId = opp.tutorial ? '' : startPending(profile, opp.name, Date.now());
+  if (game.pendingId) persist();
   armBack();
 }
 
@@ -371,16 +402,20 @@ function playSandbox() {
 }
 
 let pendingUpdate = null;
+function applyPendingUpdate() {
+  if (!pendingUpdate) return false;
+  const f = pendingUpdate;
+  pendingUpdate = null;
+  f();
+  return true;
+}
 
 /** Back to the hub (its live background restarts). */
 function goHub(tab = 'battle') {
   persist();
-  if (pendingUpdate) {
-    // A new version is waiting: switch now, between games (progress is saved)
-    pendingUpdate();
-    pendingUpdate = null;
-    return;
-  }
+  // A new version is waiting: switch now, between games (progress is saved). The menu
+  // still comes up meanwhile, so nothing is stuck if the reload is slow.
+  applyPendingUpdate();
   blockInput();
   input.reset();
   audio.resume();
@@ -446,8 +481,10 @@ window.addEventListener('popstate', () => {
     return;
   }
   if (game.mode === 'match') {
-    if (mresult.open) mresult.ok();
-    else {
+    if (mresult.open) {
+      mresult.ok(true);
+      if (mresult.open) armBack(); // (not taken: the result stays, and so must our entry)
+    } else {
       if (game.paused) resumeGame();
       else pauseGame();
       armBack();
@@ -645,6 +682,11 @@ const hud = {
     const sec = Math.ceil(tl - 1e-6);
     if (hurry && sec !== this.last.tickSec && sec >= 1) sfx('tick', { power: sec <= 3 ? 1 : 0, vol: 0.9 });
     this.last.tickSec = sec;
+    // Overtime running out still tied: say how it will be decided (the tower health bars)
+    if (m.overtimeT != null && !over && tl <= 15 && !this.last.otTip && m.crowns.blue === m.crowns.red) {
+      this.last.otTip = true;
+      subTip('Still tied at 0:00? The weakest tower loses');
+    }
     this.set('cb', m.crowns.blue, (v) => setCrowns($('mh-crowns-blue'), v));
     this.set('cr', m.crowns.red, (v) => setCrowns($('mh-crowns-red'), v));
     this.set('x2', m.doubleMana && !over, (v) => document.body.classList.toggle('x2', v));
@@ -842,6 +884,8 @@ const aim = {
   y0: 0,
   moved: false,
   over: false, // finger over the field (not over the hand)
+  lift: false, // a card from the hand still in the band just above it (no "not here" yet)
+  lifted: false, // ...it has left that band once
   wx: NaN,
   dragCard: $('drag-card'),
   trayRect: null,
@@ -892,6 +936,8 @@ const aim = {
     this.sy = this.y0 = e.clientY;
     this.moved = false;
     this.over = false;
+    this.lift = false;
+    this.lifted = false;
     this.trayRect = hud.tray.getBoundingClientRect();
     this.cardW = this.dragCard.offsetWidth;
     this.cardH = this.dragCard.offsetHeight;
@@ -979,11 +1025,15 @@ const aim = {
   update() {
     const r = this.trayRect;
     this.over = !(r && this.sx >= r.left && this.sx <= r.right && this.sy >= r.top);
+    // The right-hand cards leave the hand over the enemy's half: no red warning while the
+    // finger is still just above the hand (only once it has been higher, or lets go there)
+    if (this.src === 'hand' && r && this.sy < r.top - LIFT_BAND) this.lifted = true;
+    this.lift = this.src === 'hand' && this.over && !this.lifted && !!r && this.sy >= r.top - LIFT_BAND;
     this.wx = camera.toWorld(this.sx, this.sy)[0];
     const showCard = this.src === 'hand' && !this.over;
     this.dragCard.classList.toggle('show', showCard);
     if (showCard) this.dragCard.style.transform = `translate(${Math.round(this.sx - this.cardW / 2)}px, ${Math.round(this.sy - this.cardH * 0.8)}px)`;
-    if (this.over) {
+    if (this.over && !this.lift) {
       const c = this.check(this.slot, this.wx);
       const why = this.reason(c);
       if (why) tip.show(why, this.sx, this.sy - 74, true);
@@ -1007,7 +1057,7 @@ const aim = {
     if (c.ok && game.match.play('blue', i, c.x)) {
       hand.select(-1);
       buzz(18);
-      coach.onPlay();
+      coach.onPlay(c.card);
       return;
     }
     // Denied: the card shakes back into the hand
@@ -1033,6 +1083,7 @@ const aim = {
     const s = hand.slots[this.slot];
     if (s) s.btn.classList.remove('drag');
     this.on = false;
+    this.lift = false;
     this.src = null;
     this.pid = null;
     this.dragCard.classList.remove('show');
@@ -1055,14 +1106,16 @@ function drawAim() {
   const hover = !aim.on && game.hover ? camera.toWorld(game.hover.sx, game.hover.sy)[0] : NaN;
   const aiming = (aim.on && aim.over) || Number.isFinite(hover);
   if (card.kind === 'unit') {
-    drawZone(ctx, z0, z1, true, { team: 'blue', color: pal('blue').body, t, strength: aiming ? 1 : 0.7 });
+    const zoom = camera.zoom;
+    drawZone(ctx, z0, z1, true, { team: 'blue', color: pal('blue').body, t, zoom, strength: aiming ? 1 : 0.85 });
     if (aiming) {
-      if (z0 > 0) drawZone(ctx, 0, z0, false, { t, strength: 0.5 });
-      drawZone(ctx, z1, WORLD.width, false, { t, strength: 0.6 });
+      if (z0 > 0) drawZone(ctx, 0, z0, false, { t, zoom, strength: 0.5 });
+      drawZone(ctx, z1, WORLD.width, false, { t, zoom, strength: 0.75 });
     }
   }
   if (!aiming) return;
   const c = aim.check(i, aim.on ? aim.wx : hover);
+  if (aim.on && aim.lift && !c.ok) return; // (just lifted out of the hand: no red ghost yet)
   ghosts.draw(ctx, id, c.x, 'blue', { ok: c.ok, t, zone: c.inZone ? [z0, z1] : null, hats: profile.equipped.hats, level: m.sides.blue.levels[id] });
 }
 
@@ -1094,18 +1147,34 @@ function onMatchEnd(e) {
     for (const u of game.battle.units) if (u.alive && u.team === e.winner) fx.spawn('confetti', { x: u.head.x, y: u.head.y - 30, colors: cols });
   }
   const wasTutorial = profile.tutorial === 0;
+  // Another window already counted this match as a loss for leaving (it started while this one
+  // was in the background): don't count it twice
+  const elsewhere = !!game.pendingId && profile.settled === game.pendingId;
   // Record at once (a reload during the result screen must not lose the trophies)
-  const rec = recordMatch(profile, {
-    outcome: res.outcome,
-    crowns: res.crowns,
-    enemyCrowns: res.enemyCrowns,
-    towers: game.track.towers,
-    cardsPlayed: m.sides.blue.played,
-    spells: m.sides.blue.spellsPlayed,
-  });
+  const rec = elsewhere
+    ? null
+    : recordMatch(profile, {
+        outcome: res.outcome,
+        crowns: res.crowns,
+        enemyCrowns: res.enemyCrowns,
+        reason,
+        towers: game.track.towers,
+        cardsPlayed: m.sides.blue.played,
+        spells: m.sides.blue.spellsPlayed,
+      });
+  game.pendingId = '';
   if (wasTutorial) profile.tutorial = 1;
   persist();
-  game.summary = { ...(rec || { outcome: res.outcome, crowns: res.crowns, enemyCrowns: res.enemyCrowns, delta: 0, gold: 0, newArena: -1, newCards: [] }), reason, duration: res.duration, opponent: game.opp ? game.opp.name : '', tutorial: wasTutorial };
+  game.summary = {
+    ...(rec || { outcome: res.outcome, crowns: res.crowns, enemyCrowns: res.enemyCrowns, delta: 0, gold: 0, newArena: -1, newCards: [] }),
+    reason,
+    elsewhere,
+    // (the tiebreak's numbers: the health of each side's weakest standing tower)
+    weak: { blue: m.weakest('blue'), red: m.weakest('red') },
+    duration: res.duration,
+    opponent: game.opp ? game.opp.name : '',
+    tutorial: wasTutorial,
+  };
   if (res.outcome === 'win') buzz([30, 60, 40]);
   game.resultT = reason === 'surrender' ? 0.8 : RESULT_DELAY;
 }
@@ -1189,13 +1258,15 @@ const mresult = {
         if (onStep && (k % 2 === 1 || k === steps)) onStep(k / steps);
       });
   },
-  ok() {
-    if (!this.open || performance.now() - this.shownAt < 600) return;
+  /** OK: back to the menu. (A tap in the first 600 ms is the tail of the last one; a back press isn't.) */
+  ok(fromBack = false) {
+    if (!this.open || (!fromBack && performance.now() - this.shownAt < 600)) return;
     audio.play('ui');
     const sum = game.summary;
+    const updating = !!pendingUpdate; // (the page reloads into the new version: no celebrations)
     this.hide();
     goHub('battle');
-    if (sum && !pendingUpdate) hub.afterMatch(sum);
+    if (sum && !updating) hub.afterMatch(sum);
   },
 };
 
@@ -1208,8 +1279,15 @@ function reasonText(sum) {
       return out === 'win' ? 'Time! You took more crowns' : 'Time! They took more crowns';
     case 'overtime':
       return out === 'win' ? 'Overtime: you took the first tower!' : 'Overtime: they took the first tower';
-    case 'tiebreak':
-      return out === 'win' ? 'Tiebreak: their tower had less health' : out === 'loss' ? 'Tiebreak: your tower had less health' : 'Tiebreak: the towers were exactly even';
+    case 'tiebreak': {
+      if (out === 'draw' || !sum.weak) return out === 'win' ? 'Tiebreak: their tower had less health' : out === 'loss' ? 'Tiebreak: your tower had less health' : 'Tiebreak: the towers were exactly even';
+      // Their weakest tower vs yours, in % (one decimal when they round alike)
+      const b = sum.weak.blue * 100;
+      const r = sum.weak.red * 100;
+      const d = Math.round(b) === Math.round(r) ? 1 : 0;
+      const f = (v) => `${v.toFixed(d)}%`;
+      return out === 'win' ? `Tiebreak: their weakest tower ${f(r)} vs yours ${f(b)}` : `Tiebreak: your weakest tower ${f(b)} vs theirs ${f(r)}`;
+    }
     case 'surrender':
       return out === 'win' ? 'They gave up!' : 'You gave up';
     default:
@@ -1223,7 +1301,9 @@ function notesFor(sum) {
     const names = (sum.newCards || []).map((id) => (cardById(id) ? cardById(id).name : id)).join(', ');
     lines.push(`🎉 New arena: <b>${ARENAS[sum.newArena].name}</b>!${names ? ` New cards to find: ${names}` : ''}`);
   } else if (sum.floored && sum.outcome === 'loss') lines.push(`🛡️ ${ARENAS[arenaIndex(sum.after)].name} keeps your trophies safe`);
-  if (sum.tutorial) lines.push('🎓 Training done! Your chests are waiting in the menu.');
+  if (sum.noGold && sum.reason === 'surrender') lines.push('🏳️ Giving up pays no gold');
+  if (sum.elsewhere) lines.push('This match was already counted in your other window');
+  if (sum.tutorial) lines.push(readyChests(profile, Date.now()) > 0 ? '🎓 Training done! Your chests are waiting in the menu.' : '🎓 Training done! Now every win brings trophies and gold.');
   return lines;
 }
 
@@ -1234,9 +1314,12 @@ const coach = {
   say: document.querySelector('#coach .say'),
   text: document.querySelector('#coach .say-text'),
   hand: document.querySelector('#coach .coach-hand'),
-  step: null, // drag | mana | tower | cheer
+  step: null, // drag | mana | tower | cheer | spell
   t: 0,
   skipped: false,
+  on: false, // the tutorial match is running with tips
+  spellDone: false, // the spell tip shows once
+  spellAt: null, // world x of the crowd the spell tip points at
   last: {},
   build() {
     document.querySelector('#coach .say-skip').addEventListener('click', () => {
@@ -1248,6 +1331,8 @@ const coach = {
   /** First tip once the FIGHT! banner has had its moment. */
   start() {
     this.skipped = false;
+    this.on = true;
+    this.spellDone = false;
     this.pending = 1.3;
   },
   pending: 0,
@@ -1261,13 +1346,14 @@ const coach = {
       mana: 'Mana 💧 refills over time — wait for it',
       tower: 'Knock down their Guard Tower!',
       cheer: '👑 A crown! Now go for their Castle!',
+      spell: 'Spells go anywhere: drop one on that crowd!',
     };
     this.text.textContent = words[step];
     this.say.classList.toggle('cheer', step === 'cheer');
     this.say.style.animation = 'none';
     void this.say.offsetWidth;
     this.say.style.animation = '';
-    this.el.className = 'coach ' + (step === 'drag' ? 'c-drag' : step === 'cheer' ? '' : 'c-point') + (aim.on || hand.sel >= 0 ? ' busy' : '');
+    this.el.className = 'coach ' + (step === 'drag' || step === 'spell' ? 'c-drag' : step === 'cheer' ? '' : 'c-point') + (aim.on || hand.sel >= 0 ? ' busy' : '');
   },
   stop() {
     this.step = null;
@@ -1285,14 +1371,42 @@ const coach = {
     return r;
   },
   onDrag() {},
-  onPlay() {
+  onPlay(card) {
     if (this.step === 'drag') this.go('mana');
+    else if (this.step === 'spell' && card && card.kind === 'spell') this.stop();
+    if (card && card.kind === 'spell') this.spellDone = true; // (found out by themselves)
+  },
+  /** A spell in hand and enemy beans bunched up: hand index and the crowd's world x, or null. */
+  spellChance() {
+    const m = game.match;
+    const side = m.sides.blue;
+    const i = side.hand.findIndex((id) => {
+      const c = cardById(id);
+      return c && c.kind === 'spell' && c.mana <= side.mana;
+    });
+    if (i < 0) return null;
+    const reds = m.battle.units.filter((u) => u.alive && u.team === 'red' && !u.dropping);
+    let best = null;
+    for (const u of reds) {
+      const near = reds.filter((o) => Math.abs(o.hip.x - u.hip.x) <= 90);
+      if (near.length >= 2 && (!best || near.length > best.n)) best = { n: near.length, x: near.reduce((s, o) => s + o.hip.x, 0) / near.length };
+    }
+    return best ? { i, x: best.x } : null;
   },
   onCrown() {
     if (this.step && this.step !== 'cheer') this.go('cheer');
   },
   tick(dt) {
     if (this.pending > 0 && canAct() && (this.pending -= dt) <= 0) this.go(game.match.sides.blue.played ? 'mana' : 'drag');
+    // Once the first tips are done: show what a spell is for, the first time there's a crowd to hit
+    if (!this.step && this.on && !this.skipped && !this.spellDone && this.pending <= 0 && canAct() && game.match.sides.blue.played >= 2) {
+      const sc = this.spellChance();
+      if (sc) {
+        this.spellDone = true;
+        this.spellAt = sc;
+        this.go('spell');
+      }
+    }
     if (!this.step) return;
     if (!canAct()) {
       if (game.mode !== 'match' || (game.match && game.match.phase === 'over')) this.stop();
@@ -1302,6 +1416,7 @@ const coach = {
     if (this.step === 'mana' && this.t > 4.5) this.go('tower');
     else if (this.step === 'tower' && this.t > 8) this.stop();
     else if (this.step === 'cheer' && this.t > 3.5) this.stop();
+    else if (this.step === 'spell' && this.t > 6) this.stop();
     if (!this.step) return;
     let p0 = null;
     let p1 = null;
@@ -1328,6 +1443,14 @@ const coach = {
       p1 = [r.left + r.width * 0.5 - 12, r.top - 40];
     } else if (this.step === 'tower') {
       p1 = camera.toScreen(WORLD.towerX.red - 12, -130);
+    } else if (this.step === 'spell' && this.spellAt) {
+      // From the spell card (it may have moved in the hand) to the crowd
+      const side = game.match.sides.blue;
+      let i = side.hand.findIndex((id) => cardById(id) && cardById(id).kind === 'spell');
+      if (i < 0) i = this.spellAt.i;
+      const r = this.rect(hand.slots[i].btn, 'card' + i);
+      p0 = [r.left + r.width * 0.45, r.top + r.height * 0.4];
+      p1 = camera.toScreen(this.spellAt.x, -60);
     }
     if (!p1) return;
     const set = (k, v) => {
@@ -1932,12 +2055,28 @@ window.addEventListener('pagehide', persist);
 // profile instead of overwriting it with ours on our next save.
 window.addEventListener('storage', (e) => {
   if (e.key !== PROFILE_KEY || e.newValue == null) return;
+  // An older version of the game in another window wrote an older kind of save (an old v1
+  // window re-saves what it adopted as v1, mangled): ours is newer, so ours stays and is
+  // written back. (A save like that met at start-up is read as v2: profile.js looksV2.)
+  let raw = null;
+  try {
+    raw = JSON.parse(e.newValue);
+  } catch {
+    raw = null;
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !(Number(raw.v) >= PROFILE_VERSION)) {
+    persist();
+    return;
+  }
   // Badge counts from our running match aren't saved yet: carry them over
   const unsaved = {};
   for (const [k, v] of Object.entries(profile.stats)) if (typeof v === 'number' && v > (savedStats[k] || 0)) unsaved[k] = v - (savedStats[k] || 0);
+  const ours = profile.pending;
   const fresh = loadProfile(store);
   savedStats = { ...fresh.stats };
   for (const [k, d] of Object.entries(unsaved)) fresh.stats[k] = (fresh.stats[k] || 0) + d;
+  // Our match in progress stays on record (unless that window counted it already)
+  if (ours && ours.id === game.pendingId && !fresh.pending && fresh.settled !== ours.id) fresh.pending = { ...ours };
   replaceProfile(fresh);
   applySettings();
   hub.profileChanged();
@@ -2047,6 +2186,7 @@ function onTowerDown(e) {
   fx.spawn('crown', { x: t.x, y: -t.h - 30, count: castle ? 3 : 1 });
   if (game.mode === 'attract') return;
   setTimeout(() => sfx('crown', { foe: t.team === 'blue' }), 250);
+  if (game.mode === 'match' && game.match && game.match.phase !== 'over' && updatePending(profile, game.pendingId, game.match.crowns)) persist();
   if (game.mode === 'match' && t.team === 'red') {
     if (game.match && game.match.endReason !== 'surrender') game.track.towers++;
     buzz([40, 50, 60]);
@@ -2301,7 +2441,8 @@ function stepOnce() {
 let acc = 0;
 let last = performance.now();
 function frame(now) {
-  const realDt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+  // (up to 0.1 s a frame, the most the step loop catches up: real time down to 10 fps)
+  const realDt = Math.min(0.1, Math.max(0, (now - last) / 1000));
   last = now;
   try {
     tickFrame(realDt);
@@ -2318,8 +2459,20 @@ function tickFrame(realDt) {
     render();
     return;
   }
-  // The hub's other tabs are opaque panels: let the demo match wait (and the battery rest)
-  if (game.mode === 'attract' && hub.isOpen() && hub.current() !== 'battle') return;
+  if (game.mode === 'attract' && hub.isOpen()) {
+    // The hub's other tabs and the chest show are opaque: let the demo match wait (and the battery rest)
+    if (hub.current() !== 'battle' || hub.covered()) {
+      if (game.dirty) render();
+      game.dirty = false;
+      return;
+    }
+    // The demo is scenery: 30 frames a second are plenty (half the work on a 60 Hz screen)
+    game.attractDt += realDt;
+    if (game.attractDt < 1 / 32 && !game.dirty) return;
+    realDt = Math.min(0.1, game.attractDt);
+    game.attractDt = 0;
+  }
+  game.dirty = false;
   game.realTime += realDt;
   const b = game.battle;
   if (game.mode === 'match' && game.intro > 0) {
@@ -2432,6 +2585,7 @@ function render() {
   if (arena) drawSpellsBack(ctx, b, t);
   lerpIn(b, game.paused ? 1 : clamp(acc / DT, 0, 1));
   unitsGfx.drawShadows(ctx, b);
+  if (game.mode === 'match') unitsGfx.drawTeamRings(ctx, b, camera.zoom < 0.7 ? 0.55 : 0.35);
   unitsGfx.drawGroundArrows(ctx, b);
   unitsGfx.drawItems(ctx, b);
   unitsGfx.drawUnits(ctx, b, b.time);
@@ -2459,10 +2613,16 @@ function render() {
 hub = createHub({
   profile,
   persist,
+  saveOk: () => !saveFailed,
   audio,
   now: () => Date.now(),
   onShow(name) {
     hubState = name;
+    // A new version that waited for a modal (a chest show) to close: switch now
+    if (name === 'hub' && pendingUpdate && !playing()) {
+      applyPendingUpdate();
+      return;
+    }
     // A card or another tab is up: back steps back to the Battle tab first
     if (name === 'modal' || (name === 'hub' && hub && hub.current() !== 'battle')) armBack();
     else if (name === 'hub' && !playing()) disarmBack();
@@ -2505,6 +2665,9 @@ resize();
 if (history.state && history.state.wobble) backArmed = backWanted = true;
 hub.show('battle');
 document.documentElement.classList.add('booted');
+// A slow first load may have put up the "still loading" note (index.html): it's done now
+const bootNote = $('boot-error');
+if (bootNote && !bootNote.dataset.shown) bootNote.style.display = 'none';
 
 // Debug / test hook (harmless in production): step the running game, inspect the match.
 window.__wobble = {
@@ -2551,7 +2714,8 @@ window.__wobble = {
 // back to the menu. Progress is saved, so nothing is lost.
 registerPWA({
   onUpdateReady(applyUpdate) {
-    if (!playing()) applyUpdate();
+    // (not mid-game, and not over a chest show or another card: the hub applies it when that closes)
+    if (!playing() && !(hub.isOpen() && hub.hasModal())) applyUpdate();
     else pendingUpdate = applyUpdate;
   },
   onInstallChange() {

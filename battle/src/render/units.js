@@ -50,6 +50,26 @@ export class UnitRenderer {
     ctx.fill();
   }
 
+  /**
+   * A team-coloured ground ring under each living bean: at phone zoom a crowd
+   * still reads as two sides (one fill per team, so it costs two paths a frame).
+   */
+  drawTeamRings(ctx, battle, alpha = 0.5) {
+    for (const team of ['blue', 'red']) {
+      ctx.fillStyle = this.pal(team).body;
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      for (const u of battle.units) {
+        if (!u.alive || u.gone || u.team !== team || u.dropping) continue;
+        const rx = u.R * 1.4;
+        ctx.moveTo(u.hip.x + rx, u.ground + 2);
+        ctx.ellipse(u.hip.x, u.ground + 2, rx, 4.5, 0, 0, TAU);
+      }
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   /** Arrows stuck in the dirt, and in tower walls (draw after the towers: the tip is buried in the stone). */
   drawGroundArrows(ctx, battle) {
     for (const a of battle.arrows) {
