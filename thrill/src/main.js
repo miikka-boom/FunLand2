@@ -4,7 +4,7 @@
 
 import { Meta, newState } from './meta.js';
 import { Clock } from './clock.js';
-import { loadState, saveState, clearState, migrate, loadTuning, saveTuning } from './save.js';
+import { loadState, saveState, clearState, clearTuning, migrate, loadTuning, saveTuning, SAVE_KEY } from './save.js';
 import { BUILDINGS, CLASSES, ZONES, THREATS, TUNING_DEFAULTS, RARITIES, GATE_GEMS } from './config.js';
 import { displayName } from './people.js';
 import { Park } from './park.js';
@@ -37,8 +37,15 @@ sfx.setVolume(tuning.volume);
 const sound = (n, o) => sfx.play(n, o);
 const toasts = new Toasts($('toasts'));
 const fx = new Fx($('fx'));
-const ui = { confirm: null };
+const ui = { confirm: null, chestSheet: null };
 let busy = false;
+let resetting = false; // reset/load in progress: never write the old state back
+let staleTab = false; // another tab saved: this one must not overwrite it
+
+function setBusy(v) {
+  busy = v;
+  document.body.classList.toggle('busy', v);
+}
 
 const haptic = (ms) => {
   if (!tuning.haptics) return;
@@ -50,10 +57,20 @@ const haptic = (ms) => {
 };
 
 function save() {
+  if (resetting || staleTab) return;
   state.clockOffset = clock.offset;
-  meta.touch();
+  // Only a visible page counts as "seen" (a tab left open in the background
+  // must still get its welcome-back gift).
+  if (!document.hidden) meta.touch();
   saveState(state);
 }
+
+// Another tab saved: stop writing, and reload when this one is looked at again.
+addEventListener('storage', (e) => {
+  if (e.key !== SAVE_KEY || resetting) return;
+  staleTab = true;
+  if (!document.hidden) location.reload();
+});
 
 const modals = new Modals($('modals'), { onAct: (a, d, el) => act(a, d, el), now: () => meta.now(), sound });
 const hud = new Hud($('hud'), meta, (a, d, el) => act(a, d, el));
@@ -74,7 +91,10 @@ const crew = new Crew(overlay, {
   fx,
   onCard: (id) => openCard(id),
   onGo: () => startRaid(),
-  onChange: () => refresh(),
+  onChange: () => {
+    save();
+    refresh();
+  },
 });
 const dev = new Dev($('dev'), {
   meta,
@@ -88,12 +108,28 @@ const dev = new Dev($('dev'), {
   },
   onCheat: (fn) => {
     const r = fn();
-    if (r && r.zones) for (const z of r.zones) if (z.gift && z.gift.placed) park.arrive(z.gift.person.id);
     save();
     refresh(true);
+    if (r && r.zones && r.zones.length) {
+      dev.hide();
+      setBusy(true);
+      (async () => {
+        try {
+          for (const z of r.zones) await zoneSplash(z);
+        } catch (e) {
+          recover(e);
+        } finally {
+          setBusy(false);
+          save();
+          refresh(true);
+        }
+      })();
+    }
   },
   onReset: () => {
+    resetting = true;
     clearState();
+    clearTuning();
     location.reload();
   },
   onExport: async () => {
@@ -110,7 +146,10 @@ const dev = new Dev($('dev'), {
   },
   onImport: (txt) => {
     try {
-      const s = migrate(JSON.parse(txt));
+      const obj = JSON.parse(txt);
+      if (!obj || !Array.isArray(obj.people) || !obj.people.length) throw new Error('not a save');
+      const s = migrate(obj);
+      resetting = true;
       saveState(s);
       location.reload();
     } catch {
@@ -118,6 +157,25 @@ const dev = new Dev($('dev'), {
     }
   },
 });
+
+// Arm the back button whenever a sheet, the crew screen or the drawer opens.
+{
+  const mo = modals.open.bind(modals);
+  modals.open = (...args) => {
+    arm();
+    return mo(...args);
+  };
+  const co = crew.open.bind(crew);
+  crew.open = () => {
+    arm();
+    co();
+  };
+  const ds = dev.show.bind(dev);
+  dev.show = () => {
+    arm();
+    ds();
+  };
+}
 
 function refresh(full = false) {
   hud.update();
@@ -132,11 +190,31 @@ function guard(fn) {
   fn();
 }
 
+/** Something threw mid-sequence: clear the overlays and unfreeze the HUD so the game goes on. */
+function recover(e) {
+  console.error(e);
+  overlay.innerHTML = '';
+  overlay.classList.remove('on');
+  hud.thaw();
+  park.paused = false;
+  toasts.show('Oops, that went wrong. The game carries on.', 'warn');
+}
+
+// The same action on the same thing twice within this many ms is a double tap.
+const DOUBLE_TAP = 380;
+let lastAct = { key: '', t: 0 };
+
 // --- Actions ----------------------------------------------------------------------------------------
 
 function act(a, d, el) {
   sfx.unlock();
   const id = d && d.id !== undefined ? (Number.isNaN(Number(d.id)) ? d.id : Number(d.id)) : null;
+  if (a !== 'hint') {
+    const key = `${a}:${id ?? (d && d.k) ?? ''}`;
+    const now = performance.now();
+    if (key === lastAct.key && now - lastAct.t < DOUBLE_TAP) return;
+    lastAct = { key, t: now };
+  }
   switch (a) {
     case 'hint':
       return showHint();
@@ -174,11 +252,19 @@ function act(a, d, el) {
     case 'level':
       return levelUp(id, el);
     case 'squad': {
-      const r = meta.inSquad(id) ? meta.toggleSquad(id) : meta.s.squad.length < 3 ? meta.toggleSquad(id) : replaceWeakest(id);
+      const p = meta.person(id);
+      const wasIn = meta.inSquad(id);
+      const before = meta.s.squad.slice();
+      const r = wasIn ? meta.toggleSquad(id) : meta.s.squad.length < 3 ? meta.toggleSquad(id) : replaceWeakest(id);
       if (!r.ok) {
         sound('error');
         toasts.show(esc(r.reason), 'warn');
-      } else sound('tap');
+      } else {
+        sound('tap');
+        const out = before.find((x) => !meta.s.squad.includes(x) && x !== id);
+        const o = out != null ? meta.person(out) : null;
+        toasts.show(wasIn ? `<b>${name(p)}</b> left the squad` : `<b>${name(p)}</b> joins the squad${o ? ` (for ${name(o)})` : ''}`);
+      }
       save();
       return refresh();
     }
@@ -192,7 +278,9 @@ function act(a, d, el) {
       return chestTap(d.k);
     case 'opennow':
       ui.confirm = { kind: 'opennow', id: d.k };
-      return modals.render();
+      modals.render();
+      modals.guard(450); // the confirm button lands where this one was
+      return;
     case 'opennow2': {
       const r = meta.openNow(d.k);
       ui.confirm = null;
@@ -247,7 +335,7 @@ function levelUp(id, el) {
   fx.float(faceEl, `Lv ${r.to}!`, 'lvl');
   save();
   refresh();
-  if (meta.once('cap.raids')) setTimeout(() => caption(`<b>Raids</b> bring Coins and Skulls. <b>Coins</b> pay for everything.`), 600);
+  ui.capRaids = true; // shown once this card closes
   void p;
 }
 
@@ -274,7 +362,13 @@ function upgrade(id, el) {
 
 function openCard(id) {
   ui.confirm = null;
-  modals.open(() => survivorCard(meta, id, ui), { cls: 'm-card' });
+  modals.open(() => survivorCard(meta, id, ui), {
+    cls: 'm-card',
+    onClose: (replaced) => {
+      if (!replaced && ui.capRaids && meta.once('cap.raids')) setTimeout(() => caption(`<b>Raids</b> bring coins and Skulls. <b>Coins</b> pay for everything.`, hud.target('play')), 350);
+      ui.capRaids = false;
+    },
+  });
 }
 
 function openBuilding(id) {
@@ -285,7 +379,8 @@ function openBuilding(id) {
 
 function openChestSheet(kind) {
   ui.confirm = null;
-  modals.open(() => chestSheet(meta, kind, ui), { cls: 'm-chest' });
+  ui.chestSheet = { kind, ready: meta.chestState(kind).ready };
+  modals.open(() => chestSheet(meta, kind, ui), { cls: 'm-chest', onClose: () => (ui.chestSheet = null) });
 }
 
 function openLadder() {
@@ -304,19 +399,23 @@ async function chestTap(kind) {
     return toasts.show(esc(res.reason), 'warn');
   }
   save();
-  busy = true;
+  arm();
+  setBusy(true);
   hud.hideHand();
   modals.close();
   let out = { next: null };
   try {
     out = await opening.play(res);
+  } catch (e) {
+    recover(e);
   } finally {
-    busy = false;
+    setBusy(false);
     save();
     refresh();
   }
-  if (meta.once('cap.chests')) caption(`<b>Chests</b> bring people and Badges.`, hud.target(kind));
   if (out.next === 'level') openCard(out.id);
+  else if (out.next === 'best') useBest(hud.target('best'));
+  else if (meta.once('cap.chests')) caption(`<b>Chests</b> bring people and Badges.`, hud.target(kind));
 }
 
 /** Show newcomers outside a chest (a stray, a gate gift). */
@@ -361,7 +460,8 @@ async function startRaid() {
     return toasts.show(esc(r.reason), 'warn');
   }
   save();
-  busy = true;
+  arm();
+  setBusy(true);
   hud.hideHand();
   let res = 'park';
   try {
@@ -371,8 +471,10 @@ async function startRaid() {
         for (const z of r.zones) await zoneSplash(z);
       },
     });
+  } catch (e) {
+    recover(e);
   } finally {
-    busy = false;
+    setBusy(false);
     save();
     refresh(true);
   }
@@ -381,6 +483,7 @@ async function startRaid() {
 }
 
 function applyFix(f) {
+  if (f.kind === 'best') return useBest(hud.target('best'));
   if (f.kind === 'swap') {
     const sq = meta.s.squad.slice();
     const i = f.out != null ? sq.indexOf(f.out) : -1;
@@ -465,7 +568,9 @@ function showHint() {
   let label = '';
   if (step.kind === 'chest') el = hud.target(step.id);
   else if (step.kind === 'ready') {
-    el = meta.inSquad(step.id) ? hud.target(step.id) : park.walkerEl(step.id);
+    // A squad face in the HUD, else the walker's figure in the park, else the squad button.
+    const w = park.walkerEl(step.id);
+    el = meta.inSquad(step.id) ? hud.target(step.id) : (w && w.querySelector('.wfig')) || hud.target('squad');
     const p = meta.person(step.id);
     if (p && meta.s.stats.levelUps < 3) label = `<b>${name(p)}</b> is READY. Tap to level up.`;
   } else if (step.kind === 'gift') el = park.giftEl();
@@ -483,6 +588,7 @@ function showHint() {
     }
   }
   if (el) hud.pointAt(el, label);
+  // Point at a face from below so the floating BEST pill never covers the finger.
 }
 
 // --- Title card (first visit) --------------------------------------------------------------------------
@@ -524,16 +630,26 @@ function back() {
   return false;
 }
 
-try {
-  history.pushState({ thrill: 1 }, '');
-  addEventListener('popstate', () => {
-    if (back() || busy) history.pushState({ thrill: 1 }, '');
-  });
-} catch {
-  // no history API
+// The phone's back button closes sheets and screens. One history entry is
+// "armed" whenever something is open; on the bare park, back leaves the game.
+let armed = false;
+function arm() {
+  if (armed) return;
+  try {
+    history.pushState({ thrill: 1 }, '');
+    armed = true;
+  } catch {
+    // no history API
+  }
 }
+addEventListener('popstate', () => {
+  armed = false;
+  if (back() || busy) arm();
+});
+arm();
 
 addEventListener('keydown', (e) => {
+  if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
   if (e.key === '`') dev.toggle();
   else if (e.key === 'Escape') back();
   else if (e.key === 'm' || e.key === 'M') {
@@ -577,6 +693,15 @@ function frame(now) {
   if (tickT > 250) {
     tickT = 0;
     modals.tick();
+    // A chest sheet re-renders when its chest becomes ready (no stale "Open now").
+    if (ui.chestSheet && modals.isOpen) {
+      const ready = meta.chestState(ui.chestSheet.kind).ready;
+      if (ready !== ui.chestSheet.ready) {
+        ui.chestSheet.ready = ready;
+        ui.confirm = null;
+        modals.render();
+      }
+    }
   }
   requestAnimationFrame(frame);
 }
@@ -590,7 +715,9 @@ else {
   if (g) setTimeout(() => toasts.show(`${icon('gift')}Someone has a gift for you`, 'gift'), 800);
 }
 save();
-setInterval(save, 10000);
+setInterval(() => {
+  if (!document.hidden) save();
+}, 10000);
 document.documentElement.classList.add('booted');
 requestAnimationFrame(frame);
 

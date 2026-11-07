@@ -57,6 +57,11 @@ export class Modals {
     return !!this.cur;
   }
 
+  /** Ignore taps for `ms` (a confirm button that appears where the tapped one was). */
+  guard(ms) {
+    this.guardUntil = performance.now() + ms;
+  }
+
   /** render: () => html (null closes). Returns a promise that resolves when it closes. */
   open(render, { cls = '', onClose = null, dismissable = true, sound = true } = {}) {
     if (this.cur) this._teardown(true);
@@ -88,6 +93,8 @@ export class Modals {
       moreHint(s);
     });
     tickLive(c.body, this.now());
+    // A double tap must not land on whatever was just drawn under the finger.
+    this.guardUntil = Math.max(this.guardUntil || 0, performance.now() + 220);
   }
 
   tick() {
@@ -125,6 +132,7 @@ export class Modals {
     const el = e.target.closest('[data-act]');
     if (!el || !c.back.contains(el)) return;
     if (el.disabled) return;
+    if (this.guardUntil && performance.now() < this.guardUntil) return;
     if (el.dataset.act === 'close') {
       this.close();
       return;

@@ -18,6 +18,7 @@ import {
   CLASSES,
   CLASS_ORDER,
   THREATS,
+  COUNTER,
   RARITIES,
   RARITY_ORDER,
   ARRIVE_BADGES,
@@ -52,7 +53,7 @@ import {
 } from './config.js';
 import { generatePerson, displayName, FIRST } from './people.js';
 import { basePower, perkValue, isCounter, squadPower, threatFor, crownOdds, oddsLabel, zoneOf, combos } from './raid.js';
-import { rarityOdds, glowChance, gradeAtLeast, chestPeriod, nextReadyAt, openNowCost } from './chests.js';
+import { rarityOdds, glowChance, gradeAtLeast, chestPeriod, nextReadyAt, openNowCost, effectiveNewcomer } from './chests.js';
 import { rngFor, randInt, pick, pickWeighted, clamp } from './util.js';
 
 const fail = (reason, extra = {}) => ({ ok: false, reason, ...extra });
@@ -279,7 +280,13 @@ export class Meta {
   /** Put `id` in slot `slot` (swapping out whoever is there). */
   putInSlot(id, slot) {
     if (!this.isResident(id)) return fail('Not in the park');
-    const sq = this.s.squad.filter((x) => x !== id);
+    const sq = this.s.squad.slice();
+    const at = sq.indexOf(id);
+    if (at >= 0) {
+      // Already in: swap places with whoever is in that slot.
+      if (slot < sq.length) [sq[at], sq[slot]] = [sq[slot], sq[at]];
+      return this.setSquad(sq);
+    }
     if (slot >= sq.length) sq.push(id);
     else sq.splice(slot, 1, id);
     return this.setSquad(sq.slice(0, SQUAD_SIZE));
@@ -287,8 +294,17 @@ export class Meta {
 
   /** The strongest squad against these threats (ids, strongest first). */
   bestSquad(threats = this.s.threats) {
-    const people = this.s.people;
-    const k = Math.min(SQUAD_SIZE, people.length);
+    const all = this.s.people;
+    const k = Math.min(SQUAD_SIZE, all.length);
+    // Only the strongest few can be in the best squad, plus anyone whose Cheer
+    // or family bonus could lift a weaker trio: a small pool, so this stays
+    // fast however big the park grows.
+    const b = this.s.buildings;
+    const mp = new Map(all.map((p) => [p.id, basePower(p, b) * (isCounter(p, threats) ? COUNTER : 1)]));
+    const sorted = all.slice().sort((x, y) => mp.get(y.id) - mp.get(x.id));
+    const top = sorted.slice(0, 9);
+    const extra = sorted.filter((p) => !top.includes(p) && (p.perk === 'cheer' || (p.family != null && top.some((t) => t.family === p.family)))).slice(0, 6);
+    const people = [...top, ...extra];
     let best = null;
     for (const c of combos(people, k)) {
       const sp = squadPower(c, threats, this.s.buildings);
@@ -395,6 +411,7 @@ export class Meta {
     const coins = c.coins(lv) * this.tuning.coins;
     const gemsLo = c.gems.min + (c.gems.perLevel || 0) * lv;
     const gemsHi = c.gems.max + (c.gems.perLevel || 0) * lv;
+    const eff = effectiveNewcomer(kind, lv, this.tuning.glow);
     return {
       kind,
       name: c.name,
@@ -402,16 +419,17 @@ export class Meta {
       period: this.chestPeriod(kind),
       coins: [Math.round(coins * (1 - c.coinSpread)), Math.round(coins * (1 + c.coinSpread))],
       badges: [Math.max(1, c.badges(lv) - c.badgeSpread), c.badges(lv) + c.badgeSpread],
-      newcomer: Math.min(1, c.newcomer(lv)),
+      newcomer: eff.chance,
       second: c.second(lv),
-      odds: rarityOdds(kind, lv),
+      odds: eff.odds,
+      baseOdds: rarityOdds(kind, lv),
       secondOdds: c.second(lv) ? rarityOdds('crate', lv) : null,
       gems: { chance: c.gems.chance, lo: gemsLo, hi: gemsHi },
       finisher: c.finisher ? c.finisher(lv) : 0,
       glow: p,
       grades: { silver: atLeast[1], gold: atLeast[2], rainbow: atLeast[3] },
       pityLeft: Math.max(1, PITY - this.s.pity),
-      next: lv < MAX_BUILDING ? { level: lv + 1, coins: c.coins(lv + 1), badges: c.badges(lv + 1), newcomer: Math.min(1, c.newcomer(lv + 1)), glow: glowChance(lv + 1, this.tuning.glow), odds: rarityOdds(kind, lv + 1) } : null,
+      next: lv < MAX_BUILDING ? { level: lv + 1, coins: c.coins(lv + 1), badges: c.badges(lv + 1), newcomer: effectiveNewcomer(kind, lv + 1, this.tuning.glow).chance, glow: glowChance(lv + 1, this.tuning.glow), odds: rarityOdds(kind, lv + 1) } : null,
     };
   }
 
@@ -552,6 +570,8 @@ export class Meta {
     const bought = s.chests[kind].bought;
     s.chests[kind].readyAt = bought ? this.now() + period : nextReadyAt(period, st.readyAt, this.now());
     s.chests[kind].bought = false;
+    // Testing overrides for "the next chest" are spent by this chest, newcomer or not.
+    for (const k of ['grade', 'rarity', 'golden', 'sibling']) delete this.force[k];
     s.chests[kind].opened++;
     s.stats.chests[kind]++;
     s.stats.grades[grade]++;
@@ -571,7 +591,9 @@ export class Meta {
       return { id: null, n: f.n, coins, finisher: true };
     }
     const gap = (p) => this.need(p) - p.badges;
-    const notReady = pool.filter((p) => gap(p) > 0);
+    // The squad first (the people you play with), closest to READY first.
+    const squadPool = pool.filter((p) => this.inSquad(p.id) && gap(p) > 0);
+    const notReady = squadPool.length ? squadPool : pool.filter((p) => gap(p) > 0);
     const list = (notReady.length ? notReady : pool).slice();
     list.sort((a, b) => gap(a) - gap(b) || Number(this.inSquad(b.id)) - Number(this.inSquad(a.id)) || b.level - a.level);
     const target = list[0];
@@ -634,7 +656,7 @@ export class Meta {
     // The golden zombie shows up in wave 2: clear it to bag it.
     const gzRoll = rng();
     const goldenZombie = n > 0 && (this.force.goldenZombie || gzRoll < GOLDEN_ZOMBIE.chance);
-    delete this.force.goldenZombie;
+    if (n > 0) delete this.force.goldenZombie;
     const bagged = goldenZombie && crowns >= 2;
 
     const lucky = squad.reduce((a, p) => a + (p.perk === 'lucky' ? perkValue(p) : 0), 0);
@@ -677,18 +699,17 @@ export class Meta {
     const strayRoll = rng();
     let stray = null;
     if (won && n > 0 && (this.force.stray || strayRoll < STRAY.chance + scav)) {
-      const rarity = this.force.rarity || this._rollRarity(rng, 'crate', 1);
-      delete this.force.rarity;
-      stray = this._admit(this._makeNewcomer(rng, { rarity }, 'stray'));
+      const rarity = this._rollRarity(rng, 'crate', 1);
+      stray = this._admit(this._makeNewcomer(rng, { rarity, golden: rng() < GOLDEN_CHANCE, sibling: undefined }, 'stray'));
       st.strays++;
+      delete this.force.stray;
     }
-    delete this.force.stray;
 
     const milestones = this._claimMilestones();
     const zones = this._advanceZones(rng);
     if (!zones.length) s.threats = this._nextThreats(rng, n);
 
-    const fix = crowns >= 2 ? null : this._fix(threats);
+    const fix = crowns >= 2 ? null : this._fix();
     return {
       ok: true,
       n,
@@ -725,7 +746,7 @@ export class Meta {
 
   /** The next raid's threats: never the same single threat twice in a row. */
   _nextThreats(rng, n) {
-    if (n === 0 && START.script.secondThreat) return [START.script.secondThreat];
+    if (n === 0 && START.script.secondThreat && this.s.zone === 1) return [START.script.secondThreat];
     const Z = zoneOf(this.s.zone);
     const cur = this.s.threats;
     if (!Z.two) {
@@ -803,16 +824,17 @@ export class Meta {
     return { zone: s.zone, name: Z.name, gems: GATE_GEMS, unlocked, gift, souvenir: Z.souvenir, opens: Z.opens, newThreats: fresh, maxLevel: this.maxBuildingLevel() };
   }
 
-  /** One fix for a lost raid: swap in a counter, level someone up, or upgrade a ride. */
-  _fix(threats) {
+  /**
+   * One fix after a bad raid, for the NEXT raid: the BEST squad for its threats
+   * (if it is clearly stronger), else level someone up, else upgrade a ride.
+   */
+  _fix() {
     const squad = this.squadPeople();
-    for (const t of threats) {
-      if (squad.some((p) => isCounter(p, [t]))) continue;
-      const cand = this.s.people.filter((p) => !this.inSquad(p.id) && isCounter(p, [t])).sort((a, b) => this.power(b) - this.power(a))[0];
-      if (cand) {
-        const out = squad.length < SQUAD_SIZE ? null : squad.filter((p) => !isCounter(p, threats)).sort((a, b) => this.power(a) - this.power(b))[0] || null;
-        if (out || squad.length < SQUAD_SIZE) return { kind: 'swap', in: cand.id, out: out ? out.id : null, threat: t, cls: cand.cls };
-      }
+    const threats = this.s.threats;
+    const best = this.bestGain();
+    if (best.better) {
+      const t = threats.find((x) => best.ids.some((id) => isCounter(this.person(id), [x]))) || threats[0];
+      return { kind: 'best', threat: t, cls: THREATS[t].by, gain: Math.round(best.S - best.cur) };
     }
     const ready = squad.filter((p) => this.canLevel(p)).sort((a, b) => this.levelCost(a) - this.levelCost(b))[0];
     if (ready) return { kind: 'level', id: ready.id };

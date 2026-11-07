@@ -281,10 +281,9 @@ export class RaidView {
       const f = r.fix;
       let tip = '';
       let btn = '';
-      if (f && f.kind === 'swap') {
-        const p = meta.person(f.in);
-        tip = `${CLASSES[f.cls].plural} beat ${THREATS[f.threat].name}.`;
-        if (p) btn = `<button class="btn blue" type="button" data-act="fix">${icon('swap')}Swap in ${name(p)}</button>`;
+      if (f && f.kind === 'best') {
+        tip = `Next up: ${THREATS[f.threat].name}. ${CLASSES[f.cls].plural} beat them.`;
+        btn = `<button class="btn blue" type="button" data-act="fix">${icon('best')}Use the BEST squad +${f.gain}</button>`;
       } else if (f && f.kind === 'level') {
         const p = meta.person(f.id);
         tip = 'Stronger squads clear more waves.';
@@ -294,16 +293,23 @@ export class RaidView {
         btn = `<button class="btn green" type="button" data-act="fix">${icon('up')}Upgrade the ride</button>`;
       } else if (f && f.kind === 'coins') {
         tip = 'Someone is READY: a few more coins and they level up.';
-      } else tip = r.nextRally ? 'Next raid is a Rally: easier, and ×2 coins.' : 'Chests bring Badges for the squad. Level them up.';
-      if (r.nextRally && f) tip += ' Next raid is a Rally.';
+      } else tip = 'Chests bring Badges for the squad. Level them up.';
       fixHtml = `<div class="fix"><span>${esc(tip)}</span>${btn}</div>`;
     }
+    if (r.nextRally) lines.unshift(`<div class="rl rally-l">${icon('star')}<b>Rally next!</b> The next raid is easier and pays ×2 coins.</div>`);
+    // What the Skulls are building toward.
+    const L = meta.ladder();
+    const nx = L.next3[0];
+    const span = Math.max(1, L.barTo - L.barFrom);
+    const prog = nx
+      ? `<div class="rr-prog"><span>${icon('skull')}${L.skulls}</span><i><u style="transform:scaleX(${Math.max(0, Math.min(1, (L.skulls - L.barFrom) / span)).toFixed(3)})"></u></i><span>${nx.at}: ${nx.kind === 'gate' ? `<b>${esc(nx.name)}</b>` : nx.kind === 'coins' ? `${icon('coin')}${nx.coins}` : nx.kind === 'gems' ? `${icon('gem')}${nx.gems}` : `${icon('badge')}${nx.badges} each`}</span></div>`
+      : '';
     const pre = meta.raidPreview();
     panel.innerHTML =
       `<div class="rr-title"><b>${r.clutch ? 'CLUTCH!' : TITLES[r.crowns]}</b></div>` +
       `<div class="rr-crowns">${WAVES.map(() => `<i>${icon('crown')}</i>`).join('')}</div>` +
       `<div class="rr-body"><div class="rr-rew"><div class="rr-coins">${coinAmt(r.coins)}</div><div class="rr-sk">${icon('skull')}<b>${r.skulls >= 0 ? '+' : ''}${r.skulls}</b></div>${r.gems ? `<div class="rr-gems">${gemAmt(r.gems)}</div>` : ''}</div>` +
-      `<div class="rr-lines">${lines.join('')}</div>${fixHtml}</div>` +
+      `<div class="rr-lines">${fixHtml}${lines.join('')}${prog}</div></div>` +
       `<div class="rr-next"><span class="kicker">Next</span>${r.next.map(threatChip).join('')}${pre.rally ? '<span class="rally">RALLY!</span>' : ''}<span class="odds o-${pre.label.id}">${crownPips(pre.odds)}${pre.label.name}</span></div>` +
       `<div class="btns"><button class="btn" type="button" data-act="park">${icon('people')}PARK</button><button class="btn yellow big" type="button" data-act="again">${icon('play')}PLAY AGAIN</button></div>`;
     el.appendChild(panel);

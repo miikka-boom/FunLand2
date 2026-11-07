@@ -33,6 +33,31 @@ export function gradeOdds(p) {
   return GRADES.map((_, k) => (k > n ? 0 : choose(k) * p ** k * (1 - p) ** (n - k)));
 }
 
+/**
+ * The first newcomer's real odds, Glow-Ups included (the posted table): the
+ * chance a chest holds someone, and their rarity mix in percent. A Glow-Up
+ * guarantees a newcomer and raises them to its floor.
+ */
+export function effectiveNewcomer(kind, level, glowExtra = 0) {
+  const c = CHESTS[kind];
+  const g = gradeOdds(glowChance(level, glowExtra));
+  const base = rarityOdds(kind, level);
+  const nc = Math.min(1, c.newcomer(level));
+  const rank = (r) => RARITY_ORDER.indexOf(r);
+  const odds = Object.fromEntries(RARITY_ORDER.map((r) => [r, 0]));
+  let chance = 0;
+  GRADES.forEach((G, k) => {
+    const w = g[k] * (G.floor ? 1 : nc);
+    chance += w;
+    for (const r of RARITY_ORDER) {
+      const to = G.floor && rank(r) < rank(G.floor) ? G.floor : r;
+      odds[to] += (w * base[r]) / 100;
+    }
+  });
+  for (const r of RARITY_ORDER) odds[r] = chance > 0 ? (odds[r] / chance) * 100 : 0;
+  return { chance, odds };
+}
+
 /** Odds of at least each grade: [1, silver+, gold+, rainbow]. */
 export function gradeAtLeast(p) {
   const g = gradeOdds(p);

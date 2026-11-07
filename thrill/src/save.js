@@ -69,6 +69,14 @@ function fillMissing(target, template) {
 
 const clone = (v) => (v === null || typeof v !== 'object' ? v : JSON.parse(JSON.stringify(v)));
 
+export function clearTuning() {
+  try {
+    localStorage.removeItem(TUNING_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export function loadTuning() {
   const t = { ...TUNING_DEFAULTS };
   try {

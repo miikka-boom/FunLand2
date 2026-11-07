@@ -168,8 +168,9 @@ export class ChestOpening {
     const opened = meta.s.stats.chests.crate + meta.s.stats.chests.vault;
     const el = document.createElement('div');
     el.className = `opening k-${kind} g-0`;
+    const fresh = new Set(res.newcomers.map((n) => n.person.id));
     const crowd = meta.s.people
-      .slice()
+      .filter((p) => !fresh.has(p.id))
       .sort(() => Math.random() - 0.5)
       .slice(0, 8);
     el.innerHTML =
@@ -324,7 +325,13 @@ export class ChestOpening {
 
     // 7. Summary.
     this.hud.thaw(['coins', 'gems']);
-    const best = [...meta.squadPeople(), ...meta.s.people].find((p) => meta.canLevel(p));
+    // The best next step: play with a newcomer who makes the strongest squad, else level someone up.
+    const bestNow = meta.bestGain();
+    const lvl = [...meta.squadPeople(), ...meta.s.people].find((p) => meta.canLevel(p));
+    let star = bestNow.better ? res.newcomers.map((n) => n.person).find((p) => bestNow.ids.includes(p.id)) : null;
+    // A level-up comes first, unless the newcomer is a star (Hero, Legend or golden).
+    if (star && lvl && !(star.golden || star.rarity === 'hero' || star.rarity === 'legend')) star = null;
+    const best = star ? null : lvl;
     const sum = document.createElement('div');
     sum.className = 'op-sum';
     const totalBadges = res.stacks.reduce((a, s) => a + s.n, 0) + (finisher && finisher.n ? finisher.n : 0);
@@ -332,15 +339,24 @@ export class ChestOpening {
       `<div class="kicker">${esc(CHESTS[kind].name)}${grade ? ` · <span class="g${grade}">${GRADES[grade].name}</span>` : ''}</div>` +
       `<div class="sum-row">${coinAmt(res.coins)}${res.gems ? gemAmt(res.gems) : ''}<span class="amt">${icon('badge')}<b>${totalBadges}</b></span></div>` +
       (placedNames.length ? `<div class="sum-new">${placedNames.map((x) => `<span class="sn">${face(x.p, { size: 44 })}<b>${name(x.p)}</b><small>moved in</small></span>`).join('')}</div>` : '') +
-      `<div class="btns">${best ? `<button class="btn green big glow" type="button" data-act="next" data-id="${best.id}">${icon('up')}LEVEL UP ${name(best)}</button><button class="btn" type="button" data-act="ok">Later</button>` : `<button class="btn yellow big" type="button" data-act="ok">OK</button>`}</div>`;
+      `<div class="btns">${
+        star
+          ? `<button class="btn blue big glow" type="button" data-act="best">${icon('people')}PLAY WITH ${name(star)}</button><button class="btn" type="button" data-act="ok">Later</button>`
+          : best
+            ? `<button class="btn green big glow" type="button" data-act="next" data-id="${best.id}">${icon('up')}LEVEL UP ${name(best)}</button><button class="btn" type="button" data-act="ok">Later</button>`
+            : `<button class="btn yellow big" type="button" data-act="ok">OK</button>`
+      }</div>`;
     el.appendChild(sum);
     q('.op-skip') && q('.op-skip').remove();
     requestAnimationFrame(() => sum.classList.add('in'));
+    const shownAt = performance.now();
     const choice = await new Promise((resolve) => {
       sum.addEventListener('click', (e) => {
         const b = e.target.closest('[data-act]');
-        if (!b) return;
-        resolve(b.dataset.act === 'next' ? { next: 'level', id: Number(b.dataset.id) } : { next: null });
+        // The tap that hurried the show must not also dismiss the summary.
+        if (!b || performance.now() - shownAt < 450) return;
+        const a = b.dataset.act;
+        resolve(a === 'next' ? { next: 'level', id: Number(b.dataset.id) } : a === 'best' ? { next: 'best' } : { next: null });
       });
     });
     el.classList.remove('in');
@@ -351,7 +367,7 @@ export class ChestOpening {
     return choice;
   }
 
-  /** Coins a farewell or finisher may pay later in the show (maxed people). */
+  /** Coins paid later in the show by Badges for maxed survivors (the stacks and the finisher). */
   _laterCoins(res) {
     let c = 0;
     for (const s of res.stacks) c += s.coins || 0;
@@ -412,6 +428,13 @@ export class ChestOpening {
       this.sound('ready');
       this.haptic(25);
       await drv.pause(380);
+    } else if (st.ready && st.readyLevels > 1) {
+      // Already READY: say what the extra Badges bought.
+      const old = f.querySelector('.stamp');
+      if (old) old.remove();
+      this.fx.stamp(f, `READY ×${st.readyLevels}`, 'ready');
+      this.sound('ready');
+      await drv.pause(320);
     } else await drv.pause(220);
   }
 }

@@ -53,12 +53,14 @@ export class Crew {
 
   async close() {
     const el = this.el;
-    if (!el) return;
+    if (!el || this.closing) return;
+    this.closing = true;
     this.el = null;
     el.classList.remove('in');
     el.classList.add('out');
     await wait(220);
     el.remove();
+    this.closing = false;
     if (!this.root.children.length) this.root.classList.remove('on');
   }
 
@@ -82,7 +84,7 @@ export class Crew {
       slots.push(
         `<button class="slot${this.slot === i ? ' sel' : ''}${mm && mm.counter ? ' ctr' : ''}" type="button" data-slot="${i}">` +
           face(p, { size: 48, extra: mm && mm.counter ? '<i class="ctr">×1.5</i>' : '' }) +
-          `<b>${name(p)}</b>${pw(mm ? mm.power : m.power(p))}</button>`,
+          `<b>${esc(p.first)}</b>${pw(mm ? mm.power : m.power(p))}</button>`,
       );
     }
     const waves = pre.odds.waves;
@@ -97,7 +99,7 @@ export class Crew {
         const ctr = isCounter(p, s.threats);
         return (
           `<div class="rc${inSq ? ' in' : ''}${ctr ? ' ctr' : ''}${m.isReady(p) ? ' ready' : ''}" data-id="${p.id}">` +
-          `<button class="rc-main" type="button" data-pick="${p.id}">${face(p, { size: 52 })}<span class="rc-t"><b>${name(p)}</b><span>${icon(p.cls)}${pw(m.power(p))}</span></span>${ctr ? '<i class="tag">COUNTER</i>' : ''}${inSq ? `<i class="in">${icon('check')}</i>` : ''}</button>` +
+          `<button class="rc-main" type="button" data-pick="${p.id}">${face(p, { size: 52 })}<span class="rc-t"><b>${esc(p.first)}</b><span>${icon(p.cls)}${pw(m.power(p))}</span></span>${ctr ? '<i class="tag">COUNTER</i>' : ''}${inSq ? `<i class="in">${icon('check')}</i>` : ''}</button>` +
           `<button class="rc-info" type="button" data-info="${p.id}" aria-label="Card">${icon('info')}</button>` +
           `${m.isReady(p) ? `<i class="rdy">${icon('up')}READY</i>` : ''}</div>`
         );
@@ -114,7 +116,7 @@ export class Crew {
       `<div class="cr-btns"><button class="btn bestbtn${best.better ? ' pulse' : ''}" type="button" data-act="best"${best.better ? '' : ' disabled'}>${icon('best')}BEST${best.better ? ` +${Math.round(best.S - best.cur)}` : ''}</button>` +
       `<button class="btn yellow big go" type="button" data-act="go"${sq.length ? '' : ' disabled'}>${icon('play')}GO!</button></div>` +
       `</div>` +
-      `<div class="cr-right"><div class="cr-rhead"><span class="kicker">Everyone in the park</span><span class="beds">${icon('people')}${s.people.length}</span></div><div class="roster scroll">${roster}</div></div>`;
+      `<div class="cr-right"><div class="cr-rhead"><span class="kicker">Everyone in the park</span><span class="count">${icon('people')}${s.people.length}</span></div><div class="roster scroll">${roster}</div></div>`;
     const sc = el.querySelector('.roster');
     if (this._scroll) sc.scrollTop = this._scroll;
     sc.addEventListener('scroll', () => (this._scroll = sc.scrollTop), { passive: true });
@@ -122,6 +124,7 @@ export class Crew {
   }
 
   _click(e) {
+    if (this.closing) return; // fading out: the squad is final
     const m = this.meta;
     const t = e.target.closest('[data-slot],[data-pick],[data-info],[data-act]');
     if (!t) return;
@@ -154,7 +157,6 @@ export class Crew {
         this.slot = Math.min(this.slot, m.s.squad.length);
       } else if (r) this.sound('error');
       this.onChange();
-      this.render();
       return;
     }
     const act = t.dataset.act;
@@ -167,7 +169,6 @@ export class Crew {
       this.fx.burst(t, ['#ffd36b', '#62e6ff', '#ffffff'], 18, 80);
       if (after > before) this.fx.float(t, `+${Math.round(after - before)} power`, 'good');
       this.onChange();
-      this.render();
     } else if (act === 'go') {
       this.close().then(() => this.onGo());
     }

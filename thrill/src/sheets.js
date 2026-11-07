@@ -28,7 +28,14 @@ export function survivorCard(meta, id, ui) {
   else if (p.badges < need) lvBtn = `<button class="btn" type="button" disabled>${icon('badge')}Needs ${need - p.badges} more Badges</button>`;
   else lvBtn = `<button class="btn green big${m.canLevel(p) ? ' glow' : ''}" type="button" data-act="level" data-id="${p.id}">${icon('up')}LEVEL UP ${coins(cost, m.s.coins < cost ? 'short' : '')}</button>`;
   const inSquad = m.inSquad(p.id);
-  const sq = inSquad ? `<button class="btn" type="button" data-act="squad" data-id="${p.id}">${icon('check')}In the squad</button>` : `<button class="btn blue" type="button" data-act="squad" data-id="${p.id}">${icon('people')}Put in squad</button>`;
+  let sq;
+  if (inSquad) sq = `<button class="btn" type="button" data-act="squad" data-id="${p.id}">${icon('check')}In the squad · take out</button>`;
+  else if (m.s.squad.length < 3) sq = `<button class="btn blue" type="button" data-act="squad" data-id="${p.id}">${icon('people')}Put in squad</button>`;
+  else {
+    const pre = m.raidPreview();
+    const weak = m.person(pre.members.slice().sort((a, b) => a.power - b.power)[0].id);
+    sq = `<button class="btn blue" type="button" data-act="squad" data-id="${p.id}">${icon('swap')}Swap in for ${name(weak)}</button>`;
+  }
   const origin = { founder: 'Was here from the start', crate: 'Came in a Supply Crate', vault: 'Came in a Ticket Vault', stray: 'Followed the squad home', gate: 'A gift from a new zone' }[p.origin] || '';
   const next = need === null ? '' : ` <span class="next">→ ${Math.round(m.power(p, p.level + 1))} at Lv ${p.level + 1}</span>`;
   return (
@@ -39,7 +46,7 @@ export function survivorCard(meta, id, ui) {
     `<div class="cs-name"><h2>${name(p)}</h2>${p.nick ? `<span class="sub">${full(p)}</span>` : `<span class="sub">${esc(p.last)}</span>`}</div>` +
     `<div class="cs-bio">${p.age} · ${esc(p.job)}${sib ? ` · ${icon('heart')}family of <b>${name(sib)}</b>` : ''}</div>` +
     `<div class="cs-quirk">“${esc(p.quirk)}”</div>` +
-    `<div class="cs-lines">${perkLine(p)}${vibeLine(p)}<span class="ctr">${threatIconSvg(CLASSES[p.cls].counters)}Counters <b>${THREATS[CLASSES[p.cls].counters].name}</b> (×1.5 power)</span></div>` +
+    `<div class="cs-lines">${perkLine(p)}${vibeLine(p)}<span class="cline">${threatIconSvg(CLASSES[p.cls].counters)}Counters <b>${THREATS[CLASSES[p.cls].counters].name}</b> (×1.5 power)</span></div>` +
     `<div class="cs-power">${pw(m.power(p))}<span class="pwl">power</span>${next}</div>` +
     badgeBar(p, m) +
     `<div class="btns">${lvBtn}${sq}</div>` +
@@ -93,35 +100,35 @@ export function chestSheet(meta, kind, ui) {
   let state;
   if (st.ready) state = `<button class="btn yellow big glow" type="button" data-act="openchest" data-k="${kind}">${icon('gift')}OPEN!</button>`;
   else if (ui.confirm && ui.confirm.kind === 'opennow' && ui.confirm.id === kind) {
-    state = `<div class="confirm"><span>Open now for <b>${st.cost}</b> ${icon('gem')}?</span><button class="btn gem" type="button" data-act="opennow2" data-k="${kind}">Open now ${gems(st.cost)}</button><button class="btn" type="button" data-act="cancel">Wait</button></div>`;
+    state = `<div class="confirm"><span>Open now for <b>${st.cost}</b> ${icon('gem')}?</span><button class="btn gem" type="button" data-act="opennow2" data-k="${kind}">Yes, open it</button><button class="btn" type="button" data-act="cancel">Wait</button></div>`;
   } else {
     state = `<div class="timer">${icon('clock')}Ready in <b data-end="${st.readyAt}">${fmtTime(st.msLeft / 1000)}</b></div><button class="btn gem" type="button" data-act="opennow" data-k="${kind}"${m.s.gems < st.cost ? ' disabled' : ''}>Open now ${gems(st.cost)}</button>`;
   }
   let upBtn;
-  if (up.ok) upBtn = `<button class="btn green" type="button" data-act="upgrade" data-id="${kind}">${icon('up')}Upgrade to Lv ${info.level + 1} ${coins(up.cost)}</button>`;
+  if (up.ok) upBtn = `<button class="btn green" type="button" data-act="upgrade" data-id="${kind}">${icon('up')}Lv ${info.level + 1} ${coins(up.cost)}</button>`;
   else if (up.max) upBtn = `<span class="note">Max level</span>`;
-  else upBtn = `<button class="btn" type="button" disabled>${up.capped ? icon('lock') + esc(up.reason) : `Upgrade ${coins(m.upgradeCost(kind), 'short')}`}</button>`;
+  else upBtn = `<button class="btn small" type="button" disabled>${up.capped ? `${icon('lock')}Lv ${info.level + 1} in Zone ${m.s.zone + 1}` : `Lv ${info.level + 1} ${coins(m.upgradeCost(kind), 'short')}`}</button>`;
   const nx = info.next;
   const nextLine = nx ? `<div class="note">Lv ${nx.level}: ${fmtNum(Math.round(nx.coins * 0.85))}–${fmtNum(Math.round(nx.coins * 1.15))} coins, ${nx.badges}±${C.badgeSpread} Badges each${kind === 'crate' ? `, newcomer ${Math.round(nx.newcomer * 100)}%` : ''}, Glow-Up ${Math.round(nx.glow * 100)}% a knock</div>` : '';
   const newcomer = kind === 'crate' ? `${Math.round(info.newcomer * 100)}% chance of a newcomer` : `1 newcomer, Veteran or better${info.second ? ', plus a second' : ''}`;
   return (
     `<div class="chest-sheet k-${kind}">` +
-    `<div class="ch-left"><div class="ch-art">${chestSvg(kind, { grade: 0, open: false, glow: st.ready ? 0.7 : 0 })}</div><div class="kicker">Level ${info.level} · every ${fmtDuration(info.period / 1000)}</div>${state}</div>` +
+    `<div class="ch-left"><div class="ch-art">${chestSvg(kind, { grade: 0, open: false, glow: st.ready ? 0.7 : 0 })}</div><div class="kicker">Level ${info.level} · every ${fmtDuration(info.period / 1000)}</div>${state}${upBtn}</div>` +
     `<div class="ch-right scroll"><h2>${esc(C.name)}</h2>` +
     `<div class="contents">` +
-    `<div class="ci">${coins(info.coins[0])}<span>–${fmtNum(info.coins[1])} coins</span></div>` +
+    `<div class="ci"><span class="amt coin">${icon('coin')}<b>${fmtNum(info.coins[0])}–${fmtNum(info.coins[1])}</b></span><span>coins</span></div>` +
     `<div class="ci">${icon('badge')}<span><b>${info.badges[0]}–${info.badges[1]}</b> Badges for each squad member</span></div>` +
     `<div class="ci">${icon('people')}<span>${newcomer}</span></div>` +
     `<div class="ci">${icon('gem')}<span>${info.gems.chance >= 1 ? `<b>${info.gems.lo}</b> gems` : `${Math.round(info.gems.chance * 100)}% chance of ${info.gems.lo}–${info.gems.hi} gems`}</span></div>` +
     (info.finisher ? `<div class="ci">${icon('badge')}<span><b>Finisher:</b> ${info.finisher}+ Badges for whoever is closest to READY</span></div>` : '') +
     `</div>` +
-    `<div class="kicker">Newcomer odds</div><div class="oddlist">${odds}</div>` +
+    `<div class="kicker">Newcomer odds, Glow-Ups included</div><div class="oddlist">${odds}</div>` +
     (info.secondOdds ? `<div class="note">The second newcomer uses the Crate's odds.</div>` : '') +
     `<div class="kicker">Glow-Up: each of 3 knocks has a ${Math.round(info.glow * 100)}% chance</div>` +
     `<div class="glowodds"><span class="g1">Silver+ <b>${pct(info.grades.silver)}</b></span><span class="g2">Gold+ <b>${pct(info.grades.gold)}</b></span><span class="g3">Rainbow <b>${pct(info.grades.rainbow)}</b></span></div>` +
     `<div class="note">${GRADES.slice(1).map((g) => `${g.name}: ×${g.mult} loot, ${esc(g.line.toLowerCase())}`).join(' · ')}</div>` +
     `<div class="pity">${icon('crown')}A Legend in at most <b>${info.pityLeft}</b> more chest newcomers</div>` +
-    `<div class="btns left">${upBtn}</div>${nextLine}` +
+    `${nextLine}` +
     `</div></div>`
   );
 }
