@@ -11,7 +11,7 @@ import { Park } from './park.js';
 import { Hud } from './hud.js';
 import { Modals, Toasts, esc, wait } from './ui.js';
 import { survivorCard, buildingSheet, chestSheet, ladderSheet } from './sheets.js';
-import { ChestOpening, revealNewcomer, driver } from './opening.js';
+import { ChestOpening, revealNewcomer, driver, fadeStamp } from './opening.js';
 import { RaidView } from './raid-view.js';
 import { Crew } from './crew.js';
 import { Fx } from './fx.js';
@@ -65,12 +65,21 @@ function save() {
   saveState(state);
 }
 
-// Another tab saved: stop writing, and reload when this one is looked at again.
+// Another tab saved: stop writing here. A hidden tab reloads when it is shown
+// again; a visible one asks first (two visible tabs never reload each other).
 addEventListener('storage', (e) => {
-  if (e.key !== SAVE_KEY || resetting) return;
+  if (e.key !== SAVE_KEY || resetting || staleTab) return;
   staleTab = true;
-  if (!document.hidden) location.reload();
+  if (!document.hidden) showStale();
 });
+function showStale() {
+  if (document.getElementById('stale')) return;
+  const el = document.createElement('div');
+  el.id = 'stale';
+  el.innerHTML = `<div class="tc-in"><h2>Playing in another tab</h2><p>Thrill Hill was saved from another tab or window.</p><button class="btn yellow big" type="button">Play here</button></div>`;
+  el.addEventListener('click', () => location.reload());
+  document.body.appendChild(el);
+}
 
 const modals = new Modals($('modals'), { onAct: (a, d, el) => act(a, d, el), now: () => meta.now(), sound });
 const hud = new Hud($('hud'), meta, (a, d, el) => act(a, d, el));
@@ -110,6 +119,7 @@ const dev = new Dev($('dev'), {
     const r = fn();
     save();
     refresh(true);
+    if (r && r.zones && r.zones.length) document.getElementById('toasts').replaceChildren();
     if (r && r.zones && r.zones.length) {
       dev.hide();
       setBusy(true);
@@ -125,6 +135,7 @@ const dev = new Dev($('dev'), {
         }
       })();
     }
+    return r;
   },
   onReset: () => {
     resetting = true;
@@ -313,7 +324,7 @@ function useBest(el) {
   sound('levelUp');
   if (el) {
     fx.burst(el, ['#ffd36b', '#62e6ff', '#ffffff'], 16, 70);
-    if (after > before) fx.float(el, `+${Math.round(after - before)} power`, 'good');
+    if (after > before) fx.float(el, `${icon('crown')}${Math.round(meta.raidPreview().three * 100)}%`, 'good');
   }
   save();
   refresh();
@@ -444,7 +455,7 @@ async function showNewcomers(list, title) {
     stage.innerHTML = '';
     const p = nc.person;
     const card = await revealNewcomer(stage, p, { meta, fx, sound, drv });
-    fx.stamp(card, 'MOVES IN!', 'in');
+    fadeStamp(fx.stamp(card, 'MOVES IN!', 'in'));
     sound('moveIn');
     park.arrive(p.id);
     await drv.pause(500);
@@ -514,6 +525,7 @@ function applyFix(f) {
 }
 
 async function zoneSplash(z) {
+  hud.update();
   const el = document.createElement('div');
   el.className = 'zone-splash';
   const Z = ZONES[z.zone - 1];
@@ -521,7 +533,10 @@ async function zoneSplash(z) {
   for (const id of z.unlocked) items.push(`<div class="zi big"><span class="zart">${buildingSvg(id, 1, {})}</span><b>${esc(BUILDINGS[id].name)} opens</b></div>`);
   for (const t of z.newThreats) items.push(`<div class="zi">${threatChip(t)}<b>New: ${esc(THREATS[t].name)}</b><span>${CLASSES[THREATS[t].by].plural} counter them</span></div>`);
   if (z.souvenir) items.push(`<div class="zi"><span class="zsv">${souvenirSvg(z.souvenir)}</span><b>A souvenir for the park</b></div>`);
-  if (z.gift) items.push(`<div class="zi">${icon('gift')}<b>A ${z.gift.person.golden ? 'golden ' : ''}${RARITIES[z.gift.person.rarity].name} walks in</b></div>`);
+  if (z.gift) {
+    const gp = z.gift.person;
+    items.push(`<div class="zi">${icon('gift')}<b>A ${gp.golden ? 'golden ' : ''}${RARITIES[gp.rarity].name} ${CLASSES[gp.cls].name} walks in</b><span>counters ${THREATS[CLASSES[gp.cls].counters].name}</span></div>`);
+  }
   el.innerHTML =
     `<div class="zs-back">${zoneBackdropSvg(z.zone)}</div><div class="zs-in"><div class="kicker">Zone ${z.zone} reached</div><h1>${esc(Z.name)}</h1>` +
     `<div class="zs-items">${items.join('')}</div><div class="op-hint">Tap to continue</div></div>`;
@@ -563,9 +578,12 @@ function claimGift(el) {
 }
 
 let captionTimer = 0;
+let captionUntil = 0; // the idle hand waits while a one-time caption shows
 function caption(html, near = null) {
   const r = near ? near.getBoundingClientRect() : { left: innerWidth / 2 - 10, top: innerHeight * 0.3, width: 20, height: 20, bottom: innerHeight * 0.3 + 20 };
+  hud.hideHand();
   hud.caption(html, r);
+  captionUntil = performance.now() + 4200;
   clearTimeout(captionTimer);
   captionTimer = setTimeout(() => hud.el.caption.classList.remove('show'), 4200);
 }
@@ -677,6 +695,10 @@ document.addEventListener('visibilitychange', () => {
     save();
     sfx.suspend();
   } else {
+    if (staleTab) {
+      location.reload();
+      return;
+    }
     sfx.resume();
     const g = meta.arrive();
     if (g) {
@@ -697,7 +719,7 @@ function frame(now) {
   const dt = Math.min(100, now - last);
   last = now;
   clock.advance(dt);
-  const canHint = !busy && !modals.isOpen && !crew.isOpen && !dev.open && !$('title-card');
+  const canHint = !busy && !modals.isOpen && !crew.isOpen && !dev.open && !$('title-card') && performance.now() > captionUntil;
   hud.hintDelay = meta.s.stats.raids < 3 ? 1400 : 4000;
   hud.animate(dt, canHint);
   park.tick(dt);

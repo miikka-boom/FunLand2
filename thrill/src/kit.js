@@ -31,8 +31,8 @@ export const name = (p) => esc(displayName(p));
 export const full = (p) => esc(fullName(p));
 
 export function perkLine(p) {
-  if (!p.perk) return '';
-  const P = PERKS[p.perk];
+  const P = p.perk ? PERKS[p.perk] : null;
+  if (!P) return '';
   return `<span class="perk">${icon(p.perk)}<b>${P.name}</b> ${esc(P.text(perkValue(p)))}</span>`;
 }
 

@@ -2829,8 +2829,53 @@ h2 {
 }
 
 .ncard .stamp {
-  top: 70%;
+  top: 32%;
   font-size: 24px;
+}
+
+/* The gift / stray title steps aside once the card's banner shows. */
+.reveal-ov .rv-title {
+  transition: opacity 0.2s;
+}
+
+.reveal-ov:has(.nc-banner.show) .rv-title {
+  opacity: 0;
+}
+
+/* Two threats or a Rally: icon-only chips so the row fits the PLAY box. */
+.threatrow.tight .chip b {
+  display: none;
+}
+
+.threatrow.tight .chip {
+  padding: 1px 2px;
+}
+
+.threatrow.tight .rally {
+  font-size: 9.5px;
+  padding: 1px 5px;
+}
+
+/* HUD chest labels read over the chest art. */
+.chestbtn .clv,
+.chestbtn .cgem {
+  background: rgba(40, 24, 12, 0.75);
+  border-radius: 8px;
+  padding: 0 4px;
+  z-index: 1;
+}
+
+#stale {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  display: grid;
+  place-items: center;
+  background: rgba(30, 18, 10, 0.7);
+}
+
+#stale p {
+  font-weight: 700;
 }
 
 .ncard.r-legend .nc-front {
@@ -2885,6 +2930,10 @@ h2 {
 }
 
 .nc-quirk {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   font-size: 11.5px;
   font-style: italic;
   font-weight: 600;
@@ -3484,7 +3533,8 @@ h2 {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
+  margin-top: 6px;
+  flex: none;
   font-size: 12px;
   font-weight: 800;
 }
@@ -3520,16 +3570,17 @@ h2 {
 }
 
 .nc-best {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
+  padding: 1px 7px 1px 4px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #8cc8ff, var(--blue));
+  color: #fff;
   font-size: 11px;
   font-weight: 900;
-  color: var(--muted);
-}
-
-.nc-best.good {
-  color: var(--blue2);
+  text-shadow: 0 1px 0 var(--ink);
 }
 
 .nc-best .ico {
@@ -4624,6 +4675,19 @@ code {
 /* --- Small phones (667x375 and below) --------------------------------------------------------- */
 
 @media (max-height: 420px) {
+  .nc-quirk {
+    display: none;
+  }
+  .nc-face {
+    width: min(50%, 30vh);
+  }
+  .nc-front {
+    gap: 3px;
+    padding: 7px 10px;
+  }
+  .nc-name b {
+    font-size: 17px;
+  }
   .rr-crowns {
     margin: 4px 0 0;
   }

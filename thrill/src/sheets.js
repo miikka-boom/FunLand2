@@ -113,6 +113,7 @@ export function chestSheet(meta, kind, ui) {
   if (up.ok) upBtn = `<button class="btn green" type="button" data-act="upgrade" data-id="${kind}">${icon('up')}Lv ${info.level + 1} ${coins(up.cost)}</button>`;
   else if (up.max) upBtn = `<span class="note">Max level</span>`;
   else upBtn = `<button class="btn small" type="button" disabled>${up.capped ? `${icon('lock')}Lv ${info.level + 1} in Zone ${m.s.zone + 1}` : `Lv ${info.level + 1} ${coins(m.upgradeCost(kind), 'short')}`}</button>`;
+  if (ui.confirm && ui.confirm.kind === 'opennow' && ui.confirm.id === kind) upBtn = '';
   const nx = info.next;
   const nextLine = nx ? `<div class="note">Lv ${nx.level}: ${fmtNum(Math.round(nx.coins * 0.85))}–${fmtNum(Math.round(nx.coins * 1.15))} coins, ${nx.badges}±${C.badgeSpread} Badges each${kind === 'crate' ? `, newcomer ${Math.round(nx.newcomer * 100)}%` : ''}, Glow-Up ${Math.round(nx.glow * 100)}% a knock</div>` : '';
   const newcomer = kind === 'crate' ? `${Math.round(info.newcomer * 100)}% chance of a newcomer` : `1 newcomer, Veteran or better${info.second ? ', plus a second' : ''}`;

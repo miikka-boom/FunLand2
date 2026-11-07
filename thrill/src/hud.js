@@ -169,6 +169,7 @@ export class Hud {
       this.cache.set('threats', tKey);
       // Pips: how many more raids these threats stay.
       const pips = s.raids > 0 ? `<span class="streak" title="Raids left against these">${Array.from({ length: THREAT_STREAK }, (_, i) => `<i class="${i < left ? 'on' : ''}"></i>`).join('')}</span>` : '';
+      this.el.threats.classList.toggle('tight', threats.length > 1 || pre.rally);
       this.el.threats.innerHTML =
         (pre.rally ? `<span class="rally">RALLY!</span>` : '') +
         threats.map((t) => `<span class="chip t-${t}">${threatIconSvg(t)}<b>${THREATS[t].name}</b></span>`).join('') +
@@ -256,7 +257,9 @@ export class Hud {
     const below = r.top < innerHeight * 0.45;
     h.classList.toggle('up', below);
     h.style.left = `${r.left + r.width / 2}px`;
-    h.style.top = `${below ? r.bottom - 4 : r.top + 4}px`;
+    // PLAY: point into the button so the threat chips above stay readable.
+    const inside = el === this.el.play ? r.height * 0.55 : 4;
+    h.style.top = `${below ? r.bottom - 4 : r.top + inside}px`;
     h.classList.add('show');
     if (label) this.caption(label, r);
   }

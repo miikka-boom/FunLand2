@@ -2,7 +2,7 @@
 // in anything a newer build added, so old saves keep working.
 
 import { newState, newStats } from './meta.js';
-import { TUNING_DEFAULTS } from './config.js';
+import { TUNING_DEFAULTS, PERKS, RARITIES } from './config.js';
 
 export const SAVE_KEY = 'funland2.thrill.save.v1';
 const TUNING_KEY = 'funland2.thrill.tuning.v1';
@@ -46,7 +46,11 @@ export function migrate(saved, now) {
   if (!Array.isArray(s.threats) || !s.threats.length) s.threats = fresh.threats;
   if (!Array.isArray(s.log)) s.log = [];
   s.stats = fillMissing(s.stats || {}, newStats());
-  for (const p of s.people) for (const [k, v] of Object.entries(PERSON_DEFAULTS)) if (p[k] === undefined) p[k] = v;
+  for (const p of s.people) {
+    for (const [k, v] of Object.entries(PERSON_DEFAULTS)) if (p[k] === undefined) p[k] = v;
+    // A perk a newer build removed becomes one that exists (or none for a Rookie).
+    if (p.perk && !PERKS[p.perk]) p.perk = RARITIES[p.rarity] && RARITIES[p.rarity].perk > 0 ? 'gemnose' : null;
+  }
   s.squad = s.squad.filter((id) => s.people.some((p) => p.id === id));
   if (!s.squad.length) s.squad = s.people.slice(0, 3).map((p) => p.id);
   return s;

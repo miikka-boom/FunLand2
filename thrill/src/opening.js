@@ -82,11 +82,10 @@ export function driver(el) {
   };
 }
 
-/** "Joins your best squad" or what they counter, under a newcomer's card. */
-function bestLine(meta, p) {
-  const b = meta.bestSquad();
-  if (b.ids.includes(p.id) && !meta.inSquad(p.id)) return `<div class="nc-best good">${icon('best')}Joins your best squad</div>`;
-  return `<div class="nc-best">Counters ${THREATS[CLASSES[p.cls].counters].name}</div>`;
+/** A "BEST SQUAD" tag when this newcomer would make the BEST squad (the same rule as PLAY WITH). */
+function bestTag(meta, p) {
+  const g = meta.bestGain();
+  return g.better && g.ids.includes(p.id) && !meta.inSquad(p.id) ? `<span class="nc-best">${icon('best')}Best squad!</span>` : '';
 }
 
 /** The face-down card, then the flip with drama that matches the rarity. Returns the card element. */
@@ -98,9 +97,9 @@ export async function revealNewcomer(stage, p, { meta, fx, sound, drv, line = ''
     `<div class="nc-in"><div class="nc-back"><span class="q">?</span><span class="nc-logo">${icon('star')}</span></div>` +
     `<div class="nc-front"><div class="nc-face">${portraitSvg(p, { mood: p.rarity === 'legend' || p.golden ? 'wow' : 'happy' })}</div>` +
     `<div class="nc-name"><b>${name(p)}</b><span>${esc(p.first)} ${esc(p.last)}, ${p.age}</span></div>` +
-    `<div class="nc-tags">${rarityTag(p)}${classTag(p.cls)}<span class="lvtag">Lv ${p.level}</span></div>` +
+    `<div class="nc-tags">${rarityTag(p)}${classTag(p.cls)}<span class="lvtag">Lv ${p.level}</span>${bestTag(meta, p)}</div>` +
     `<div class="nc-lines">${pw(meta.power(p))}${perkLine(p)}</div>` +
-    `<div class="nc-quirk">“${esc(p.quirk)}”</div>${bestLine(meta, p)}</div></div>` +
+    `<div class="nc-quirk">“${esc(p.quirk)}”</div></div></div>` +
     `<div class="nc-banner"></div>`;
   stage.appendChild(card);
   sound('whoosh');
@@ -155,6 +154,12 @@ export async function revealNewcomer(stage, p, { meta, fx, sound, drv, line = ''
   }
   if (line) banner(card, line, 'line');
   return card;
+}
+
+/** Stamps land, then fade so the card underneath can be read. */
+export function fadeStamp(st) {
+  if (st && st.animate) st.animate([{ opacity: 1 }, { opacity: 0.12 }], { duration: 400, delay: 900, fill: 'forwards' });
+  return st;
 }
 
 function banner(card, html, cls) {
@@ -304,7 +309,7 @@ export class ChestOpening {
       stage.innerHTML = '';
       const p = nc.person;
       const card = await revealNewcomer(stage, p, { meta, fx, sound, drv });
-      this.fx.stamp(card, 'MOVES IN!', 'in');
+      fadeStamp(this.fx.stamp(card, 'MOVES IN!', 'in'));
       sound('moveIn');
       placedNames.push({ p });
       this.park.arrive(p.id);
@@ -320,7 +325,7 @@ export class ChestOpening {
       const p = meta.person(finisher.id);
       const b = q('.op-banner');
       b.className = 'op-banner show fin';
-      b.innerHTML = `<b>FINISHER</b><span>→ ${p ? name(p) : ''}</span>`;
+      b.innerHTML = `<b>${kind === 'vault' ? 'FINISHER' : 'TOP-UP'}</b><span>→ ${p ? name(p) : ''}</span>`;
       sound('badge', { big: true });
       await drv.pause(500);
       const f = faceOf(finisher.id);
@@ -339,6 +344,7 @@ export class ChestOpening {
     // A level-up comes first, unless the newcomer is a star (Hero, Legend or golden).
     if (star && lvl && !(star.golden || star.rarity === 'hero' || star.rarity === 'legend')) star = null;
     const best = star ? null : lvl;
+    facesEl.classList.remove('show');
     const sum = document.createElement('div');
     sum.className = 'op-sum';
     const totalBadges = res.stacks.reduce((a, s) => a + s.n, 0) + (finisher && finisher.n ? finisher.n : 0);

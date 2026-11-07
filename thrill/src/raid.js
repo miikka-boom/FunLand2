@@ -17,7 +17,7 @@ export function basePower(p, buildings, level = p.level) {
   return (POWER.base + POWER.growth * (level - 1)) * RARITIES[p.rarity].mult * (1 + rideBonus(buildings, p.cls)) * (p.golden ? POWER.golden : 1);
 }
 
-export const perkValue = (p) => (p.perk ? PERKS[p.perk].v * RARITIES[p.rarity].perk : 0);
+export const perkValue = (p) => (p.perk && PERKS[p.perk] ? PERKS[p.perk].v * RARITIES[p.rarity].perk : 0);
 export const isCounter = (p, threats) => threats.includes(CLASSES[p.cls].counters);
 
 /** Pairs of family members among `people` (anyone sharing a family id). */

@@ -477,13 +477,17 @@ export class Meta {
     const cls = spec.cls || this._newcomerClass(rng);
     const level = clamp(this.arrivalBase() + RARITIES[rarity].arrive, 1, MAX_LEVEL);
     const met = RARITY_ORDER.reduce((a, r) => a + s.stats.newcomers[r], 0); // newcomers so far
+    // First-time surprises arrive on time even when that newcomer is a gate gift or a stray.
+    const dueGolden = !s.stats.goldens && met >= FIRST_GOLDEN - 1 && !spec.scripted;
+    const dueSibling = !s.stats.siblings && met >= FIRST_SIBLING - 1 && !spec.scripted;
     let golden = spec.golden;
-    if (golden === undefined) golden = this.force.golden ?? (rng() < GOLDEN_CHANCE || (!s.stats.goldens && met >= FIRST_GOLDEN - 1));
+    if (golden === undefined) golden = this.force.golden ?? (rng() < GOLDEN_CHANCE || dueGolden);
+    else if (!golden && dueGolden && origin === 'gate') golden = true;
     if (this.force.golden !== undefined && spec.golden === undefined) delete this.force.golden;
     let sibling = null;
     const sibRoll = rng();
-    if (spec.sibling !== false && s.people.length >= SIBLINGS.minResidents) {
-      const want = this.force.sibling ?? (sibRoll < SIBLINGS.chance || (!s.stats.siblings && met >= FIRST_SIBLING - 1));
+    if ((spec.sibling !== false || dueSibling) && s.people.length >= SIBLINGS.minResidents) {
+      const want = this.force.sibling ?? (sibRoll < SIBLINGS.chance || dueSibling);
       if (this.force.sibling !== undefined) delete this.force.sibling;
       if (want) sibling = pick(rng, s.people);
     }
@@ -568,7 +572,7 @@ export class Meta {
         delete this.force.rarity;
       }
       s.pity = rarity === 'legend' ? 0 : s.pity + 1;
-      const person = this._makeNewcomer(rng, { rarity, cls: sp.cls, perk: sp.perk, golden: sp.scripted ? false : undefined, sibling: sp.scripted ? false : undefined }, kind);
+      const person = this._makeNewcomer(rng, { rarity, cls: sp.cls, perk: sp.perk, golden: sp.scripted ? false : undefined, sibling: sp.scripted ? false : undefined, scripted: sp.scripted }, kind);
       newcomers.push(this._admit(person));
     });
 
@@ -709,14 +713,14 @@ export class Meta {
     let stray = null;
     if (won && n > 0 && (this.force.stray || strayRoll < STRAY.chance)) {
       const rarity = this._rollRarity(rng, 'crate', 1);
-      stray = this._admit(this._makeNewcomer(rng, { rarity, golden: rng() < GOLDEN_CHANCE, sibling: undefined }, 'stray'));
+      stray = this._admit(this._makeNewcomer(rng, { rarity }, 'stray'));
       st.strays++;
       delete this.force.stray;
     }
 
     const milestones = this._claimMilestones();
+    s.threatLeft = (s.threatLeft || 1) - 1; // before a gate, which starts a fresh streak
     const zones = this._advanceZones(rng);
-    s.threatLeft = (s.threatLeft || 1) - 1;
     if (!zones.length && s.threatLeft <= 0) {
       s.threats = this._nextThreats(rng, n);
       s.threatLeft = THREAT_STREAK;

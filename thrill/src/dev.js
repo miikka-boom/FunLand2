@@ -123,9 +123,9 @@ export class Dev {
     const f = meta.force;
     const v = b.dataset.v;
     const cheat = (fn, msg) => {
-      this.ctx.onCheat(fn);
-      if (msg) this.ctx.toast(msg);
-      this.render();
+      const r = this.ctx.onCheat(fn);
+      if (msg && !(r && r.zones && r.zones.length)) this.ctx.toast(msg);
+      if (this.open) this.render();
     };
     switch (b.dataset.dev) {
       case 'close':

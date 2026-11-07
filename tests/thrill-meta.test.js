@@ -469,6 +469,28 @@ test('gifts: coming back after an hour away may bring one; claiming pays once', 
   assert.equal(meta.claimGift().ok, false);
 });
 
+test('a gate starts a fresh threat streak', () => {
+  const { meta, state } = make();
+  unscripted(meta);
+  meta.tuning.outcome = 'win';
+  state.skulls = 90;
+  state.best = 90;
+  state.milestones = 1;
+  const r = meta.raid();
+  assert.equal(r.zones.length, 1);
+  assert.equal(state.threatLeft, THREAT_STREAK);
+});
+
+test('old saves: a perk a newer build removed becomes one that exists', () => {
+  const { state } = make();
+  const json = JSON.parse(JSON.stringify(state));
+  json.people[2].perk = 'scavenger';
+  json.people[0].perk = 'scavenger';
+  const back = migrate(json, T0);
+  assert.equal(back.people[2].perk, 'gemnose', 'a Veteran keeps a perk');
+  assert.equal(back.people[0].perk, null, 'a Rookie has none');
+});
+
 test('saves round-trip and old saves get new fields', () => {
   const { meta, state } = make();
   meta.raid();
