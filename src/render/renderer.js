@@ -11,6 +11,7 @@ import { ALLY } from '../game/ally.js';
 import { TAU, rectsOverlap, pointInRect } from '../util.js';
 import { drawFloors, drawChalk, drawLoot, drawLootBright, drawBoards } from './loot-render.js';
 import { drawQwall, drawCanopies, drawFeatureProp, drawFeatureDecor, drawCheckpoints, drawFeaturesBright, drawAmmo } from './features-render.js';
+import { drawLoreDecor, drawPosters, drawRoofArt, drawCarScrawl, drawLoreBright } from './lore-render.js';
 
 const GROUND = {
   street: '#24272b',
@@ -188,6 +189,7 @@ export class Renderer {
     if (sw > 0 && sh > 0) ctx.drawImage(fx.decal, sx, sy, sw, sh, sx / ds, sy / ds, sw / ds, sh / ds);
 
     this.drawProps(ctx, game, vr);
+    drawPosters(ctx, game, vr);
     drawCheckpoints(ctx, game, vr);
     drawLoot(ctx, game, vr);
     this.drawPickups(ctx, game, vr);
@@ -211,6 +213,7 @@ export class Renderer {
     this.drawBright(ctx, game, vr);
     drawLootBright(ctx, game, vr);
     drawFeaturesBright(ctx, game, vr);
+    drawLoreBright(ctx, game, vr);
     this.drawBuffAura(ctx, game);
     this.drawRoofs(ctx, game, vr);
 
@@ -367,7 +370,7 @@ export class Renderer {
           drawChalk(ctx, d);
           break;
         default:
-          drawFeatureDecor(ctx, d);
+          if (!drawLoreDecor(ctx, d)) drawFeatureDecor(ctx, d);
           break;
       }
     }
@@ -444,6 +447,7 @@ export class Renderer {
       switch (o.kind) {
         case 'car':
           this.drawCar(ctx, o, t);
+          drawCarScrawl(ctx, o);
           break;
         case 'crate':
           if (o.pipe) {
@@ -1552,6 +1556,7 @@ export class Renderer {
         ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
       }
     }
+    drawRoofArt(ctx, game, vr);
     drawCanopies(ctx, game, vr);
     // Door jambs so openings read as doorways.
     const doors = game.world.map.doors;

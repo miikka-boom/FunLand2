@@ -13,7 +13,8 @@ import { Director } from './director.js';
 import { Ally, updateAlly, hurtAlly, allySpotNear } from './ally.js';
 import { Effects } from './effects.js';
 import { initLoot, spawnSleepers, updateLoot } from './loot.js';
-import { initWorldEvents, updateWorldEvents, spawnNest, openBreach, takeAmmo } from './world-events.js';
+import { initWorldEvents, updateWorldEvents, spawnNest, openBreach, takeAmmo, updateCaption } from './world-events.js';
+import { addLore } from '../world/lore-gen.js';
 import { dampFactor, pointInRect, rand } from '../util.js';
 
 export class Game {
@@ -46,6 +47,7 @@ export class Game {
     const base = map.obstacles.slice();
     if (S.holdout || S.routes || S.landmarks) addWorldFeatures(map, map.seed, { holdout: S.holdout, routes: S.routes, landmarks: S.landmarks });
     if (S.stashes || S.boardedRooms || S.secret) addScavenging(map, map.seed, { stashes: S.stashes, rooms: S.boardedRooms, secret: S.secret });
+    if (S.lore) addLore(map, map.seed); // graffiti, posters, dens: visual only
     if (map.obstacles.length !== base.length || map.obstacles.some((o, i) => o !== base[i])) world = new World(map);
     this.world = world;
     // Static field toward the goal: route progress (places the Tank) and the
@@ -86,6 +88,7 @@ export class Game {
       holdouts: 0, holdoutAt: 0, holdoutTime: 0, shortcut: 0, explosions: 0,
     };
     this.boards = map.obstacles.filter((o) => o.boards); // boarded rooms + the breach
+    this.caption = { item: null, a: 0 };
     initLoot(this, map);
     initWorldEvents(this, map);
     this.killCredit = null; // 'ally' while the teammate's bullets/shoves land
@@ -265,6 +268,7 @@ export class Game {
 
     updateLoot(this, dt);
     updateWorldEvents(this, dt);
+    updateCaption(this, dt);
 
     // Pickups.
     for (const k of this.pickups) {

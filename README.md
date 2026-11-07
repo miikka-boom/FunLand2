@@ -339,6 +339,30 @@ and no dependencies.
     sandbagged field post and a collapsed ceiling under a shaft of moonlight.
   - **Default**, **Everything** and **Bare map** buttons set all the World
     switches at once.
+- **A world to read** (on by default; **Graffiti, posters & survivor notes**
+  under **World**): Port Halvard, a harbor city taken by "the Drowse", people
+  who stopped sleeping. The walls tell the rest:
+  - **Graffiti** on streets and floors, half of it along the way: running
+    jokes between survivors (Teo & Mags argue on every wall, Big Lou counts
+    his kills generously), dark lines ("SLUMBRA DID THIS"), and tips that
+    happen to be how the game works ("RED LIGHT CARS = DINNER BELLS",
+    "SHOVE FIRST. ASK NEVER."). Spray-painted "PIER 9 →" arrows point the way.
+  - **The safe rooms** have their own wall of messages: the first thing you
+    read when a run starts, and a welcome at the end.
+  - **Posters** on building fronts and corridor walls: the sleep aid that
+    started it all ("Sleep like the dead."), curfew notices, the evacuation
+    promise ("Boats every hour." someone added "(LIE?)"), a missing dog, a
+    cancelled gig, office motivational posters with notes added.
+  - **Rooftop messages** you see from above: SOS, HELP, 4 ALIVE, PIER 9 →.
+  - **Survivor dens**, hidden off the route and lit by candles: bedding, a
+    stove, cans, a radio, the Tinkerer's gear-and-eye mark, scribbled advice,
+    a joke wall, and a journal page (Odile's diary in the streets, office and
+    lab notes in the building).
+  - **Little scenes**: a bus stop piled with suitcases, a lemonade stand, a
+    car that says HONK IF ALIVE (DON'T), a last stand, a fridge note about a
+    stolen yogurt, a reception desk still "now serving: nobody".
+  - Walk up to anything with words on it and its text shows at the bottom of
+    the screen.
 - **An AI Director**: build-up, peak and relax phases, wanderers, small groups,
   and mobs ("HERE THEY COME!") that spawn out of sight and come round corners.
   Shooting a car with a blinking red light sets off the **alarm**, which brings
@@ -477,16 +501,16 @@ src/settings.js            every tunable value + panel schema + presets
 src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
-src/world/                 seeded city + building generators, world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), collision, ray casts, flow field
+src/world/                 seeded city + building generators, world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
 src/game/                  player, AI teammate, weapons, zombies, director, loot, world events (holdout, breach, explosions), effects, game state
-src/render/                renderer, lighting (night + LOS), HUD, loot + world-feature drawing
+src/render/                renderer, lighting (night + LOS), HUD (incl. reading captions), loot, world-feature and graffiti/poster drawing
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
 hope/                      Hope Street metagame prototype (separate page; map in docs/HOPE-STREET.md)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging + world-feature placement, the four metagames, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging, world-feature and world-flavor placement, the four metagames, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

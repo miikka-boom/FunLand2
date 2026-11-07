@@ -55,6 +55,7 @@ export function drawHud(ctx, game, input, ui, renderer) {
   drawHoldoutBar(ctx, game, L);
   if (p.pinnedBy && p.alive) drawPinned(ctx, game, L);
   drawMessages(ctx, game, L);
+  if (!ui.title) drawCaption(ctx, game, L);
   if (game.won || game.lost) drawEnd(ctx, game, L);
   if (S.showDebug) drawDebug(ctx, game, input, ui, L);
 }
@@ -566,6 +567,61 @@ function drawMessages(ctx, game, L) {
     if (big) yBig += 36;
     else ySmall += 20;
   }
+}
+
+/** Word-wrap text to a width (at most maxLines lines; the last one gets an ellipsis if cut). */
+function wrap(ctx, text, width, maxLines) {
+  const words = text.split(' ');
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    const next = cur ? `${cur} ${w}` : w;
+    if (ctx.measureText(next).width <= width || !cur) cur = next;
+    else {
+      lines.push(cur);
+      cur = w;
+    }
+  }
+  if (cur) lines.push(cur);
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    lines[maxLines - 1] += '…';
+  }
+  return lines;
+}
+
+/** What you're standing next to says (graffiti, a poster, a journal page). Bottom centre, between the sticks. */
+function drawCaption(ctx, game, L) {
+  const cap = game.caption;
+  if (!cap || !cap.item || cap.a <= 0.02) return;
+  const r = cap.item;
+  const maxW = Math.min(440, L.w * 0.46);
+  ctx.font = `600 13px ${FONT}`;
+  const lines = wrap(ctx, r.text, maxW - 24, 3);
+  const textW = Math.max(...lines.map((l) => ctx.measureText(l).width));
+  ctx.font = `800 9px ${FONT}`;
+  const labelW = ctx.measureText(r.label).width;
+  const w = Math.max(textW, labelW) + 24;
+  const h = 22 + lines.length * 17;
+  const x = L.w / 2 - w / 2;
+  const y = L.h - L.safe.b - 14 - h;
+  ctx.globalAlpha = cap.a;
+  ctx.fillStyle = 'rgba(8,10,14,0.72)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  rrect(ctx, x, y, w, h, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(255,210,122,0.85)';
+  ctx.font = `800 9px ${FONT}`;
+  ctx.fillText(r.label, L.w / 2, y + 11);
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.font = `600 13px ${FONT}`;
+  lines.forEach((l, i) => ctx.fillText(l, L.w / 2, y + 27 + i * 17));
+  ctx.globalAlpha = 1;
 }
 
 function drawEnd(ctx, game, L) {

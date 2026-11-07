@@ -260,6 +260,56 @@ stays reachable, or the piece isn't placed.
     moonlight.
   - **Ammo cans** give 40 hot rounds (×1.5 damage, +1 pierce).
 
+## World flavor: graffiti, posters, dens
+
+On by default (**Graffiti, posters & survivor notes** under **World**). It's
+visual only: no obstacles, so it never changes a route. Everything is placed
+fresh from the map's seed, and every line lives in `src/world/lore-content.js`
+for editing.
+
+**The setting** (all original): Port Halvard, a harbor city. "The Drowse":
+people who stopped sleeping, then stopped being people. Survivors call them
+**drowsers**; the jumpy ones are **leapers**, the huge ones **brutes**.
+Everybody blames **Slumbra**, Lullan Labs' sleep aid ("Sleep like the dead.").
+Halvard Civil Response (HCR) put up curfew notices and promised boats at
+**Pier 9**, every hour. The safe rooms are on the way to the pier, and the
+survivors who got there first left their marks:
+
+- **Odile** keeps a diary (her journal pages are in the street dens) and
+  found a dog called **Biscuit** (whose MISSING posters are all over town).
+- **Teo & Mags** argue on every wall ("WHO TOOK THE LAST CAN OF PEACHES" /
+  "NOT ME — TEO" / "IT WAS TEO").
+- **Big Lou** counts his kills generously ("LOU: 47 DROWSERS: 0").
+- **The Tinkerer** builds hidden dens, signs with a gear with an eye in it,
+  and leaves cryptic advice that happens to be exactly how the game works.
+- In the building it's office and hospital life gone wrong: "HR IS ONE OF
+  THEM", "REPLY ALL: RUN", Gary (employee of the month, slowest runner), the
+  Slumbra trial's group B.
+
+What a map gets:
+
+- **Graffiti** (about 20 lines on the streets, 15 in the building): half
+  along the way, half where you wander. Mostly jokes, some dark, some tips
+  ("RED LIGHT CARS = DINNER BELLS", "LEAPERS JUMP. KNOCK 'EM OUT OF THE AIR.",
+  "CHALK ARROWS LEAD TO GOOD STUFF", "SHINY IN THE DARK? LOOK CLOSER."). Two
+  "PIER 9 →" (indoors "EXIT →") arrows point along the walk to the safe room.
+  Plus loose doodles: smileys, a tic-tac-toe game, a cat, the Tinkerer's mark.
+- **Safe-room walls:** five or so lines in each safe room. The start room's
+  "PIER 9 →" points out of the door.
+- **Posters** (12–18 on the streets, 8–11 indoors) in small groups on
+  building fronts and corridor walls near the way.
+- **Rooftop messages** (streets): four roofs near the way, one with a
+  "PIER 9" arrow pointing at the goal.
+- **Dens** (1–2 on the streets, 1 indoors) in a dead end or back room off the
+  route, lit by candles you can spot from a distance: bedding, a stove, cans,
+  a radio, the gear-and-eye mark, scribbled advice, two jokes on the "joke
+  wall", and a journal page or note.
+- **Scenes** (2–3): bus stop, lemonade stand, last stand, HONK IF ALIVE car,
+  wedding car (streets); fridge note, whiteboards, reception desk (building).
+- **Reading:** walk within ~95 u of anything with words on it (with a clear
+  line of sight) and its text shows in a box at the bottom of the screen,
+  between the sticks.
+
 ## Camera
 
 - The visible world is **470 units across the short screen axis** on every
@@ -329,6 +379,9 @@ stays reachable, or the piece isn't placed.
 - **Massive hordes** (Horde size ×10–×25): does a shove still clear space in
   a packed crowd? Does aim assist still pick the zombie you meant, or does it
   jump around? Keep the debug read-out on and note the fps on your phone.
+- **World flavor:** do people stop to read? Which lines get a laugh, and which
+  tips actually teach something (alarm cars, deadstops)? Does anyone go
+  looking for the candle-lit dens? Is the reading box at the bottom in the way?
 - **Holdout gate** (World → Holdout): is it clear where to stand? Is 30 s with
   the default waves tense or a slog? Try 20 s and 45 s.
 - **Two routes:** do you understand the choice when you first see the breach?

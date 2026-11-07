@@ -37,8 +37,9 @@ test('world: finds on, the big features off by default (players are not overwhel
   assert.equal(DEFAULTS.holdout, false);
   assert.equal(DEFAULTS.routes, false);
   assert.equal(DEFAULTS.landmarks, false);
+  assert.equal(DEFAULTS.lore, true, 'graffiti & posters are visual only: on by default');
   const items = SCHEMA.flatMap((g) => g.items).map((i) => i.key);
-  for (const k of ['stashes', 'boardedRooms', 'secret', 'holdout', 'holdoutTime', 'routes', 'landmarks']) assert.ok(items.includes(k), `${k} in the panel`);
+  for (const k of ['stashes', 'boardedRooms', 'secret', 'holdout', 'holdoutTime', 'routes', 'landmarks', 'lore']) assert.ok(items.includes(k), `${k} in the panel`);
 });
 
 test('world signature: map switches restart the run, the gate timer does not', () => {
@@ -47,5 +48,6 @@ test('world signature: map switches restart the run, the gate timer does not', (
   assert.equal(worldSignature(DEFAULTS), worldSignature({ ...DEFAULTS, holdoutTime: 45, volume: 0.2 }));
   const every = WORLD_PRESETS.find((p) => p.name === 'Everything').values;
   assert.ok(Object.values(every).every(Boolean));
-  assert.deepEqual(WORLD_PRESETS.find((p) => p.name === 'Default').values, { stashes: true, boardedRooms: true, secret: true, holdout: false, routes: false, landmarks: false });
+  assert.deepEqual(WORLD_PRESETS.find((p) => p.name === 'Default').values, { stashes: true, boardedRooms: true, secret: true, holdout: false, routes: false, landmarks: false, lore: true });
+  assert.ok(Object.values(WORLD_PRESETS.find((p) => p.name === 'Bare map').values).every((v) => v === false));
 });

@@ -263,6 +263,38 @@ export function explode(game, x, y, R) {
   }
 }
 
+// --- Reading: graffiti, posters, notes -------------------------------------------------------
+
+const READ_R = 95;
+
+/** The nearest thing to read (in sight, within reach) fades in as a caption. */
+export function updateCaption(game, dt) {
+  const map = game.world.map;
+  const p = game.player;
+  const cap = game.caption || (game.caption = { item: null, a: 0 });
+  let best = null;
+  let bd = READ_R * READ_R;
+  if (map.readables && p.alive && !game.won && !game.lost) {
+    for (const r of map.readables) {
+      const dx = r.rx - p.x;
+      const dy = r.ry - p.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= bd || !game.world.segmentClear(p.x, p.y, r.rx, r.ry)) continue;
+      bd = d2;
+      best = r;
+    }
+  }
+  if (best && best !== cap.item) {
+    // Let the old one fade before switching.
+    if (cap.a > 0.05) cap.a = Math.max(0, cap.a - dt * 7);
+    else {
+      cap.item = best;
+      cap.a = 0;
+    }
+  } else if (best) cap.a = Math.min(1, cap.a + dt * 5);
+  else cap.a = Math.max(0, cap.a - dt * 3);
+}
+
 // --- Ammo cans -------------------------------------------------------------------------------
 
 export function takeAmmo(game, k) {
