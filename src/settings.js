@@ -16,6 +16,7 @@ export const DEFAULTS = Object.freeze({
   routes: false, // two ways through: the long way round, or a loud shortcut
   landmarks: false, // crashed helicopter, army checkpoint, a gas station that blows up
   lore: true, // graffiti, posters, rooftop messages, survivor dens and notes (visual only)
+  ben: true, // signs of Ben, the one the squad left behind (visual + a few sounds)
 
   // --- Sticks -------------------------------------------------------------
   moveMode: 'dynamic', // 'dynamic' (base follows thumb) | 'floating' | 'fixed'
@@ -131,6 +132,7 @@ export const SCHEMA = [
       { key: 'routes', label: 'Two routes: long way or loud shortcut', type: 'toggle' },
       { key: 'landmarks', label: 'Landmarks: heli crash, checkpoint, gas station', type: 'toggle' },
       { key: 'lore', label: 'Graffiti, posters & survivor notes', type: 'toggle' },
+      { key: 'ben', label: "Ben's traces (the one we left behind)", type: 'toggle' },
     ],
   },
   {
@@ -261,14 +263,14 @@ export const SCHEMA = [
 ];
 
 /** Settings that change how a map is generated (holdoutTime / ferryTime only matter at run time). */
-export const WORLD_KEYS = ['level', 'daily', 'stashes', 'boardedRooms', 'secret', 'holdout', 'routes', 'landmarks', 'lore'];
+export const WORLD_KEYS = ['level', 'daily', 'stashes', 'boardedRooms', 'secret', 'holdout', 'routes', 'landmarks', 'lore', 'ben'];
 export const worldSignature = (S) => WORLD_KEYS.map((k) => String(S[k])).join('|');
 
 /** One-tap world setups, so nobody has to flip six switches to try things. */
 export const WORLD_PRESETS = [
-  { name: 'Default', values: { stashes: true, boardedRooms: true, secret: true, holdout: false, routes: false, landmarks: false, lore: true } },
-  { name: 'Everything', values: { stashes: true, boardedRooms: true, secret: true, holdout: true, routes: true, landmarks: true, lore: true } },
-  { name: 'Bare map', values: { stashes: false, boardedRooms: false, secret: false, holdout: false, routes: false, landmarks: false, lore: false } },
+  { name: 'Default', values: { stashes: true, boardedRooms: true, secret: true, holdout: false, routes: false, landmarks: false, lore: true, ben: true } },
+  { name: 'Everything', values: { stashes: true, boardedRooms: true, secret: true, holdout: true, routes: true, landmarks: true, lore: true, ben: true } },
+  { name: 'Bare map', values: { stashes: false, boardedRooms: false, secret: false, holdout: false, routes: false, landmarks: false, lore: false, ben: false } },
 ];
 
 // One-tap control presets for quick A/B comparisons. Only control keys.

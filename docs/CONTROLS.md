@@ -336,6 +336,40 @@ The **Playtest** group in the panel.
   on this device (fastest win, otherwise furthest run). **New map** turns it
   off.
 
+## Ben's traces
+
+On by default (**Ben's traces (the one we left behind)** under **World**).
+Visual only (decor, captions, one candle glow, one medkit by his bed) plus a
+whistle and a scuff of footsteps; seeded, placed after everything else so it
+keeps clear of finds, features and graffiti. Every word is in
+`src/world/ben-content.js`; placement in `src/world/ben-gen.js`; run time in
+`src/game/ben.js`.
+
+- **His look:** orange crayon (`#ff8a1e`), small lowercase words, and two
+  googly eyes like the logo's. The pupils always point at what the mark is
+  about. Eye marks glow faintly over the darkness (only with a clear line of
+  sight).
+- **His bed:** one per map, off the route (detour 650 u on the streets, 420 in
+  the building, 600 at the docks), enclosed, dark if possible, at least
+  1100 u from the start and away from the secret. Found = within 80 u (saved
+  on the device). Out of sight within 700 u: the whistle, once a run. Within
+  480 u: steam off the can. The two papers show as an overlay at the upper
+  left within 58 u (with a clear line to them).
+- **Eyes:** 1 by the secret (within 80–140 u, looking at it), up to 3 every
+  ~260 u from the walk to his bed, 1 outside each boarded room, 1 by the
+  second vent, 1 inside the end safe room by the door.
+- **The glimpse:** a spot 30–80% along the run, just off the walk, in the
+  dark. Within 560 u, your beam on it for 0.14 s: the eyes blink and vanish
+  with a scuff, leaving a fresh eye mark. Walk within 140 u without lighting
+  it and it's just gone. Needs Night on.
+- **Memory** (`localStorage`, this device): deaths, wins, beds found per
+  level. Every third death: "you died N times. i counted." outside the first
+  room. After a win, the next run on that level: "you got out. why come
+  back?" (once). Second visit to a bed: "you found my bed again."; fourth on:
+  "ok. you can stay. don't touch the rabbit."
+- **The Morse lamp:** the lamp nearest where the walk turns off for his bed
+  blinks B-E-N (unit 0.17 s, about 4.8 s a loop).
+
 ## World flavor: graffiti, posters, dens
 
 On by default (**Graffiti, posters & survivor notes** under **World**). It's
@@ -474,6 +508,10 @@ What a map gets:
 - **Night Terror:** do players notice the breath puff and the heartbeat
   before the first hit? Does turning the flashlight on it feel like a
   weapon? Is it scary, or just annoying?
+- **Ben:** what do players think happened to him? Do they notice that the
+  eyes look at things, and follow them? Does anyone find his bed without
+  being told, or read the map and go for the X? Did anyone notice the lamp?
+  Ask "who is Ben?" after a session and write the answers down.
 - **Rating card:** do people answer it, or skip straight to Play again? Copy
   the reports after a session and compare.
 - **AI teammate:** does it get in your way, or stand in doorways you need?

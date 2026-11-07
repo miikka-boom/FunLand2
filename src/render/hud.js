@@ -5,6 +5,7 @@ import { FONT, rrect, circle } from './draw-utils.js';
 import { TAU, clamp } from '../util.js';
 import { ALLY } from '../game/ally.js';
 import { ARMOR_MAX, ADRENALINE_TIME } from '../game/loot.js';
+import { drawBenPaper } from './ben-render.js';
 
 let vignette = null;
 let vignetteKey = '';
@@ -57,6 +58,7 @@ export function drawHud(ctx, game, input, ui, renderer) {
   if (p.pinnedBy && p.alive) drawPinned(ctx, game, L);
   drawMessages(ctx, game, L);
   if (!ui.title) drawCaption(ctx, game, L);
+  if (!ui.title && !game.won && !game.lost) drawBenPaper(ctx, game, L);
   if (game.won || game.lost) drawEnd(ctx, game, L, ui);
   if (S.showDebug) drawDebug(ctx, game, input, ui, L);
 }
@@ -696,6 +698,12 @@ function drawEnd(ctx, game, L, ui) {
     const held = F.flareT >= 0 ? (game.won ? F.t : F.flareT) : 0;
     const mmss = `${Math.floor(held / 60)}:${Math.floor(held % 60).toString().padStart(2, '0')}`;
     lines.push(F.state === 'idle' ? 'the flare was never fired' : F.state === 'docked' ? `held the pier ${mmss}   ·   the ferry came` : `held the pier ${mmss}   ·   the ferry was ${Math.max(0, Math.ceil(F.dur - F.t))}s out`);
+  }
+  if (st.benNest || st.benGlimpse) {
+    const parts = [];
+    if (st.benNest) parts.push("found a bed that wasn't ours");
+    if (st.benGlimpse) parts.push('something looked back');
+    lines.push(parts.join('   ·   '));
   }
   if (st.terrors || st.terrorsFled || st.terrorHits) {
     lines.push(`night terror: killed ${st.terrors}   ·   drove off ${st.terrorsFled}   ·   it hit you ${st.terrorHits}×`);

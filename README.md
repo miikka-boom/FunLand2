@@ -257,11 +257,18 @@ the castle of a 0.3 bot in about a third of matches, the scripted new player
 takes the Training Dummy's practice castle almost every time, and one level up
 still wins 94-100%. Every card's win rate sits between about 42% and 61%.
 
-# Prototype 0: "HORDE"
+# Prototype 0: "WE LEFT BEN"
 
 A top-down 2D zombie horde survival game for mobile browsers, going for a
 Left 4 Dead feel. **Prototype 0** is about nailing down the **twin-stick touch
-controls** and how fighting a horde feels in single player.
+controls** and how fighting a horde feels in single player. (It was called
+HORDE until it got its name and logo.)
+
+**The premise:** the squad (Odile, Teo, Mags, Lou, Biscuit the dog, and you)
+left the first safe room on day 2. Ben wasn't with them. Since then: signs.
+Small lowercase words in orange crayon, a stuffed rabbit with sewn-on eyes,
+and two little eyes scratched near vents and hidden ways through. Nobody
+explains who Ben is, how he got where he got, or whose side he's on.
 
 Play it on a phone in landscape. It runs as a static site with no build step
 and no dependencies.
@@ -383,6 +390,50 @@ and no dependencies.
     the pier ("NO RUNNING ON THE GANGWAY" … "(RUN.)").
   - Walk up to anything with words on it and its text shows at the bottom of
     the screen.
+- **Ben's traces** (on by default; **Ben's traces (the one we left behind)**
+  under **World**). Visual only, with a few sounds; nothing ever explains him:
+  - **The first room:** under the squad's "DAY 1 HERE. DAY 2 LEAVING." someone
+    wrote, in orange crayon, "day 3. you left." A stuffed rabbit sits in a
+    corner (one ear chewed, new eyes sewn on).
+  - **His bed**, hidden off the route on every level: a cardboard fort with a
+    sleeping bag, a blanket folded into a perfect square, a candle still
+    burning, a can still steaming, a tally of nights slept (nobody sleeps any
+    more), the same rabbit (it got there first), and a medkit by the way in.
+    Get close and someone whistles a few notes nearby, out of sight. Two
+    papers lie at the entrance; stand by one to see it:
+    - **his map of this level**: where "you left", the way out, his bed, his
+      dotted routes, a pair of eyes and an X on the secret stash, and one
+      more place drawn off the edge of the paper (a house, stairs going down,
+      an island) with a question mark.
+    - **a drawing**: "my squad", five holding hands (ODILE, TEO, MAGS, LOU,
+      YOU) and Biscuit, and one more figure in orange, standing apart.
+  - **Two little eyes** (the logo's googly eyes, scratched in): by the
+    secret, along the way to his bed, outside boarded rooms, beside vents,
+    inside the last safe room looking back out. The pupils always look at
+    something. They glow faintly in the dark.
+  - **"ben was here"** where nobody could reach: a rooftop, the top of a
+    warehouse shelf, the top of the quarantine wall, crane 3's boom ("ben was
+    here. day 1."), a container stack, a raft out on the water, inside a room
+    nailed shut from the outside, and on the deck of the ferry when she comes
+    in.
+  - **"don't follow the noise"**, beside crayon arrows that point straight at
+    an alarm car (on Pier 9: down the pier, toward the flare).
+  - **Small footprints** that walk up to a wall and stop at an open vent
+    whose screws are lined up on the floor in a neat little row.
+  - **The squad about Ben** ("BEN?", "SORRY BEN", "BEN KNOWS THE WAY — TEO"…)
+    and, underneath, his replies ("here", "it's ok", "i do"). A page per
+    level: Odile on the night they left, Mags hearing whistling in the ducts,
+    Lou waving at someone on crane 3.
+  - **One lamp** near the way to his bed blinks the same three letters in
+    Morse, over and over.
+  - **The glimpse:** once a run, two little eyes catch your flashlight in the
+    dark, off the walk. Hold the beam on them and they blink and are gone
+    (small footsteps running off); the spot has fresh scratches.
+  - **He notices** (this device only): find his bed again and there's a new
+    line by it; die three times and "you died 3 times. i counted." is waiting
+    outside the first room; win and come back and he asks why. The
+    Tinkerer's gear-and-eye mark has a second eye added, and the Tinkerer
+    isn't happy about it. The office roll call has one more name, in orange.
 - **An AI Director**: build-up, peak and relax phases, wanderers, small groups,
   and mobs ("HERE THEY COME!") that spawn out of sight and come round corners.
   Shooting a car with a blinking red light sets off the **alarm**, which brings
@@ -553,9 +604,9 @@ src/settings.js            every tunable value + panel schema + presets
 src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
-src/world/                 seeded city + building + docks (Pier 9) generators, world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
-src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects, game state
-src/render/                renderer, lighting (night + LOS), HUD (incl. reading captions), loot, world-feature, graffiti/poster and docks (water, containers, cranes, ferry) drawing
+src/world/                 seeded city + building + docks (Pier 9) generators, Ben's traces (ben-content: every line; ben-gen: placement), world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
+src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), Ben at run time (ben.js: his bed, the glimpse, the papers, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects, game state
+src/render/                renderer, lighting (night + LOS), HUD (incl. reading captions), loot, world-feature, graffiti/poster docks (water, containers, cranes, ferry) and Ben (ben-render: crayon, eyes, his bed, the papers) drawing
 src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
@@ -563,7 +614,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, playtest reports + daily seed, the four metagames, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, Ben's traces + memory, playtest reports + daily seed, the four metagames, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

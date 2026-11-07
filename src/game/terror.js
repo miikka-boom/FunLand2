@@ -10,7 +10,7 @@
 //    flinches, smokes and backs off. Keep it lit long enough and it flees.
 //  - Your heartbeat speeds up while it's close and unseen.
 
-import { rand, wrapAngle, clamp, smoothstep } from '../util.js';
+import { rand, wrapAngle, clamp, smoothstep, lampLit } from '../util.js';
 import { newId, damageZombie } from './zombies.js';
 import { finaleLights } from './finale.js';
 
@@ -84,7 +84,7 @@ export function lightAt(game, x, y) {
     const dx = x - l.x;
     const dy = y - l.y;
     if (dx * dx + dy * dy > r * r) continue;
-    if (l.broken && Math.sin(t * 13 + l.x) <= 0.6) continue;
+    if (!lampLit(l, t)) continue;
     add(Math.min(1, (1 - Math.hypot(dx, dy) / r) * 1.7), 0);
   }
   for (const f of map.fires) {

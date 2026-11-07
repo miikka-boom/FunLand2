@@ -17,6 +17,8 @@ import { Effects } from './effects.js';
 import { initLoot, spawnSleepers, updateLoot } from './loot.js';
 import { initWorldEvents, updateWorldEvents, spawnNest, openBreach, takeAmmo, updateCaption } from './world-events.js';
 import { addLore } from '../world/lore-gen.js';
+import { addBen } from '../world/ben-gen.js';
+import { loadBenMemory, initBen, updateBen } from './ben.js';
 import { dampFactor, pointInRect, rand } from '../util.js';
 import { todayKey, dailySeed } from '../playtest.js';
 
@@ -57,6 +59,8 @@ export class Game {
     if (map.theme !== 'docks' && (S.holdout || S.routes || S.landmarks)) addWorldFeatures(map, map.seed, { holdout: S.holdout, routes: S.routes, landmarks: S.landmarks });
     if (S.stashes || S.boardedRooms || S.secret) addScavenging(map, map.seed, { stashes: S.stashes, rooms: S.boardedRooms, secret: S.secret });
     if (S.lore) addLore(map, map.seed); // graffiti, posters, dens: visual only
+    this.benMemory = loadBenMemory();
+    if (S.ben) addBen(map, map.seed, { memory: this.benMemory, level: this.level }); // signs of Ben: visual only
     if (map.obstacles.length !== base.length || map.obstacles.some((o, i) => o !== base[i])) world = new World(map);
     this.world = world;
     // Static field toward the goal: route progress (places the Tank) and the
@@ -96,13 +100,14 @@ export class Game {
       stashes: 0, rooms: 0, secrets: 0, boards: 0,
       holdouts: 0, holdoutAt: 0, holdoutTime: 0, shortcut: 0, explosions: 0,
       terrors: 0, terrorsFled: 0, terrorHits: 0, terrorShoves: 0,
-      flareAt: 0, ferry: 0,
+      flareAt: 0, ferry: 0, benNest: 0, benGlimpse: 0,
     };
     this.terrorSeen = false;
     this.boards = map.obstacles.filter((o) => o.boards); // boarded rooms + the breach
     this.caption = { item: null, a: 0 };
     initLoot(this, map);
     initWorldEvents(this, map);
+    initBen(this, map, this.benMemory);
     this.killCredit = null; // 'ally' while the teammate's bullets/shoves land
     this.world.flow.compute(this.player.x, this.player.y);
     this.ally = null;
@@ -281,6 +286,7 @@ export class Game {
     updateLoot(this, dt);
     updateWorldEvents(this, dt);
     updateCaption(this, dt);
+    updateBen(this, dt);
 
     // Pickups.
     for (const k of this.pickups) {

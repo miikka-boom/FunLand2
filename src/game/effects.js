@@ -126,6 +126,11 @@ export class Effects {
     this._p({ kind: 'smoke', x: x + rand(-8, 8), y: y + rand(-8, 8), vx: rand(-6, 6), vy: rand(-26, -10), life: rand(1.6, 2.6), max: 2.6, size });
   }
 
+  /** Pale steam off something still warm. */
+  steam(x, y) {
+    this._p({ kind: 'steam', x: x + rand(-3, 3), y, vx: rand(-4, 4), vy: rand(-18, -9), life: rand(1, 1.6), max: 1.6, size: rand(3, 5) });
+  }
+
   ember(x, y) {
     this._p({ kind: 'spark', x: x + rand(-10, 10), y: y + rand(-10, 10), vx: rand(-20, 20), vy: rand(-60, -20), life: rand(0.4, 0.9), max: 0.9, size: rand(1, 1.8) });
   }
@@ -269,10 +274,11 @@ export class Effects {
           break;
         }
         case 'smoke':
-        case 'dust': {
+        case 'dust':
+        case 'steam': {
           p.x += p.vx * dt;
           p.y += p.vy * dt;
-          p.size += dt * (p.kind === 'smoke' ? 14 : 18);
+          p.size += dt * (p.kind === 'smoke' ? 14 : p.kind === 'steam' ? 6 : 18);
           break;
         }
         default:

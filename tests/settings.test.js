@@ -48,7 +48,7 @@ test('world signature: map switches restart the run, the gate timer does not', (
   assert.equal(worldSignature(DEFAULTS), worldSignature({ ...DEFAULTS, holdoutTime: 45, volume: 0.2 }));
   const every = WORLD_PRESETS.find((p) => p.name === 'Everything').values;
   assert.ok(Object.values(every).every(Boolean));
-  assert.deepEqual(WORLD_PRESETS.find((p) => p.name === 'Default').values, { stashes: true, boardedRooms: true, secret: true, holdout: false, routes: false, landmarks: false, lore: true });
+  assert.deepEqual(WORLD_PRESETS.find((p) => p.name === 'Default').values, { stashes: true, boardedRooms: true, secret: true, holdout: false, routes: false, landmarks: false, lore: true, ben: true });
   assert.ok(Object.values(WORLD_PRESETS.find((p) => p.name === 'Bare map').values).every((v) => v === false));
 });
 

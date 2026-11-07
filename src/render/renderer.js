@@ -8,11 +8,12 @@ import { drawHud } from './hud.js';
 import { rrect, circle, hash01 } from './draw-utils.js';
 import { SKINS, SHIRTS } from '../game/zombies.js';
 import { ALLY } from '../game/ally.js';
-import { TAU, rectsOverlap, pointInRect } from '../util.js';
+import { TAU, rectsOverlap, pointInRect, lampLit } from '../util.js';
 import { drawFloors, drawChalk, drawLoot, drawLootBright, drawBoards } from './loot-render.js';
 import { drawQwall, drawCanopies, drawFeatureProp, drawFeatureDecor, drawCheckpoints, drawFeaturesBright, drawAmmo } from './features-render.js';
 import { drawLoreDecor, drawPosters, drawRoofArt, drawCarScrawl, drawLoreBright } from './lore-render.js';
 import { drawDocksGround, drawDocksDecor, drawDocksProp, drawContainer, drawWarehouseRidges, drawDocksBright } from './docks-render.js';
+import { drawBenDecor, drawBenBright, drawBenRoof } from './ben-render.js';
 
 const GROUND = {
   street: '#24272b',
@@ -216,8 +217,10 @@ export class Renderer {
     drawFeaturesBright(ctx, game, vr);
     drawDocksBright(ctx, game, vr);
     drawLoreBright(ctx, game, vr);
+    drawBenBright(ctx, game, vr);
     this.drawBuffAura(ctx, game);
     this.drawRoofs(ctx, game, vr);
+    drawBenRoof(ctx, game, vr);
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawHud(ctx, game, input, ui, this);
@@ -373,7 +376,7 @@ export class Renderer {
           drawChalk(ctx, d);
           break;
         default:
-          if (!drawLoreDecor(ctx, d) && !drawDocksDecor(ctx, d, game.time)) drawFeatureDecor(ctx, d);
+          if (!drawLoreDecor(ctx, d) && !drawBenDecor(ctx, d, game.time) && !drawDocksDecor(ctx, d, game.time)) drawFeatureDecor(ctx, d);
           break;
       }
     }
@@ -1265,9 +1268,9 @@ export class Renderer {
       } else if (p.kind === 'gib') {
         ctx.fillStyle = p.color;
         ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2 - p.z * 0.5, p.size, p.size * 0.7);
-      } else if (p.kind === 'smoke' || p.kind === 'dust') {
-        const a = (p.life / p.max) * (p.kind === 'smoke' ? 0.22 : 0.18);
-        ctx.fillStyle = p.kind === 'smoke' ? `rgba(60,60,62,${a})` : `rgba(150,140,120,${a})`;
+      } else if (p.kind === 'smoke' || p.kind === 'dust' || p.kind === 'steam') {
+        const a = (p.life / p.max) * (p.kind === 'smoke' ? 0.22 : p.kind === 'steam' ? 0.2 : 0.18);
+        ctx.fillStyle = p.kind === 'smoke' ? `rgba(60,60,62,${a})` : p.kind === 'steam' ? `rgba(225,232,240,${a})` : `rgba(150,140,120,${a})`;
         ctx.beginPath();
         circle(ctx, p.x, p.y, p.size);
         ctx.fill();
@@ -1390,7 +1393,7 @@ export class Renderer {
     // Lamp heads (street lamps) / fluorescent fixtures (interiors).
     for (const l of game.world.map.lamps) {
       if (!pointInRect(l.x, l.y, vr)) continue;
-      const on = !l.broken || Math.sin(t * 13 + l.x) > 0.6;
+      const on = lampLit(l, t);
       if (l.interior) {
         ctx.fillStyle = on ? 'rgba(220,235,255,0.6)' : 'rgba(70,74,80,0.5)';
         if (l.axis === 'v') ctx.fillRect(l.x - 3, l.y - 11, 6, 22);

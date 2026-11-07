@@ -6,6 +6,7 @@
 import { FONT, circle, hash01, rrect } from './draw-utils.js';
 import { TAU, rectsOverlap } from '../util.js';
 import { FERRY, flarePos } from '../game/finale.js';
+import { drawEyes } from './ben-render.js';
 
 const WATER = '#0a1720';
 const PLANK = '#4b3c2d';
@@ -369,7 +370,7 @@ export function drawDocksBright(ctx, game, vr) {
   const t = game.time;
   const F = game.events && game.events.finale;
   const night = game.settings.night;
-  for (const c of map.cranes) drawCrane(ctx, c, t, vr, night);
+  map.cranes.forEach((c, i) => drawCrane(ctx, c, t, vr, night, i + 1));
   if (!F) return;
   // The red wash of the flare.
   if (F.flareT >= 0 && F.flareT < FERRY.flareLife) {
@@ -397,7 +398,7 @@ export function drawDocksBright(ctx, game, vr) {
     ctx.fill();
     if (Math.random() < 0.5) game.effects.ember(fp.x + (Math.random() - 0.5) * 6, fp.y);
   }
-  drawFerry(ctx, F, t, vr);
+  drawFerry(ctx, F, t, vr, !!map.ben);
   // The flare post: where to stand (before the flare), with the hold ring.
   if (F.state === 'idle') {
     const pulse = 0.5 + Math.sin(t * 4) * 0.25;
@@ -437,7 +438,7 @@ export function drawDocksBright(ctx, game, vr) {
   }
 }
 
-function drawCrane(ctx, c, t, vr, night) {
+function drawCrane(ctx, c, t, vr, night, num) {
   const box = { x: c.x0 - 30, y: c.y - 30, w: c.x1 - c.x0 + c.boom + 60, h: c.y1 - c.y + 60 };
   if (!rectsOverlap(box, vr)) return;
   const dark = night ? 0.78 : 1;
@@ -492,6 +493,12 @@ function drawCrane(ctx, c, t, vr, night) {
   ctx.fillRect(c.x0 - 50, my - 26, 54, 52);
   ctx.fillStyle = '#3f4246';
   ctx.fillRect(c.x0 - 46, my - 22, 46, 44);
+  // Stencilled crane number.
+  ctx.font = `900 22px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(235,230,215,0.55)';
+  ctx.fillText(String(num), c.x0 - 23, my + 1);
   const tx = c.x1 + c.boom * (0.4 + 0.3 * Math.sin(t * 0.07 + c.y));
   ctx.fillStyle = '#26282b';
   ctx.fillRect(tx - 14, my - 16, 28, 32);
@@ -513,7 +520,7 @@ function drawCrane(ctx, c, t, vr, night) {
 }
 
 /** The HALVARD STAR: bow west, superstructure aft, lit windows, a wake while moving. */
-function drawFerry(ctx, F, t, vr) {
+function drawFerry(ctx, F, t, vr, benMark = false) {
   const S = F.ship;
   const x = F.shipX;
   if (x >= F.startX - 40) return;
@@ -623,6 +630,22 @@ function drawFerry(ctx, F, t, vr) {
   ctx.textBaseline = 'middle';
   ctx.fillStyle = 'rgba(240,240,232,0.9)';
   ctx.fillText('HALVARD STAR', x + 110, cy + h / 2 - 3);
+  // Somebody got here first.
+  if (benMark) {
+    ctx.save();
+    ctx.translate(x + 96, cy - 10);
+    ctx.font = `700 11px "Chalkboard SE", "Comic Sans MS", "Segoe Print", cursive`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 2.5;
+    ctx.strokeText('ben was here', 0, 0);
+    ctx.fillStyle = '#ff8a1e';
+    ctx.fillText('ben was here', 0, 0);
+    ctx.restore();
+    drawEyes(ctx, x + 96, cy + 6, Math.PI, 0.6);
+  }
   // Navigation lights: red to port (south, facing west), green to starboard.
   for (const [ly, col] of [[cy + h / 2 - 8, 'rgba(255,60,50,'], [cy - h / 2 + 8, 'rgba(80,255,120,']]) {
     ctx.fillStyle = `${col}0.95)`;

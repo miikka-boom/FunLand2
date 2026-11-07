@@ -6,7 +6,7 @@
 //   3. re-darken everything the survivor can't see: one shadow quad per
 //      sight-blocking rect, cast away from the eye.
 
-import { pointInRect, rectsOverlap } from '../util.js';
+import { pointInRect, rectsOverlap, lampLit } from '../util.js';
 import { finaleLights } from '../game/finale.js';
 
 const finaleTmp = [];
@@ -65,7 +65,7 @@ export class Lighting {
       }
       for (const l of map.lamps) {
         if (!pointInRect(l.x, l.y, vr, 170)) continue;
-        if (l.broken && Math.sin(t * 13 + l.x) <= 0.6) continue;
+        if (!lampLit(l, t)) continue;
         this.radial(ctx, l.x, l.y, l.r || 165, l.k || 0.62);
       }
       for (const s of map.signs || []) {

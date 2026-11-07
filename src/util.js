@@ -96,3 +96,22 @@ export function rectsOverlap(a, b, pad = 0) {
 export function pointInRect(x, y, r, pad = 0) {
   return x >= r.x - pad && x <= r.x + r.w + pad && y >= r.y - pad && y <= r.y + r.h + pad;
 }
+
+// "-... . -." (B E N) in units of MORSE_UNIT seconds: positive = on, negative = off.
+const MORSE_BEN = [3, -1, 1, -1, 1, -1, 1, -3, 1, -3, 3, -1, 1, -7];
+const MORSE_UNIT = 0.17;
+const MORSE_LEN = MORSE_BEN.reduce((s, v) => s + Math.abs(v), 0);
+
+/** Is this lamp lit right now? Broken lamps sputter; one lamp (l.morse) blinks the same three letters over and over. */
+export function lampLit(l, t) {
+  if (l.morse) {
+    let u = (t / MORSE_UNIT) % MORSE_LEN;
+    for (const v of MORSE_BEN) {
+      const n = Math.abs(v);
+      if (u < n) return v > 0;
+      u -= n;
+    }
+    return false;
+  }
+  return !l.broken || Math.sin(t * 13 + l.x) > 0.6;
+}

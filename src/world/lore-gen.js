@@ -27,6 +27,8 @@ export function addLore(map, seed) {
 
   const world = new World({ ...map, obstacles: map.obstacles.filter((o) => !o.opens && !o.boards), sealed: [] }, { strict: true });
   const A = analyse(world, map);
+  // Ben's pass (ben-gen.js) reuses this analysis (hidden from JSON / comparisons).
+  Object.defineProperty(map, '_flavor', { value: { world, A, n: map.obstacles.length }, configurable: true, writable: true, enumerable: false });
   const er = map.endRoom.interior;
   const goal = { x: er.x + er.w / 2, y: er.y + er.h / 2 };
 
