@@ -1194,13 +1194,8 @@ h2 {
   overflow: visible;
 }
 
-.chestbtn.ready:not(.quiet) .cart {
+.chestbtn.ready .cart {
   animation: chesthop 1.1s ease-in-out infinite;
-}
-
-.chestbtn.quiet {
-  animation: none !important;
-  filter: saturate(0.75);
 }
 
 .chestbtn .cgem {

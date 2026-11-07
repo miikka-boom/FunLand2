@@ -189,9 +189,7 @@ export class Hud {
       el.querySelector('.cart').innerHTML = chestSvg(kind, { grade: 0, open: false, glow: st.ready ? 0.6 : 0 });
       el.querySelector('.clv').textContent = `Lv ${st.level}`;
     }
-    // Before the first raid the chests wait quietly: one call to action at a time.
     el.classList.toggle('ready', st.ready);
-    el.classList.toggle('quiet', st.ready && m.s.raids === 0);
     const gem = el.querySelector('.cgem');
     const showGem = !st.ready && m.s.gems >= st.cost;
     if (gem.dataset.v !== String(showGem ? st.cost : '')) {

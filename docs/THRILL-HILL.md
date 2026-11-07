@@ -149,8 +149,10 @@ Newcomers arrive with a half-full Badge bar and lean toward the classes you
 have fewest of.
 
 **Perks** (one each, Veteran and up, squad only; Veteran value shown, ×2 Hero,
-×3 Legend): Lucky (+10% raid coins), Cheer (+4% squad power), Clutch (+10 pts
-clutch-save chance). Only perks you can feel made the cut. **Vibes** are behaviour only: Sunny waves and brings
+×3 Legend): Lucky (+10% raid coins), Cheer (+4% squad power), Gem Nose (5%
+chance of +3 gems on a 2+ crown raid, named in the results), Clutch (+10 pts
+clutch-save chance, named in the clutch banner). Only perks you can see fire
+made the cut. **Vibes** are behaviour only: Sunny waves and brings
 gifts, Sleepy naps on the Big Top steps, Show-offs perform at their ride, Jumpy
 ones jump when a zombie bumps the wall.
 
@@ -233,7 +235,7 @@ zone), a Badge stack for each squad member (4 + 2 × zone) and 10 gems.
 - **Coins** (raids, chests, milestones, gifts) pay for every level-up and
   building: the bottleneck, as gold is in Clash Royale.
 - **Badges** are personal, on each survivor's bar, never in the wallet.
-- **Gems** (the Vault, milestones, gates, golden zombies, gifts) do
+- **Gems** (the Vault, milestones, gates, golden zombies, Gem Nose, gifts) do
   one thing: open a chest now. A shipped game would sell gems only; the
   prototype has no store.
 - **Skulls** are a score and never spent.

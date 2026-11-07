@@ -267,6 +267,10 @@ export class RaidView {
     if (r.rally) lines.push(`<div class="rl">${icon('star')}<b>Rally</b> ×2 coins</div>`);
     if (r.bagged) lines.push(`<div class="rl gold">${icon('star')}<b>Golden zombie bagged!</b> ×2 coins, +${GOLDEN_ZOMBIE.gems} ${icon('gem')}</div>`);
     else if (r.goldenZombie) lines.push(`<div class="rl">${icon('star')}The golden zombie got away</div>`);
+    if (r.gemNose) {
+      const p = meta.person(r.gemNose);
+      lines.push(`<div class="rl">${icon('gemnose')}<b>${p ? name(p) : ''}</b> sniffed out +3 ${icon('gem')}</div>`);
+    }
     if (r.skullsAfter === r.floor && r.skulls > -10 && r.skulls <= 0) lines.push(`<div class="rl">${icon('zone')}You never drop below ${esc(ZONES[r.zone - 1].name)}</div>`);
     for (const m of r.milestones) {
       const what = m.kind === 'coins' ? coinAmt(m.coins) : m.kind === 'gems' ? gemAmt(m.gems) : `<span class="amt">${icon('badge')}<b>+${m.badges}</b></span> each`;

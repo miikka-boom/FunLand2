@@ -62,9 +62,10 @@ export const LEVEL_COINS = [20, 50, 100, 200, 400, 650, 950, 1300, 1800];
 export const PERKS = {
   lucky: { name: 'Lucky', v: 0.1, text: (v) => `+${Math.round(v * 100)}% raid coins` },
   cheer: { name: 'Cheer', v: 0.04, text: (v) => `+${Math.round(v * 100)}% squad power` },
+  gemnose: { name: 'Gem Nose', v: 0.05, text: (v) => `${Math.round(v * 100)}% chance of +3 gems on a 2+ crown raid` },
   clutch: { name: 'Clutch', v: 0.1, text: (v) => `+${Math.round(v * 100)} pts clutch-save chance` },
 };
-export const PERK_ORDER = ['lucky', 'cheer', 'clutch'];
+export const PERK_ORDER = ['lucky', 'cheer', 'gemnose', 'clutch'];
 
 /** Behaviour only: one idle animation and a favourite spot in the park. */
 export const VIBES = {
@@ -241,6 +242,7 @@ export const RALLY = { losses: 2, bad: 2, threat: 0.8, coins: 2 };
 /** Surprises in raids. */
 export const STRAY = { chance: 0.04 }; // a newcomer follows you home after a 3-crown raid (Crate Lv 1 odds)
 export const GOLDEN_ZOMBIE = { chance: 1 / 15, coins: 2, gems: 3 }; // shows up in wave 2; clear it to bag it
+export const GEM_NOSE_GEMS = 3;
 
 /**
  * Milestones every STEP Skulls between gates (not on a gate), claimed once each

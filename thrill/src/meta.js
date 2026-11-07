@@ -50,6 +50,7 @@ import {
   RALLY,
   STRAY,
   GOLDEN_ZOMBIE,
+  GEM_NOSE_GEMS,
   MILESTONES,
   GIFT,
   START,
@@ -433,7 +434,7 @@ export class Meta {
       finisher: c.finisher ? c.finisher(lv) : 0,
       glow: p,
       grades: { silver: atLeast[1], gold: atLeast[2], rainbow: atLeast[3] },
-      pityLeft: Math.max(1, PITY - this.s.pity),
+      pityLeft: Math.max(1, (this.s.stats.newcomers.legend > 0 ? PITY : FIRST_PITY) - this.s.pity),
       next: lv < MAX_BUILDING ? { level: lv + 1, coins: c.coins(lv + 1), badges: c.badges(lv + 1), newcomer: effectiveNewcomer(kind, lv + 1, this.tuning.glow).chance, glow: glowChance(lv + 1, this.tuning.glow), odds: rarityOdds(kind, lv + 1) } : null,
     };
   }
@@ -672,7 +673,14 @@ export class Meta {
     if (rally) coins *= RALLY.coins;
     if (bagged) coins *= GOLDEN_ZOMBIE.coins;
     coins = Math.round(coins * this.tuning.coins);
-    const gems = bagged ? GOLDEN_ZOMBIE.gems : 0;
+    let gems = bagged ? GOLDEN_ZOMBIE.gems : 0;
+    // Gem Nose: a named little find on a good raid.
+    let gemNose = null;
+    for (const p of squad) {
+      const roll = rng();
+      if (crowns >= 2 && !gemNose && p.perk === 'gemnose' && roll < perkValue(p)) gemNose = p.id;
+    }
+    if (gemNose) gems += GEM_NOSE_GEMS;
 
     const before = s.skulls;
     const floor = zoneOf(zone).gate;
@@ -732,6 +740,7 @@ export class Meta {
       bagged,
       coins,
       gems,
+      gemNose,
       skulls: s.skulls - before,
       skullsBefore: before,
       skullsAfter: s.skulls,
