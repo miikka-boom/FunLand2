@@ -12,6 +12,7 @@ import { TAU, rectsOverlap, pointInRect } from '../util.js';
 import { drawFloors, drawChalk, drawLoot, drawLootBright, drawBoards } from './loot-render.js';
 import { drawQwall, drawCanopies, drawFeatureProp, drawFeatureDecor, drawCheckpoints, drawFeaturesBright, drawAmmo } from './features-render.js';
 import { drawLoreDecor, drawPosters, drawRoofArt, drawCarScrawl, drawLoreBright } from './lore-render.js';
+import { drawDocksGround, drawDocksDecor, drawDocksProp, drawContainer, drawWarehouseRidges, drawDocksBright } from './docks-render.js';
 
 const GROUND = {
   street: '#24272b',
@@ -213,6 +214,7 @@ export class Renderer {
     this.drawBright(ctx, game, vr);
     drawLootBright(ctx, game, vr);
     drawFeaturesBright(ctx, game, vr);
+    drawDocksBright(ctx, game, vr);
     drawLoreBright(ctx, game, vr);
     this.drawBuffAura(ctx, game);
     this.drawRoofs(ctx, game, vr);
@@ -229,6 +231,7 @@ export class Renderer {
     ctx.fillStyle = interior ? '#2b2c2f' : GROUND.street;
     ctx.fillRect(Math.max(0, vr.x), Math.max(0, vr.y), Math.min(map.w, vr.x + vr.w) - Math.max(0, vr.x), Math.min(map.h, vr.y + vr.h) - Math.max(0, vr.y));
     if (interior) this.drawInteriorFloors(ctx, map, vr);
+    if (map.theme === 'docks') drawDocksGround(ctx, game, vr);
 
     for (const b of interior ? [] : map.blocks) {
       if (!rectsOverlap(b, vr)) continue;
@@ -261,7 +264,7 @@ export class Renderer {
     // Safe room floors.
     for (const room of [map.startRoom, map.endRoom]) {
       const r = room.interior;
-      if (!rectsOverlap(r, vr)) continue;
+      if (room.gangway || !rectsOverlap(r, vr)) continue; // Pier 9: the "end room" is the gangway's foot
       ctx.fillStyle = '#3b3f3b';
       ctx.fillRect(r.x, r.y, r.w, r.h);
       ctx.fillStyle = '#333733';
@@ -272,7 +275,7 @@ export class Renderer {
       }
     }
     const er = map.endRoom.interior;
-    if (rectsOverlap(er, vr)) {
+    if (!map.endRoom.gangway && rectsOverlap(er, vr)) {
       ctx.fillStyle = 'rgba(90,255,140,0.12)';
       ctx.fillRect(er.x + 20, er.y + er.h / 2 - 22, er.w - 40, 44);
       ctx.fillStyle = 'rgba(120,255,160,0.5)';
@@ -370,7 +373,7 @@ export class Renderer {
           drawChalk(ctx, d);
           break;
         default:
-          if (!drawLoreDecor(ctx, d)) drawFeatureDecor(ctx, d);
+          if (!drawLoreDecor(ctx, d) && !drawDocksDecor(ctx, d, game.time)) drawFeatureDecor(ctx, d);
           break;
       }
     }
@@ -676,7 +679,7 @@ export class Renderer {
           else ctx.fillRect(o.x + o.w / 2 - 0.5, o.y, 1, o.h);
           break;
         default:
-          drawFeatureProp(ctx, o, game);
+          if (!drawDocksProp(ctx, o)) drawFeatureProp(ctx, o, game);
           break;
       }
     }
@@ -970,7 +973,94 @@ export class Renderer {
       if (z.type === 'hunter') {
         if (z.mode !== 'pin') this.drawHunter(ctx, z, t);
       } else if (z.type === 'tank') this.drawTank(ctx, z, t);
+      else if (z.type === 'terror') this.drawTerror(ctx, z, t);
     }
+  }
+
+  /** Night Terror: a pale, long-limbed, eyeless thing, only as visible as it is lit. */
+  drawTerror(ctx, z, t) {
+    let a = Math.min(1, z.lit * 1.15);
+    if (z.mode === 'flee') a *= Math.min(1, z.modeT / 1.5);
+    if (a < 0.02) return;
+    const r = z.r * 1.3; // drawn bigger than its body: long limbs
+    const f = z.face + (z.mode === 'recoil' ? Math.sin(t * 47 + z.id) * 0.3 : 0);
+    const ca = Math.cos(f);
+    const sa = Math.sin(f);
+    const x = z.x + (z.mode === 'recoil' ? Math.sin(t * 61) * 1.5 : 0);
+    const y = z.y;
+    const walk = Math.sin(z.anim * 9) * 0.35;
+    const reach = z.mode === 'windup' ? 0.55 : z.mode === 'lunge' ? 2.1 : z.mode === 'recoil' ? 0.3 : 1.25;
+    ctx.globalAlpha = a;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Legs trailing, arms bent out to the side then reaching forward.
+    ctx.strokeStyle = '#9aa0aa';
+    ctx.lineWidth = r * 0.2;
+    ctx.beginPath();
+    for (const side of [-1, 1]) {
+      const hx = x - ca * r * 0.45 - sa * r * 0.3 * side;
+      const hy = y - sa * r * 0.45 + ca * r * 0.3 * side;
+      const st = walk * side;
+      ctx.moveTo(hx, hy);
+      ctx.lineTo(hx - ca * r * (1.1 + st) - sa * r * 0.35 * side, hy - sa * r * (1.1 + st) + ca * r * 0.35 * side);
+    }
+    ctx.stroke();
+    ctx.strokeStyle = z.skin;
+    ctx.lineWidth = r * 0.22;
+    ctx.beginPath();
+    for (const side of [-1, 1]) {
+      const sx = x + ca * r * 0.25 - sa * r * 0.5 * side;
+      const sy = y + sa * r * 0.25 + ca * r * 0.5 * side;
+      const ex = sx + ca * r * 0.3 - sa * r * 0.75 * side;
+      const ey = sy + sa * r * 0.3 + ca * r * 0.75 * side;
+      const sw = z.mode === 'stalk' ? -walk * side * 0.5 : 0;
+      const hx = ex + ca * r * (reach + sw) + sa * r * 0.25 * side;
+      const hy = ey + sa * r * (reach + sw) - ca * r * 0.25 * side;
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(ex, ey);
+      ctx.lineTo(hx, hy);
+      // Three long fingers.
+      for (const k of [-0.5, 0, 0.5]) {
+        const fa = f + k * 0.5;
+        ctx.moveTo(hx, hy);
+        ctx.lineTo(hx + Math.cos(fa) * r * 0.45, hy + Math.sin(fa) * r * 0.45);
+      }
+    }
+    ctx.stroke();
+    // Narrow torso, ribs showing.
+    ctx.fillStyle = '#a7adb7';
+    ctx.beginPath();
+    ctx.ellipse(x - ca * r * 0.1, y - sa * r * 0.1, r * 0.95, r * 0.48, f, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(40,44,52,0.55)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (const k of [-0.35, 0, 0.35]) {
+      const cx = x + ca * r * k;
+      const cy = y + sa * r * k;
+      ctx.moveTo(cx - sa * r * 0.38, cy + ca * r * 0.38);
+      ctx.lineTo(cx + sa * r * 0.38, cy - ca * r * 0.38);
+    }
+    ctx.stroke();
+    // Long eyeless head; the mouth gapes when it breathes in, lunges or shrieks.
+    const hx = x + ca * r * 0.85;
+    const hy = y + sa * r * 0.85;
+    ctx.fillStyle = z.skin;
+    ctx.beginPath();
+    ctx.ellipse(hx, hy, r * 0.6, r * 0.38, f, 0, TAU);
+    ctx.fill();
+    const open = z.mode === 'windup' || z.mode === 'lunge' || z.mode === 'recoil' ? 1 : 0.35 + Math.sin(t * 3 + z.id) * 0.1;
+    ctx.fillStyle = '#07080b';
+    ctx.beginPath();
+    ctx.ellipse(hx + ca * r * 0.3, hy + sa * r * 0.3, r * (0.14 + 0.16 * open), r * (0.1 + 0.18 * open), f, 0, TAU);
+    ctx.fill();
+    if (z.hitFlash > 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.beginPath();
+      circle(ctx, x, y, r * 1.15);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
 
   drawHunter(ctx, h, t) {
@@ -1201,7 +1291,7 @@ export class Renderer {
       const wall = game.world.raycast(p.x, p.y, ca, sa, def.range, game.world.shotBlockers);
       let tEnd = wall.t;
       for (const z of game.zombies) {
-        if (!z.alive) continue;
+        if (!z.alive || z.ghost) continue;
         const fx2 = z.x - p.x;
         const fy2 = z.y - p.y;
         const along = fx2 * ca + fy2 * sa;
@@ -1450,6 +1540,18 @@ export class Renderer {
             ctx.fill();
           }
         }
+      } else if (z.type === 'terror') {
+        // Its breath shows in the dark: faint while it whispers, a burst right before it lunges.
+        if (!seen) continue; // not through walls
+        for (const b of z.puffs) {
+          const k = b.t / 1.3;
+          const al = b.k * (1 - k);
+          if (al < 0.01) continue;
+          ctx.fillStyle = `rgba(215,226,240,${al})`;
+          ctx.beginPath();
+          circle(ctx, b.x, b.y, 3 + k * 12);
+          ctx.fill();
+        }
       } else if (z.type === 'tank') {
         if (z.mode === 'throw') {
           ctx.setLineDash([12, 10]);
@@ -1491,8 +1593,13 @@ export class Renderer {
     for (const o of game.world.sightBlockers) {
       if (!rectsOverlap(o, vr)) continue;
       if (o.kind === 'border') {
+        if (o.sea) continue; // Pier 9: open water past the east edge
         ctx.fillStyle = '#060709';
         ctx.fillRect(o.x, o.y, o.w, o.h);
+        continue;
+      }
+      if (o.kind === 'container') {
+        drawContainer(ctx, o, night);
         continue;
       }
       if (o.kind === 'wall') {
@@ -1555,6 +1662,7 @@ export class Renderer {
         ctx.lineWidth = 1;
         ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
       }
+      if (o.ware || o.booth) drawWarehouseRidges(ctx, o);
     }
     drawRoofArt(ctx, game, vr);
     drawCanopies(ctx, game, vr);

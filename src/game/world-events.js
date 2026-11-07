@@ -10,6 +10,7 @@
 import { clamp, pointInRect, rand } from '../util.js';
 import { Zombie, alertZombie, damageZombie } from './zombies.js';
 import { damageBoards } from './loot.js';
+import { initFinale, updateFinale } from './finale.js';
 
 export const HOLDOUT = {
   hold: 1.2, // s standing at the control box to start it
@@ -29,6 +30,7 @@ export function initWorldEvents(game, map) {
     burns: [],
     seen: new Set(),
     smokeT: 0,
+    finale: initFinale(game, map),
   };
   for (const e of game.events.explosives) for (const part of e.parts) part.group = e;
 }
@@ -50,6 +52,7 @@ export function updateWorldEvents(game, dt) {
   if (!E) return;
   const p = game.player;
   if (E.holdout) updateHoldout(game, E.holdout, dt);
+  if (E.finale) updateFinale(game, E.finale, dt);
 
   const B = E.breach;
   if (B && !B.seen && !B.open && p.alive) {

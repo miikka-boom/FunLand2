@@ -274,7 +274,7 @@ function pickTarget(game, a, rangeMul = 1) {
     candZ[i] = z;
   };
   for (const z of game.zombies) {
-    if (!z.alive) continue;
+    if (!z.alive || z.ghost) continue;
     const dx = z.x - a.x;
     const dy = z.y - a.y;
     const d2 = dx * dx + dy * dy;
@@ -456,7 +456,7 @@ function nearestZombie(game, a, radius) {
 function threatWithin(game, a, radius) {
   const r2 = radius * radius;
   for (const z of game.zombies) {
-    if (!z.alive || z.state !== 'chase') continue;
+    if (!z.alive || z.ghost || z.state !== 'chase') continue;
     if ((z.x - a.x) ** 2 + (z.y - a.y) ** 2 < r2) return true;
   }
   return false;

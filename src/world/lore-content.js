@@ -83,6 +83,28 @@ export const BUILDING_GRAFFITI = [
 ];
 
 /** Big letters on roofs, for anything flying over. */
+/** Ground graffiti, the docks (Pier 9). The ferry is real; it's just the last one. */
+export const DOCKS_GRAFFITI = [
+  { text: 'LAST FERRY. BE ON IT.', tag: 'hint' },
+  { text: 'FIRE THE FLARE. THEN HOLD.', tag: 'hint' },
+  { text: '→ PIER 9 → FERRY → HOME', tag: 'hint' },
+  { text: 'NO FLARE, NO FERRY', tag: 'hint' },
+  { text: 'FLARE. HOLD. RUN.', tag: 'hint' },
+  { text: 'DROWSERS CAN\'T SWIM. PROBABLY.', tag: 'joke' },
+  { text: 'SEAGULLS DON\'T GET SLEEPY', tag: 'joke' },
+  { text: 'IF YOU CAN READ THIS, STEP BACK', tag: 'joke' },
+  { text: 'TIDE TABLE: LATE · LATER · NEVER', tag: 'joke' },
+  { text: 'CUSTOMS: NOTHING TO DECLARE', tag: 'joke' },
+  { text: 'GARY STILL OWES ME A BOAT', tag: 'joke' },
+  { text: 'NO FISHING (NO FISH EITHER)', tag: 'joke' },
+  { text: 'MAGS ♥ TEO · PIER 8 FOREVER', tag: 'joke', art: 'heart' },
+  { text: 'LOU SAYS HE CAN SWIM IT. LOU.', tag: 'joke' },
+  { text: 'BOX 4417: DON\'T OPEN', tag: 'dark' },
+  { text: 'WATER IS SAFE WATER IS SAFE', tag: 'dark' },
+  { text: 'THEY STOPPED AT THE EDGE', tag: 'dark' },
+  { text: 'NO SLEEP TILL THE FERRY', tag: 'joke' },
+];
+
 export const ROOF_MESSAGES = ['SOS', 'HELP', '4 ALIVE', 'NOT INFECTED', 'WE HAVE DOGS', 'NO ROOM', 'HI MOM', 'SEND COFFEE', 'LOU WAS HERE'];
 
 /** First things you read in the start safe room, and the welcome at the end. */
@@ -93,6 +115,14 @@ export const SAFE_ROOM = {
     { text: 'SHOVE FIRST. ASK NEVER.', size: 11 },
     { text: 'TEO ♥ MAGS', size: 13, art: 'heart' },
     { text: '', art: 'tally' },
+  ],
+  // Pier 9 (no safe room at the end: painted on the planks along the pier).
+  docks: [
+    { text: 'FERRY STOPS HERE', size: 16 },
+    { text: 'NO RUNNING ON THE GANGWAY', size: 12 },
+    { text: '(RUN.)', size: 12 },
+    { text: 'ALL ABOARD WHO\'S GOING ABOARD', size: 12 },
+    { text: 'BISCUIT GOT ON. SO CAN YOU. — O.', size: 12 },
   ],
   end: [
     { text: 'YOU MADE IT', size: 15 },
@@ -149,6 +179,13 @@ export const NOTES = {
     'Whoever keeps writing on the whiteboards: thank you, honestly. — Facilities',
     'Slumbra batch 7 recall notice: do not take. Do not sell. Do not sleep near anyone who took it.',
   ],
+  docks: [
+    'HARBOUR LOG, NIGHT 2: Ferries running every hour. The queue is polite. People keep yawning. Nobody is sleeping.',
+    'HARBOUR LOG, NIGHT 5: Only the HALVARD STAR still comes. Captain Ines says she\'ll keep coming while anyone on Pier 9 has a flare.',
+    'HARBOUR LOG, NIGHT 7: Down to the night crossing. Flare gun is in the post at the end of 9. Fire it and she turns around.',
+    'HARBOUR LOG, NIGHT 9: The crowd saw the flare too. Tell whoever reads this: fire it, then hold. She needs a minute to come alongside.',
+    'Shift note: whoever keeps parking the reach stacker across lane C — the drowsers can\'t climb it either. Keep doing it.',
+  ],
   tinkerer: [
     'TAKE WHAT YOU NEED. LEAVE A JOKE. — T.',
     'THEY HEAR THE GUN, NOT THE BOOT. SHOVE MORE. — T.',
@@ -182,6 +219,11 @@ export const VIGNETTES = {
     { id: 'lemonade', text: 'LEMONADE 50¢ · HUGS FREE' },
     { id: 'laststand', text: 'HELD THEM HERE 2 DAYS. GOT BORED. — LOU' },
     { id: 'wedding', text: 'JUST MARRIED' },
+  ],
+  docks: [
+    { id: 'busstop', text: 'FERRY QUEUE STARTS HERE. BE POLITE.' },
+    { id: 'laststand', text: 'HELD THE PIER 2 NIGHTS. FERRY CAME. — LOU (I\'M ON THE NEXT ONE)' },
+    { id: 'lemonade', text: 'FRESH FISH · CASH ONLY · NO REFUNDS' },
   ],
   building: [
     { id: 'fridge', text: 'WHOEVER ATE MY YOGURT: I KNOW. — DEB' },

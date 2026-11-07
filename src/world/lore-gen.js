@@ -8,7 +8,7 @@ import { World } from './world.js';
 import { mulberry32, shuffle, pointInRect, rectsOverlap } from '../util.js';
 import { analyse, detour } from './scavenge-gen.js';
 import {
-  CITY_GRAFFITI, BUILDING_GRAFFITI, ROOF_MESSAGES, SAFE_ROOM, POSTERS, NOTES, DEN_SCRIBBLES, DEN_JOKES, VIGNETTES, SPRAY, MARKER,
+  CITY_GRAFFITI, BUILDING_GRAFFITI, DOCKS_GRAFFITI, ROOF_MESSAGES, SAFE_ROOM, POSTERS, NOTES, DEN_SCRIBBLES, DEN_JOKES, VIGNETTES, SPRAY, MARKER,
 } from './lore-content.js';
 
 const INF = 0x3fffffff;
@@ -19,6 +19,7 @@ export function addLore(map, seed) {
   const r = (a, b) => a + rnd() * (b - a);
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
   const interior = map.theme === 'interior';
+  const docks = map.theme === 'docks';
   map.readables = [];
   map.posters = [];
   map.roofArt = [];
@@ -61,10 +62,12 @@ export function addLore(map, seed) {
 
   // --- Safe rooms: the first wall you read, and the welcome at the end ---------------------
   safeRoomWall(map, map.startRoom, SAFE_ROOM.start, rnd, interior, true);
-  safeRoomWall(map, map.endRoom, SAFE_ROOM.end, rnd, interior, false);
+  if (map.endRoom.gangway) docksEnd(map, rnd, busy);
+  else safeRoomWall(map, map.endRoom, SAFE_ROOM.end, rnd, interior, false);
 
   // --- Ground graffiti -------------------------------------------------------------------
-  const lines = shuffle((interior ? BUILDING_GRAFFITI : CITY_GRAFFITI).slice(), rnd);
+  // The docks: harbour lines first, then a few from town.
+  const lines = docks ? [...shuffle(DOCKS_GRAFFITI.slice(), rnd), ...shuffle(CITY_GRAFFITI.slice(), rnd)] : shuffle((interior ? BUILDING_GRAFFITI : CITY_GRAFFITI).slice(), rnd);
   const want = interior ? 15 : 19;
   const placed = [];
   const spacing = interior ? 150 : 190;
@@ -226,6 +229,27 @@ function safeRoomWall(map, room, items, rnd, interior, isStart) {
   }
 }
 
+/** Pier 9: painted on the planks toward the end, spread out (no safe room there). */
+function docksEnd(map, rnd, busy) {
+  const F = map.finale;
+  const P = F.pier;
+  const end = P.x + P.w;
+  const spots = [
+    { x: end - 150, y: P.y + P.h - 30 }, // by the flare post
+    { x: F.gangX, y: P.y + 98 }, // just past the gangway's foot
+    { x: F.gangX - 70, y: P.y + P.h - 92 },
+    { x: end - 640, y: P.y + 44 },
+    { x: end - 820, y: P.y + P.h - 44 },
+  ];
+  SAFE_ROOM.docks.forEach((it, k) => {
+    const s = spots[k % spots.length];
+    const color = SPRAY[(k * 3 + 1) % SPRAY.length];
+    map.decor.push({ type: 'graffiti', x: s.x, y: s.y, text: it.text, color, size: it.size || 12, a: (rnd() - 0.5) * 0.1, drip: false, marker: true });
+    map.readables.push({ x: s.x, y: s.y, rx: s.x, ry: s.y, label: 'PAINTED ON THE PIER', text: it.text });
+    busy.push({ x: s.x, y: s.y, r: 110 });
+  });
+}
+
 function roofMessages(map, world, A, rnd, goal) {
   const roofs = map.obstacles.filter((o) => o.kind === 'building' && o.w >= 170 && o.h >= 120 && !o.safe);
   const near = [];
@@ -335,7 +359,7 @@ function dens(map, world, A, rnd, interior, cells, clearOf, busy, read) {
       spots.push({ x: q.x, y: q.y });
     }
   }
-  const noteSets = interior ? [NOTES.building, NOTES.tinkerer] : [NOTES.city, NOTES.tinkerer];
+  const noteSets = interior ? [NOTES.building, NOTES.tinkerer] : map.theme === 'docks' ? [NOTES.docks, NOTES.tinkerer] : [NOTES.city, NOTES.tinkerer];
   spots.forEach((s, k) => {
     const { x, y } = s;
     // The camp: bedding, candles, a stove, cans, a radio, and the Tinkerer's mark.
@@ -386,7 +410,7 @@ function dens(map, world, A, rnd, interior, cells, clearOf, busy, read) {
 }
 
 function vignettes(map, world, A, rnd, interior, cells, clearOf, busy, read) {
-  const list = shuffle((interior ? VIGNETTES.building : VIGNETTES.city).slice(), rnd);
+  const list = shuffle((interior ? VIGNETTES.building : map.theme === 'docks' ? VIGNETTES.docks : VIGNETTES.city).slice(), rnd);
   let made = 0;
   const want = interior ? 3 : 3;
   for (const v of list) {

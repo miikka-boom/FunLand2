@@ -118,10 +118,42 @@ The knob turns orange while firing, and the fire ring brightens.
   phase follows its death. While it's alive you get a boss bar,
   ground-shaking footsteps and its own music.
 
+### Night Terror: the flashlight as a weapon
+
+Off by default (**Night Terror** under **Specials**; it needs **Night** on).
+
+- **You only see it in light.** Its visibility follows the lighting: your
+  flashlight cone, lamps, fire, glows, muzzle flashes, explosions, the
+  teammate's light, and on Pier 9 the flare and the ferry's searchlight.
+  Right next to you, your all-round glow shows only a hint of it. Below 30%
+  light it's a ghost: bullets pass through it, and the laser, aim assist,
+  the threat arrows and the teammate ignore it.
+- **It stalks your dark side:** it circles at about 200 u toward the side
+  your flashlight isn't pointing (the short way round, so it never crosses
+  the beam), sidesteps out of the beam when it comes closer, and darts across
+  lamplight. It moves at 250 u/s, faster than you.
+- **The lunge:** with a clear lane, inside about 220 u, unlit and behind you
+  (more than 55° off your aim; after 7 s of you turning to face it, more than
+  35°), it breathes in for 0.5 s (a rising hiss and a pale puff of breath,
+  drawn over the darkness) and lunges at 640 u/s for 18 damage (× zombie
+  damage). Then it backs off into the dark and tries again 4–6 s later.
+- **Counters:** shove while it's lunging within 74 u of you to throw it off
+  (no damage). Turn your light on it: past 42% "burn" it flinches, shrieks,
+  smokes and backs off; a shove or a big hit also breaks its in-breath.
+  After 2.2 s of light (weighted by how strong it is, in total) it flees and
+  is gone. 180 HP if you'd rather shoot it while it's lit.
+- **Tells for ears:** whispers every 2–4 s, and your heartbeat (louder and
+  faster as it closes) while it's within 340 u and unseen.
+- **Pacing:** one at a time. The first comes 30–48 s after you leave the
+  safe room, the next 40–65 s after the last one died or fled (slower in the
+  relax phase, paused while the Tank is on you). It spawns out of sight, in
+  the dark, never under a lamp.
+
 **Pacing:** the first Hunter comes after 18–28 s of build-up, and always by
 22% of the route. After that, a new one comes every 25–45 s while none is
 alive (the relax phase halves that clock). The tuning panel has **Spawn
-Hunter** and **Spawn Tank** buttons for testing on demand.
+Hunter**, **Spawn Tank** and **Spawn Night Terror** buttons for testing on
+demand.
 
 ## AI teammate
 
@@ -260,6 +292,50 @@ stays reachable, or the piece isn't placed.
     moonlight.
   - **Ammo cans** give 40 hot rounds (×1.5 damage, +1 pierce).
 
+## Pier 9: the ferry finale
+
+The third level (**Pier 9** on the title card, or **Level** in the panel).
+
+- **Map:** warehouse lots (start: the harbour office, bottom left), the yard
+  road, a container yard (a grid of stacks with a lane between every two, two
+  wide cross lanes, reach stackers parked in some), the quay apron (crane
+  rails, three gantry cranes whose legs you can walk between, light towers,
+  bollards along the edge), and four piers out into the water. Water blocks
+  movement but not bullets or sight. Pier 9 is the long one (1420 × 240 u)
+  in the north-east, with a ticket booth, crate cover and lamps.
+- **Finale:** stand at the flare post at the end of Pier 9 for 1 s. The flare
+  goes up (a 1600 u noise, a red light over the pier end for 30 s), the
+  ferry's horn answers, and the clock runs (**Pier 9: ferry arrives after**,
+  60 s, 30–120). Waves of 12–18 (× horde size) come from land every
+  `ferryTime / 5` s (8–14 s), out of sight 500–1300 u away along the walk;
+  the director's own mobs wait. They pause while the Tank is on you. The
+  ship sails into view for the last 24 s.
+- **Boarding:** when she docks, a last wave of 18–26 comes, and the gangway
+  comes down 330 u back from the end of the pier (1.2 s). Its foot (marked
+  BOARD) is the goal once the gangway is mostly down. The safe-room arrow
+  reads PIER 9, then GANGWAY.
+- The holdout gate, two routes and landmarks don't apply on Pier 9; the
+  finds and the graffiti do.
+
+## Playtest kit
+
+The **Playtest** group in the panel.
+
+- **Rate each run** (on): after a win or a death, a card asks fun / difficulty
+  / controls, three answers each, all optional. Re-tapping an answer clears
+  it. While it's up, taps beside it don't restart (its **Play again** does;
+  Enter, Space and a gamepad's A still restart).
+- **Reports:** every finished run is saved on the device (newest 40), rated
+  or not. **Copy report** / **Share** on the card, **Copy all reports** in
+  the panel (falls back to a text box to select if the clipboard is
+  blocked), **Clear reports**. A report is a few readable lines plus one
+  JSON line with everything (including the changed settings, the OS and
+  screen, and the fps average and 5% low over the run).
+- **Daily map:** the seed comes from today's date (local calendar day), so
+  everyone gets the same map on each level. The title chip shows today's best
+  on this device (fastest win, otherwise furthest run). **New map** turns it
+  off.
+
 ## World flavor: graffiti, posters, dens
 
 On by default (**Graffiti, posters & survivor notes** under **World**). It's
@@ -392,6 +468,14 @@ What a map gets:
   detour worth the extra hordes it costs? Does breaking into a boarded room
   feel risky but worth it? Did anyone find the secret without being told? Is
   standing still for 0.7 s to search tense, or just annoying?
+- **Pier 9:** is the flare post easy to find? Is 60 s on the pier tense or a
+  slog? Does the run back to the gangway feel like a dash or a death trap?
+  Did anyone take a side pier for a stash?
+- **Night Terror:** do players notice the breath puff and the heartbeat
+  before the first hit? Does turning the flashlight on it feel like a
+  weapon? Is it scary, or just annoying?
+- **Rating card:** do people answer it, or skip straight to Play again? Copy
+  the reports after a session and compare.
 - **AI teammate:** does it get in your way, or stand in doorways you need?
   Is reviving (stand next to it, don't shoot, 3 s) easy to do in a fight? It
   often shoots Hunters before they pounce, so practise deadstops with it off
