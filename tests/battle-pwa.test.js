@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BATTLE = path.join(ROOT, 'battle');
 const BASE = 'https://miikka-boom.github.io/FunLand2/battle/';
-const SHELL = ['index.html', 'style.css', 'icon.svg', 'manifest.webmanifest', 'icons/apple-touch-icon.png'];
+const SHELL = ['index.html', 'style.css', 'hub.css', 'icon.svg', 'manifest.webmanifest', 'icons/apple-touch-icon.png'];
 
 /** Runs battle/sw.js in a sandbox with a fake worker scope; returns its constants and listeners. */
 function loadSW({ cacheKeys = [], deleted = [], hits = {} } = {}) {
@@ -204,6 +204,7 @@ const mainWired = /from ['"]\.\/pwa\.js['"]/.test(mainJs);
 test('index.html links the manifest and the apple-touch-icon', { todo: !headWired && 'add the PWA <head> snippet to battle/index.html' }, () => {
   const has = (re, what) => assert.ok(re.test(indexHtml), `battle/index.html needs ${what}`);
   has(/<link[^>]+rel=["']manifest["'][^>]+href=["']manifest\.webmanifest["']/, '<link rel="manifest" href="manifest.webmanifest">');
+  has(/<link[^>]+rel=["']stylesheet["'][^>]+href=["']hub\.css["']/, '<link rel="stylesheet" href="hub.css">');
   has(/<link[^>]+rel=["']apple-touch-icon["'][^>]+href=["']icons\/apple-touch-icon\.png["']/, '<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">');
   has(/<meta[^>]+name=["']theme-color["'][^>]+content=["']#8fcbe8["']/i, '<meta name="theme-color" content="#8fcbe8">');
 });

@@ -3,11 +3,14 @@
 // horn and a sad trombone. Nothing to download.
 //
 // play(name, o) is fire-and-forget. Options (all optional):
-//   pan   -1..1   stereo position
-//   vol   0..1    extra attenuation (distance from the camera)
-//   power 0..1+   hit strength / swing speed / impact speed
-//   pitch 0..1    per-unit voice pitch, so every bean sounds a bit different
-//   rate  .25..2  game time scale; slow motion lowers and stretches sounds
+//   pan    -1..1   stereo position
+//   vol    0..1    extra attenuation (distance from the camera)
+//   power  0..1+   hit strength / swing speed / impact speed
+//   pitch  0..1    per-unit voice pitch, so every bean sounds a bit different
+//   rate   .25..2  game time scale; slow motion lowers and stretches sounds
+//   rarity 'common' | 'rare' | 'epic'   cardReveal: rarer = brighter, longer
+//   foe    bool    crown: the other side scored (a softer, lower "dong")
+//   big    bool    chestShake / chestOpen: the Big Chest (heavier, longer)
 //
 // Each sound gets its own little bus (gain + panner), so it can be faded out
 // early when the battle gets too busy.
@@ -125,6 +128,7 @@ class Builder {
     this.pm = speed * (1 + (Math.random() * 2 - 1) * jitter);
     this.power = clamp(num(o.power, 0.7), 0, 1.5);
     this.pitch = clamp(num(o.pitch, rand(0.3, 0.7)), 0, 1);
+    this.o = o; // sound-specific options (rarity, foe, big)
     this.end = t0;
     this.nodes = [];
     this.srcs = [];
@@ -646,15 +650,16 @@ function victory(b) {
   b.tone({ f: 3136, at: 0.92, d: 0.45, g: 0.04 });
 }
 
-// Sad trombone: "wah wah wah waaaah", each note opened and closed by a wah
-// filter, the last one wobbling.
+// A gentle sad trombone: "wah wah wah waaah" on a rounder, softer horn (one
+// saw + one triangle, a mild wah), the last note resting on a quiet warm chord.
+// Losing should feel like a pat on the back, not a jeer.
 function defeat(b) {
-  const lp = b.filter('lowpass', 300, 2.5, null);
+  const lp = b.filter('lowpass', 300, 1.6, null);
   const e = b.gain(0);
   lp.connect(e);
-  const oscs = [b.osc('sawtooth'), b.osc('sawtooth')];
-  oscs[0].connect(b.gain(0.5, lp));
-  oscs[1].connect(b.gain(0.5, lp));
+  const oscs = [b.osc('sawtooth'), b.osc('triangle')];
+  oscs[0].connect(b.gain(0.4, lp));
+  oscs[1].connect(b.gain(0.7, lp));
   const notes = [[0, 233.1, 0.26], [0.28, 220, 0.26], [0.56, 207.7, 0.26], [0.84, 196, 0.8]];
   const env = [];
   const wah = [];
@@ -662,15 +667,46 @@ function defeat(b) {
     oscs.forEach((o, i) => {
       const m = i ? 1.005 : 1;
       o.frequency.setValueAtTime(b.hz(f * m * 1.02), b.at(x));
-      o.frequency.exponentialRampToValueAtTime(b.hz(f * m), b.at(x + 0.04));
+      o.frequency.exponentialRampToValueAtTime(b.hz(f * m), b.at(x + 0.05));
     });
-    env.push([x, 0], [x + 0.03, 0.9], [x + len - 0.05, 0.7], [x + len, 0]);
-    wah.push([x, 300], [x + Math.min(0.1, len * 0.4), 1300], [x + len, 450]);
+    env.push([x, 0], [x + 0.04, 0.85], [x + len - 0.06, 0.65], [x + len, 0]);
+    wah.push([x, 280], [x + Math.min(0.12, len * 0.45), 850], [x + len, 380]);
   }
   b.line(e.gain, env);
   b.glide(lp.frequency, wah);
-  b.wobble(oscs.map((o) => o.frequency), 196, 5.5, [[0, 0], [0.95, 0], [1.2, 0.015], [1.64, 0.045]], 0, 1.64);
+  b.wobble(oscs.map((o) => o.frequency), 196, 5, [[0, 0], [0.95, 0], [1.2, 0.01], [1.64, 0.025]], 0, 1.64);
   for (const o of oscs) b.run(o, 0, 1.64);
+  // G minor, low and soft, under the last note.
+  for (const f of [98, 146.8, 233.1]) b.tone({ type: 'triangle', f, at: 0.84, a: 0.12, h: 0.3, d: 0.45, g: 0.07 });
+}
+
+// A draw: a shrug. Two soft brass notes and a third that hangs on an open,
+// unresolved chord, with a small "boing" at the end.
+function draw(b) {
+  const lp = b.filter('lowpass', 900, 1.2, null);
+  const e = b.gain(0);
+  lp.connect(e);
+  const oscs = [['sawtooth', 1, 0.35], ['triangle', 1.004, 0.6]].map(([type, m, g]) => {
+    const o = b.osc(type);
+    o.connect(b.gain(g, lp));
+    b.run(o, 0, 1.1);
+    return [o, m];
+  });
+  const notes = [[0, 392, 0.18], [0.2, 349.2, 0.18], [0.4, 392, 0.65]];
+  const env = [];
+  for (const [x, f, len] of notes) {
+    for (const [o, m] of oscs) {
+      o.frequency.setValueAtTime(b.hz(f * m * 0.985), b.at(x));
+      o.frequency.exponentialRampToValueAtTime(b.hz(f * m), b.at(x + 0.03));
+    }
+    env.push([x, 0], [x + 0.02, 0.9], [x + len * 0.7, 0.7], [x + len, 0]);
+  }
+  b.line(e.gain, env);
+  b.glide(lp.frequency, [[0, 700], [0.4, 700], [0.45, 1500], [1.05, 600]]);
+  // G sus4 (G C D): neither happy nor sad.
+  for (const f of [196, 261.6, 293.7]) b.tone({ type: 'triangle', f, at: 0.4, a: 0.03, h: 0.25, d: 0.4, g: 0.08 });
+  const o = b.tone({ f: 330, to: 440, glide: 0.05, at: 0.82, a: 0.004, d: 0.25, g: 0.12 });
+  b.wobble(o.frequency, 440, 14, [[0.82, 0.12], [1.08, 0]], 0.82, 1.1);
 }
 
 // --- placing and UI -------------------------------------------------------------------
@@ -737,12 +773,397 @@ function ui(b) {
   b.noise({ type: 'bandpass', f: 4000, q: 1, a: 0.001, d: 0.01, g: 0.1 });
 }
 
+// Bottom tabs: softer and lower than `ui`, a little "tup".
+function tabSwitch(b) {
+  b.tone({ f: 900, to: 640, glide: 0.025, a: 0.001, d: 0.04, g: 0.26 });
+  b.noise({ type: 'lowpass', f: 1600, a: 0.001, d: 0.012, g: 0.14 });
+}
+
+// --- shared bits for the arena and the menus ---------------------------------------------
+
+/** A small bell: sine partials that die away faster the higher they are. */
+function bell(b, f, at, g, d = 0.5, type = 'sine') {
+  b.tone({ type, f, at, a: 0.002, d, g });
+  b.tone({ f: f * 2, at, a: 0.002, d: d * 0.5, g: g * 0.3 });
+  b.tone({ f: f * 3.01, at, a: 0.002, d: d * 0.25, g: g * 0.1 });
+}
+
+/** Fairy dust: n tiny soft pings spread over `len` seconds from `at`. */
+function sparkle(b, at, len, n, g, lo = 2000, hi = 3800) {
+  for (let i = 0; i < n; i++) {
+    const x = at + (len * i) / n + rand(0, len / n);
+    b.tone({ f: rand(lo, hi), at: x, a: 0.002, d: rand(0.06, 0.14), g: g * rand(0.6, 1) * (1 - (0.5 * i) / n) });
+  }
+}
+
+/**
+ * Brassy horn (the war horn's recipe): two detuned saws and a square an octave
+ * down through a low-pass that opens with the breath. path = [[t, Hz]],
+ * cut = [[t, Hz]] filter path, env = [[t, gain]]. Returns the pitch params.
+ */
+function horn(b, path, cut, env) {
+  const lp = b.filter('lowpass', 300, 1.8, null);
+  const out = b.gain(0);
+  lp.connect(out);
+  const end = env[env.length - 1][0];
+  const freqs = [];
+  for (const [type, m, g] of [['sawtooth', 1, 0.45], ['sawtooth', 1.006, 0.45], ['square', 0.5, 0.3]]) {
+    const o = b.osc(type);
+    b.glide(o.frequency, path.map(([x, f]) => [x, f * m]));
+    o.connect(b.gain(g, lp));
+    freqs.push(o.frequency);
+    b.run(o, path[0][0], end);
+  }
+  b.glide(lp.frequency, cut);
+  b.line(out.gain, env);
+  return freqs;
+}
+
+// --- arena: cards ------------------------------------------------------------------------
+
+// A card picked from the hand: a soft paper tick and a little rising "pip".
+function cardPick(b) {
+  const f = 700 + b.pitch * 160;
+  b.noise({ type: 'bandpass', f: 2600, q: 1.5, a: 0.001, d: 0.012, g: 0.16 });
+  b.tone({ type: 'triangle', f, to: f * 1.5, glide: 0.045, a: 0.003, d: 0.08, g: 0.3 });
+  b.tone({ f: f * 3, to: f * 4.5, glide: 0.045, a: 0.003, d: 0.04, g: 0.035 });
+}
+
+// Can't play that (not enough mana, or not there): two muffled low "bmp bmp"s
+// going down. Clear but not nagging.
+function cardDenied(b) {
+  for (const [x, f] of [[0, 196], [0.12, 156]]) {
+    const o = b.osc('square');
+    o.frequency.value = b.hz(f);
+    const lp = b.filter('lowpass', 850, 1.2, null);
+    const e = b.gain(0);
+    o.connect(lp);
+    lp.connect(e);
+    b.run(o, x, b.perc(e.gain, x, 0.006, 0.05, 0.06, 0.34));
+  }
+}
+
+// Beans dropped onto the field: a soft whoosh down out of the sky, then a plop.
+// power = how many beans / how heavy (the landing itself uses `land`).
+function deploy(b) {
+  const p = clamp(b.power, 0.2, 1.5);
+  const w = 0.55 + 0.45 * Math.min(p, 1.2);
+  b.noise({ type: 'bandpass', f: 2200, to: 450, sweep: 0.28, q: 1.3, a: 0.17, d: 0.11, g: 0.32 * w });
+  const f = 280 + b.pitch * 120;
+  b.tone({ f: f * 2, to: f * 0.7, glide: 0.06, at: 0.25, a: 0.003, d: 0.1, g: 0.32 * w });
+  b.tone({ f: 130, to: 62, at: 0.25, a: 0.003, d: 0.12, g: 0.4 * w });
+  b.noise({ type: 'lowpass', f: 550, at: 0.25, d: 0.07, g: 0.35 * w });
+}
+
+// --- arena: towers -----------------------------------------------------------------------
+
+// Guard Tower crossbow: the trigger clicks, a heavy, tight twang (lower and
+// shorter than a bow), and the bolt hisses away.
+function towerShot(b) {
+  const f = rand(96, 112);
+  b.noise({ type: 'bandpass', f: 3000, q: 1.2, d: 0.01, g: 0.28 });
+  const o = b.osc('sawtooth');
+  b.glide(o.frequency, [[0, f * 1.6], [0.02, f], [0.22, f * 0.97]]);
+  b.wobble(o.frequency, f, 30, [[0, 0.05], [0.18, 0]], 0, 0.22);
+  const lp = b.filter('lowpass', 3000, 4, null);
+  b.glide(lp.frequency, [[0, 3000], [0.15, 320]]);
+  const e = b.gain(0);
+  o.connect(lp);
+  lp.connect(e);
+  b.run(o, 0, b.perc(e.gain, 0, 0.002, 0, 0.22, 0.45));
+  b.tone({ f: 175, to: 82, d: 0.06, g: 0.3 });
+  b.noise({ type: 'bandpass', f: 2800, to: 1100, q: 3, at: 0.02, a: 0.03, d: 0.14, g: 0.38 });
+}
+
+// Castle cannon: a sharp crack, a deep round boom and a puff of smoke. Shorter
+// and rounder than a bomb so it doesn't drown the fight.
+function cannon(b) {
+  b.noise({ type: 'highpass', f: 1800, d: 0.025, g: 0.4 });
+  b.tone({ f: 110, to: 38, glide: 0.3, a: 0.003, d: 0.4, g: 0.85 });
+  b.tone({ type: 'triangle', f: 220, to: 70, glide: 0.12, d: 0.14, g: 0.25 });
+  b.noise({ type: 'lowpass', f: 1600, to: 160, sweep: 0.5, q: 0.8, a: 0.003, d: 0.45, g: 0.55 });
+  b.noise({ type: 'bandpass', f: 700, to: 350, q: 0.7, at: 0.04, a: 0.05, d: 0.32, g: 0.12, rate: 0.6 });
+}
+
+// Something hits a stone tower: a dull stone thunk with a little grit. Less
+// ring than wood; harder hits are deeper.
+function towerHit(b) {
+  const p = Math.min(b.power, 1.2);
+  const w = 0.4 + 0.6 * p;
+  const f = rand(170, 205) * (1.1 - 0.2 * p);
+  b.noise({ type: 'bandpass', f: 1800, q: 1, d: 0.012, g: 0.35 * w });
+  b.tone({ f: f * 1.4, to: f, glide: 0.02, d: 0.09, g: 0.55 * w });
+  b.tone({ type: 'triangle', f: f * 2.3, d: 0.035, g: 0.1 * w });
+  b.noise({ type: 'bandpass', f: 700, to: 350, q: 1.8, d: 0.08, g: 0.35 * w });
+  b.noise({ type: 'highpass', f: 3500, at: 0.015, d: 0.04, g: 0.07 * w });
+}
+
+// A tower falls: a crack and a crash, a rumble of tumbling stone (fluttering),
+// single blocks knocking as they land, and one last pebble.
+function towerDown(b) {
+  const d = 1.9;
+  b.noise({ type: 'highpass', f: 1500, d: 0.05, g: 0.4 });
+  b.tone({ f: 85, to: 30, glide: 0.6, a: 0.005, d: 0.7, g: 0.8 });
+  b.noise({ type: 'lowpass', f: 2000, to: 200, sweep: 0.6, q: 0.7, a: 0.005, d: 0.5, g: 0.55 });
+  const rumble = b.gain(0.7);
+  const src = b.noiseSrc(0.6);
+  const lp = b.filter('lowpass', 600, 1, null);
+  const e = b.gain(0, rumble);
+  src.connect(lp);
+  lp.connect(e);
+  b.glide(lp.frequency, [[0, 700], [d, 160]]);
+  b.line(e.gain, [[0, 0], [0.12, 0.75], [0.8, 0.55], [d, 0]]);
+  const lfo = b.osc('sine');
+  lfo.frequency.value = 9 / b.ts;
+  lfo.connect(b.gain(0.35, rumble.gain));
+  b.run(lfo, 0, d);
+  b.run(src, 0, d);
+  for (let i = 0; i < 8; i++) {
+    const x = 0.14 + i * 0.16 + rand(0, 0.1);
+    const k = 1 - i / 9;
+    b.tone({ f: rand(140, 240), to: rand(78, 100), at: x, d: 0.07, g: 0.3 * k });
+    b.noise({ type: 'bandpass', f: rand(600, 1400), q: 1.6, at: x, d: 0.05, g: 0.25 * k });
+  }
+  b.noise({ type: 'bandpass', f: 2600, q: 1.5, at: 1.65, d: 0.03, g: 0.07 });
+}
+
+// A castle wakes up: one big horn blast that swells and bends up into place.
+function castleAwake(b) {
+  const f = 110;
+  const freqs = horn(
+    b,
+    [[0, f * 0.92], [0.1, f], [1, f * 0.995]],
+    [[0, 220], [0.12, 1700], [0.5, 1200], [0.95, 800], [1.1, 260]],
+    [[0, 0], [0.1, 0.9], [0.3, 1], [0.85, 0.8], [1.1, 0]],
+  );
+  b.wobble(freqs, f, 5, [[0, 0], [0.5, 0], [1, 0.01]], 0, 1.1);
+}
+
+// A crown won: a quick rising arpeggio landing on a ringing bell, with sparkle.
+// o.foe (the other side scored): a softer, lower two-note "dong".
+function crown(b) {
+  if (b.o.foe) {
+    bell(b, 523.3, 0, 0.2, 0.45, 'triangle');
+    bell(b, 392, 0.17, 0.24, 0.8, 'triangle');
+    b.tone({ f: 98, to: 78, at: 0.17, a: 0.01, d: 0.35, g: 0.18 });
+    return;
+  }
+  [523.3, 659.3, 784].forEach((f, i) => b.tone({ type: 'triangle', f, at: i * 0.07, a: 0.003, d: 0.16, g: 0.22 }));
+  bell(b, 1046.5, 0.21, 0.26, 0.9);
+  for (const f of [261.6, 523.3, 659.3, 784]) b.tone({ type: 'triangle', f, at: 0.21, a: 0.02, h: 0.15, d: 0.5, g: 0.08 });
+  sparkle(b, 0.26, 0.5, 6, 0.035);
+}
+
+// --- arena: spells -----------------------------------------------------------------------
+
+// A boulder falling out of the sky (about 0.85 s): a whistle sliding down and a
+// growing rush of air.
+function boulderFall(b) {
+  const d = 0.85;
+  const o = b.osc('sine');
+  b.glide(o.frequency, [[0, 1400], [d, 480]]);
+  b.wobble(o.frequency, 900, 7, [[0, 0.004], [d, 0.012]], 0, d);
+  const e = b.gain(0);
+  o.connect(e);
+  b.line(e.gain, [[0, 0], [0.12, 0.08], [d - 0.05, 0.15], [d, 0]]);
+  b.run(o, 0, d);
+  const src = b.noiseSrc(1);
+  const bp = b.filter('bandpass', 1200, 0.9, null);
+  const ea = b.gain(0);
+  src.connect(bp);
+  bp.connect(ea);
+  b.glide(bp.frequency, [[0, 1300], [d, 420]]);
+  b.line(ea.gain, [[0, 0], [d - 0.08, 0.38], [d, 0]]);
+  b.run(src, 0, d);
+}
+
+// The boulder lands: a heavy thud that shakes the ground, then debris pattering down.
+function boulderImpact(b) {
+  const p = clamp(b.power, 0.3, 1.5);
+  const w = 0.5 + 0.4 * Math.min(p, 1.4);
+  b.noise({ type: 'bandpass', f: 1200, q: 0.8, d: 0.03, g: 0.4 * w });
+  b.tone({ f: 80, to: 28, glide: 0.4, a: 0.003, d: 0.5, g: 0.9 * w });
+  b.tone({ type: 'triangle', f: 140, to: 50, glide: 0.15, d: 0.18, g: 0.3 * w });
+  b.noise({ type: 'lowpass', f: 900, to: 120, sweep: 0.6, q: 0.9, a: 0.003, d: 0.6, g: 0.65 * w });
+  for (let i = 0; i < 7; i++) {
+    const x = 0.08 + i * 0.07 + rand(0, 0.06);
+    b.noise({ type: 'bandpass', f: rand(900, 2600), q: 2, at: x, d: rand(0.02, 0.04), g: 0.18 * w * (1 - x) });
+    if (i < 3) b.tone({ f: rand(160, 240), to: 90, at: x, d: 0.05, g: 0.16 * w });
+  }
+}
+
+// One volley of the arrow rain: a flurry of short thin "fft"s, out of step and
+// sweeping down as the arrows drop (about 0.6 s), over one soft "cloud" swoosh.
+function rainVolley(b) {
+  for (let i = 0; i < 10; i++) {
+    const f = rand(2000, 3400);
+    const at = i * 0.035 + rand(0, 0.03);
+    b.noise({ type: 'bandpass', f, to: f * 0.55, sweep: 0.15, q: 4, at, a: rand(0.03, 0.06), d: rand(0.07, 0.11), g: rand(0.12, 0.2) });
+  }
+  b.noise({ type: 'bandpass', f: 1400, to: 600, sweep: 0.5, q: 1.2, a: 0.18, d: 0.3, g: 0.14 });
+}
+
+// Cheese Wheel: a cheesy "boing" as it drops in, then a bumpy rolling rumble
+// for the length of its roll (about 1.3 s).
+function wheel(b) {
+  const f = 300;
+  const o = b.tone({ f: f * 0.7, to: f, glide: 0.06, a: 0.004, h: 0.08, d: 0.35, g: 0.32 });
+  b.tone({ type: 'triangle', f: f * 2, at: 0.01, a: 0.004, h: 0.04, d: 0.2, g: 0.06 });
+  b.wobble(o.frequency, f, 13, [[0, 0.3], [0.45, 0]], 0, 0.45);
+  const d = 1.35;
+  const bump = b.gain(0.6);
+  const src = b.noiseSrc(0.5);
+  const lp = b.filter('lowpass', 260, 2, null);
+  const e = b.gain(0, bump);
+  src.connect(lp);
+  lp.connect(e);
+  b.line(e.gain, [[0.1, 0], [0.3, 0.9], [d - 0.3, 0.8], [d, 0]]);
+  const lfo = b.osc('triangle');
+  lfo.frequency.value = 6 / b.ts; // the rind bumping round
+  lfo.connect(b.gain(0.4, bump.gain));
+  b.run(lfo, 0.1, d);
+  b.run(src, 0.1, d);
+  b.tone({ type: 'triangle', f: 55, at: 0.1, a: 0.12, h: 0.75, d: 0.4, g: 0.2 });
+}
+
+// --- arena: match moments ------------------------------------------------------------------
+
+// Double mana: a sparkly chime running up two octaves, a bell on top, fairy dust.
+function doubleMana(b) {
+  [523.3, 659.3, 784, 1046.5, 1318.5].forEach((f, i) => b.tone({ type: 'triangle', f, at: i * 0.075, a: 0.003, d: 0.3 + i * 0.05, g: 0.17 }));
+  b.noise({ type: 'bandpass', f: 1500, to: 5000, sweep: 0.4, q: 2, a: 0.25, d: 0.2, g: 0.06 });
+  bell(b, 1568, 0.38, 0.12, 0.6);
+  sparkle(b, 0.1, 0.7, 8, 0.03);
+}
+
+// Overtime: a dramatic two-note horn (up a minor third, held with a growing
+// shake) over a soft timpani roll.
+function overtime(b) {
+  const f1 = 130.8;
+  const f2 = 155.6;
+  const freqs = horn(
+    b,
+    [[0, f1 * 0.94], [0.06, f1], [0.3, f1], [0.36, f2 * 0.97], [0.45, f2], [1.35, f2 * 0.99]],
+    [[0, 220], [0.08, 1300], [0.28, 800], [0.34, 350], [0.48, 1800], [0.9, 1200], [1.3, 900], [1.45, 260]],
+    [[0, 0], [0.06, 0.8], [0.28, 0.65], [0.34, 0.3], [0.44, 1], [1.2, 0.85], [1.45, 0]],
+  );
+  b.wobble(freqs, f2, 5.5, [[0, 0], [0.6, 0], [1.4, 0.016]], 0, 1.45);
+  for (let i = 0; i < 12; i++) {
+    const x = 0.36 + i * 0.065;
+    b.tone({ f: 78, to: 62, at: x, a: 0.003, d: 0.09, g: 0.07 + 0.02 * i });
+  }
+  b.tone({ f: 90, to: 48, at: 1.15, a: 0.003, d: 0.3, g: 0.45 });
+}
+
+// Clock tick for the last seconds: a dry woody tick. power >= 1 (the final
+// few seconds) adds a low "tock" under it.
+function tick(b) {
+  b.noise({ type: 'bandpass', f: 3200, q: 3, a: 0.001, d: 0.012, g: 0.4 });
+  b.tone({ f: 1250, a: 0.001, d: 0.035, g: 0.16 });
+  b.tone({ type: 'triangle', f: 2510, a: 0.001, d: 0.015, g: 0.04 });
+  if (b.power >= 1) b.tone({ f: 420, to: 330, a: 0.002, d: 0.09, g: 0.2 });
+}
+
+// --- menus: chests, cards, trophies --------------------------------------------------------
+
+// A chest wobbles on the spot: the lid knocks on the box a few times, coins
+// jingle inside, the box thumps down. o.big: heavier and a knock longer.
+function chestShake(b) {
+  const big = !!b.o.big;
+  const n = big ? 5 : 4;
+  const base = big ? 330 : 430;
+  for (let i = 0; i < n; i++) {
+    const x = i * 0.065 + rand(0, 0.015);
+    const f = base * rand(0.95, 1.05) * (i % 2 ? 1.12 : 1);
+    b.tone({ f: f * 1.2, to: f, glide: 0.01, at: x, d: 0.05, g: 0.32 });
+    b.noise({ type: 'bandpass', f: 1600, q: 1.2, at: x, d: 0.015, g: 0.18 });
+  }
+  for (let i = 0; i < 3; i++) b.tone({ type: 'triangle', f: rand(2400, 3200), at: rand(0.02, n * 0.065), a: 0.001, d: 0.05, g: 0.04 });
+  b.tone({ f: big ? 100 : 125, to: 65, at: n * 0.065, d: 0.1, g: 0.3 });
+}
+
+// A chest opens: the lid pops (cork pop + wooden clack), then a magical burst:
+// a rising swoosh, a bright chord, a bell and sparkles. o.big rings longer.
+function chestOpen(b) {
+  const big = !!b.o.big;
+  const s = big ? 1.3 : 1;
+  b.tone({ f: 300, to: 900, glide: 0.03, a: 0.001, d: 0.05, g: 0.4 });
+  b.noise({ type: 'bandpass', f: 2000, q: 1.5, d: 0.02, g: 0.3 });
+  b.tone({ f: 520, to: 400, at: 0.04, d: 0.06, g: 0.3 });
+  b.tone({ f: 130, to: 65, at: 0.05, d: 0.25, g: 0.3 });
+  b.noise({ type: 'bandpass', f: 800, to: 5000, sweep: 0.35, q: 1, at: 0.05, a: 0.2, d: 0.25, g: 0.18 });
+  [523.3, 659.3, 784, 1046.5].forEach((f, i) => b.tone({ type: 'triangle', f, at: 0.12 + i * 0.04, a: 0.01, h: 0.15, d: 0.5 * s, g: 0.11 }));
+  if (big) b.tone({ type: 'triangle', f: 130.8, at: 0.12, a: 0.03, h: 0.2, d: 0.6, g: 0.14 });
+  bell(b, 2093, 0.28, 0.07, 0.6 * s);
+  sparkle(b, 0.2, 0.7 * s, big ? 12 : 9, 0.032);
+}
+
+// A card flies out of the chest: a pop, then a chime that grows with rarity
+// (o.rarity): common = one note, rare = two rising notes and a little sparkle,
+// epic = a swell, a three-note chord, a high bell and a long sparkle.
+function cardReveal(b) {
+  const r = b.o.rarity === 'epic' ? 2 : b.o.rarity === 'rare' ? 1 : 0;
+  b.tone({ f: 380, to: 1100, glide: 0.035, a: 0.001, d: 0.05, g: 0.32 });
+  b.noise({ type: 'bandpass', f: 2400, q: 2, d: 0.02, g: 0.2 });
+  if (r === 0) {
+    bell(b, 880, 0.04, 0.17, 0.3, 'triangle');
+    return;
+  }
+  if (r === 1) {
+    bell(b, 659.3, 0.04, 0.17, 0.25, 'triangle');
+    bell(b, 987.8, 0.12, 0.2, 0.5, 'triangle');
+    sparkle(b, 0.14, 0.3, 4, 0.03);
+    return;
+  }
+  b.noise({ type: 'bandpass', f: 600, to: 3500, sweep: 0.3, q: 1.2, a: 0.22, d: 0.08, g: 0.1 });
+  b.tone({ type: 'triangle', f: 130.8, at: 0.04, a: 0.05, h: 0.25, d: 0.5, g: 0.13 });
+  [523.3, 659.3, 784].forEach((f, i) => bell(b, f, 0.04 + i * 0.06, 0.13, 0.7, 'triangle'));
+  bell(b, 1568, 0.24, 0.12, 0.8);
+  sparkle(b, 0.24, 0.7, 10, 0.035);
+}
+
+// Card upgraded: a rising "whoomp", a fast arpeggio up an octave and a half and
+// a sparkly cascade over the final chord.
+function upgrade(b) {
+  b.tone({ f: 90, to: 180, glide: 0.2, a: 0.02, d: 0.25, g: 0.3 });
+  b.noise({ type: 'bandpass', f: 600, to: 4000, sweep: 0.4, q: 1.2, a: 0.25, d: 0.15, g: 0.12 });
+  [392, 523.3, 659.3, 784, 1046.5].forEach((f, i) => b.tone({ type: 'triangle', f, at: 0.05 + i * 0.06, a: 0.003, d: 0.2, g: 0.17 }));
+  for (const f of [261.6, 523.3, 659.3, 784]) b.tone({ type: 'triangle', f, at: 0.36, a: 0.01, h: 0.2, d: 0.5, g: 0.08 });
+  bell(b, 2093, 0.36, 0.07, 0.7);
+  sparkle(b, 0.38, 0.6, 9, 0.032);
+}
+
+// Gold counting up: a tiny metallic "tink". o.pitch (0..1) climbs with the count.
+function coins(b) {
+  const f = 1050 * Math.pow(2, b.pitch * 0.6);
+  b.tone({ type: 'triangle', f, a: 0.001, d: 0.05, g: 0.24 });
+  b.tone({ f: f * 2.4, a: 0.001, d: 0.025, g: 0.045 });
+  b.noise({ type: 'highpass', f: 5000, d: 0.008, g: 0.05 });
+}
+
+// Trophies gained: a bright "ta-daa", two rising notes and a glint.
+function trophyUp(b) {
+  b.tone({ type: 'triangle', f: 587.3, a: 0.003, d: 0.12, g: 0.22 });
+  b.tone({ type: 'triangle', f: 880, at: 0.1, a: 0.005, h: 0.08, d: 0.4, g: 0.24 });
+  b.tone({ type: 'triangle', f: 440, at: 0.1, a: 0.01, h: 0.08, d: 0.35, g: 0.08 });
+  b.tone({ f: 1760, at: 0.1, a: 0.003, d: 0.25, g: 0.035 });
+  sparkle(b, 0.15, 0.3, 4, 0.028);
+}
+
+// Trophies lost: two soft notes stepping down. No drama.
+function trophyDown(b) {
+  b.tone({ type: 'triangle', f: 440, a: 0.003, d: 0.14, g: 0.2 });
+  b.tone({ type: 'triangle', f: 349.2, at: 0.14, a: 0.005, h: 0.05, d: 0.35, g: 0.2 });
+  b.tone({ f: 174.6, at: 0.14, a: 0.01, d: 0.3, g: 0.08 });
+}
+
 // --- sound table ---------------------------------------------------------------------
 
 // gap: min seconds between two of the same sound (a much harder hit may still
 //      get through); max: how many may overlap; level: rough loudness used to
 //      pick what to drop when it gets busy; trim: output gain; jit: random
-//      pitch spread; hit: louder with o.power.
+//      pitch spread; hit: louder with o.power; now: starts without the few ms
+//      of random delay (taps on buttons and cards should feel instant).
 const SOUNDS = {
   bonk: { fn: bonk, gap: 0.03, max: 6, level: 1, trim: 0.8, hit: true },
   slash: { fn: slash, gap: 0.03, max: 5, level: 0.7, trim: 1, hit: true },
@@ -761,12 +1182,13 @@ const SOUNDS = {
   hitVoice: { fn: hitVoice, gap: 0.09, max: 3, level: 0.65, trim: 1.5, jit: 0.02 },
   battleStart: { fn: battleStart, gap: 1, max: 1, level: 3, trim: 0.36, jit: 0 },
   victory: { fn: victory, gap: 1, max: 1, level: 3, trim: 0.6, jit: 0 },
-  defeat: { fn: defeat, gap: 1, max: 1, level: 3, trim: 0.55, jit: 0 },
+  defeat: { fn: defeat, gap: 1, max: 1, level: 3, trim: 0.42, jit: 0 },
+  draw: { fn: draw, gap: 1, max: 1, level: 3, trim: 0.47, jit: 0 },
   place: { fn: place, gap: 0.03, max: 4, level: 1.5, trim: 0.75, jit: 0.03 },
   remove: { fn: remove, gap: 0.03, max: 3, level: 1.5, trim: 0.9 },
   grab: { fn: grab, gap: 0.05, max: 2, level: 1.5, trim: 1.1 },
   drop: { fn: drop, gap: 0.05, max: 2, level: 1.5, trim: 1.1 },
-  ui: { fn: ui, gap: 0.04, max: 2, level: 1.5, trim: 0.6, jit: 0.01 },
+  ui: { fn: ui, gap: 0.04, max: 2, level: 1.5, trim: 0.6, jit: 0.01, now: true },
   cheer: { fn: cheer, gap: 0.06, max: 4, level: 0.45, trim: 1, jit: 0.02 },
   boom: { fn: boom, gap: 0.04, max: 4, level: 1.4, trim: 0.9, hit: true },
   quake: { fn: quake, gap: 0.06, max: 3, level: 1.2, trim: 0.95, hit: true },
@@ -774,6 +1196,35 @@ const SOUNDS = {
   coin: { fn: coin, gap: 0.05, max: 3, level: 1.5, trim: 0.7, jit: 0.02 },
   star: { fn: star, gap: 0.1, max: 3, level: 2, trim: 0.8, jit: 0 },
   pop: { fn: pop, gap: 0.05, max: 3, level: 0.8, trim: 0.9, jit: 0.04 },
+  // Arena: cards
+  cardPick: { fn: cardPick, gap: 0.04, max: 2, level: 1.5, trim: 0.7, jit: 0.01, now: true },
+  cardDenied: { fn: cardDenied, gap: 0.15, max: 1, level: 1.5, trim: 0.3, jit: 0, now: true },
+  deploy: { fn: deploy, gap: 0.05, max: 3, level: 1.2, trim: 0.8, jit: 0.03 },
+  // Arena: towers
+  towerShot: { fn: towerShot, gap: 0.05, max: 4, level: 0.5, trim: 0.6, jit: 0.03 },
+  cannon: { fn: cannon, gap: 0.08, max: 2, level: 1.1, trim: 0.55, jit: 0.03 },
+  towerHit: { fn: towerHit, gap: 0.05, max: 4, level: 0.6, trim: 0.75, hit: true, jit: 0.05 },
+  towerDown: { fn: towerDown, gap: 0.3, max: 2, level: 2.5, trim: 0.7, jit: 0.03 },
+  castleAwake: { fn: castleAwake, gap: 0.5, max: 2, level: 2, trim: 0.5, jit: 0 },
+  crown: { fn: crown, gap: 0.3, max: 2, level: 2.5, trim: 1.1, jit: 0 },
+  // Arena: spells
+  boulderFall: { fn: boulderFall, gap: 0.1, max: 2, level: 0.8, trim: 0.65, jit: 0.04 },
+  boulderImpact: { fn: boulderImpact, gap: 0.08, max: 2, level: 1.6, trim: 0.65, hit: true, jit: 0.03 },
+  rainVolley: { fn: rainVolley, gap: 0.12, max: 3, level: 0.7, trim: 3.2, jit: 0.04 },
+  wheel: { fn: wheel, gap: 0.2, max: 2, level: 1, trim: 0.6, jit: 0.03 },
+  // Arena: match moments
+  doubleMana: { fn: doubleMana, gap: 1, max: 1, level: 2.5, trim: 1.8, jit: 0 },
+  overtime: { fn: overtime, gap: 1, max: 1, level: 3, trim: 0.5, jit: 0 },
+  tick: { fn: tick, gap: 0.3, max: 2, level: 1.5, trim: 1.2, jit: 0, now: true },
+  // Menus
+  tabSwitch: { fn: tabSwitch, gap: 0.04, max: 2, level: 1.5, trim: 0.6, jit: 0.01, now: true },
+  chestShake: { fn: chestShake, gap: 0.15, max: 2, level: 1.5, trim: 1.4, jit: 0.02 },
+  chestOpen: { fn: chestOpen, gap: 0.3, max: 2, level: 2.5, trim: 1.5, jit: 0 },
+  cardReveal: { fn: cardReveal, gap: 0.08, max: 3, level: 2, trim: 1.5, jit: 0 },
+  upgrade: { fn: upgrade, gap: 0.3, max: 2, level: 2.5, trim: 1.5, jit: 0 },
+  coins: { fn: coins, gap: 0.03, max: 3, level: 1.5, trim: 1, jit: 0.01, now: true },
+  trophyUp: { fn: trophyUp, gap: 0.3, max: 2, level: 2, trim: 1, jit: 0 },
+  trophyDown: { fn: trophyDown, gap: 0.3, max: 2, level: 2, trim: 0.85, jit: 0 },
 };
 
 export const SOUND_NAMES = Object.keys(SOUNDS);
@@ -877,7 +1328,7 @@ export class BattleAudio {
       if (!this._makeRoom(live.filter((v) => v.name === name), rec.max, level, t)) return;
       if (!this._makeRoom(live.filter((v) => !v.killed), MAX_VOICES, level, t)) return;
       // A few ms of random delay so piled-up sounds don't phase into one click.
-      const v = this._build(ctx, this.master, t + (name === 'ui' ? 0 : Math.random() * 0.01), name, o);
+      const v = this._build(ctx, this.master, t + (rec.now ? 0 : Math.random() * 0.01), name, o);
       v.level = level;
       this.voices.push(v);
       this.last.set(name, { t, level });

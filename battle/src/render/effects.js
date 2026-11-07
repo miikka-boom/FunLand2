@@ -10,6 +10,12 @@
 //
 // Particles live in a fixed pool, so a busy fight makes no garbage. When the
 // pool is full the oldest particle is recycled.
+//
+// Arena kinds: towerHit, towerDown (castles too: kind 'castle'), cannonFire,
+// cannonHit, boulderImpact (dust ring, clods, a crater decal), crumbs and
+// cheeseBurst (the Cheese Wheel), deploy (landing ring), crown (sparkle burst
+// with a crown), awake (a castle wakes up). fx.follow(battle, dt) adds the
+// running trails: crumbs behind a rolling wheel, smoke behind cannonballs.
 
 import { WORLD } from '../config.js';
 
@@ -58,6 +64,19 @@ const DUST_COLS = [
 ];
 const PUFF_COLS = ['#d9e1ec', '#ffffff'];
 const CONFETTI_COLS = ['#ffd84a', '#ffffff', '#2b6be0', '#e4433b'];
+// Arena: masonry (like the castle stones), stone dust, cannon smoke, cheese
+const STONE_COLS = ['#bdb7ae', '#b2aca3', '#c7c1b8', '#a8a299'];
+const STONE_DUST = [
+  ['#b9b2a6', '#e2ddd3'],
+  ['#aaa397', '#d6d0c5'],
+  ['#c7bfae', '#ece6da'],
+];
+const CANNON_SMOKE = [
+  ['#b8b3ac', '#eeeae4'],
+  ['#a7a29b', '#e2ddd6'],
+];
+const CHEESE_COLS = ['#ffd34d', '#f5b82e', '#ffe68a'];
+const GOLD_COLS = ['#ffe14d', '#fff3b0', '#ffc23a'];
 
 // --- particle kinds -----------------------------------------------------------------
 
@@ -76,6 +95,12 @@ const CONFETTI = 11;
 const TEXT = 12; // comic word
 const STAR = 13; // dizzy cartoon star
 const EYE = 14; // a googly eyeball bouncing away from an explosion
+const STONE = 15; // a chunk of masonry (or cheese) that tumbles and bounces
+const CRATER = 16; // dark dent in the grass that fades slowly (decal)
+const GRING = 17; // flat ring spreading along the ground
+const CROWN = 18; // a golden crown popping up out of a fallen tower
+// Drawn in their own back passes (decals first, dust last)
+const BACK_OWN = new Set([DUST, SCUFF, CRATER, GRING]);
 
 class Particle {
   constructor() {
@@ -224,6 +249,36 @@ export class Effects {
           break;
         case 'quake':
           this.quake(x, y, clamp(num(p.power, 1), 0.3, 2));
+          break;
+        case 'towerHit':
+          this.towerHit(x, y, clamp(num(p.power, 0.5), 0.1, 1.5), num(p.dirX, 0), p.kind);
+          break;
+        case 'towerDown':
+          this.towerDown(x, y, p.kind === 'castle', clamp(num(p.w, p.kind === 'castle' ? 200 : 70), 20, 320));
+          break;
+        case 'cannonFire':
+          this.cannonFire(x, y, p);
+          break;
+        case 'cannonHit':
+          this.cannonHit(x, y, clamp(num(p.power, 0.8), 0.2, 1.5));
+          break;
+        case 'boulderImpact':
+          this.boulderImpact(x, y, clamp(num(p.power, 1.4), 0.3, 2));
+          break;
+        case 'crumbs':
+          this.crumbs(x, y, clamp(num(p.power, 0.5), 0, 1.5), num(p.dirX, 0));
+          break;
+        case 'cheeseBurst':
+          this.cheeseBurst(x, y);
+          break;
+        case 'deploy':
+          this.deploy(x, y, p.color, clamp(num(p.radius, 30), 10, 120));
+          break;
+        case 'crown':
+          this.crown(x, y, clamp(num(p.count, 1), 1, 3) | 0);
+          break;
+        case 'awake':
+          this.awake(x, y);
           break;
       }
     } catch (e) {
@@ -746,6 +801,270 @@ export class Effects {
     }
   }
 
+  // --- arena recipes ------------------------------------------------------------------
+
+  /** A chunk of masonry (or cheese): tumbles, bounces once or twice, then fades. */
+  chunk(x, y, vx, vy, size, cols = STONE_COLS, front = false) {
+    const c = this.add(STONE, front, x, y, this.r(1.3, 2));
+    c.ground = this.groundFor(y > 0 ? y : -1);
+    c.vx = vx;
+    c.vy = vy;
+    c.grav = G;
+    c.drag = 0.25;
+    c.bounces = 2;
+    c.rest = 0.3;
+    c.size = size;
+    c.rot = this.r(0, TAU);
+    c.spin = this.r(-10, 10);
+    c.col = this.pick(cols);
+    c.fade = 0.5;
+    return c;
+  }
+
+  puff(front, x, y, vx, vy, life, r0, r1, cols, alpha = 0.92, drag = 3) {
+    const d = this.add(DUST, front, x, y, life);
+    d.vx = vx;
+    d.vy = vy;
+    d.drag = drag;
+    d.a = r0;
+    d.b = r1;
+    d.alpha = alpha;
+    d.col = cols[0];
+    d.col2 = cols[1];
+    return d;
+  }
+
+  groundRing(x, y, r0, r1, life, width, col, alpha = 0.8, flat = 0.2) {
+    const g = this.add(GRING, false, x, y, life);
+    g.a = r0;
+    g.b = r1;
+    g.c = width;
+    g.d = flat;
+    g.col = col;
+    g.alpha = alpha;
+    return g;
+  }
+
+  /** Something hit a tower wall: stone chips and a puff of grit fly back toward the attacker. */
+  towerHit(x, y, P, dirX, kind) {
+    const back = -(Math.sign(dirX) || 1);
+    const small = kind === 'arrow' || kind === 'bolt';
+    const n = small ? 2 : 3 + Math.round(P * 4);
+    for (let i = 0; i < n; i++) {
+      const s = this.add(SPECK, true, x, y, this.r(0.5, 0.85));
+      const a = Math.atan2(-0.6, back) + this.r(-0.8, 0.8);
+      const sp = this.r(150, 330) * (0.6 + 0.5 * P);
+      s.vx = Math.cos(a) * sp;
+      s.vy = Math.sin(a) * sp;
+      s.grav = G;
+      s.drag = 0.6;
+      s.ground = this.groundFor(-1);
+      s.bounces = 1;
+      s.size = this.r(2.4, 4) * (small ? 0.8 : 1);
+      s.rot = this.r(0, TAU);
+      s.spin = this.r(-18, 18);
+      s.col = this.pick(STONE_COLS);
+      s.fade = 0.2;
+    }
+    const m = small ? 1 : 2 + Math.round(P);
+    for (let i = 0; i < m; i++) this.puff(true, x + back * this.r(0, 4), y + this.r(-4, 4), back * this.r(20, 60), -this.r(5, 25), this.r(0.3, 0.5), 3, this.r(6, 10) * (0.7 + P * 0.5), this.pick(STONE_DUST));
+    if (!small && P > 0.6) {
+      for (let i = 0; i < 2; i++) this.chunk(x, y, back * this.r(60, 180), -this.r(120, 260), this.r(3.5, 6), STONE_COLS, true);
+    }
+  }
+
+  /** A tower comes down: billowing stone dust along its base, chunks raining out, a ground ring. */
+  towerDown(x, y, castle, w) {
+    const k = castle ? 1.6 : 1;
+    const base = Math.max(0, y) > 0 ? y : WORLD.laneDepth * 0.5;
+    const n = castle ? 22 : 12;
+    for (let i = 0; i < n; i++) {
+      const u = (i / (n - 1) - 0.5) * 2;
+      const px = x + u * w * 0.6;
+      const side = Math.sign(u) || (i % 2 ? 1 : -1);
+      this.puff(false, px, base - this.r(0, 10), side * this.r(30, 140) * k, -this.r(10, 60), this.r(1.1, 1.9) * (castle ? 1.2 : 1), this.r(8, 12), this.r(22, 36) * k, this.pick(STONE_DUST), 0.95, 1.6);
+    }
+    // A plume rising out of the collapsing middle
+    for (let i = 0; i < (castle ? 10 : 6); i++) {
+      this.puff(false, x + this.r(-w * 0.3, w * 0.3), base - this.r(20, 90) * k, this.r(-30, 30), -this.r(40, 110), this.r(1.2, 2), this.r(10, 14), this.r(24, 40) * k, this.pick(STONE_DUST), 0.85, 1.2);
+    }
+    for (let i = 0; i < (castle ? 26 : 14); i++) {
+      const side = i % 2 ? 1 : -1;
+      this.chunk(x + this.r(-w * 0.4, w * 0.4), base - this.r(30, 140) * k, side * this.r(40, 260), -this.r(80, 380), this.r(4, 9) * (castle ? 1.2 : 1));
+    }
+    this.dirt(x - w * 0.3, base, 1.2, -1);
+    this.dirt(x + w * 0.3, base, 1.2, 1);
+    this.groundRing(x, base, w * 0.4, w * 1.3 + 60, 0.7, 7, '#efe6d2', 0.85);
+    const sc = this.add(SCUFF, false, x, base + 2, 3);
+    sc.size = w * 0.8;
+  }
+
+  /** Castle cannon fires: a thick smoke puff shoved out of the muzzle along the shot. */
+  cannonFire(x, y, p) {
+    const [dx, dy] = unitDir(p);
+    for (let i = 0; i < 6; i++) {
+      const sp = this.r(60, 200);
+      const a = Math.atan2(dy, dx) + this.r(-0.5, 0.5);
+      this.puff(true, x + dx * 6, y + dy * 6, Math.cos(a) * sp, Math.sin(a) * sp - 20, this.r(0.5, 0.85), 4, this.r(9, 15), this.pick(CANNON_SMOKE), 0.95, 4);
+    }
+    for (let i = 0; i < 4; i++) {
+      const k = this.add(SPARK, true, x + dx * 8, y + dy * 8, this.r(0.12, 0.22));
+      const a = Math.atan2(dy, dx) + this.r(-0.6, 0.6);
+      const sp = this.r(250, 450);
+      k.vx = Math.cos(a) * sp;
+      k.vy = Math.sin(a) * sp;
+      k.drag = 3;
+      k.size = this.r(1.4, 2.2);
+      k.col = SPARK_COLS[i % 3];
+    }
+  }
+
+  /** A cannonball lands: a thump of dust and dirt, a little ring. */
+  cannonHit(x, y, P) {
+    const gy = y >= -4 ? Math.max(y, 0) : y;
+    this.land(x, gy, 0.7 * P);
+    this.dirt(x, gy, 0.8 * P, 0);
+    const b = this.add(BURST, true, x, gy - 4, 0.12);
+    b.size = 10 + 6 * P;
+    b.a = -Math.PI / 2;
+    b.b = 9;
+    b.c = 0;
+    b.rot = this.r(0, TAU);
+    this.groundRing(x, Math.max(gy, 2), 8, 46 * P + 20, 0.35, 4, '#f1e7cb', 0.8);
+  }
+
+  /** The Boulder lands: shock ring along the ground, dust rolling out, clods, a crater left behind. */
+  boulderImpact(x, y, P) {
+    const gy = Math.max(0, y);
+    const flash = this.add(RING, true, x, gy - 18, 0.2);
+    flash.a = 12;
+    flash.b = 70 * P;
+    flash.c = 9;
+    flash.col = '#fffbea';
+    this.groundRing(x, gy, 20, 120 * P, 0.55, 9, '#f6edd4', 0.95);
+    this.groundRing(x, gy, 10, 80 * P, 0.4, 5, '#ffffff', 0.7);
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 7; i++) {
+        this.puff(false, x + side * this.r(10, 40), gy - this.r(0, 8), side * this.r(160, 420) * P, -this.r(10, 70), this.r(0.6, 1.1), this.r(6, 9), this.r(14, 26) * P, this.pick(DUST_COLS), 0.95, 2.4);
+      }
+    }
+    for (let i = 0; i < 5; i++) this.puff(false, x + this.r(-25, 25), gy - this.r(5, 25), this.r(-40, 40), -this.r(60, 140), this.r(0.8, 1.3), 9, this.r(22, 32) * P, this.pick(DUST_COLS), 0.9, 1.6);
+    for (let i = 0; i < 18; i++) {
+      const side = i % 2 ? 1 : -1;
+      this.clod(x + side * this.r(5, 40), gy, side * this.r(60, 380) * P, -this.r(250, 620) * P, this.r(2.8, 5.5));
+    }
+    for (let i = 0; i < 5; i++) this.chunk(x + this.r(-20, 20), gy - 10, this.r(-220, 220), -this.r(200, 420), this.r(3, 6), ['#8f8780', '#a9a19b', '#766f6a']);
+    const c = this.add(CRATER, false, x, gy + 2, 6);
+    c.size = 54 * P;
+    const sc = this.add(SCUFF, false, x, gy + 2, 3);
+    sc.size = 80 * P;
+  }
+
+  /** Cheese crumbs: little yellow bits hopping off the wheel, and a wisp of dust. */
+  crumbs(x, y, P, dirX) {
+    const n = 2 + Math.round(P * 5);
+    for (let i = 0; i < n; i++) {
+      const c = this.clod(x + this.r(-5, 5), y, dirX * this.r(30, 160) * (0.4 + P) + this.r(-40, 40), -this.r(90, 260) * (0.5 + 0.6 * P), this.r(1.6, 3) * (0.8 + 0.3 * P));
+      c.col = this.pick(CHEESE_COLS);
+      c.life = this.r(0.7, 1.1);
+    }
+    if (P > 0.2) this.puff(false, x, y - 2, dirX * this.r(10, 40), -this.r(5, 20), this.r(0.3, 0.5), 3, this.r(6, 10) * (0.6 + P), this.pick(DUST_COLS));
+  }
+
+  /** The wheel is done: it bursts into cheese chunks and crumbs. */
+  cheeseBurst(x, y) {
+    this.poof(x, y, '#ffd34d');
+    this.crumbs(x, y + 10, 1.4, 0);
+    for (let i = 0; i < 7; i++) this.chunk(x + this.r(-14, 14), y + this.r(-14, 10), this.r(-230, 230), -this.r(220, 460), this.r(5, 9), CHEESE_COLS, true);
+  }
+
+  /** Where a played card's beans land: a ring in the team colour spreading over the grass. */
+  deploy(x, y, color, radius) {
+    const col = isHex(color) ? color : '#ffffff';
+    this.groundRing(x, y, radius * 0.4, radius + 34, 0.5, 5, col, 0.9);
+    this.groundRing(x, y, radius * 0.2, radius + 14, 0.35, 3, '#ffffff', 0.8);
+    for (let i = 0; i < 4; i++) {
+      const side = i % 2 ? 1 : -1;
+      this.puff(false, x + side * this.r(radius * 0.3, radius * 0.8), y - 2, side * this.r(40, 110), -this.r(8, 25), this.r(0.35, 0.55), 4, this.r(8, 12), this.pick(DUST_COLS));
+    }
+  }
+
+  /** Crowns won: a golden crown pops out with a ring of sparkles. */
+  crown(x, y, count) {
+    for (let k = 0; k < count; k++) {
+      const c = this.add(CROWN, true, x + (k - (count - 1) / 2) * 26, y, 1.5);
+      c.vy = -90 - k * 6;
+      c.drag = 1.6;
+      c.size = 21;
+      c.c = k * 0.1; // start delay
+    }
+    const ring = this.add(RING, true, x, y, 0.4);
+    ring.a = 10;
+    ring.b = 70;
+    ring.c = 5;
+    ring.col = '#ffe680';
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * TAU + this.r(-0.2, 0.2);
+      const r = this.r(16, 40);
+      const g = this.add(GLINT, true, x + Math.cos(a) * r, y + Math.sin(a) * r, this.r(0.45, 0.8));
+      g.vx = Math.cos(a) * this.r(30, 80);
+      g.vy = Math.sin(a) * this.r(30, 80) - 30;
+      g.drag = 2;
+      g.size = this.r(6, 11);
+      g.rot = this.r(-0.4, 0.4);
+      g.col = this.pick(GOLD_COLS);
+      g.c = this.r(0, 0.2);
+    }
+    for (let i = 0; i < 10; i++) {
+      const k = this.add(SPARK, true, x, y, this.r(0.3, 0.6));
+      const a = -Math.PI / 2 + this.r(-1.4, 1.4);
+      const sp = this.r(200, 420);
+      k.vx = Math.cos(a) * sp;
+      k.vy = Math.sin(a) * sp;
+      k.grav = G * 0.5;
+      k.drag = 1.5;
+      k.size = this.r(1.6, 2.6);
+      k.col = GOLD_COLS[i % 3];
+    }
+  }
+
+  /** A sleeping castle wakes: a puff and a startled "!". */
+  awake(x, y) {
+    this.poof(x, y, '#ffd84a');
+    this.word(x, y - 16, { text: '!', size: 30, color: '#ffe14d' });
+  }
+
+  /**
+   * Running trails that come from sim state rather than events: crumbs and
+   * dust behind a rolling Cheese Wheel, a wisp of smoke behind cannonballs.
+   * Call once per rendered frame with the game dt.
+   */
+  follow(battle, dt) {
+    if (!battle || !(dt > 0)) return;
+    dt = Math.min(dt, 0.1);
+    if (!this.acc) this.acc = new WeakMap();
+    for (const s of battle.spells || []) {
+      if (!s || s.kind !== 'wheel' || s.done || !Number.isFinite(s.x)) continue;
+      let a = (this.acc.get(s) || 0) + dt;
+      const dir = -(Math.sign(s.vx) || 1);
+      const r = num(s.r, 40);
+      while (a >= 0.06) {
+        a -= 0.06;
+        this.crumbs(s.x + dir * r * 0.4, s.y + r - 1, 0.3, dir);
+      }
+      this.acc.set(s, a);
+    }
+    for (const sh of battle.shots || []) {
+      if (!sh || !Number.isFinite(sh.x)) continue;
+      let a = (this.acc.get(sh) || 0) + dt;
+      while (a >= 0.03) {
+        a -= 0.03;
+        this.puff(false, sh.x, sh.y, this.r(-10, 10), this.r(-15, 0), this.r(0.25, 0.4), 2.5, this.r(5, 8), this.pick(CANNON_SMOKE), 0.7, 3);
+      }
+      this.acc.set(sh, a);
+    }
+  }
+
   // --- simulation -----------------------------------------------------------------------
 
   update(dt) {
@@ -802,8 +1121,10 @@ export class Effects {
     if (this.live === 0) return;
     this.measure(ctx);
     ctx.save();
-    // Marks on the grass, then dirt, then dust billowing over it
+    // Marks on the grass, rings along it, then dirt, then dust billowing over it
     this.pass(ctx, false, SCUFF);
+    this.pass(ctx, false, CRATER);
+    this.pass(ctx, false, GRING);
     this.pass(ctx, false, -1);
     this.pass(ctx, false, DUST);
     ctx.restore();
@@ -834,7 +1155,7 @@ export class Effects {
     for (let k = 0; k < n; k++) {
       const p = pool[(this.head + k) % n];
       if (!p.alive || p.front !== front) continue;
-      if (only >= 0 ? p.kind !== only : !front && (p.kind === SCUFF || p.kind === DUST)) continue;
+      if (only >= 0 ? p.kind !== only : !front && BACK_OWN.has(p.kind)) continue;
       DRAW[p.kind](ctx, p, this);
     }
     ctx.globalAlpha = 1;
@@ -1224,6 +1545,108 @@ function layoutWord(ctx, p) {
   p.grad = g;
 }
 
+/** Masonry / cheese chunk: a chunky block with a lit face and a dark edge. */
+function drawStone(ctx, p, fx) {
+  const s = Math.max(p.size * fx.boost, 2.4 * fx.px);
+  const c = Math.cos(p.rot);
+  const n = Math.sin(p.rot);
+  const hw = s * 0.55;
+  const hh = s * 0.4;
+  ctx.globalAlpha = tailAlpha(p, p.fade || 0.4);
+  const quad = (k, ox, oy) => {
+    ctx.beginPath();
+    ctx.moveTo(p.x + ox + (-hw * c + hh * n) * k, p.y + oy + (-hw * n - hh * c) * k);
+    ctx.lineTo(p.x + ox + (hw * c + hh * n) * k, p.y + oy + (hw * n - hh * c) * k);
+    ctx.lineTo(p.x + ox + (hw * c - hh * n) * k, p.y + oy + (hw * n + hh * c) * k);
+    ctx.lineTo(p.x + ox + (-hw * c - hh * n) * k, p.y + oy + (-hw * n + hh * c) * k);
+    ctx.closePath();
+  };
+  quad(1.18, 0, 0);
+  ctx.fillStyle = 'rgba(60,48,40,0.8)';
+  ctx.fill();
+  quad(1, 0, 0);
+  ctx.fillStyle = p.col;
+  ctx.fill();
+  quad(0.55, -s * 0.12, -s * 0.12);
+  ctx.fillStyle = 'rgba(255,252,240,0.45)';
+  ctx.fill();
+}
+
+/** A dent left in the grass: dark bowl, a lit far lip, fading out over the last 1.5 s. */
+function drawCrater(ctx, p, fx) {
+  const a = clamp((p.life - p.age) / 1.5, 0, 1) * Math.min(1, p.age / 0.08);
+  const rx = p.size;
+  const ry = rx * 0.2;
+  ctx.globalAlpha = 0.5 * a;
+  ctx.fillStyle = '#4a2f18';
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
+  ctx.fill();
+  ctx.globalAlpha = 0.45 * a;
+  ctx.fillStyle = '#2e1c0e';
+  ctx.beginPath();
+  ctx.ellipse(p.x + rx * 0.05, p.y + ry * 0.12, rx * 0.66, ry * 0.6, 0, 0, TAU);
+  ctx.fill();
+  ctx.globalAlpha = 0.35 * a;
+  ctx.strokeStyle = '#d9c59b';
+  ctx.lineWidth = Math.max(1.5, ry * 0.3);
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y + ry * 0.1, rx * 0.98, ry, 0, Math.PI * 1.08, Math.PI * 1.92);
+  ctx.stroke();
+}
+
+function drawGroundRing(ctx, p, fx) {
+  const t = p.age / p.life;
+  const rx = lerp(p.a, p.b, easeOut(t)) * fx.boost;
+  const ry = rx * p.d;
+  ctx.globalAlpha = p.alpha * (1 - t) ** 1.4;
+  ctx.lineWidth = Math.max(p.c * (1 - 0.6 * t) * fx.boost * 0.7, 1.2 * fx.px);
+  ctx.strokeStyle = p.col;
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
+  ctx.stroke();
+}
+
+function drawCrown(ctx, p, fx) {
+  const lt = p.age - p.c;
+  if (lt <= 0) return;
+  const t = lt / (p.life - p.c);
+  const pop = t < 0.2 ? easeBack(t / 0.2) : 1;
+  const R = Math.max(p.size * fx.boost, 8 * fx.px) * pop;
+  ctx.globalAlpha = t > 0.75 ? 1 - (t - 0.75) / 0.25 : 1;
+  const x = p.x;
+  const y = p.y;
+  const w = R * 1.25;
+  const h = R * 0.9;
+  ctx.beginPath();
+  ctx.moveTo(x - w / 2, y + h / 2);
+  ctx.lineTo(x - w / 2, y - h * 0.2);
+  ctx.lineTo(x - w * 0.25, y + h * 0.08);
+  ctx.lineTo(x, y - h / 2);
+  ctx.lineTo(x + w * 0.25, y + h * 0.08);
+  ctx.lineTo(x + w / 2, y - h * 0.2);
+  ctx.lineTo(x + w / 2, y + h / 2);
+  ctx.closePath();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(R * 0.2, 1.4 * fx.px);
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.fillStyle = '#ffd23f';
+  ctx.fill();
+  ctx.fillStyle = '#fff4b8';
+  ctx.fillRect(x - w * 0.42, y + h * 0.18, w * 0.84, h * 0.12);
+  ctx.fillStyle = '#e4433b';
+  ctx.beginPath();
+  ctx.arc(x, y + h * 0.05, R * 0.11, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#2b6be0';
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(x + s * w * 0.28, y + h * 0.26, R * 0.08, 0, TAU);
+    ctx.fill();
+  }
+}
+
 const DRAW = [];
 DRAW[BURST] = drawBurst;
 DRAW[LINES] = drawLines;
@@ -1240,6 +1663,10 @@ DRAW[CONFETTI] = drawConfetti;
 DRAW[TEXT] = drawText;
 DRAW[STAR] = drawStar;
 DRAW[EYE] = drawEye;
+DRAW[STONE] = drawStone;
+DRAW[CRATER] = drawCrater;
+DRAW[GRING] = drawGroundRing;
+DRAW[CROWN] = drawCrown;
 
 function drawEye(ctx, p, fx) {
   const r = Math.max(p.size * fx.boost, 2.5 * fx.px);

@@ -30,7 +30,7 @@ export const UNIT_TYPES = {
       strike: 0.13,
       recover: 0.4,
       cooldown: 0.25,
-      damage: 31,
+      damage: 28,
       knock: 370,
       launch: [240, 500], // px/s (away, up) given to the whole bean at a full-speed hit
       stun: 1.0, // consciousness knocked out (>= ~0.9 knocks the target down)
@@ -55,7 +55,7 @@ export const UNIT_TYPES = {
     shape: 'bean',
     blurb: 'Sword and shield. Raises it against arrows.',
     cost: 95,
-    hp: 180,
+    hp: 220,
     radius: 13.5,
     bodyLen: 24,
     speed: 54,
@@ -68,7 +68,7 @@ export const UNIT_TYPES = {
       strike: 0.1,
       recover: 0.3,
       cooldown: 0.2,
-      damage: 24,
+      damage: 33,
       knock: 150,
       stun: 0.35,
       shieldPierce: 0.45, // squire mirrors need some damage through shields to ever end
@@ -101,7 +101,7 @@ export const UNIT_TYPES = {
     speed: 60,
     weapon: 'bow',
     ranged: true,
-    range: [430, 640], // each archer picks a preferred range in here
+    range: [230, 300], // each archer picks a preferred range in here (sees enemies 60 px further)
     attack: {
       draw: 0.85,
       recover: 0.42,
@@ -126,10 +126,10 @@ export const UNIT_TYPES = {
     shape: 'triangle',
     blurb: 'Small, fast and pointy. Pounces point-first and rams beans into the sky.',
     cost: 45,
-    hp: 75,
+    hp: 62,
     radius: 11,
     bodyLen: 20,
-    speed: 100,
+    speed: 90,
     mass: 0.6,
     weapon: 'none',
     body: { thigh: 11, shin: 11, upperArm: 6, foreArm: 6, chestFrac: 0.45 },
@@ -143,7 +143,7 @@ export const UNIT_TYPES = {
       time: 0.55,
       recover: 0.5,
       cooldown: 1.0,
-      damage: 30,
+      damage: 20,
       launch: [230, 420],
       stun: 0.95,
     },
@@ -161,7 +161,7 @@ export const UNIT_TYPES = {
     shape: 'ball',
     blurb: 'Waddles up, lights its fuse and goes BOOM. Hurts friends too.',
     cost: 55,
-    hp: 50,
+    hp: 80,
     radius: 14,
     bodyLen: 6,
     speed: 88,
@@ -176,9 +176,9 @@ export const UNIT_TYPES = {
     blast: {
       fuse: 0.45,
       radius: 115,
-      damage: 90,
+      damage: 130,
       launch: 560, // px/s at the centre, less further out
-      friendly: 0.5, // share of the damage teammates take
+      friendly: 0.2, // share of the damage teammates take
       chain: 0.4, // a bomb caught in another's blast goes off this long after (mid-flight, often)
       vsGiant: 1.6, // giants can't dodge: extra damage to heavy units
     },
@@ -195,7 +195,7 @@ export const UNIT_TYPES = {
     shape: 'brick',
     blurb: 'A giant block with a hammer. Slow, tough, and the slam shakes the ground.',
     cost: 240,
-    hp: 560,
+    hp: 950,
     radius: 27,
     bodyLen: 46,
     speed: 44,
@@ -205,6 +205,7 @@ export const UNIT_TYPES = {
     face: { up: -0.1, fw: 0 },
     engage: 62,
     reach: 84,
+    targets: 'towers', // arena: walks past beans and only ever attacks towers
     poise: 0.25, // clubs barely stagger it
     heft: 0.3,
     heftUp: 0.35,
@@ -214,7 +215,7 @@ export const UNIT_TYPES = {
       strike: 0.16,
       recover: 0.55,
       cooldown: 0.55,
-      damage: 42,
+      damage: 52,
       knock: 300,
       launch: [210, 400],
       stun: 0.9,
@@ -231,9 +232,90 @@ export const UNIT_TYPES = {
       cheer: { main: [4, 32], off: 'shaft', ang: -85, lean: -0.05, crouch: 0, wk: 1 },
     },
   },
+
+  // --- extra large ---------------------------------------------------------------
+  // Same skeletons as the Clubber and the Bomb at 1.4x / 1.6x, so the poses are
+  // the originals scaled up too.
+
+  bruiser: {
+    id: 'bruiser',
+    name: 'Bruiser',
+    shape: 'bean',
+    blurb: 'An extra-large bean with an extra-large club. Slow, but it hurts.',
+    cost: 170,
+    hp: 250,
+    radius: 20.3,
+    bodyLen: 35,
+    speed: 46,
+    mass: 2.2,
+    weapon: 'club',
+    weaponScale: 1.38, // the club grows with the bean (length, head and weight)
+    body: { thigh: 22.4, shin: 22.4, upperArm: 14.7, foreArm: 14.7 },
+    engage: 64,
+    reach: 80,
+    charge: true,
+    poise: 0.5,
+    heft: 0.55,
+    heftUp: 0.6,
+    attack: {
+      windup: 0.55,
+      hold: 0.14,
+      strike: 0.15,
+      recover: 0.5,
+      cooldown: 0.35,
+      damage: 46,
+      knock: 470,
+      launch: [330, 640],
+      stun: 1.0,
+      shieldPierce: 0.55,
+      cleave: true,
+    },
+    poses: {
+      rest: { main: [-5.6, -8.4], off: 'shaft', ang: -112, lean: 0.04, crouch: 0, wk: 1 },
+      windup: { main: [-2.8, 29.4], off: 'shaft', ang: -118, lean: -0.3, crouch: 9.8, wk: 1.6 },
+      strike: { main: [23.8, -2.8], off: 'shaft', ang: 55, lean: 0.45, crouch: -4.2, wk: 4, hk: 2.2 },
+      recover: { main: [0, 5.6], off: 'shaft', ang: -60, lean: 0.12, crouch: 2.8, wk: 1.4 },
+      cheer: { main: [4.2, 23.8], off: 'shaft', ang: -80, lean: -0.05, crouch: 0, wk: 1 },
+    },
+  },
+
+  megabomb: {
+    id: 'megabomb',
+    name: 'Mega Bomb',
+    shape: 'ball',
+    blurb: 'A huge, slow bomb with a huge, loud blast. Hurts towers too.',
+    cost: 160,
+    hp: 220,
+    radius: 22.4,
+    bodyLen: 9.6,
+    speed: 68,
+    spread: 175, // keeps its distance from other bombs: its blast would set them all off
+    heft: 0.45,
+    mass: 1.8,
+    weapon: 'none',
+    body: { thigh: 19.2, shin: 19.2, upperArm: 9.6, foreArm: 9.6, standFrac: 0.92, chestFrac: 0.5 },
+    face: { up: 0.05, fw: 0.02 },
+    engage: 30,
+    reach: 96,
+    blast: {
+      fuse: 0.55,
+      radius: 170,
+      damage: 250,
+      launch: 780,
+      friendly: 0.15, // (a Mega Bomb kept taking its own push with it)
+      chain: 0.4,
+      vsGiant: 1.3,
+      vsTower: 1, // a mega blast hurts stone just as much
+    },
+    poses: {
+      rest: { main: [14.4, 0], off: [-11.2, 0], ang: 0, lean: 0.05, crouch: 0, wk: 1 },
+      fuse: { main: [-9.6, 14.4], off: [-14.4, 11.2], ang: 0, lean: 0.3, crouch: 0, wk: 1 },
+      cheer: { main: [9.6, 16], off: [-9.6, 16], ang: 0, lean: -0.05, crouch: 0, wk: 1 },
+    },
+  },
 };
 
-export const UNIT_ORDER = ['clubber', 'squire', 'archer', 'spiker', 'bomb', 'brick'];
+export const UNIT_ORDER = ['clubber', 'squire', 'archer', 'spiker', 'bomb', 'brick', 'bruiser', 'megabomb'];
 
 // Body proportions shared by every unit (world px).
 export const BODY = {

@@ -7,6 +7,8 @@ import { itemShieldFrame } from '../sim/battle.js';
 import { drawHat, hatAnchor } from './hats.js';
 
 const HAT_AT = {}; // reused: no allocation per hat
+let A0 = 1; // the caller's globalAlpha while a unit is drawn (parts that set their own alpha multiply it)
+let scratch = null; // offscreen canvas for drawing a see-through unit in one piece
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -22,9 +24,11 @@ const OUTLINE = '#2a1d14';
 const EYE_LINE = '#1d1a24';
 
 export class UnitRenderer {
-  constructor() {
+  /** opts: { showHp: small HP bars over hurt units (arena; the sandbox leaves them off) } */
+  constructor(opts = {}) {
     this.trails = new Map(); // unit id -> recent weapon tip positions
     this.palettes = {}; // team -> palette override (your army colour)
+    this.showHp = !!(opts && opts.showHp);
   }
 
   pal(team) {
@@ -46,11 +50,35 @@ export class UnitRenderer {
     ctx.fill();
   }
 
+  /**
+   * A team-coloured ground ring under each living bean: at phone zoom a crowd
+   * still reads as two sides (one fill per team, so it costs two paths a frame).
+   */
+  drawTeamRings(ctx, battle, alpha = 0.5) {
+    for (const team of ['blue', 'red']) {
+      ctx.fillStyle = this.pal(team).body;
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      for (const u of battle.units) {
+        if (!u.alive || u.gone || u.team !== team || u.dropping) continue;
+        const rx = u.R * 1.4;
+        ctx.moveTo(u.hip.x + rx, u.ground + 2);
+        ctx.ellipse(u.hip.x, u.ground + 2, rx, 4.5, 0, 0, TAU);
+      }
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** Arrows stuck in the dirt, and in tower walls (draw after the towers: the tip is buried in the stone). */
   drawGroundArrows(ctx, battle) {
     for (const a of battle.arrows) {
-      if (a.state !== 'ground') continue;
+      if (a.state !== 'ground' && a.state !== 'tower') continue;
       const pz = battle.arrowPose(a);
-      drawArrow(ctx, pz.x, pz.y, pz.ang, a.team, a.alpha ?? 1, 0);
+      if (!pz) continue;
+      const al = clamp(a.alpha ?? 1, 0, 1);
+      if (al <= 0) continue;
+      drawArrow(ctx, pz.x, pz.y, pz.ang, a.team, al, a.state === 'tower' ? 6 : 0);
     }
   }
 
@@ -72,7 +100,12 @@ export class UnitRenderer {
   }
 
   drawItems(ctx, battle) {
+    const base = ctx.globalAlpha;
     for (const it of battle.items) {
+      // Arena: dropped gear fades away with the corpses
+      const fade = it.fade == null ? 1 : clamp(it.fade, 0, 1);
+      if (fade <= 0) continue;
+      ctx.globalAlpha = base * fade;
       if (it.kind === 'club') drawClub(ctx, it.a.x, it.a.y, it.b.x, it.b.y);
       else if (it.kind === 'hammer') drawHammer(ctx, it.a.x, it.a.y, it.b.x, it.b.y);
       else if (it.kind === 'hat') {
@@ -97,10 +130,11 @@ export class UnitRenderer {
         drawShield(ctx, sh, it.side || 1);
         for (const ar of battle.arrows) if (ar.item === it) {
           const pz = battle.arrowPose(ar);
-          if (pz) drawArrow(ctx, pz.x, pz.y, pz.ang, ar.team, 1, 6);
+          if (pz) drawArrow(ctx, pz.x, pz.y, pz.ang, ar.team, fade, 6);
         }
       }
     }
+    ctx.globalAlpha = base;
   }
 
   drawUnits(ctx, battle, time) {
@@ -108,12 +142,119 @@ export class UnitRenderer {
     for (let pass = 0; pass < 2; pass++) {
       for (const u of battle.units) {
         if ((pass === 0) === u.alive || u.gone) continue;
-        this.drawUnit(ctx, u, battle, time);
+        // Arena corpses fade out (u.fade 1 -> 0) before they are removed
+        const fade = u.fade == null ? 1 : u.fade;
+        if (fade < 1) this.drawUnitAlpha(ctx, u, battle, time, fade);
+        else this.drawUnit(ctx, u, battle, time);
       }
     }
   }
 
+  /**
+   * Draw a unit see-through as one piece (no limbs showing through the body):
+   * it is drawn into an offscreen canvas at the same scale, then composited
+   * with `alpha`. Used for fading corpses and deploy ghosts.
+   */
+  drawUnitAlpha(ctx, u, battle, time, alpha) {
+    if (!(alpha > 0.004)) return;
+    const base = ctx.globalAlpha;
+    if (alpha >= 0.996) {
+      this.drawUnit(ctx, u, battle, time);
+      return;
+    }
+    const m = ctx.getTransform();
+    const cv = ctx.canvas;
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const p of u.parts) {
+      if (p.x < x0) x0 = p.x;
+      if (p.x > x1) x1 = p.x;
+      if (p.y < y0) y0 = p.y;
+      if (p.y > y1) y1 = p.y;
+    }
+    const pad = u.R * 1.8 + 34; // hats, weapons, stuck arrows
+    // Device-pixel box (the camera never rotates, but map all four corners anyway)
+    let dx0 = Infinity;
+    let dy0 = Infinity;
+    let dx1 = -Infinity;
+    let dy1 = -Infinity;
+    for (const [wx, wy] of [[x0 - pad, y0 - pad], [x1 + pad, y0 - pad], [x0 - pad, y1 + pad], [x1 + pad, y1 + pad]]) {
+      const X = m.a * wx + m.c * wy + m.e;
+      const Y = m.b * wx + m.d * wy + m.f;
+      if (X < dx0) dx0 = X;
+      if (X > dx1) dx1 = X;
+      if (Y < dy0) dy0 = Y;
+      if (Y > dy1) dy1 = Y;
+    }
+    const bx = Math.max(0, Math.floor(dx0));
+    const by = Math.max(0, Math.floor(dy0));
+    const bw = Math.min(cv ? cv.width : 4096, Math.ceil(dx1)) - bx;
+    const bh = Math.min(cv ? cv.height : 4096, Math.ceil(dy1)) - by;
+    if (bw <= 0 || bh <= 0) return;
+    if (bw > 1400 || bh > 1400 || typeof document === 'undefined') {
+      // Huge on screen (or no DOM): plain alpha is good enough
+      ctx.globalAlpha = base * alpha;
+      this.drawUnit(ctx, u, battle, time);
+      ctx.globalAlpha = base;
+      return;
+    }
+    if (!scratch) scratch = document.createElement('canvas');
+    if (scratch.width < bw || scratch.height < bh) {
+      scratch.width = Math.max(scratch.width, bw, 64);
+      scratch.height = Math.max(scratch.height, bh, 64);
+    }
+    const sg = scratch.getContext('2d');
+    sg.setTransform(1, 0, 0, 1, 0, 0);
+    sg.globalAlpha = 1;
+    sg.clearRect(0, 0, bw, bh);
+    sg.setTransform(m.a, m.b, m.c, m.d, m.e - bx, m.f - by);
+    this.drawUnit(sg, u, battle, time);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = base * alpha;
+    ctx.drawImage(scratch, 0, 0, bw, bh, bx, by, bw, bh);
+    ctx.restore();
+  }
+
+  /**
+   * Small HP bars over hurt living units (only when showHp is on). Call after
+   * the units (and the front grass). view.dpr: the canvas pixel ratio.
+   */
+  drawHpBars(ctx, battle, view = {}) {
+    if (!this.showHp || !battle) return;
+    const m = ctx.getTransform();
+    const dpr = Number.isFinite(view && view.dpr) ? view.dpr : Math.min(globalThis.devicePixelRatio || 1, 2);
+    const zoom = Math.hypot(m.a, m.b) / dpr || 1;
+    const k = clamp((0.9 / zoom) ** 0.6, 1, 1.8); // keep them readable when zoomed far out
+    const px = 1 / zoom; // one CSS px in world units
+    const base = ctx.globalAlpha;
+    for (const u of battle.units) {
+      if (!u.alive || u.gone || u.dropping || !(u.maxHp > 0) || !(u.hp < u.maxHp)) continue;
+      const frac = clamp(u.hp / u.maxHp, 0, 1);
+      const T = this.pal(u.team);
+      const w = clamp(u.R * 2.2, 24, 50) * k;
+      const h = 4.4 * k;
+      const top = Math.min(u.head.y, u.chest.y) - u.R * (u.hat ? 2.1 : 1) - 8 * k;
+      const x = u.chest.x - w / 2;
+      const y = top - h / 2;
+      const e = 1.3 * px;
+      ctx.fillStyle = 'rgba(26,20,38,0.82)';
+      ctx.fillRect(x - e, y - e, w + 2 * e, h + 2 * e);
+      ctx.fillStyle = '#4a4360';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = u.hurtT > 0.05 ? '#ffffff' : T.body;
+      ctx.fillRect(x, y, w * frac, h);
+      ctx.fillStyle = T.light;
+      ctx.globalAlpha = base * 0.7;
+      ctx.fillRect(x, y, w * frac, h * 0.35);
+      ctx.globalAlpha = base;
+    }
+  }
+
   drawUnit(ctx, u, battle, time) {
+    A0 = ctx.globalAlpha;
     const T = this.pal(u.team);
     const f = u.f;
     const R = u.R;
@@ -271,10 +412,10 @@ export class UnitRenderer {
         else ctx.lineTo(x, y);
       }
       ctx.strokeStyle = T.light;
-      ctx.globalAlpha = 0.7;
+      ctx.globalAlpha = A0 * 0.7;
       ctx.lineWidth = R * 0.5;
       ctx.stroke();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = A0;
     }
     ctx.restore();
   }
@@ -311,12 +452,12 @@ export class UnitRenderer {
       // Soft highlight on the lit upper side
       const c = u.chest;
       const up = u.type.shape === 'ball' ? R * 0.35 : u.L * 0.3;
-      ctx.globalAlpha = 0.55;
+      ctx.globalAlpha = A0 * 0.55;
       ctx.fillStyle = T.light;
       ctx.beginPath();
       ctx.ellipse(c.x + nx * R * 0.45 + u.ux * up, c.y + ny * R * 0.45 + u.uy * up, R * 0.22, u.type.shape === 'brick' ? R * 0.9 : R * 0.38, Math.atan2(u.uy, u.ux), 0, TAU);
       ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = A0;
       ctx.restore();
     }
     ctx.restore();
@@ -380,7 +521,7 @@ export class UnitRenderer {
     if (u.brow > 0.05 && u.alive) {
       ctx.strokeStyle = EYE_LINE;
       ctx.lineWidth = Math.max(1, R * 0.16);
-      ctx.globalAlpha = Math.min(1, u.brow * 1.5);
+      ctx.globalAlpha = A0 * Math.min(1, u.brow * 1.5);
       ctx.beginPath();
       for (let i = 0; i < 2; i++) {
         const { r } = eyes[i];
@@ -392,7 +533,7 @@ export class UnitRenderer {
         ctx.lineTo(bx, by);
       }
       ctx.stroke();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = A0;
     }
     // Mouth
     const open = u.alive ? clamp(u.mouth * 5, 0, 1) : 0.45;
@@ -568,7 +709,7 @@ function drawMortar(ctx, u, T) {
   const by = u.hip.y - uy * R;
   const H = u.L + 2 * R;
   ctx.strokeStyle = T.shade;
-  ctx.globalAlpha = 0.5;
+  ctx.globalAlpha = A0 * 0.5;
   ctx.lineWidth = R * 0.08;
   ctx.beginPath();
   const rows = 4;
@@ -588,7 +729,7 @@ function drawMortar(ctx, u, T) {
     ctx.lineTo(x0 + (ux * H) / rows, y0 + (uy * H) / rows);
   }
   ctx.stroke();
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = A0;
 }
 
 /** Bomb: a fuse on top; once lit it burns down with a fizzing spark. */
@@ -763,7 +904,8 @@ export function drawArrow(ctx, x, y, ang, team, alpha = 1, hide = 0) {
   const c = Math.cos(ang);
   const s = Math.sin(ang);
   const L = 30;
-  if (alpha < 1) ctx.globalAlpha = alpha;
+  const a0 = ctx.globalAlpha;
+  if (alpha < 1) ctx.globalAlpha = a0 * alpha;
   const hx = x - c * hide;
   const hy = y - s * hide;
   const tx = x - c * L;
@@ -794,7 +936,7 @@ export function drawArrow(ctx, x, y, ang, team, alpha = 1, hide = 0) {
     ctx.closePath();
     ctx.fill();
   }
-  if (alpha < 1) ctx.globalAlpha = 1;
+  if (alpha < 1) ctx.globalAlpha = a0;
 }
 
 export function drawClub(ctx, hx, hy, tx, ty) {

@@ -5,6 +5,28 @@ import { WORLD } from '../config.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
+/**
+ * Arena framing for a w x h (CSS px) screen: the whole field plus `pad` world
+ * px each side fills the width, and the ground sits as low as the bottom HUD
+ * allows, so the castles' HP bars stay clear of the top HUD and the extra room
+ * goes to the sky. opts: { hudTop, hudBottom (CSS px the HUD covers), pad
+ * (world px, default 30), above (world px needed above the ground: castle,
+ * flag and HP bars, default 290), below (world px of grass/dirt to keep in
+ * view, default 44) }. Returns { x, zoom, groundFrac } (groundFrac as in Camera).
+ * 844x390 with hudTop 40 / hudBottom 96 gives zoom ~0.54; 667x375 ~0.43.
+ */
+export function arenaFraming(w, h, opts = {}) {
+  const pad = Number.isFinite(opts.pad) ? opts.pad : 30;
+  const above = Number.isFinite(opts.above) ? opts.above : 290;
+  const below = Number.isFinite(opts.below) ? opts.below : 44;
+  const top = Math.max(0, opts.hudTop || 0);
+  const bottom = Math.max(0, opts.hudBottom || 0);
+  const band = Math.max(40, h - top - bottom);
+  const zoom = Math.max(0.05, Math.min(w / (WORLD.width + 2 * pad), band / (above + below)));
+  const ground = top + band - below * zoom; // screen y of the middle of the lanes
+  return { x: WORLD.width / 2, zoom, groundFrac: clamp(ground / Math.max(1, h), 0.3, 0.95) };
+}
+
 export class Camera {
   constructor() {
     this.x = WORLD.width / 2;
@@ -57,6 +79,22 @@ export class Camera {
       this.x = this.tx;
       this.zoom = this.tzoom;
     }
+  }
+
+  /** Frame the whole arena (see arenaFraming) and stop auto-following. instant: no easing. */
+  frameArena(opts = {}, instant = false) {
+    const f = arenaFraming(this.w, this.h, opts);
+    this.follow = false;
+    this.tx = f.x;
+    this.tzoom = f.zoom;
+    this.groundTarget = f.groundFrac;
+    if (instant) {
+      this.x = f.x;
+      this.zoom = f.zoom;
+      this.groundFrac = f.groundFrac;
+      this.y = this.yFor(this.zoom);
+    }
+    return f;
   }
 
   pan(dxScreen) {

@@ -8,8 +8,9 @@
 // the muscles fade back in and it gets up again. Dead = conscious 0 forever.
 
 import { WORLD } from '../config.js';
-import { Particle, Dist, hingeLimit, springTo } from './physics.js';
+import { Particle, Dist, springTo } from './physics.js';
 import { BODY, WEAPONS } from './unit-types.js';
+import { levelMul } from './cards.js';
 import { Rng } from './rng.js';
 
 const G = WORLD.gravity;
@@ -34,6 +35,9 @@ const DRIVE_K = 9;
 const DRIVE_MAX = 1000;
 const KNEE_PUSH = 900;
 const BALANCE_K = 55; // hips drift back over the planted feet when standing still
+const YELL_T = 0.55; // a dropped unit's battle cry, at the end of its deploy time
+const BRACE_T = 0.4; // after a drop landing, for this long...
+const BRACE_C = 2.4; // ...the hips are this much more damped
 
 /** Two-bone IK: joint position for a limb from a to b, bending to `side`. */
 function ik(ax, ay, bx, by, l1, l2, side) {
@@ -67,8 +71,16 @@ function blendPose(a, b, k) {
   };
 }
 
+/** A unit's weapon, scaled to its size (type.weaponScale: longer, heavier, bigger head). */
+function weaponOf(type) {
+  const W = WEAPONS[type.weapon];
+  const k = type.weaponScale || 1;
+  if (k === 1 || !W.len) return W;
+  return { ...W, len: W.len * k, tipMass: W.tipMass * k * k, tipR: W.tipR * k, grip: W.grip * k };
+}
+
 export class Unit {
-  constructor(type, team, x, lane, id, seed) {
+  constructor(type, team, x, lane, id, seed, level = 1) {
     this.type = type;
     this.team = team;
     this.id = id;
@@ -79,8 +91,12 @@ export class Unit {
     const size = this.rng.range(0.95, 1.06); // every bean is a little different
     this.R = type.radius * size;
     this.L = type.bodyLen * size;
-    this.hp = type.hp;
-    this.maxHp = type.hp;
+    // Card level: +10% health and damage per level (every damage source reads dmgMul)
+    this.level = Math.max(1, level | 0 || 1);
+    this.dmgMul = levelMul(this.level);
+    this.W = weaponOf(type);
+    this.hp = type.hp * this.dmgMul;
+    this.maxHp = this.hp;
     this.alive = true;
     this.conscious = 1;
     this.wake = 1;
@@ -146,6 +162,12 @@ export class Unit {
     this.deathFuse = 0; // bomb killed before it went off: seconds until it does
     this.exploded = false;
     this.gone = false; // blown to bits: no body left to draw or simulate
+    this.fade = 1; // arena: 1 -> 0 while the corpse fades out (draw alpha); removed at 0
+    this.deployT = 0; // > 0 while a freshly dropped unit is not active yet
+    this.dropping = false; // still falling from the sky after being played
+    this.dropHop = false; // dropped units always get their battle-cry hop
+    this.yellT = 0; // own battle-cry pose (dropped units yell after landing)
+    this.braceT = 0;
 
     this.build(x);
   }
@@ -194,7 +216,7 @@ export class Unit {
     }
 
     // Arms
-    const W = WEAPONS[this.type.weapon];
+    const W = this.W;
     this.mainHand = this.type.weapon === 'sword' ? 0 : 1; // sword in the far hand, shield in the near
     this.elbow = [];
     this.hand = [];
@@ -270,6 +292,11 @@ export class Unit {
       if (b.phase === 'over' && b.winner === this.team) this.state = 'cheer';
       return;
     }
+    if (this.deployT > 0) {
+      this.wantVx = 0; // just dropped in: land, look around, battle cry
+      this.state = 'idle';
+      return;
+    }
     if (this.downT > 0 || this.conscious < 0.3) {
       this.wantVx = 0;
       return;
@@ -285,17 +312,30 @@ export class Unit {
       this.wantVx = 0;
       return;
     }
-    const dx = t.hip.x - this.hip.x;
+    // A tower is a wall: distances are to its near face (engage/reach were tuned
+    // against a 13 px bean's surface, hence the -13)
+    let dx;
+    let grow;
+    if (t.isTower) {
+      dx = t.x + (this.hip.x < t.x ? -t.w : t.w) / 2 - this.hip.x;
+      grow = -13;
+      this.lookX = t.x;
+      this.lookY = -t.h * 0.6;
+    } else {
+      dx = t.hip.x - this.hip.x;
+      grow = t.R - 13;
+      this.lookX = t.head.x;
+      this.lookY = t.head.y;
+    }
     const dist = Math.abs(dx);
-    this.lookX = t.head.x;
-    this.lookY = t.head.y;
     if (!this.act && dx !== 0) this.f = dx > 0 ? 1 : -1;
     const toward = dx > 0 ? 1 : -1;
     if (this.type.ranged) {
-      this.wantVx = dist > this.preferRange ? toward * this.speed : 0;
-      if (dist <= this.preferRange + 40 && !this.act && this.cooldown <= 0) this.startAttack(b);
+      // Shooting a tower: come within its reach (a tower that can't shoot back would fall to one unanswered card)
+      const range = t.isTower ? Math.min(this.preferRange, t.range - t.w / 2 - 25) : this.preferRange;
+      this.wantVx = dist > range ? toward * this.speed : 0;
+      if (dist <= range + 40 && !this.act && this.cooldown <= 0) this.startAttack(b);
     } else {
-      const grow = t.R - 13;
       const engage = this.type.engage + grow;
       const reach = this.type.reach + grow;
       // Walk in to duel distance, plant the feet while swinging, step back if crowded.
@@ -366,7 +406,8 @@ export class Unit {
     // Battle-cry hop at the start of the fight
     if (this.alive && !this.hopped && this.hopAt >= 0 && b.phase === 'battle' && b.battleTime >= this.hopAt) {
       this.hopped = true;
-      if (this.groundF > 0.8) for (const p of this.parts) p.addVel(0, -this.rng.range(200, 290), dt);
+      // (a bean that just dropped in may still be rising out of its landing squat: hop anyway)
+      if (this.groundF > (this.dropHop ? 0.3 : 0.8)) for (const p of this.parts) p.addVel(0, -this.rng.range(200, 290), dt);
       this.mouth = Math.max(this.mouth, 0.6);
     }
     const m = this.conscious;
@@ -399,7 +440,9 @@ export class Unit {
     // Breathing while standing around
     const breath = !this.wantVx && !this.act ? Math.sin(this.time * 2.3) * 0.9 : 0;
     const targetH = this.standH - pose.crouch + this.bob + breath;
-    let fy = this.supportMass * (SUP_K * (this.ground - targetH - hip.y) - SUP_C * hipVy - G);
+    // Just landed from a drop: the knees soak it up (more damping), one soft wobble instead of a trampoline
+    const supC = this.braceT > 0 ? SUP_C * BRACE_C : SUP_C;
+    let fy = this.supportMass * (SUP_K * (this.ground - targetH - hip.y) - supC * hipVy - G);
     if (fy > 0) fy = 0;
     const cap = this.supportMass * G * 5;
     if (fy < -cap) fy = -cap;
@@ -552,6 +595,15 @@ export class Unit {
         }
         springTo(p, tx, ty, FOOT_K, FOOT_C, dt, m * gF);
       }
+    } else if (this.dropping) {
+      // Dropped in from the sky: feet straight down under the hips, braced for the landing.
+      // Damped relative to the hips, so the legs don't act like a sail and push the bean sideways.
+      const hvy = hip.vy(dt);
+      for (let i = 0; i < 2; i++) {
+        this.feet[i].air = true;
+        this.feet[i].plant = false;
+        springTo(this.foot[i], hip.x + this.footOff[i] * f, hip.y + this.legLen * 0.88, 600, 30, dt, m, hipVx, hvy);
+      }
     } else {
       // Airborne (or nearly out): cartoon running in the air
       const ph = this.time * 17;
@@ -607,7 +659,7 @@ export class Unit {
     }
     this.muscle(hand, mx, my, HAND_K * hk, HAND_C * Math.sqrt(hk), dt, m);
 
-    const W = WEAPONS[this.type.weapon];
+    const W = this.W;
     if (this.tip) {
       // During the strike the body is braced: most of the swing's kick goes into the ground
       const rk = this.act && this.act.phase === 'strike' ? 0.2 : 1;
@@ -662,9 +714,9 @@ export class Unit {
     this.striking = false;
     if (!this.alive) return P.rest;
     if (this.state === 'cheer' && !this.act) return P.cheer;
-    if (b.yellT > 0 && !this.act && this.alive) {
+    if ((b.yellT > 0 || this.yellT > 0) && !this.act && this.alive) {
       // Battle cry: brandish the weapon
-      const k = Math.sin(clamp(b.yellT / 0.9, 0, 1) * Math.PI);
+      const k = b.yellT > 0 ? Math.sin(clamp(b.yellT / 0.9, 0, 1) * Math.PI) : Math.sin(clamp(this.yellT / YELL_T, 0, 1) * Math.PI);
       return blendPose(P.rest, P.cheer, k * 0.8);
     }
     const a = this.act;
@@ -1022,7 +1074,7 @@ export class Unit {
         const power = clamp(p.impact / 900, 0, 1.5);
         b.emit('land', p.x, this.ground, { unit: this, power });
         this.sqv += power * 5;
-        if (this.alive && b.phase === 'battle' && p.impact > 650) {
+        if (this.alive && b.phase === 'battle' && p.impact > 650 && this.deployT <= 0) {
           const dmg = (p.impact - 650) * 0.12;
           this.hp -= dmg;
           this.conscious = Math.max(0, this.conscious - 0.4);
@@ -1037,7 +1089,7 @@ export class Unit {
     if (this.groundF < 0.05 && fast > 280) this.airT += dt;
     else this.airT = 0;
     this.screamT -= dt;
-    if (this.alive && this.airT > 0.08 && this.screamT <= 0) {
+    if (this.alive && this.airT > 0.08 && this.screamT <= 0 && this.deployT <= 0) {
       this.screamT = 1.4;
       this.mouth = 0.8;
       this.mouthKind = 'o';
@@ -1045,6 +1097,29 @@ export class Unit {
     }
 
     // Timers
+    if (this.deployT > 0) {
+      if (this.dropping && this.groundF > 0.5) {
+        // Touchdown: thud + dust (the legs take it, so the body never hits the ground itself)
+        this.dropping = false;
+        this.braceT = BRACE_T;
+        if (this.landT <= 0) {
+          this.landT = 0.3;
+          b.emit('land', hip.x, this.ground, { unit: this, power: clamp(Math.max(0, vy) / 900, 0.3, 1.2) });
+          this.sqv += 4;
+        }
+      }
+      this.deployT -= dt;
+      if (!this.dropping && this.alive && this.deployT <= YELL_T && this.deployT > 0 && this.yellT <= 0) {
+        this.yellT = this.deployT; // landed: brandish the weapon until it's time to go
+        this.brow = 1;
+      }
+      if (this.deployT <= 0) {
+        this.deployT = 0;
+        this.dropping = false;
+      }
+    }
+    if (this.yellT > 0) this.yellT -= dt;
+    if (this.braceT > 0) this.braceT -= dt;
     if (this.mouth > 0) this.mouth -= dt;
     if (this.hurtT > 0) this.hurtT -= dt;
     if (this.dizzy > 0) this.dizzy -= dt;

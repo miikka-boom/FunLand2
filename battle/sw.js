@@ -12,7 +12,7 @@
 
 // BUMP THIS on every deploy that changes ANY file under battle/ (code, CSS, HTML, icons).
 // If it stays the same, players who already have the game keep the old files forever.
-const VERSION = '2026-11-04.4';
+const VERSION = '2026-11-05.3';
 
 const CACHE_PREFIX = 'wobble-war-';
 const CACHE = CACHE_PREFIX + VERSION;
@@ -23,6 +23,7 @@ const CACHE = CACHE_PREFIX + VERSION;
 const PRECACHE = [
   './index.html',
   './style.css',
+  './hub.css',
   './icon.svg',
   './manifest.webmanifest',
   './icons/icon-192.png',
@@ -33,23 +34,41 @@ const PRECACHE = [
   './src/config.js',
   './src/input.js',
   './src/main.js',
+  './src/meta/badges.js',
+  './src/meta/chests.js',
+  './src/meta/collection.js',
   './src/meta/cosmetics.js',
-  './src/meta/economy.js',
-  './src/meta/levels.js',
+  './src/meta/ladder.js',
+  './src/meta/opponents.js',
   './src/meta/profile.js',
-  './src/meta/trophies.js',
+  './src/meta/shop.js',
   './src/pwa.js',
   './src/render/background.js',
   './src/render/camera.js',
+  './src/render/cards.js',
+  './src/render/chests.js',
   './src/render/effects.js',
   './src/render/hats.js',
+  './src/render/spells.js',
+  './src/render/towers.js',
   './src/render/units.js',
   './src/sim/battle.js',
+  './src/sim/bot.js',
+  './src/sim/cards.js',
+  './src/sim/match.js',
   './src/sim/physics.js',
   './src/sim/rng.js',
+  './src/sim/spells.js',
+  './src/sim/towers.js',
   './src/sim/unit-types.js',
   './src/sim/unit.js',
-  './src/ui/meta-ui.js',
+  './src/ui/cards-screen.js',
+  './src/ui/chest-open.js',
+  './src/ui/hub-kit.js',
+  './src/ui/hub.js',
+  './src/ui/more-screen.js',
+  './src/ui/shop-screen.js',
+  './src/ui/trail-screen.js',
 ];
 
 const HERE = self.location.href;

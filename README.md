@@ -6,7 +6,7 @@ build step and no dependencies.
 | Prototype | Folder | What it's testing |
 |---|---|---|
 | 0: HORDE | [`/`](index.html) | Twin-stick touch controls for top-down zombie horde survival |
-| 1: WOBBLE WAR | [`battle/`](battle/) | Funny, satisfying 2D physics units in a side-view battle simulator |
+| 1: WOBBLE WAR | [`battle/`](battle/) | A real-time card battler with funny, satisfying 2D physics units and a fair free-to-play meta game |
 | Hope Street | [`hope/`](hope) | A metagame with base building and randomly generated people: take them in, pick a crew of four for each run |
 | Road to Evac | [`evac/`](evac) | A metagame for a co-op zombie survivor game (simulated runs) |
 | Safehouse | [`safehouse/`](safehouse) | Another metagame: meta-progression for a co-op zombie mobile game |
@@ -14,40 +14,154 @@ build step and no dependencies.
 
 # Prototype 1: "WOBBLE WAR"
 
-A simplified 2D side-view battle simulator in the spirit of Totally Accurate
-Battle Simulator. You place wobbly bean soldiers, press **FIGHT!**, and watch
-them bonk each other. **Prototype 1** is about making those physics-body units
-look and feel as funny and satisfying as possible.
+A real-time card battler with wobbly ragdoll beans, played on a phone held
+sideways in the browser. Drop cards of bean soldiers onto your half of the
+field, bonk down the computer player's Guard Tower and Castle, and climb five
+arenas, in a fair free-to-play meta game where everything that wins is earned
+by playing. It started as a "place your army, press FIGHT" physics toy in the
+spirit of Totally Accurate Battle Simulator; that toy is still in the game as
+the **Sandbox**, and the physics beans are still the point: every unit is a
+ragdoll that wobbles, cartwheels, flops and piles up.
 
 Play it at `battle/` (locally: `npm start`, then open
-`http://localhost:8080/battle/`). It works with a mouse or touch, in landscape
-on phones.
+`http://localhost:8080/battle/`). It is made for touch in landscape (844×390
+and 667×375 phones first); a mouse works too. Held upright, a phone gets a
+"turn your phone sideways" screen (a running match pauses). The design spec is
+[`docs/WOBBLE-WAR-ARENA.md`](docs/WOBBLE-WAR-ARENA.md).
 
-## The units
+## How to play
 
-| Unit | Cost | Role |
-|---|---|---|
-| **Clubber** | 65 | Big overhead club swing. The hit launches beans cartwheeling through the air and knocks them down. Breaks into a yelling charge when close. |
-| **Squire** | 95 | Sword and shield. Raises the shield when archers aim at it and blocks hits from the front; a block stops the swing. Heavy: flies lower. Clubs come down over the top. |
-| **Archer** | 75 | Lobs arrows on a ballistic arc (and sometimes misses). Arrows stick and quiver in bodies, shields and the ground, and stay in the corpses. Squishy up close. |
-| **Spiker** (triangle, small) | 45 | Fast and pointy. Rears back, then pounces point-first and rams beans into the sky. A shield bounces it straight back, seeing stars. |
-| **Bomb** (circle, small) | 55 | Waddles up, lights its fuse and charges in screaming, then explodes: everything nearby is flung (teammates take half damage) and its googly eyes go bouncing off. Bombs wait for each other to get out of blast range; one right next to a blast goes off too. |
-| **Brick** (rectangle, giant) | 240 | A walking brick wall about 1.7 times bean height, with an iron hammer. Slow and very hard to knock over; the hammer slam sends a shockwave along the ground that hops everything nearby into the air. |
+- **The field:** you are blue on the left, a computer player is red on the
+  right. Each side has a **Guard Tower** (worth 1 crown) in front of its
+  **Castle** (all 3 crowns: it wins at once). A Castle sleeps until its Guard
+  Tower falls or it is hit.
+- **Playing a card:** drag it from your hand onto the field (see-through beans
+  or the spell circle follow your finger, and the zone you may use lights up),
+  or tap a card and then tap the field. Units go on your half (and further
+  forward once their Guard Tower is down); spells go anywhere. A card that
+  can't go there shakes back into your hand with the reason ("Not enough
+  mana", "Play units on your side").
+- **Mana** 💧: starts at 5, max 10, +1 every 2.8 s, and twice as fast in the
+  last minute and in overtime. Deck of 8, hand of 4, the next card is shown; a
+  played card goes to the back of the line.
+- **The beans** drop from the sky where you play them, land with a wobble and
+  a battle-cry hop, then fight the nearest enemy bean or march on the next
+  tower. The Brick only goes for towers.
+- **Winning:** after 2:00 the side with more crowns wins. A tie goes to up to
+  1:00 of overtime where the first tower down wins; still tied, the side whose
+  weakest tower has less health left (as a fraction) loses, and the result
+  screen says so. An exact tie is a draw.
+- **Levels:** each card level adds 10% health and damage; your towers fight at
+  your King Level.
+- **Pause** (❚❚ or the phone's back button) has Surrender, which takes two
+  deliberate taps. Keys: `1`–`4` pick a card, `Esc` pause, `M` mute, `Space`
+  skips the VS screen / closes the result.
+- **First match:** against the Training Dummy, with a coach pointing at what to
+  do. After it the menu points at the two free chests, then at upgrading a card.
 
-Rock-paper-scissors: archers shoot clubbers before they arrive, clubbers bonk
-squires over their shields, and squires walk through arrow rain under a raised
-shield. The shapes slot in around that triangle: Spikers catch archers and
-bombs but bounce off shields; bombs blow up clumps of melee (and hurt the giant
-extra) but get shot or caught early; the Brick flattens melee but is slow
-enough for archers and bombs to bring down. At equal gold the counter wins
-almost every time but loses a good share of its health, and mixed armies beat
-most single-type ones (checked with headless simulations).
+## The cards
 
-Every shape uses the same wobbly ragdoll skeleton, scaled per unit (a stubby
-ball, a small wedge, a giant block), so the shapes wobble, fly, flop and pile
-up just like the beans. Bigger units shove smaller ones around, not the other
-way round.
+| Card | Mana | Rarity | Unlocks in | What it does |
+|---|---|---|---|---|
+| Clubbers | 3 | Common | Green Hills | Two beans with big wooden clubs: the overhead bonk sends beans cartwheeling |
+| Squire | 3 | Common | Green Hills | Sword and shield: raises the shield against arrows, blocks hits from the front |
+| Archers | 3 | Common | Green Hills | Two archers lobbing arrows that stick (and sometimes miss). Squishy up close |
+| Spikers | 2 | Common | Green Hills | Three small, fast wedges that pounce point-first. A shield bounces them back |
+| Bomb | 2 | Common | Green Hills | Waddles up, lights its fuse and goes BOOM; flings everything nearby |
+| Arrow Rain | 3 | Common | Green Hills | Spell: three volleys of real arrows on a circle |
+| Boulder | 4 | Rare | Green Hills | Spell: a rock falls on an arc; everything under it goes flying |
+| Clubber Gang | 5 | Rare | Green Hills | Four Clubbers at once |
+| Bruiser | 4 | Rare | Pointy Pass | An extra-large bean with an extra-large club |
+| Brick | 5 | Epic | Pointy Pass | A giant walking block with a hammer; ignores beans, marches on towers, the slam shakes the ground |
+| Cheese Wheel | 3 | Epic | Pointy Pass | Spell: a wheel of cheese rolls toward the enemy, bowling beans over and denting towers |
+| Bomb Squad | 4 | Rare | Boom Ridge | Three bombs (keep them apart, or one sets off the rest) |
+| Mega Bomb | 3 | Epic | Boom Ridge | A huge, slow bomb with a huge blast that hurts towers too |
+| Shield Wall | 7 | Epic | Boom Ridge | Three Squires, shields up |
 
+The eight Green Hills cards are your starting deck. Every number lives in
+`battle/src/sim/cards.js` (cards), `sim/unit-types.js` (units), `sim/towers.js`,
+`sim/spells.js` and `sim/match.js` (rules).
+
+## A fair free-to-play game
+
+Wobble War is a free game of the good kind: no money anywhere in power.
+
+- **No** premium currency, energy, ads, paid timers or loot boxes. The
+  optional Supporter Pack is cosmetic only and isn't connected to any payment.
+- **Two earned currencies:** **gold** for card upgrades and shop cards (from
+  matches, chests, the Trophy Trail, badges and the daily gift), and
+  **Jellybeans** for looks only: army colours and hats (from badges, the Trail
+  and Big Chests).
+- **Two chests, always on the main menu, and no others:** the **Small Chest**
+  refills every 3 hours (25–45 gold, about 8 cards in 2 stacks, 15% chance per
+  stack of a rare one) and the **Big Chest** every 12 hours (120–200 gold,
+  about 30 cards in 4 stacks with at least one rare stack, a 35% chance of an
+  epic stack once you have epic cards unlocked, and 10 Jellybeans). Both are ready on your first visit. They never
+  stack, never need a slot and can't be sped up, and matches never give chests.
+  Opening one a little late costs nothing: up to a quarter of its timer of
+  lateness comes off the next wait.
+  They grow in higher arenas (+25% gold and +20% cards per arena), only drop
+  cards you have unlocked, and a tap on a waiting chest shows its exact ranges
+  and odds.
+- **Matches pay trophies and gold:** a win is +27, +30 or +33 trophies (by
+  crowns) and 12 gold + 4 per crown + 4 per arena after the first; a loss is
+  −18 trophies and 3 gold (giving up pays no gold); a draw is 0 trophies and
+  6 gold. A match left unfinished (a reload, the app closed) counts as a loss
+  next time only if the bot was ahead on crowns; otherwise it is dropped.
+- **Gentle losses:** you never drop out of an arena you reached (each arena's
+  gate is a trophy floor).
+- **Arenas:** Green Hills (0 trophies), Pointy Pass (300), Boom Ridge (650),
+  Brick Fortress (1000) and Wobble Summit (1500), each with its own scenery.
+  A new arena unlocks its cards in chests and the shop, and the **Trophy
+  Trail** (32 rewards up to 1600 trophies, claimable forever by your best
+  trophies) hands each new card out right after its gate, with enough copies
+  to bring it to about level 4.
+- **Honest opponents:** bots with names like Captain Bonk, labelled "computer
+  player". Their card levels mirror your deck card by card (never above any
+  of yours), capped at the level usual for your trophies, so upgrading past
+  that is a real edge; their King Level works the same way, and their skill
+  follows your trophies.
+- **Upgrades** cost copies of the card plus gold, and earn King XP; each King
+  Level makes your towers 10% stronger. Costs are always shown.
+- **Daily shop** (by your local date): a free gift and three card offers for
+  gold, one buy each. The **Wardrobe** sells hats for each unit type and army
+  colours for Jellybeans, with a live preview. Hats use their own random
+  numbers, so they never change how a battle goes.
+- **Badges:** 25 goals such as Frequent Flyer, Pincushion, Chain Reaction and
+  Giant Slayer, paying Jellybeans and some gold.
+- **Old saves:** a save from the earlier campaign version keeps its
+  Jellybeans, cosmetics, settings, stats and badges, and gets a veteran gift of
+  20 gold per campaign star (up to 2000).
+- More → "How it's fair" spells all of this out in the game.
+
+## The menus
+
+The hub has a top bar (King Level and XP, gold, Jellybeans, full screen,
+settings) and five tabs:
+
+- **Battle:** the arena banner (trophies and progress to the next arena), the
+  big **BATTLE** button and the two chests. A bot-vs-bot match plays live
+  behind it.
+- **Cards:** your deck and collection. A card's sheet shows its stats (and what
+  the next level adds), copies, Upgrade, and Use (then tap a deck card to swap
+  it in). Locked cards show where they unlock.
+- **Shop:** the daily gift, the card offers, the Wardrobe and the Supporter
+  Pack. Purchases take two deliberate taps.
+- **Trail:** the Trophy Trail, scrolling sideways, with arena gates.
+- **More:** Badges, Settings (sound, volume, vibration, screen shake, install,
+  reset progress), "How it's fair" and the Sandbox.
+
+The phone's back button steps back inside the game (closes a card, returns to
+the Battle tab, pauses a match); only on the bare main menu does it leave.
+The game installs to the home screen, plays offline through a service worker,
+and only updates itself while you are in the menus. Progress is saved in
+`localStorage` (`wobblewar.profile.v1`, now version 2).
+
+**Sandbox** (More → Sandbox): the original toy. Pick a unit card, tap the left
+side for blue or the right side for red, press **FIGHT!**. Drag a bean to grab
+and fling it (a lit bomb stays lit), drag elsewhere to pan, pinch or scroll to
+zoom; 🐢 is slow motion. Keys: `1`–`8` pick a unit, `E` remove, `Space` fight,
+`S` slow-mo, `F` auto camera, `R` reset.
 
 ## How the beans work
 
@@ -76,91 +190,72 @@ The jokes come from that one rule plus a few extras:
   clods, "BONK!" pop-ups, smooth slow motion (drawing blends between physics
   steps), a final-blow slow-mo that keeps the victim in the shot, and the
   winners hop and cheer.
-- **Hand of god:** drag a bean to pick it up. It dangles and flails, and you
-  can fling it.
-
-## A fair free-to-play game
-
-Wobble War is set up as a free mobile game of the good kind. Everything that
-wins battles is earned by playing; money (if it is ever connected) only buys
-looks.
-
-- **Hub:** the home screen runs a silent demo battle behind the menu. **PLAY**
-  continues the campaign. The other tiles are Map, Daily, Sandbox, Wardrobe and
-  Trophies; ⚙ opens the settings.
-- **Campaign:** 30 levels in three worlds (Green Hills, Pointy Pass, Brick
-  Fortress). Each world ends with a boss army in matching hats. Red's army is
-  preset and you get a gold budget. Winning gives ★, and spending less gives
-  ★★ and ★★★; the HUD shows your stars live while you place. Clearing a world
-  unlocks its units everywhere: Spiker and Bomb after World 1, the Brick after
-  World 2. Every level was simulated headless: several affordable armies win,
-  and the star thresholds come from the cheapest winning army found.
-- **Daily challenge:** one level from the worlds you have reached, with today's
-  enemies in matching hats. The first win of the day pays bonus Jellybeans.
-  There is no streak, so missing a day costs nothing.
-- **Jellybeans:** the one currency. You earn them from first clears, new
-  stars, small replay wins, the daily and trophies. You spend them only on
-  cosmetics.
-- **Wardrobe:** a hat per unit type (15 hats) and an army colour (6 colours),
-  with a live preview you can poke. Buying takes two deliberate taps, so
-  purchases are never accidental. Hats pop off when their bean gets bonked;
-  they use their own random numbers, so a hat never changes how a battle goes.
-- **Trophies:** 16 goals that reward laughing at the physics: Frequent Flyer,
-  Pincushion, Chain Reaction, Boing!, Yeet and others. Each pays Jellybeans
-  when you claim it. Battle feats count in the campaign and the daily, not in
-  the Sandbox, where both armies are yours.
-- **Supporter Pack:** an optional thank-you with a gold colour and a crown. It
-  is cosmetic only, and purchases aren't connected in this prototype.
-- **No** energy, timers, ads, loot boxes, pay-to-win or nag screens. The promise
-  is written in Settings.
-- **Tutorial:** on level 1, a pointer shows where to tap, then FIGHT.
-- **Phone app:** installable to the home screen (manifest + icons), plays
-  offline through a service worker, and updates itself only while you are in
-  the menus. It vibrates on big hits on Android, and settings cover sound,
-  volume, vibration and screen shake.
-- **Sandbox:** place both armies with no budget, using the units you have
-  unlocked. You can grab beans during the battle too.
-
-Progress is saved in `localStorage` (`wobblewar.profile.v1`). Settings → Reset
-progress erases it.
-
-Controls: pick one of your unit cards, then tap or click your side of the
-field to place it (a tap right next to a bean still places one). Drag a bean to
-grab it (a lit bomb stays lit: throw it), drag elsewhere to pan, pinch or
-scroll to zoom; 🎥 reframes. The 🐢 button toggles slow motion. The ≡ menu
-pauses the battle (resume, restart, settings, main menu). Keys: `1`–`6` pick a unit, `E` remove, `Space` fight, `S`
-slow-mo, `F` auto camera, `R` reset, `M` mute, `Esc` pause / back.
+- **Hand of god** (Sandbox): drag a bean to pick it up. It dangles and flails,
+  and you can fling it.
 
 ## Code map (battle/)
 
 ```
-battle/index.html, style.css    page shell, storybook HUD, dock, results, menus
-battle/src/config.js             world layout + team colours shared by everything
-battle/src/sim/physics.js        Verlet particles, constraints, ground, segment tests
-battle/src/sim/unit.js           the ragdoll: skeleton, muscles, walking, attacks, pounce, fuse, eyes, AI
-battle/src/sim/unit-types.js     the six units: shape, size, stats, weapons/abilities, attack poses
-battle/src/sim/battle.js         placement, fixed-step sim, melee hits, pounces, shockwaves, explosions, arrows, win check
-battle/src/meta/levels.js        the 30 campaign levels (simulation-checked budgets and star thresholds)
-battle/src/meta/profile.js       the save: Jellybeans, stars, cosmetics, stats, settings (pure, migrates old saves)
-battle/src/meta/economy.js       the fair-F2P rules: unlocks, rewards, stars, daily challenge
-battle/src/meta/trophies.js      16 trophies and claiming
-battle/src/meta/cosmetics.js     army colours, buying and equipping hats/colours
-battle/src/ui/meta-ui.js         hub, world map, level card, wardrobe (live preview), trophies, settings, pause
-battle/src/render/hats.js        the hats (vector, drawn in each unit's frame)
+battle/index.html, style.css     page shell, match HUD (hand, mana, crowns, clock), VS, result, pause, coach, sandbox HUD
+battle/hub.css                   the menus' look (every class is hb-*)
+battle/src/config.js             world layout (field, towers, zones) + team colours
+battle/src/main.js               boot and game shell: modes (hub demo match / your match / sandbox), the frame loop,
+                                 the hand (drag or tap to play), result screen, tutorial coach, back button,
+                                 sim events -> effects, sound, haptics and badge stats; window.__wobble debug hook
+battle/src/input.js              canvas touch / mouse: tap, aim, grab, pan, pinch, wheel
+battle/src/audio.js              WebAudio synth: bonks, clanks, squeaky voices, towers, spells, chests, jingles
 battle/src/pwa.js, battle/sw.js  install + offline + updates (bump VERSION in sw.js on every deploy)
-battle/src/render/units.js       drawing beans, bricks, wedges and balls, faces, weapons, arrows, fuses
-battle/src/render/background.js  sky, parallax hills, castles, grass, dirt cross-section
-battle/src/render/effects.js     starbursts, sparks, dust, dirt, confetti, comic words
-battle/src/render/camera.js      auto-framing, pan/zoom, screen shake
-battle/src/audio.js              WebAudio synth: bonks, clanks, squeaky voices, horn
-battle/src/input.js              tap / grab / pan / pinch / wheel
-battle/src/main.js               game flow, rewards, stats for trophies, sim events -> juice, frame loop
+
+battle/src/sim/                  the match, pure and seeded (no DOM)
+  physics.js                     Verlet particles, constraints, ground, segment tests
+  unit.js, unit-types.js         the ragdoll (skeleton, muscles, walking, attacks, AI) and the 8 unit types
+  battle.js                      fixed 120 Hz step, hits, pounces, blasts, arrows; sandbox and arena modes
+  towers.js, spells.js           Guard Towers and Castles; Boulder, Arrow Rain, Cheese Wheel
+  cards.js                       the 14 cards (the contract between sim, meta and UI)
+  match.js                       rules: mana, hand and deck cycle, zones, crowns, overtime, tiebreak, surrender
+  bot.js                         the computer player (plays only through match.play(), never peeks)
+battle/src/meta/                 the free-to-play meta game, pure functions of the profile
+  profile.js                     the save (v2), migration from v1, currencies, rewards, notices, seeded RNG
+  collection.js                  cards, levels, copies, upgrades, King Level, deck, arenas and unlocks
+  ladder.js                      trophies, match rewards, arena floors, the Trophy Trail
+  chests.js, shop.js, badges.js  the two menu chests, the daily shop, badges
+  opponents.js, cosmetics.js     fair bot opponents (and the Training Dummy); colours and hats
+battle/src/render/               canvas drawing
+  units.js, hats.js              beans, weapons, arrows, faces, corpse fade, HP bars; the hats
+  towers.js, spells.js           towers (damage, collapse, HP bars); spells, cannonballs, aim circle, deploy ghosts
+  background.js, camera.js       sky, hills, castles, arena themes; framing, shake
+  effects.js                     starbursts, dust, debris, confetti, comic words, crowns
+  cards.js, chests.js            card faces (a real settled ragdoll as art); chest art and its opening
+battle/src/ui/                   the menus (plain DOM)
+  hub.js                         shell: top bar, tabs, Battle tab, modals, notices, tutorial hints, celebrations
+  hub-kit.js                     DOM helper, icons, card tiles, reward views, card stats
+  chest-open.js, cards-screen.js, trail-screen.js, shop-screen.js, more-screen.js   the screens
+battle/tools/balance-arena.mjs   the balance tool (below)
 ```
 
-The simulation (`battle/src/sim/`) has no DOM code, runs at a fixed 120 Hz with
-a seeded RNG, and replays identically from the same placement, so it is tested
-headless in `tests/battle-*.test.js`. `window.__ww` exposes the game in the
-browser console.
+The simulation and the meta game have no DOM code and replay identically from
+the same seed, so they are tested headless in `tests/battle-*.test.js` (sim,
+physics, arena rules, bot, meta, render smoke test, PWA). In the browser,
+`window.__wobble` exposes the game: `step(n)` fast-forwards the running match,
+`go('match' | 'sandbox' | 'hub')`, `play(i, x)` plays hand card `i` at world x.
+
+## Balance tool
+
+`node battle/tools/balance-arena.mjs` plays seeded bot-vs-bot matches and
+prints tables: side symmetry and match shape (how matches end, towers
+destroyed), skill against skill, a level up against none, every card's win rate
+in random decks, the archetype decks against the starter deck, and a scripted
+new player against the Training Dummy. `--n 24` for a bigger sample (about 5
+minutes), `--only cards,mirror` for some sections, `--seed S`, `--skill K`,
+`--json FILE`, and `--set GUARD.hp=600,CARDS.brick.mana=6` to try numbers
+before changing them in the files (`WORLD.pocket.blue=1150` works too).
+
+With today's numbers (`--n 8`, seed 1), equal-skill matches end by a castle
+falling in about a quarter of cases and go to the tiebreak in about a fifth
+(they used to be about half tiebreaks and no castles at all), a 0.6 bot takes
+the castle of a 0.3 bot in about a third of matches, the scripted new player
+takes the Training Dummy's practice castle almost every time, and one level up
+still wins 94-100%. Every card's win rate sits between about 42% and 61%.
 
 # Prototype 0: "HORDE"
 
@@ -365,12 +460,12 @@ src/world/                 seeded city + building generators, scavenging pass (s
 src/game/                  player, AI teammate, weapons, zombies, director, loot, effects, game state
 src/render/                renderer, lighting (night + LOS), HUD
 src/audio.js               WebAudio synth SFX
-battle/                    WOBBLE WAR battle simulator (separate page; code map above)
+battle/                    WOBBLE WAR card battler (separate page; code map above)
 hope/                      Hope Street metagame prototype (separate page; map in docs/HOPE-STREET.md)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging placement, the four metagames, battle sim)
+tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging placement, the four metagames, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.
