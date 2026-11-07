@@ -216,10 +216,11 @@ stays reachable, or the piece isn't placed.
     timer counts the gate open: 2 s, then **Gate opening time** (30 s by
     default, 15–60 s). The gate slides open from the top, so you can squeeze
     through a little early.
-  - Waves of 14–20 (× horde size) come every quarter of the time, at most every
-    6–10 s. While the gate is shut, nothing spawns on the far side of the wall,
-    so every wave comes from your side. The normal mob timer is held back
-    until it's over, and a Tank on you pauses the waves.
+  - A wave of 14–20 zombies (× horde size) arrives every quarter of the gate
+    time (never closer than 6 s apart or further than 10 s). While the gate
+    is shut, nothing spawns on the far side of the wall, so every wave comes
+    from your side. The normal mob timer is held back until it's over, and a
+    Tank on you pauses the waves.
   - The gate is bars: you can see and shoot through it, but nothing gets past
     until it's open.
 - **Two routes.** A second wall, with its open checkpoint at the far end from
