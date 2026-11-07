@@ -555,6 +555,94 @@ export class Audio {
     this._tone({ f0: 120, f1: 45, dur: 0.18, gain: 0.5, out });
   }
 
+  // --- pier 9 ------------------------------------------------------------------------
+
+  /** The flare: a whoosh up, a pop, then the hiss of it burning. */
+  flare(x, y) {
+    if (!this._ok('flare', 0.5)) return;
+    const s = this._spatial(x, y, 1200);
+    const out = this._out(s.pan, 0.5 + s.gain * 0.5);
+    this._noise({ dur: 0.9, type: 'bandpass', freq: 700, sweepTo: 4200, q: 1.4, gain: 0.32, attack: 0.05, out });
+    this._tone({ type: 'triangle', f0: 380, f1: 1700, dur: 0.85, gain: 0.08, out });
+    this._noise({ dur: 0.25, type: 'lowpass', freq: 900, gain: 0.55, at: 0.9, out });
+    this._noise({ dur: 2.6, type: 'highpass', freq: 2800, q: 0.7, gain: 0.07, attack: 0.3, at: 1, out });
+  }
+
+  /** The ferry's horn: deep and long; far = muffled, out at sea. */
+  ferryHorn(far) {
+    if (!this._ok('horn', 1)) return;
+    const g = far ? 0.16 : 0.32;
+    const dur = far ? 2.4 : 2.0;
+    const filter = { freq: far ? 380 : 900, q: 0.8 };
+    this._tone({ type: 'sawtooth', f0: 98, dur, gain: g, attack: 0.25, filter });
+    this._tone({ type: 'sawtooth', f0: 147, dur, gain: g * 0.6, attack: 0.25, filter });
+    this._tone({ type: 'square', f0: 49, dur, gain: g * 0.4, attack: 0.3, filter: { freq: 200 } });
+  }
+
+  // --- night terror ----------------------------------------------------------------
+
+  /** A breathy whisper from the dark: formant-ish sweeps of filtered noise. */
+  terrorWhisper(x, y) {
+    if (!this._ok('twhisper', 0.8)) return;
+    const s = this._spatial(x, y, 750);
+    if (s.gain < 0.02) return;
+    const out = this._out(s.pan, s.gain * 0.9);
+    const f0 = 850 + Math.random() * 500;
+    this._noise({ dur: 0.55, type: 'bandpass', freq: f0, sweepTo: f0 * 1.9, q: 6, gain: 0.18, attack: 0.12, out });
+    this._noise({ dur: 0.42, type: 'bandpass', freq: f0 * 2.6, sweepTo: f0 * 1.5, q: 8, gain: 0.09, attack: 0.1, at: 0.24, out });
+    this._noise({ dur: 0.35, type: 'highpass', freq: 4200, q: 0.7, gain: 0.05, attack: 0.08, at: 0.45, out });
+  }
+
+  /** The tell: a sharp in-breath right before it lunges. */
+  terrorInhale(x, y) {
+    if (!this._ok('tinhale', 0.3)) return;
+    const s = this._spatial(x, y, 900);
+    const out = this._out(s.pan, 0.35 + s.gain * 0.65);
+    this._noise({ dur: 0.48, type: 'bandpass', freq: 480, sweepTo: 3200, q: 3, gain: 0.34, attack: 0.32, out });
+    this._noise({ dur: 0.45, type: 'highpass', freq: 3000, q: 0.8, gain: 0.08, attack: 0.3, out });
+  }
+
+  /** Caught in the light. */
+  terrorShriek(x, y, size = 1) {
+    if (!this._ok('tshriek', 0.45)) return;
+    const s = this._spatial(x, y, 1000);
+    const out = this._out(s.pan, (0.3 + s.gain * 0.7) * Math.min(1.3, size));
+    const dur = 0.42 * size;
+    this._tone({ type: 'sawtooth', f0: 2100, f1: 900, dur, gain: 0.16, attack: 0.01, out, filter: { type: 'bandpass', freq: 2400, q: 4 } });
+    this._tone({ type: 'square', f0: 2230, f1: 860, dur, gain: 0.06, attack: 0.01, out, filter: { type: 'bandpass', freq: 3100, q: 5 } });
+    this._noise({ dur: dur * 0.9, type: 'bandpass', freq: 3600, sweepTo: 1600, q: 2, gain: 0.14, out });
+  }
+
+  terrorLunge(x, y) {
+    if (!this._ok('tlunge', 0.2)) return;
+    const s = this._spatial(x, y, 900);
+    const out = this._out(s.pan, 0.4 + s.gain * 0.6);
+    this._noise({ dur: 0.3, type: 'bandpass', freq: 600, sweepTo: 2600, q: 1.2, gain: 0.28, attack: 0.02, out });
+  }
+
+  terrorStrike() {
+    if (!this._ok('tstrike', 0.2)) return;
+    this._noise({ dur: 0.16, type: 'lowpass', freq: 600, gain: 0.7 });
+    this._tone({ f0: 130, f1: 45, dur: 0.2, gain: 0.55 });
+    this._noise({ dur: 0.28, type: 'bandpass', freq: 2600, sweepTo: 900, q: 2, gain: 0.22 });
+  }
+
+  terrorDie(x, y) {
+    if (!this._ok('tdie', 0.2)) return;
+    const s = this._spatial(x, y, 1000);
+    const out = this._out(s.pan, 0.4 + s.gain * 0.6);
+    this._tone({ type: 'sawtooth', f0: 1600, f1: 140, dur: 0.9, gain: 0.14, attack: 0.02, out, filter: { type: 'bandpass', freq: 1500, q: 2 } });
+    this._noise({ dur: 0.8, type: 'bandpass', freq: 2200, sweepTo: 300, q: 1.5, gain: 0.16, out });
+  }
+
+  /** Your pulse: two soft thumps, not placed in the world. k 0..1 = how close it is. */
+  heartbeat(k) {
+    if (!this._ok('heart', 0.3)) return;
+    const g = 0.22 + 0.5 * k;
+    this._tone({ f0: 62, f1: 44, dur: 0.13, gain: g, attack: 0.008, filter: { freq: 160 } });
+    this._tone({ f0: 55, f1: 40, dur: 0.12, gain: g * 0.7, attack: 0.008, at: 0.17, filter: { freq: 160 } });
+  }
+
   /** Tank theme: a driving low ostinato + kick for as long as it lives. */
   tankMusic(on) {
     if (!this.ctx) return;

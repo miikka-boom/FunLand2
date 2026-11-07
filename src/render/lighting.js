@@ -7,6 +7,9 @@
 //      sight-blocking rect, cast away from the eye.
 
 import { pointInRect, rectsOverlap } from '../util.js';
+import { finaleLights } from '../game/finale.js';
+
+const finaleTmp = [];
 
 const RES = 0.5;
 const FAR = 6000;
@@ -105,6 +108,13 @@ export class Lighting {
         }
       }
       for (const L of game.effects.lights) this.radial(ctx, L.x, L.y, L.r, L.k * (L.life / L.max));
+      // Pier 9: the flare overhead, the ferry's deck lights and searchlight.
+      if (game.events && game.events.finale) {
+        for (const L of finaleLights(game.events.finale, t, finaleTmp)) {
+          if (L.cone !== undefined) this.cone(ctx, L.x, L.y, L.cone, L.half, L.r, L.k);
+          else if (pointInRect(L.x, L.y, vr, L.r)) this.radial(ctx, L.x, L.y, L.r, L.k);
+        }
+      }
       ctx.globalCompositeOperation = 'source-over';
     }
 

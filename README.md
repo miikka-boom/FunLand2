@@ -287,7 +287,7 @@ and no dependencies.
   out (45 s). Stand next to it without shooting for 3 s to revive it. It never
   shoots through you and never sets off alarms. The **Teammate** section also
   sets its gun and accuracy.
-- **Two levels**, picked on the title card or in the tuning panel:
+- **Three levels**, picked on the title card or in the tuning panel:
   - **Streets:** a run across a dark city, from a safe room (bottom left) to
     the green safe room across town.
   - **Building:** one dark floor of an office/hospital-style building:
@@ -297,9 +297,24 @@ and no dependencies.
     have glass fronts, so you see the horde before it reaches the door, and
     some rooms are pitch dark. A shootable fire alarm is the indoor version
     of the car alarm.
+  - **Pier 9** (the finale): Port Halvard's docks. From the harbour office
+    through the warehouse lots, a container yard (stacks in rows, every lane
+    open, reach stackers parked across some), and the quay apron under the
+    gantry cranes, to Pier 9, the long pier in the north-east. Piers 6 to 8
+    are dead-end side trips (stashes like dead ends). At the end of Pier 9,
+    stand at the **flare post** for a second to fire the flare. It burns red
+    overhead and every drowser on the docks sees it: waves come down the pier
+    while the ferry, the HALVARD STAR, answers on the radio and sails in
+    (60 s by default; **Pier 9: ferry arrives after** in the **Level** group
+    sets 30 to 120 s). When she's alongside, the gangway comes down a little
+    way back along the pier: get to it ("ALL ABOARD!") to win. Her
+    searchlight sweeps the pier while you run. The holdout gate, two routes
+    and landmarks are Streets/Building features; Pier 9 has the ferry
+    instead (stashes, boarded warehouse rooms, the secret and the graffiti
+    all work there).
 
-  On both levels, a green arrow at the screen edge points to the safe room
-  and shows the walking distance.
+  On every level, a green arrow at the screen edge points to the goal (safe
+  room, PIER 9, then GANGWAY) and shows the walking distance.
 - **Scavenging off the route**: heading straight for the safe room isn't the
   only way through. Each map hides finds in the detours, spread along the run:
   - **Supply stashes** (olive crates, 5 on the streets, 4 in the building) in
@@ -361,6 +376,11 @@ and no dependencies.
   - **Little scenes**: a bus stop piled with suitcases, a lemonade stand, a
     car that says HONK IF ALIVE (DON'T), a last stand, a fridge note about a
     stolen yogurt, a reception desk still "now serving: nobody".
+  - **On the docks**: harbour graffiti ("NO FLARE, NO FERRY", "DROWSERS
+    CAN'T SWIM. PROBABLY.", "GARY STILL OWES ME A BOAT"), the harbour
+    master's log in a den (the HALVARD STAR keeps coming while anyone on
+    Pier 9 has a flare), a ferry queue, a fish stall, and painted lines along
+    the pier ("NO RUNNING ON THE GANGWAY" … "(RUN.)").
   - Walk up to anything with words on it and its text shows at the bottom of
     the screen.
 - **An AI Director**: build-up, peak and relax phases, wanderers, small groups,
@@ -383,8 +403,21 @@ and no dependencies.
   - The **Tank** tests kiting. It's a boss with a telegraphed haymaker that
     sends you flying and rocks you can dodge or shoot down. It arrives once
     per run, mid-route, with a boss bar and its own music.
+  - The **Night Terror** (off by default: **Night Terror** under
+    **Specials**) tests the flashlight. A pale, long-limbed thing you can
+    only see in light: in the dark it's invisible, bullets pass through it,
+    and the laser, aim assist and the teammate don't see it either. Lamps,
+    fire and muzzle flashes show it (and make it shootable). It circles to
+    the side your flashlight isn't pointing; when it breathes in (a hiss and
+    a pale puff of breath in the dark) it's about to lunge for 18 damage.
+    Shove as it arrives to throw it off. Your flashlight (and the teammate's,
+    fire, the Pier 9 flare and the ferry's searchlight) hurts it: caught in
+    the beam it shrieks, smokes and backs off, and after about 2 s of light
+    in total it flees. Your heartbeat speeds up while it's close and unseen.
+    One at a time, nights only.
   - The spec is in [docs/CONTROLS.md](docs/CONTROLS.md#special-infected-stress-tests-for-the-controls),
-    and the tuning panel has Spawn Hunter / Spawn Tank buttons.
+    and the tuning panel has Spawn Hunter / Spawn Tank / Spawn Night Terror
+    buttons.
 - **Four guns** to compare feel: SMG, assault rifle (pierces 2), pump shotgun
   (loads shell by shell; firing interrupts the reload) and hunting rifle
   (pierces lines of zombies). Reloading is automatic when empty.
@@ -394,6 +427,25 @@ and no dependencies.
 - **Feedback**: synthesized sound (no audio files), haptics on Android, blood
   decals that stay, casings, tracers, screen shake and recoil, off-screen
   threat arrows.
+- **Playtest kit** (the **Playtest** group in the tuning panel):
+  - After each run a small card asks three quick questions: **fun** (meh /
+    good / great), **difficulty** (too easy / about right / too hard) and
+    **controls** (fought me / OK / felt great). Tap one per row, or none; the
+    end-screen summary moves aside for it. **Play again** restarts (taps
+    beside the card don't skip it; Enter, Space or a gamepad still do).
+    **Rate each run** turns the card off.
+  - **Copy report** (or **Share** where the phone offers it) gives a few
+    readable lines plus one line of JSON: level, seed, outcome, time, kills,
+    accuracy, damage, hordes, specials, finds, world events (gate, shortcut,
+    explosions, the ferry), the ratings, the settings you changed, the
+    device and the frame rate (average and 5% low).
+  - Every finished run is kept on the device (the newest 40). **Copy all
+    reports** in the panel copies them in one go; **Clear reports** empties
+    the list.
+  - **Daily map** (the chip under the level buttons, or the panel): today's
+    date picks the seed, so everyone plays the same map today, on each level.
+    The chip shows your best time (or furthest run) today. **New map** turns
+    it off. The run timer says "daily" while it's on.
 
 ## Hope Street: a metagame prototype
 
@@ -501,16 +553,17 @@ src/settings.js            every tunable value + panel schema + presets
 src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
-src/world/                 seeded city + building generators, world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
-src/game/                  player, AI teammate, weapons, zombies, director, loot, world events (holdout, breach, explosions), effects, game state
-src/render/                renderer, lighting (night + LOS), HUD (incl. reading captions), loot, world-feature and graffiti/poster drawing
+src/world/                 seeded city + building + docks (Pier 9) generators, world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
+src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects, game state
+src/render/                renderer, lighting (night + LOS), HUD (incl. reading captions), loot, world-feature, graffiti/poster and docks (water, containers, cranes, ferry) drawing
+src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
 hope/                      Hope Street metagame prototype (separate page; map in docs/HOPE-STREET.md)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging, world-feature and world-flavor placement, the four metagames, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, playtest reports + daily seed, the four metagames, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

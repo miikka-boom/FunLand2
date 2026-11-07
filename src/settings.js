@@ -4,7 +4,8 @@
 const STORAGE_KEY = 'funland2.p0.tuning.v1';
 
 export const DEFAULTS = Object.freeze({
-  level: 'city', // 'city' (streets) | 'interior' (building floor)
+  level: 'city', // 'city' (streets) | 'interior' (building floor) | 'docks' (Pier 9 finale)
+  ferryTime: 60, // Pier 9: seconds from the flare until the ferry docks
 
   // --- World: what each map has (changes restart the run) -----------------
   stashes: true, // supply stashes off the main route, with chalk arrows
@@ -64,6 +65,7 @@ export const DEFAULTS = Object.freeze({
   deadstopWindow: 0.18, // seconds a shove stays live for knocking a pouncing Hunter down
   tankHealth: 1.0,
   tankSpeed: 1.0, // 1.0 = 182 u/s, just under your run speed: kite it, don't stop
+  nightTerror: false, // a stalker you only see in light: the flashlight is your weapon
 
   // --- AI teammate --------------------------------------------------------
   ally: false, // a bot survivor that fights alongside you (off: solo is the baseline)
@@ -77,6 +79,10 @@ export const DEFAULTS = Object.freeze({
   threatIndicators: true,
   haptics: 'light', // 'off' | 'light' | 'full'
   volume: 0.8,
+
+  // --- Playtest -----------------------------------------------------------
+  playtestPrompt: true, // after each run: rate it in three taps, copy / share the report
+  daily: false, // play today's map (same seed for everyone, changes at midnight)
 
   // --- Debug --------------------------------------------------------------
   showDebug: false,
@@ -107,8 +113,10 @@ export const SCHEMA = [
         options: [
           ['city', 'Streets – night city'],
           ['interior', 'Building – interior floor'],
+          ['docks', 'Pier 9 – docks, ferry finale'],
         ],
       },
+      { key: 'ferryTime', label: 'Pier 9: ferry arrives after', type: 'range', min: 30, max: 120, step: 10, fmt: (v) => `${v}s` },
     ],
   },
   {
@@ -194,6 +202,7 @@ export const SCHEMA = [
       { key: 'deadstopWindow', label: 'Deadstop shove window', type: 'range', min: 0, max: 0.4, step: 0.01, fmt: secs },
       { key: 'tankHealth', label: 'Tank health', type: 'range', min: 0.25, max: 3, step: 0.05, fmt: mult },
       { key: 'tankSpeed', label: 'Tank speed', type: 'range', min: 0.6, max: 1.5, step: 0.05, fmt: mult },
+      { key: 'nightTerror', label: 'Night Terror (only seen in light)', type: 'toggle' },
     ],
   },
   {
@@ -235,6 +244,14 @@ export const SCHEMA = [
     ],
   },
   {
+    group: 'Playtest',
+    extra: 'playtest',
+    items: [
+      { key: 'playtestPrompt', label: 'Rate each run (3 taps) + report', type: 'toggle' },
+      { key: 'daily', label: 'Daily map: same for everyone today (restarts)', type: 'toggle' },
+    ],
+  },
+  {
     group: 'Debug',
     items: [
       { key: 'showDebug', label: 'Debug read-out', type: 'toggle' },
@@ -243,8 +260,8 @@ export const SCHEMA = [
   },
 ];
 
-/** World toggles that change how a map is generated (holdoutTime only matters at run time). */
-export const WORLD_KEYS = ['level', 'stashes', 'boardedRooms', 'secret', 'holdout', 'routes', 'landmarks', 'lore'];
+/** Settings that change how a map is generated (holdoutTime / ferryTime only matter at run time). */
+export const WORLD_KEYS = ['level', 'daily', 'stashes', 'boardedRooms', 'secret', 'holdout', 'routes', 'landmarks', 'lore'];
 export const worldSignature = (S) => WORLD_KEYS.map((k) => String(S[k])).join('|');
 
 /** One-tap world setups, so nobody has to flip six switches to try things. */

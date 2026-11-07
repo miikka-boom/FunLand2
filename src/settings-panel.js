@@ -2,6 +2,7 @@
 // Every control writes straight into the live settings object.
 
 import { SCHEMA, PRESETS, WORLD_PRESETS, DEFAULTS, diffFromDefaults, saveSettings } from './settings.js';
+import { loadHistory, clearHistory, historyText } from './playtest.js';
 
 // Log-scale sliders (item.log): position 0..LOG_STEPS maps to min..max
 // exponentially; values snap to two significant digits (0.25, 1.0, 4.5, 12).
@@ -64,6 +65,7 @@ export class SettingsPanel {
     mk('Call horde now', () => this.actions.onCallHorde());
     mk('Spawn Hunter', () => this.actions.onSpawnHunter());
     mk('Spawn Tank', () => this.actions.onSpawnTank());
+    mk('Spawn Night Terror', () => this.actions.onSpawnTerror());
     mk('Restart run', () => this.actions.onRestart());
     mk('New map', () => this.actions.onNewMap());
     this.fsBtn = mk('Fullscreen', () => this.actions.onFullscreen());
@@ -105,6 +107,25 @@ export class SettingsPanel {
         sec.appendChild(row);
       }
       for (const item of group.items) sec.appendChild(this._control(item, el));
+      if (group.extra === 'playtest') {
+        // Everything rated / finished on this device, ready to paste to the team.
+        const row = el('div', 'panel-row');
+        this.reportsBtn = el('button', 'btn chip', 'Copy all reports');
+        this.reportsBtn.addEventListener('click', () => {
+          const list = loadHistory();
+          if (!list.length) this._flash('No reports yet: finish a run first');
+          else this._copyText(historyText(list), `Copied ${list.length} report${list.length > 1 ? 's' : ''}`);
+        });
+        const clear = el('button', 'btn chip danger', 'Clear reports');
+        clear.addEventListener('click', () => {
+          clearHistory();
+          this._syncReports();
+          this._flash('Reports cleared');
+        });
+        row.append(this.reportsBtn, clear);
+        sec.appendChild(row);
+        sec.appendChild(el('p', 'panel-note', 'After each run a small card asks how it felt (fun, difficulty, controls). Reports stay on this device until you copy or share them.'));
+      }
       card.appendChild(sec);
     }
 
@@ -231,7 +252,14 @@ export class SettingsPanel {
 
   sync() {
     for (const key of this.controls.keys()) this._show(key, true);
+    this._syncReports();
     if (this.fsBtn) this.fsBtn.style.display = document.documentElement.requestFullscreen ? '' : 'none';
+  }
+
+  _syncReports() {
+    if (!this.reportsBtn) return;
+    const n = loadHistory().length;
+    this.reportsBtn.textContent = n ? `Copy all reports (${n})` : 'Copy all reports';
   }
 
   _flash(text) {
@@ -241,18 +269,21 @@ export class SettingsPanel {
     this._tt = setTimeout(() => this.toast.classList.remove('show'), 1400);
   }
 
-  async _copy() {
-    const text = JSON.stringify(diffFromDefaults(this.settings), null, 2);
+  _copy() {
+    return this._copyText(JSON.stringify(diffFromDefaults(this.settings), null, 2), 'Copied tuning JSON');
+  }
+
+  async _copyText(text, done) {
     try {
       await navigator.clipboard.writeText(text);
-      this._flash('Copied tuning JSON');
+      this._flash(done);
     } catch {
       // Clipboard blocked (http, old Safari): show it for manual copy.
       this.jsonBox.value = text;
       this.jsonBox.classList.add('show');
       this.jsonBox.focus();
       this.jsonBox.select();
-      this._flash('Select + copy the JSON below');
+      this._flash('Select + copy the text below');
     }
   }
 

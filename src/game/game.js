@@ -2,6 +2,8 @@
 
 import { generateCity } from '../world/map-gen.js';
 import { generateBuilding } from '../world/building-gen.js';
+import { generateDocks } from '../world/docks-gen.js';
+import { finaleOpen } from './finale.js';
 import { addScavenging } from '../world/scavenge-gen.js';
 import { addWorldFeatures } from '../world/features-gen.js';
 import { worldSignature } from '../settings.js';
@@ -16,6 +18,7 @@ import { initLoot, spawnSleepers, updateLoot } from './loot.js';
 import { initWorldEvents, updateWorldEvents, spawnNest, openBreach, takeAmmo, updateCaption } from './world-events.js';
 import { addLore } from '../world/lore-gen.js';
 import { dampFactor, pointInRect, rand } from '../util.js';
+import { todayKey, dailySeed } from '../playtest.js';
 
 export class Game {
   constructor(settings, audio, haptics) {
@@ -30,7 +33,12 @@ export class Game {
     this.audio.alarmStop();
     this.audio.tankMusic(false);
     this.level = this.settings.level;
-    const gen = this.level === 'interior' ? generateBuilding : generateCity;
+    // The daily map: today's date picks the seed, the same on every device.
+    this.dailyKey = this.settings.daily ? todayKey() : null;
+    if (this.dailyKey) seed = dailySeed(this.dailyKey);
+    this.seed = seed;
+    this.runSerial = (this.runSerial || 0) + 1;
+    const gen = this.level === 'interior' ? generateBuilding : this.level === 'docks' ? generateDocks : generateCity;
     let map = gen(seed);
     let world = new World(map);
     // Paranoia: if the goal were ever unreachable, step the seed.
@@ -45,7 +53,8 @@ export class Game {
     const S = this.settings;
     this.worldSig = worldSignature(S);
     const base = map.obstacles.slice();
-    if (S.holdout || S.routes || S.landmarks) addWorldFeatures(map, map.seed, { holdout: S.holdout, routes: S.routes, landmarks: S.landmarks });
+    // (Pier 9 has its own finale instead of the holdout gate / routes / landmarks.)
+    if (map.theme !== 'docks' && (S.holdout || S.routes || S.landmarks)) addWorldFeatures(map, map.seed, { holdout: S.holdout, routes: S.routes, landmarks: S.landmarks });
     if (S.stashes || S.boardedRooms || S.secret) addScavenging(map, map.seed, { stashes: S.stashes, rooms: S.boardedRooms, secret: S.secret });
     if (S.lore) addLore(map, map.seed); // graffiti, posters, dens: visual only
     if (map.obstacles.length !== base.length || map.obstacles.some((o, i) => o !== base[i])) world = new World(map);
@@ -86,7 +95,10 @@ export class Game {
       allyKills: 0, allySaves: 0, allyDowns: 0, revives: 0,
       stashes: 0, rooms: 0, secrets: 0, boards: 0,
       holdouts: 0, holdoutAt: 0, holdoutTime: 0, shortcut: 0, explosions: 0,
+      terrors: 0, terrorsFled: 0, terrorHits: 0, terrorShoves: 0,
+      flareAt: 0, ferry: 0,
     };
+    this.terrorSeen = false;
     this.boards = map.obstacles.filter((o) => o.boards); // boarded rooms + the breach
     this.caption = { item: null, a: 0 };
     initLoot(this, map);
@@ -303,14 +315,14 @@ export class Game {
     this.effects.update(dt);
     this.hurtFlash = Math.max(0, this.hurtFlash - dt * 1.6);
 
-    // Win: reach the end safe room.
+    // Win: reach the end safe room (Pier 9: the gangway, once the ferry is alongside).
     const er = this.world.map.endRoom.interior;
-    if (!this.won && !this.lost && p.alive && pointInRect(p.x, p.y, er)) {
+    if (!this.won && !this.lost && p.alive && pointInRect(p.x, p.y, er) && finaleOpen(this.events && this.events.finale)) {
       if (p.pinnedBy) releasePin(this);
       this.won = true;
       this.endT = 0;
       this.audio.win();
-      this.announce('SAFE ROOM', '#7dffa1', 999);
+      this.announce(this.level === 'docks' ? 'ABOARD!' : 'SAFE ROOM', '#7dffa1', 999);
     }
     if (this.won || this.lost) this.endT += dt;
 

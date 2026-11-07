@@ -51,3 +51,20 @@ test('world signature: map switches restart the run, the gate timer does not', (
   assert.deepEqual(WORLD_PRESETS.find((p) => p.name === 'Default').values, { stashes: true, boardedRooms: true, secret: true, holdout: false, routes: false, landmarks: false, lore: true });
   assert.ok(Object.values(WORLD_PRESETS.find((p) => p.name === 'Bare map').values).every((v) => v === false));
 });
+
+test('new this round: Pier 9, Night Terror and the playtest kit (heavy stuff off by default)', () => {
+  assert.equal(DEFAULTS.nightTerror, false, 'the Night Terror is opt-in');
+  assert.equal(DEFAULTS.daily, false);
+  assert.equal(DEFAULTS.playtestPrompt, true, 'the rating card is three optional taps');
+  assert.equal(DEFAULTS.ferryTime, 60);
+  const items = SCHEMA.flatMap((g) => g.items);
+  const level = items.find((i) => i.key === 'level');
+  assert.ok(level.options.some(([v]) => v === 'docks'), 'Pier 9 in the level list');
+  for (const k of ['nightTerror', 'ferryTime', 'playtestPrompt', 'daily']) assert.ok(items.some((i) => i.key === k), `${k} in the panel`);
+  // Daily on/off is a different map; the ferry timer and the prompt are not.
+  assert.notEqual(worldSignature(DEFAULTS), worldSignature({ ...DEFAULTS, daily: true }));
+  assert.notEqual(worldSignature(DEFAULTS), worldSignature({ ...DEFAULTS, level: 'docks' }));
+  assert.equal(worldSignature(DEFAULTS), worldSignature({ ...DEFAULTS, ferryTime: 90, playtestPrompt: false, nightTerror: true }));
+  // Saved choices round-trip.
+  assert.deepEqual(parseSaved(JSON.parse(serializeSettings({ ...DEFAULTS, level: 'docks', nightTerror: true, daily: true }))), { level: 'docks', nightTerror: true, daily: true });
+});

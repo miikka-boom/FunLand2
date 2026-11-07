@@ -12,6 +12,7 @@
 
 import { rand, wrapAngle, clamp } from '../util.js';
 import { newId, damageZombie } from './zombies.js';
+import { updateTerror } from './terror.js';
 
 const tmp = { x: 0, y: 0 };
 
@@ -666,5 +667,6 @@ export function updateSpecials(game, dt) {
     if (!z.alive) continue;
     if (z.type === 'hunter') updateHunter(game, z, dt);
     else if (z.type === 'tank') updateTank(game, z, dt);
+    else if (z.type === 'terror') updateTerror(game, z, dt);
   }
 }

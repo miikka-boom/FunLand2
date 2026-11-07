@@ -53,10 +53,11 @@ export function drawHud(ctx, game, input, ui, renderer) {
 
   drawBossBar(ctx, game, L);
   drawHoldoutBar(ctx, game, L);
+  drawFerryBar(ctx, game, L);
   if (p.pinnedBy && p.alive) drawPinned(ctx, game, L);
   drawMessages(ctx, game, L);
   if (!ui.title) drawCaption(ctx, game, L);
-  if (game.won || game.lost) drawEnd(ctx, game, L);
+  if (game.won || game.lost) drawEnd(ctx, game, L, ui);
   if (S.showDebug) drawDebug(ctx, game, input, ui, L);
 }
 
@@ -437,7 +438,7 @@ function drawStats(ctx, game, L) {
   ctx.textBaseline = 'top';
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
   const midX = (L.hp.x + L.hp.w + L.byId.swap.x) / 2;
-  ctx.fillText(`${mm}:${ss}   ·   ${game.stats.kills} kills`, midX, L.safe.t + 14);
+  ctx.fillText(`${mm}:${ss}   ·   ${game.stats.kills} kills${game.dailyKey ? '   ·   daily' : ''}`, midX, L.safe.t + 14);
 }
 
 // --- Edge indicators ---------------------------------------------------------------------
@@ -483,7 +484,7 @@ function drawThreats(ctx, game, L) {
   const ox = v.w / 2 - (cam.x + cam.shakeX) * v.scale;
   const oy = v.h / 2 - (cam.y + cam.shakeY) * v.scale;
   for (const z of game.zombies) {
-    if (!z.alive || z.state !== 'chase') continue;
+    if (!z.alive || z.ghost || z.state !== 'chase') continue;
     const ddx = z.x - p.x;
     const ddy = z.y - p.y;
     const lim = z.type === 'common' ? 850 : 1300;
@@ -496,12 +497,12 @@ function drawThreats(ctx, game, L) {
       const ang = Math.atan2(zsy - ps.y, zsx - ps.x);
       const e = edgePoint(L, ps.x, ps.y, ang, z.type === 'tank' ? 26 : 22);
       const pulse = 0.7 + Math.sin(game.time * 8) * 0.3;
-      ctx.fillStyle = z.type === 'tank' ? `rgba(255,40,30,${pulse})` : `rgba(190,140,255,${pulse})`;
+      ctx.fillStyle = z.type === 'tank' ? `rgba(255,40,30,${pulse})` : z.type === 'terror' ? `rgba(220,230,245,${pulse})` : `rgba(190,140,255,${pulse})`;
       chevron(ctx, e.x, e.y, ang, z.type === 'tank' ? 20 : 14);
       ctx.font = `800 10px ${FONT}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(z.type === 'tank' ? 'TANK' : 'HUNTER', e.x - Math.cos(ang) * 28, e.y - Math.sin(ang) * 22);
+      ctx.fillText(z.type === 'tank' ? 'TANK' : z.type === 'terror' ? 'TERROR' : 'HUNTER', e.x - Math.cos(ang) * 28, e.y - Math.sin(ang) * 22);
       continue;
     }
     const ang = Math.atan2(zsy - ps.y, zsx - ps.x);
@@ -539,7 +540,9 @@ function drawObjective(ctx, game, L) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = `rgba(150,255,180,${pulse})`;
-  ctx.fillText(`SAFE ${meters}m`, e.x - Math.cos(ang) * 26, e.y - Math.sin(ang) * 20);
+  const F = game.events && game.events.finale;
+  const label = F ? (F.state === 'docked' ? 'GANGWAY' : 'PIER 9') : 'SAFE';
+  ctx.fillText(`${label} ${meters}m`, e.x - Math.cos(ang) * (F ? 30 : 26), e.y - Math.sin(ang) * 20);
 }
 
 // --- Text ----------------------------------------------------------------------------------
@@ -624,7 +627,7 @@ function drawCaption(ctx, game, L) {
   ctx.globalAlpha = 1;
 }
 
-function drawEnd(ctx, game, L) {
+function drawEnd(ctx, game, L, ui) {
   const a = clamp((game.endT - 0.5) / 0.6, 0, 1);
   if (a <= 0) return;
   ctx.fillStyle = `rgba(4,5,8,${0.72 * a})`;
@@ -632,10 +635,28 @@ function drawEnd(ctx, game, L) {
   ctx.globalAlpha = a;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `900 34px ${FONT}`;
+  // With the rating card up, the summary moves aside: left of it, or above it on narrow screens.
+  const card = ui && ui.reportRect;
+  let cx = L.w / 2;
+  let cy = L.h * 0.3;
+  let maxW = L.w - 32;
+  let bottom = L.h - L.safe.b - 10;
+  if (card) {
+    if (card.left > L.w * 0.42) {
+      cx = (L.safe.l + card.left) / 2;
+      maxW = card.left - L.safe.l - 28;
+      cy = Math.max(L.safe.t + 34, L.h * 0.22);
+    } else {
+      cy = Math.min(L.safe.t + 84, card.top * 0.3);
+      bottom = card.top - 8;
+    }
+  }
+  const title = game.won ? (game.level === 'docks' ? 'YOU MADE THE LAST FERRY' : 'SAFE ROOM REACHED') : 'YOU DIED';
+  let tf = 34;
+  ctx.font = `900 ${tf}px ${FONT}`;
+  while (tf > 18 && ctx.measureText(title).width > maxW) ctx.font = `900 ${(tf -= 2)}px ${FONT}`;
   ctx.fillStyle = game.won ? '#7dffa1' : '#ff5a4a';
-  const cy = L.h * 0.3;
-  ctx.fillText(game.won ? 'SAFE ROOM REACHED' : 'YOU DIED', L.w / 2, cy);
+  ctx.fillText(title, cx, cy);
   const st = game.stats;
   const acc = st.shots ? Math.round((st.hits / st.shots) * 100) : 0;
   const mm = Math.floor(st.time / 60);
@@ -670,16 +691,34 @@ function drawEnd(ctx, game, L) {
     if (E.explosives.length) parts.push(`explosions ${st.explosions}`);
     lines.push(parts.join('   ·   '));
   }
+  const F = E && E.finale;
+  if (F) {
+    const held = F.flareT >= 0 ? (game.won ? F.t : F.flareT) : 0;
+    const mmss = `${Math.floor(held / 60)}:${Math.floor(held % 60).toString().padStart(2, '0')}`;
+    lines.push(F.state === 'idle' ? 'the flare was never fired' : F.state === 'docked' ? `held the pier ${mmss}   ·   the ferry came` : `held the pier ${mmss}   ·   the ferry was ${Math.max(0, Math.ceil(F.dur - F.t))}s out`);
+  }
+  if (st.terrors || st.terrorsFled || st.terrorHits) {
+    lines.push(`night terror: killed ${st.terrors}   ·   drove off ${st.terrorsFled}   ·   it hit you ${st.terrorHits}×`);
+  }
   if (game.ally) {
     const a = game.ally;
     const state = !a.alive ? 'died' : a.down ? 'down' : game.won ? 'made it' : 'alive';
     lines.push(`ally ${state}   ·   ally kills ${st.allyKills}   ·   saved you ${st.allySaves}×   ·   revives ${st.revives}`);
   }
-  lines.forEach((l, i) => ctx.fillText(l, L.w / 2, cy + 44 + i * 22));
-  if (game.endT > 1.4) {
+  // Shrink to fit beside / above the card; drop the least important lines if still too tall.
+  let fs = 14;
+  ctx.font = `600 ${fs}px ${FONT}`;
+  const widest = () => Math.max(...lines.map((l) => ctx.measureText(l).width));
+  while (fs > 10 && widest() > maxW) ctx.font = `600 ${--fs}px ${FONT}`;
+  const lh = Math.round(fs * 1.55);
+  const y0 = cy + tf * 0.5 + 10 + lh * 0.5;
+  while (lines.length > 2 && y0 + (lines.length - 1) * lh > bottom - lh * 0.5) lines.pop();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  lines.forEach((l, i) => ctx.fillText(l, cx, y0 + i * lh));
+  if (game.endT > 1.4 && !card) {
     ctx.font = `700 15px ${FONT}`;
     ctx.fillStyle = `rgba(255,255,255,${0.6 + Math.sin(game.time * 4) * 0.3})`;
-    ctx.fillText('tap to play again', L.w / 2, cy + 44 + lines.length * 22 + 26);
+    ctx.fillText('tap to play again', cx, y0 + lines.length * lh + 18);
   }
   ctx.globalAlpha = 1;
 }
@@ -722,6 +761,28 @@ function drawHoldoutBar(ctx, game, L) {
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#fff';
   ctx.fillText(H.f > 0 ? `HOLD OUT · GATE ${Math.floor(H.f * 100)}%` : 'HOLD OUT · GATE STARTING', L.w / 2, y + 5.5);
+}
+
+/** Pier 9: the countdown to the ferry, then the call to board. */
+function drawFerryBar(ctx, game, L) {
+  const F = game.events && game.events.finale;
+  if (!F || F.state === 'idle' || game.won || game.lost) return;
+  const w = Math.min(280, L.w * 0.34);
+  const x = L.w / 2 - w / 2;
+  const y = L.safe.t + 34 + (game.director.tankAlive ? 24 : 0);
+  const docked = F.state === 'docked';
+  ctx.fillStyle = 'rgba(8,10,14,0.6)';
+  ctx.fillRect(x - 4, y - 4, w + 8, 18);
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(x, y, w, 10);
+  ctx.fillStyle = docked ? `rgba(125,255,161,${0.75 + Math.sin(game.time * 8) * 0.25})` : '#7fc8ff';
+  ctx.fillRect(x, y, w * clamp(F.f, 0, 1), 10);
+  ctx.font = `900 10px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = docked ? '#103018' : '#fff';
+  const left = Math.max(0, Math.ceil(F.dur - F.t));
+  ctx.fillText(docked ? 'ALL ABOARD · GET TO THE GANGWAY' : `HOLD OUT · FERRY IN ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`, L.w / 2, y + 5.5);
 }
 
 function drawPinned(ctx, game, L) {

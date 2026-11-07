@@ -7,6 +7,7 @@
 import { rand, randInt, pointInRect } from '../util.js';
 import { Zombie, alertZombie } from './zombies.js';
 import { spawnHunter, spawnTank } from './specials.js';
+import { spawnTerror, lightAt } from './terror.js';
 import { NAV_CELL } from '../world/world.js';
 import { spawnBlocked } from './world-events.js';
 
@@ -41,6 +42,8 @@ export class Director {
     this.tankAt = rand(0.38, 0.58); // fraction of the route where the Tank shows up
     this.tankSpawned = false;
     this.tank = null;
+    this.terror = null; // the Night Terror (one at a time, nights only)
+    this.terrorT = rand(30, 48);
     this._c = { x: 0, y: 0 };
   }
 
@@ -117,6 +120,7 @@ export class Director {
     if (g.won) return;
 
     if (g.settings.specials) this.updateSpecials(dt);
+    if (g.settings.nightTerror) this.updateTerror(dt);
     const tank = this.tankEngaged;
 
     switch (this.phase) {
@@ -172,6 +176,32 @@ export class Director {
     if (!this.tankSpawned && g.progress >= this.tankAt && this.spawnTankNow()) this.tankSpawned = true;
   }
 
+  /** Night Terror: the first a while after you set off, the next a breather after it's gone. */
+  updateTerror(dt) {
+    const g = this.game;
+    if (this.terror && !this.terror.alive) {
+      this.terror = null;
+      this.terrorT = rand(40, 65);
+    }
+    if (this.terror || !g.settings.night || this.tankEngaged) return;
+    this.terrorT -= dt * (this.phase === 'relax' ? 0.6 : 1);
+    if (this.terrorT <= 0 && !this.spawnTerrorNow()) this.terrorT = 3;
+  }
+
+  /** Out of sight and in the dark (never under a lamp). */
+  spawnTerrorNow(force = false) {
+    const g = this.game;
+    if ((this.terror && this.terror.alive) || !g.settings.night) return false;
+    for (let k = 0; k < 8; k++) {
+      const spot = this.findSpawn(force ? 380 : 520, force ? 800 : 1000) || (force ? this.findSpawn(260, 1400, 400) : null);
+      if (!spot) return false;
+      if (lightAt(g, spot.x, spot.y).see > 0.2) continue;
+      this.terror = spawnTerror(g, spot.x, spot.y);
+      return true;
+    }
+    return false;
+  }
+
   spawnHunterNow(force = false) {
     const spot = this.findSpawn(force ? 320 : 450, force ? 700 : 950) || (force ? this.findSpawn(200, 1400, 400) : null);
     if (!spot) return false;
@@ -202,6 +232,16 @@ export class Director {
     const ok = this.spawnHunterNow(true);
     if (ok) this.hunterSeen = true;
     return ok;
+  }
+
+  forceTerror() {
+    const g = this.game;
+    if (!g.settings.night) {
+      g.announce('The Night Terror needs night on', '#ffd27a', 1.8, 'small');
+      return false;
+    }
+    if (this.phase === 'calm') this.phase = 'build';
+    return this.spawnTerrorNow(true);
   }
 
   forceTank() {
