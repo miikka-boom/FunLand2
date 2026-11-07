@@ -4,6 +4,7 @@
 // wait on taps with tapOn().
 
 import { fmtTime } from './format.js';
+import { icon } from './icons.js';
 
 export const esc = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -61,7 +62,7 @@ export class Modals {
     if (this.cur) this._teardown(true);
     const back = document.createElement('div');
     back.className = `modal-back ${cls}`;
-    back.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${dismissable ? '<button class="modal-x" type="button" data-act="close" aria-label="Close">✕</button>' : ''}<div class="modal-body"></div></div>`;
+    back.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${dismissable ? `<button class="modal-x" type="button" data-act="close" aria-label="Close">${icon('close')}</button>` : ''}<div class="modal-body"></div></div>`;
     this.root.appendChild(back);
     let done;
     const closed = new Promise((r) => (done = r));

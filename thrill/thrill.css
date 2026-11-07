@@ -1145,7 +1145,7 @@ h2 {
 .chestbtn .cart {
   position: absolute;
   left: 50%;
-  top: -16px;
+  top: -26px;
   width: 78px;
   height: 66px;
   transform: translateX(-50%);
@@ -1155,7 +1155,7 @@ h2 {
 .chestbtn .cart > svg {
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.3));
+  overflow: visible;
 }
 
 .chestbtn.ready .cart {
@@ -1546,6 +1546,9 @@ h2 {
   top: 8px;
   right: 8px;
   z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: 0;
   width: 38px;
   height: 38px;
   border-radius: 12px;
@@ -2225,7 +2228,7 @@ h2 {
 .op-chest-in > svg {
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.3));
+  overflow: visible;
 }
 
 .op-chest-in.knock {
@@ -3280,6 +3283,14 @@ h2 {
 .rd-res.in {
   opacity: 1;
   transform: translate(-50%, -50%);
+}
+
+.raid .rd-top {
+  transition: opacity 0.2s;
+}
+
+.raid.res .rd-top {
+  opacity: 0;
 }
 
 .rr-title {
@@ -4459,7 +4470,7 @@ code {
   .chestbtn .cart {
     width: 66px;
     height: 56px;
-    top: -12px;
+    top: -20px;
   }
   .playbox {
     width: 168px;

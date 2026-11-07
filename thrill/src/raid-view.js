@@ -49,7 +49,7 @@ export class RaidView {
       `<div class="rd-crowns">${WAVES.map(() => `<i>${icon('crown')}</i>`).join('')}</div></div>` +
       `<div class="rd-field"><div class="rd-squad">${squad.map((p, i) => `<div class="rs" data-id="${p.id}" style="--i:${i}"><div class="rfig">${figureSvg(p, { pose: 'idle' })}</div>${mem.get(p.id) && mem.get(p.id).counter ? '<i class="rctr">×1.5</i>' : ''}</div>`).join('')}</div><div class="rd-zeds"></div></div>` +
       `<div class="rd-banner"></div><div class="rd-hint">Tap to speed up</div>` +
-      (meta.s.stats.raids >= 3 ? `<button class="rd-skip" type="button" data-skip>Skip ▸▸</button>` : '');
+      (meta.s.stats.raids >= 3 ? `<button class="rd-skip" type="button" data-skip>Skip ${icon('skip')}</button>` : '');
     this.root.appendChild(el);
     this.root.classList.add('on');
     this.hud.freeze(['coins', 'gems', 'skulls']);
@@ -307,6 +307,7 @@ export class RaidView {
       `<div class="rr-next"><span class="kicker">Next</span>${r.next.map(threatChip).join('')}${pre.rally ? '<span class="rally">RALLY!</span>' : ''}<span class="odds o-${pre.label.id}">${crownPips(pre.odds)}${pre.label.name}</span></div>` +
       `<div class="btns"><button class="btn" type="button" data-act="park">${icon('people')}PARK</button><button class="btn yellow big" type="button" data-act="again">${icon('play')}PLAY AGAIN</button></div>`;
     el.appendChild(panel);
+    el.classList.add('res');
     panel.querySelectorAll('[data-act]').forEach((b) => (b.disabled = true));
     requestAnimationFrame(() => panel.classList.add('in'));
     await wait(320);

@@ -3,18 +3,25 @@
 // little loot pieces that fly about (Badge tokens, coins, gems). Pure functions
 // returning SVG strings: no DOM, safe to import in node tests.
 //
-// chestSvg(kind, { grade, open, glow })  viewBox 0 0 120 100, bottom-centre anchor:
+// chestSvg(kind, { grade, open, glow, anim })  viewBox 0 0 120 100, bottom-centre anchor:
 //   the chest stands on y = 95 at x = 60 (its ground shadow is drawn there).
 //   Scale it to any width with CSS (56 px in the bottom row, 240 px when opening).
+//   The root svg has overflow="visible": the glow halo (glow > 0) spills softly up to
+//   ~20 units past the box, so give the chest's container room (or let it clip).
 //
-// Animation hooks (CSS the UI may add; each carries its own transform-origin):
+// The art animates itself with a few light SMIL loops (sparkles twinkle, seam light
+// flickers, the halo pulses, open rays sway, the blown-off lid bobs). Pass
+// anim: false for a static picture, e.g. if you animate the hooks below with CSS.
+//
+// Animation hooks (CSS the UI may add; each carries its own transform-origin and
+// none has a transform attribute):
 //   svg.chest            class list: chest chest-<kind> g-<grade> [open]
 //   .ch-halo             the soft glow behind the chest (pulse its opacity)
-//   .ch-rays             the burst rays when open (slow spin)
+//   .ch-rays             the burst rays when open (sway or pulse; the fan only points up, so don't spin it)
 //   .ch-leak             the light leaking from the seams (flicker)
-//   .ch-spark            each sparkle (twinkle: scale 0.4 → 1)
-//   .ch-lid              the lid when open (a little float)
-// e.g. @keyframes spin { to { transform: rotate(360deg) } } .ch-rays { animation: spin 9s linear infinite }
+//   .ch-spark            each sparkle (twinkle: scale 0.4 → 1; its origin is its own centre)
+//   .ch-lid              the crate's blown-off lid when open (a little float)
+//   .ch-wheel            the vault's ticket-wheel lock (spin it on a knock)
 
 import { classGlyph, coinBody, gemBody } from './icons.js';
 
@@ -68,11 +75,20 @@ function rr(x, y, w, h, r) {
 }
 const poly = (pts) => 'M' + pts.map(([x, y]) => `${f(x)} ${f(y)}`).join('L') + 'Z';
 
-/** 4-point twinkle. */
+// --- self-animation (SMIL) ---------------------------------------------------------------------
+
+/** Animation is on per chestSvg call; the builders read this while one chest is drawn. */
+let ANIM = true;
+const loop = (attr, values, dur, begin = 0) => (ANIM ? `<animate attributeName="${attr}" values="${values}" dur="${dur}s" begin="${f(-begin)}s" repeatCount="indefinite"/>` : '');
+const loopTf = (type, values, dur, begin = 0) => (ANIM ? `<animateTransform attributeName="transform" type="${type}" values="${values}" dur="${dur}s" begin="${f(-begin)}s" repeatCount="indefinite"/>` : '');
+
+/** 4-point twinkle, drawn about its own centre so a scale animation stays put. */
 function sparkle(x, y, r, fill = '#ffffff', o = {}) {
   const k = r * 0.2;
-  const d = `M${f(x)} ${f(y - r)}Q${f(x + k)} ${f(y - k)} ${f(x + r)} ${f(y)}Q${f(x + k)} ${f(y + k)} ${f(x)} ${f(y + r)}Q${f(x - k)} ${f(y + k)} ${f(x - r)} ${f(y)}Q${f(x - k)} ${f(y - k)} ${f(x)} ${f(y - r)}Z`;
-  return path(d, fill, { sw: o.sw ?? Math.max(0.9, r * 0.16), cls: 'ch-spark', style: `transform-origin:${f(x)}px ${f(y)}px;animation-delay:${o.delay ?? 0}s`, op: o.op });
+  const d = `M0 ${f(-r)}Q${f(k)} ${f(-k)} ${f(r)} 0Q${f(k)} ${f(k)} 0 ${f(r)}Q${f(-k)} ${f(k)} ${f(-r)} 0Q${f(-k)} ${f(-k)} 0 ${f(-r)}Z`;
+  const delay = o.delay ?? 0;
+  const sw = o.sw ?? Math.max(0.9, r * 0.16);
+  return `<g transform="translate(${f(x)} ${f(y)})"><path d="${d}" fill="${fill}" stroke="${O}" stroke-width="${f(sw)}" stroke-linejoin="round" class="ch-spark" style="transform-origin:0px 0px;animation-delay:${f(delay)}s"${o.op != null ? ` opacity="${f(o.op)}"` : ''}>${loopTf('scale', '1;0.45;1', 1.5, delay)}</path></g>`;
 }
 
 function starPath(cx, cy, ro, ri, pts = 5, rot = -90) {
@@ -92,6 +108,8 @@ function wedge(cx, cy, r, a0, a1) {
   const [x1, y1] = p(a1);
   return `M${f(cx)} ${f(cy)}L${f(x0)} ${f(y0)}A${f(r)} ${f(r)} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${f(x1)} ${f(y1)}Z`;
 }
+/** A circle as a path (for stroked light rings). */
+const ringD = (cx, cy, r) => `M${f(cx - r)} ${f(cy)}a${f(r)} ${f(r)} 0 1 0 ${f(r * 2)} 0a${f(r)} ${f(r)} 0 1 0 ${f(-r * 2)} 0`;
 
 // --- grades -----------------------------------------------------------------------------------
 
@@ -100,33 +118,54 @@ const RAINBOW = ['#ff5b5b', '#ff9a3c', '#ffd23a', '#5be07a', '#4aa3ff', '#b25cff
 const WHEEL = ['#e8483f', '#fff3d6', '#3d8bf0', '#fff3d6', '#ffc23a', '#fff3d6', '#36c06a', '#fff3d6'];
 const WOOD = { c: '#c98a4b', d: '#9a6234', l: '#e6b276' };
 const IRON = { c: '#8d96a1', d: '#5f6772', l: '#c9d0d8' };
-const SILVER = { c: '#c4d2e0', d: '#8a9db2', l: '#eef5fb' };
-const SILVER_T = { c: '#f1f6fb', d: '#a8b7c7', l: '#ffffff' };
+// Silver: a real steel body (darker than the bright trim) so it never reads as an unpainted outline.
+const SILVER = { c: '#a9bdd2', d: '#6e86a2', l: '#dce8f4' };
+const SILVER_T = { c: '#eef4fa', d: '#9fb2c6', l: '#ffffff' };
+// Gold: a bright gold body with deep amber straps, so it doesn't melt into one yellow mass.
 const GOLD = { c: '#ffc93a', d: '#e2930f', l: '#fff0a0' };
-const GOLD_T = { c: '#fff1a6', d: '#eab02a', l: '#ffffff' };
+const GOLD_T = { c: '#e8961a', d: '#ad6100', l: '#ffd25e' };
 const GOLD_TRIM = { c: '#ffc23a', d: '#d18f00', l: '#ffe78f' };
 const RED = { c: '#e8483f', d: '#b52f2b', l: '#ff8174' };
 const CANDY = { c: '#fffaf0', d: '#d8c9e8', l: '#ffffff' };
 
 /**
- * Per kind and grade: body {c,d,l}, trim {c,d,l}, light (glow colour),
- * stencil, rope, dial (two segment colours), lining (inside the vault lid),
- * stripes (rainbow), sparks (how many sparkles sit on it).
+ * Per kind and grade: body {c,d,l}, trim {c,d,l}, light (the hot core of the glow),
+ * glow (its saturated outer colour; rainbow cycles RAINBOW instead), stencil, rope,
+ * inside (the open crate's shadowy interior), dial (wheel segment colours), lining
+ * (inside the vault lid), bulbs (unlit marquee bulbs), stripes (rainbow), sparks
+ * (how many sparkles sit on it).
  */
 const LOOKS = {
   crate: [
-    { body: WOOD, trim: IRON, light: '#ffe48a', stencil: '#6e3a17', rope: '#e8cb8e', sparks: 0, worn: true },
-    { body: SILVER, trim: SILVER_T, light: '#dff4ff', stencil: '#5d7088', rope: '#f4f7fb', sparks: 2, shine: true },
-    { body: GOLD, trim: GOLD_T, light: '#ffe45c', stencil: '#b06a00', rope: '#e8483f', sparks: 3, shine: true },
-    { body: CANDY, trim: GOLD_TRIM, light: '#fff0fb', stencil: '#ffffff', rope: '#ff7ab8', sparks: 5, stripes: true },
+    { body: WOOD, trim: IRON, light: '#fff6c8', glow: '#ffb01f', stencil: '#6e3a17', rope: '#e8cb8e', inside: '#4a2a12', sparks: 0, worn: true },
+    { body: SILVER, trim: SILVER_T, light: '#eafcff', glow: '#38cbff', stencil: '#42577a', rope: '#eef4fa', inside: '#2c3b52', sparks: 2, shine: true },
+    { body: GOLD, trim: GOLD_T, light: '#fffbe0', glow: '#ff8a1a', stencil: '#a85f00', rope: '#e8483f', inside: '#6e3800', sparks: 3, shine: true },
+    { body: CANDY, trim: GOLD_TRIM, light: '#ffffff', glow: '#ff4fc8', stencil: '#ffffff', rope: '#ff7ab8', inside: '#3f1d70', sparks: 5, stripes: true },
   ],
   vault: [
-    { body: RED, trim: GOLD_TRIM, light: '#ffe48a', dial: WHEEL, lining: '#6a1730', sparks: 0, bulbs: '#fff3b0' },
-    { body: SILVER, trim: SILVER_T, light: '#dff4ff', dial: WHEEL, lining: '#33456a', sparks: 2, shine: true, bulbs: '#eaf8ff' },
-    { body: GOLD, trim: GOLD_T, light: '#ffe45c', dial: WHEEL, lining: '#8a1f3a', sparks: 3, shine: true, bulbs: '#fffbe0' },
-    { body: CANDY, trim: GOLD_TRIM, light: '#fff0fb', dial: ['#ff5b5b', '#ff9a3c', '#ffd23a', '#5be07a', '#4aa3ff', '#b25cff', '#ff7ab8', '#62e6ff'], lining: '#4a2380', sparks: 5, stripes: true, bulbs: '#ffffff' },
+    { body: RED, trim: GOLD_TRIM, light: '#fff6c8', glow: '#ffb01f', dial: WHEEL, lining: '#6a1730', sparks: 0, bulbs: '#f6dfa0' },
+    { body: SILVER, trim: SILVER_T, light: '#eafcff', glow: '#38cbff', dial: WHEEL, lining: '#33456a', sparks: 2, shine: true, bulbs: '#d3e2ee' },
+    { body: GOLD, trim: GOLD_T, light: '#fffbe0', glow: '#ff8a1a', dial: WHEEL, lining: '#8a1f3a', sparks: 3, shine: true, bulbs: '#ffe9a8' },
+    { body: CANDY, trim: GOLD_TRIM, light: '#ffffff', glow: '#ff4fc8', dial: ['#ff5b5b', '#ff9a3c', '#ffd23a', '#5be07a', '#4aa3ff', '#b25cff', '#ff7ab8', '#62e6ff'], lining: '#4a2380', sparks: 5, stripes: true, bulbs: '#f1e6ff' },
   ],
 };
+
+/**
+ * The paints for one chest's light: seam (stroke paint for seam glows: the glow colour,
+ * or a rainbow gradient across the chest), ray(i) (fill for the i-th light ray) and
+ * any <defs> they need.
+ */
+function lightKit(P) {
+  if (!P.stripes) return { defs: '', seam: P.glow, ray: () => P.glow, bulb: () => P.glow };
+  const id = uid('rb');
+  const stops = RAINBOW.map((c, i) => `<stop offset="${f(i / (RAINBOW.length - 1))}" stop-color="${c}"/>`).join('');
+  return {
+    defs: `<defs><linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="10" y1="0" x2="110" y2="0">${stops}</linearGradient></defs>`,
+    seam: `url(#${id})`,
+    ray: (i) => RAINBOW[((i % 6) + 6) % 6],
+    bulb: (i) => RAINBOW[((i % 6) + 6) % 6],
+  };
+}
 
 /** A fill for a shape: solid body colour, or candy-stripe rainbow clipped to it. */
 function surface(d, P, { tilt = -30, band = 7 } = {}) {
@@ -148,60 +187,74 @@ const shade = (d, P) => {
   return path(d, s.fill, { op: s.op });
 };
 
-/** A soft radial halo (behind the chest). */
-function halo(cx, cy, rx, ry, color, op, cls = 'ch-halo') {
+/** A soft radial halo behind the chest. It may spill a little past the viewBox (the root svg has overflow visible) and fades to nothing at its rim. */
+function halo(cx, cy, rx, ry, P, op) {
   if (op <= 0) return '';
   const id = uid('halo');
-  return `<defs><radialGradient id="${id}"><stop offset="0" stop-color="#ffffff" stop-opacity="1"/><stop offset="0.35" stop-color="${color}" stop-opacity="0.85"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></radialGradient></defs>${ell(cx, cy, rx, ry, `url(#${id})`, { op, cls, style: `transform-origin:${f(cx)}px ${f(cy)}px` })}`;
+  // Strong right out to the chest's silhouette (~0.8 of the radius), so the rim that shows round the chest is bright.
+  const mid = P.stripes ? `<stop offset="0.4" stop-color="#ff8ae0" stop-opacity="0.95"/><stop offset="0.78" stop-color="#b25cff" stop-opacity="0.6"/>` : `<stop offset="0.4" stop-color="${P.glow}" stop-opacity="0.95"/><stop offset="0.78" stop-color="${P.glow}" stop-opacity="0.6"/>`;
+  return (
+    `<defs><radialGradient id="${id}"><stop offset="0" stop-color="#ffffff" stop-opacity="1"/>${mid}<stop offset="1" stop-color="${P.stripes ? '#b25cff' : P.glow}" stop-opacity="0"/></radialGradient></defs>` +
+    `<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="${f(rx)}" ry="${f(ry)}" fill="url(#${id})" opacity="${f(op)}" class="ch-halo" style="transform-origin:${f(cx)}px ${f(cy)}px">${loop('opacity', `${f(op)};${f(op * 0.7)};${f(op)}`, 1.6)}</ellipse>`
+  );
 }
 
-/** Light along a seam: a wide soft line, a narrower bright one and a white core. */
-function seamLight(d, color, k) {
+/** Light along a seam: a wide soft band in the glow colour, a bright line, and a white-hot core. */
+function seamLight(d, P, LK, k) {
   if (k <= 0) return '';
-  return line(d, color, 4 + 9 * k, { op: 0.22 * k + 0.08 }) + line(d, color, 2 + 3.5 * k, { op: 0.35 + 0.5 * k }) + line(d, '#ffffff', 0.8 + 1.4 * k, { op: 0.5 + 0.5 * k });
+  k = Math.min(1, k);
+  return line(d, LK.seam, 3.5 + 7 * k, { op: 0.18 + 0.22 * k }) + line(d, LK.seam, 2.2 + 3 * k, { op: 0.6 + 0.4 * k }) + line(d, P.light, 1.2 + 1.6 * k, { op: 0.95 }) + line(d, '#ffffff', 0.6 + 0.9 * k, { op: 0.7 + 0.3 * k });
 }
 
-/** Short light beams fanning out from a point. */
-function leakRays(x, y, color, k, angles, len) {
+/**
+ * Light beams shining out of the cracks: each beam is [x, y, angle, length] (angle in
+ * degrees, 0 = up, clockwise), a narrow-based wedge that fades out in two steps, with a
+ * white-hot core.
+ */
+function beams(list, LK, k, i0 = 0) {
   if (k < 0.3) return '';
-  const L = len * (0.45 + 0.75 * k);
+  const op = Math.min(1, 0.55 + 0.6 * (k - 0.3));
+  const grow = 0.6 + 0.55 * k;
   let s = '';
-  for (const a of angles) {
+  list.forEach(([x, y, a, len], i) => {
     const r = (a * Math.PI) / 180;
-    const w = 0.09;
-    const p1 = [x + Math.sin(r - w) * L, y - Math.cos(r - w) * L];
-    const p2 = [x + Math.sin(r + w) * L, y - Math.cos(r + w) * L];
-    s += path(poly([[x, y], p1, p2]), color, { op: 0.25 + 0.45 * (k - 0.3) });
-  }
+    const L = len * grow;
+    const ux = Math.sin(r);
+    const uy = -Math.cos(r);
+    const pt = (along, side) => [x + ux * along - uy * side, y + uy * along + ux * side];
+    const wedge = (l, w0, w1) => poly([pt(1.2, -w0), pt(l, -w1), pt(l, w1), pt(1.2, w0)]);
+    const col = LK.ray(i0 + i);
+    s += path(wedge(L, 1.1, 3.6), col, { op: op * 0.35 }) + path(wedge(L * 0.7, 1.1, 2.6), col, { op: op * 0.85 }) + path(wedge(L * 0.55, 0.4, 0.9), '#ffffff', { op: op * 0.9 });
+  });
   return s;
 }
 
-/** The burst of light out of an open chest: rays that fade out before the edges. */
-function burst(cx, cy, P, grade, r = 56, haloK = 1) {
+/** The burst of light out of an open chest: an upward fan of rays that fade out well inside the box. */
+function burst(cx, cy, P, grade, r = 66, haloK = 1) {
   const grads = {};
   let defs = '';
   const grad = (col) => {
     if (grads[col]) return grads[col];
     const id = uid('ray');
-    defs += `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}"><stop offset="0" stop-color="${col}" stop-opacity="1"/><stop offset="0.55" stop-color="${col}" stop-opacity="0.75"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient>`;
+    defs += `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}"><stop offset="0" stop-color="${col}" stop-opacity="1"/><stop offset="0.35" stop-color="${col}" stop-opacity="0.85"/><stop offset="0.72" stop-color="${col}" stop-opacity="0"/></radialGradient>`;
     return (grads[col] = `url(#${id})`);
   };
   let rays = '';
-  const n = 13;
+  const n = 11;
   for (let i = 0; i < n; i++) {
-    const a = -180 + ((i + 0.5) / n) * 180; // left, through up, to right
+    const a = -160 + (i / (n - 1)) * 140; // up-left, through up, to up-right: no flat rays along the rim
     const ang = (a * Math.PI) / 180;
-    const w = i % 2 ? 4.2 : 7;
+    const w = i % 2 ? 4.4 : 7.2;
     const da = (w * Math.PI) / 180;
-    const col = P.stripes ? RAINBOW[i % 6] : i % 2 ? '#ffffff' : P.light;
-    rays += path(poly([[cx, cy], [cx + Math.cos(ang - da) * r, cy + Math.sin(ang - da) * r], [cx + Math.cos(ang + da) * r, cy + Math.sin(ang + da) * r]]), grad(col), { op: P.stripes ? 0.8 : 0.85 });
+    const col = P.stripes ? RAINBOW[i % 6] : i % 2 ? '#ffffff' : P.glow;
+    rays += path(poly([[cx, cy], [cx + Math.cos(ang - da) * r, cy + Math.sin(ang - da) * r], [cx + Math.cos(ang + da) * r, cy + Math.sin(ang + da) * r]]), grad(col), { op: 0.9 });
   }
   const core = uid('core');
-  defs += `<radialGradient id="${core}"><stop offset="0" stop-color="#ffffff" stop-opacity="1"/><stop offset="0.4" stop-color="${P.light}" stop-opacity="0.85"/><stop offset="1" stop-color="${P.light}" stop-opacity="0"/></radialGradient>`;
+  defs += `<radialGradient id="${core}"><stop offset="0" stop-color="#ffffff" stop-opacity="1"/><stop offset="0.4" stop-color="${P.stripes ? '#ffd6f4' : P.light}" stop-opacity="0.9"/><stop offset="0.7" stop-color="${P.stripes ? '#ff8ae0' : P.glow}" stop-opacity="0.35"/><stop offset="1" stop-color="${P.stripes ? '#b25cff' : P.glow}" stop-opacity="0"/></radialGradient>`;
   return (
     `<defs>${defs}</defs>` +
-    ell(cx, cy - 4, 46 * haloK, 34 * haloK, `url(#${core})`, { op: 0.85, cls: 'ch-halo', style: `transform-origin:${f(cx)}px ${f(cy)}px` }) +
-    g(rays, { cls: 'ch-rays', style: `transform-origin:${f(cx)}px ${f(cy)}px` }) +
+    `<ellipse cx="${f(cx)}" cy="${f(cy - 4)}" rx="${f(46 * haloK)}" ry="${f(34 * haloK)}" fill="url(#${core})" opacity="0.9" class="ch-halo" style="transform-origin:${f(cx)}px ${f(cy)}px">${loop('opacity', '0.9;0.7;0.9', 1.4)}</ellipse>` +
+    g(`<g>${loopTf('rotate', `-5 ${f(cx)} ${f(cy)};5 ${f(cx)} ${f(cy)};-5 ${f(cx)} ${f(cy)}`, 5)}${rays}</g>`, { cls: 'ch-rays', style: `transform-origin:${f(cx)}px ${f(cy)}px` }) +
     (grade >= 2 ? ell(cx, cy - 2, 26, 16, `url(#${core})`, { op: 0.9 }) : '')
   );
 }
@@ -243,21 +296,37 @@ const TICKETS = ['#ff9a3c', '#ffd23a', '#ff7ab8', '#62e6ff'];
 /** A little gold coin seen face-on (for loot peeking out of an open chest). */
 const lootCoin = (x, y, r, rot = 0) => g(circ(0, 0, r, '#e2930f', { sw: 1.6 }) + circ(0, -r * 0.12, r * 0.8, '#ffc93a') + path(starPath(0, -r * 0.1, r * 0.42, r * 0.18), '#fff0a0'), { tf: `translate(${f(x)} ${f(y)}) rotate(${rot}) scale(1 ${rot ? 0.85 : 1})` });
 
+/** A little Badge (blue patch, gold star) peeking out of the loot heap. */
+const lootBadge = (x, y, r, rot = 0) =>
+  g(circ(0, 0, r, '#3d8bf0', { sw: 1.6 }) + `<circle cx="0" cy="0" r="${f(r * 0.72)}" fill="none" stroke="#ffffff" stroke-width="${f(r * 0.12)}" stroke-dasharray="${f(r * 0.28)} ${f(r * 0.22)}" opacity="0.85"/>` + path(starPath(0, r * 0.04, r * 0.5, r * 0.22), '#ffc23a', { sw: 1 }), { tf: `translate(${f(x)} ${f(y)}) rotate(${rot})` });
+
+/** A little gem peeking out of the loot heap. */
+const lootGem = (x, y, s, rot = 0) => g(gemBody(), { tf: `translate(${f(x)} ${f(y)}) rotate(${rot}) scale(${f(s)}) translate(-12 -12)` });
+
 // --- The Supply Crate -------------------------------------------------------------------------
 
-/** The crate's Ferris-wheel stencil (the park logo). */
-function wheelStencil(cx, cy, r, col, op) {
+/**
+ * The crate is drawn in a 120 × 100 design space and scaled up about its foot (60, 95),
+ * so the closed crate fills the box nearly as well as the Vault does (it read ~30 % smaller
+ * at HUD size), while the open crate still has headroom for its blown-off lid.
+ */
+const CS = 1.12;
+const CRATE_TF = `translate(${f(60 * (1 - CS))} ${f(95 * (1 - CS))}) scale(${CS})`;
+
+/** The crate's stencilled park mark: one bold star in a broken ring (reads at 56 px). */
+function stencilMark(cx, cy, r, P) {
+  const col = P.stencil;
   const C = 2 * Math.PI * r;
-  const gap = r * 0.32;
-  let s = line(`M${f(cx - r * 0.78)} ${f(cy + r * 1.2)}L${f(cx)} ${f(cy + r * 0.1)}L${f(cx + r * 0.78)} ${f(cy + r * 1.2)}`, col, r * 0.26, { butt: true });
-  s += `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="none" stroke="${col}" stroke-width="${f(r * 0.28)}" stroke-dasharray="${f(C / 6 - gap)} ${f(gap)}" transform="rotate(-75 ${f(cx)} ${f(cy)})"/>`;
-  for (let i = 0; i < 3; i++) {
-    const a = (i * Math.PI) / 3 + Math.PI / 6;
-    s += line(`M${f(cx + Math.cos(a) * r * 0.72)} ${f(cy + Math.sin(a) * r * 0.72)}L${f(cx - Math.cos(a) * r * 0.72)} ${f(cy - Math.sin(a) * r * 0.72)}`, col, r * 0.14, { butt: true });
+  const gap = r * 0.42;
+  const outline = P.stripes ? { sw: 1.5 } : {};
+  const ring = `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="none" stroke="${col}" stroke-width="${f(r * 0.26)}" stroke-dasharray="${f(C / 4 - gap)} ${f(gap)}" transform="rotate(-45 ${f(cx)} ${f(cy)})"/>`;
+  const star = path(starPath(cx, cy + r * 0.04, r * 0.66, r * 0.3), col, outline);
+  if (P.stripes) {
+    // On the stripes: a white star with a dark outline and a dark-backed ring.
+    const back = `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="none" stroke="${O}" stroke-width="${f(r * 0.26 + 2.6)}" stroke-dasharray="${f(C / 4 - gap + 1.2)} ${f(gap - 1.2)}" transform="rotate(-45 ${f(cx)} ${f(cy)})" stroke-dashoffset="0.6"/>`;
+    return back + ring + star;
   }
-  s += circ(cx, cy, r * 0.24, col);
-  s += path(starPath(cx - r * 2.05, cy + r * 0.25, r * 0.5, r * 0.22), col) + path(starPath(cx + r * 2.05, cy + r * 0.25, r * 0.5, r * 0.22), col);
-  return g(s, { op });
+  return g(ring + star, { op: 0.7 });
 }
 
 /** The crate's lid (top face + front band), drawn in place; the open crate lifts it. */
@@ -300,7 +369,7 @@ function crateBody(P, worn) {
   // Rope handles (behind the box).
   for (const m of [1, -1]) {
     const x = m > 0 ? 23 : 97;
-    const d = `M${x} 60.5C${x - 14 * m} 58.5 ${x - 14.5 * m} 78 ${x} 76`;
+    const d = `M${x} 60.5C${x - 13 * m} 58.5 ${x - 13.5 * m} 78 ${x} 76`;
     s += stick(d, P.rope, 3.6, 2.2) + line(d, mix(P.rope, O, 0.35), 3.6, { dash: '1.4 2.2', op: 0.6 });
   }
   s += surface(box, P);
@@ -310,13 +379,13 @@ function crateBody(P, worn) {
   const hop = P.stripes ? 0.45 : 1;
   s += path(rr(23, 54.4, 74, 2, 1), hl, { op: hop }) + path(rr(23, 67.6, 74, 1.8, 0.9), hl, { op: hop }) + path(rr(23, 80.8, 74, 1.8, 0.9), hl, { op: hop * 0.8 });
   s += line('M22 66.2H98M22 79.4H98', P.stripes ? O : mix(P.body.d, O, 0.25), 1.6, { op: P.stripes ? 0.45 : 1 });
-  // The park logo, stencilled on.
-  s += wheelStencil(60, 70.5, 7.6, P.stencil, P.stripes ? 0.95 : 0.62);
   if (worn) {
     // A crack in the bottom plank and a patch nailed over a broken bit.
-    s += line('M41 80.5l2.4 3l-1.4 2.6l2.6 2.4', mix(P.body.d, O, 0.3), 1.3);
-    s += g(path(rr(66, 82.6, 17, 6.4, 1.2), '#b47a40', { sw: 1.8 }) + circ(68.6, 85.8, 0.9, O) + circ(80.4, 85.8, 0.9, O) + line('M70.5 84.2H78', '#d9a466', 1, { op: 0.9 }), { tf: 'rotate(-7 74.5 85.8)' });
+    s += line('M38 80.5l2.4 3l-1.4 2.6l2.6 2.4', mix(P.body.d, O, 0.3), 1.3);
+    s += g(path(rr(68, 82.6, 15, 6.4, 1.2), '#b47a40', { sw: 1.8 }) + circ(70.4, 85.8, 0.9, O) + circ(80.6, 85.8, 0.9, O) + line('M72.4 84.2H78.6', '#d9a466', 1, { op: 0.9 }), { tf: 'rotate(-7 75.5 85.8)' });
   }
+  // The park mark, stencilled on (over the patch's corner is fine: it was painted later).
+  s += stencilMark(60, 72.6, 8.4, P);
   if (P.shine) s += shine(31, 55, 89, 92, 0.38);
   // Side battens.
   for (const x of [21, 89]) {
@@ -337,37 +406,52 @@ function crateBody(P, worn) {
   return s;
 }
 
+/** The open crate's top: the walls' rim, a dark interior, a heap of loot, the front lip over it. */
+function crateTop(P) {
+  const rimFill = (d) => surface(d, P, { band: 5 }) + path(d, P.stripes ? '#ffffff' : P.body.l, { op: P.stripes ? 0.35 : 1 });
+  const rim = poly([[25, 44], [95, 44], [99.5, 53], [20.5, 53]]);
+  const hole = poly([[29.5, 46.2], [90.5, 46.2], [93.6, 51.2], [26.4, 51.2]]);
+  let s = rimFill(rim) + path(rim, 'none', { sw: 2.6 });
+  s += path(hole, P.inside, { sw: 1.8 });
+  // The back wall's inner face catches the light from the heap.
+  s += path(poly([[30.2, 47], [89.8, 47], [90.6, 48.6], [29.4, 48.6]]), P.light, { op: 0.35 });
+  // The heap: a mound of coins with a Badge and a gem on top.
+  const mound = 'M29.6 51.2C32.6 45 44.6 41.4 60 41.4C75.4 41.4 87.4 45 90.4 51.2Z';
+  s += path(mound, '#ffc93a', { sw: 2.2 }) + line('M35.6 48.4C39.6 44.9 47.6 43.4 56 43.2', '#fff0a0', 1.8, { op: 0.95 }) + line('M70 47.4C76 47.2 82 48.4 86 50.4', '#e2930f', 1.6, { op: 0.8 });
+  s += lootCoin(39, 47.4, 3.8, -12) + lootCoin(81.4, 47.6, 3.6, 12) + lootCoin(67.4, 43.6, 4.2);
+  s += lootBadge(51.4, 41.2, 5, -12) + lootGem(73.6, 41.2, 0.42, 14);
+  // The front lip, over the heap.
+  const lip = poly([[26.4, 51.2], [93.6, 51.2], [99.5, 53], [20.5, 53]]);
+  s += rimFill(lip) + path(lip, 'none', { sw: 2.2 });
+  return s;
+}
+
 function crateSvg(grade, open, glow) {
   const P = LOOKS.crate[grade];
+  const LK = lightKit(P);
   const worn = !!P.worn;
-  let s = ell(60, 95, 44, 4.2, O, { op: 0.2 });
+  let s = LK.defs + ell(60, 95, 44 * CS, 4.4, O, { op: 0.2 });
   const k = Math.max(0, Math.min(1, glow));
   if (open) {
-    s += burst(60, 47, P, grade, 60);
-    s += crateBody(P, worn);
-    // The open top: the box rim and the light pouring out.
-    const rim = poly([[25, 44], [95, 44], [99.5, 53], [20.5, 53]]);
-    const hole = poly([[29.5, 46.2], [90.5, 46.2], [93.6, 51.2], [26.4, 51.2]]);
-    s += surface(rim, P, { band: 5 }) + path(rim, P.stripes ? '#ffffff' : P.body.l, { op: P.stripes ? 0.35 : 1 }) + path(rim, 'none', { sw: 2.6 });
-    s += path(hole, '#fffbe6', { sw: 1.8 }) + path(poly([[33, 47.4], [87, 47.4], [89, 50], [31, 50]]), '#ffffff');
-    // Loot jumping out.
-    s += lootCoin(44, 40, 4.6, -20) + lootCoin(77, 36, 4.2, 18) + lootCoin(60, 28, 5);
-    s += sparkle(35, 30, 4.4, '#ffffff') + sparkle(88, 26, 3.6, '#ffffff', { delay: 0.3 }) + sparkle(64, 14, 3, '#ffffff', { delay: 0.6 });
-    // The lid, blown up off the box.
-    s += g(crateLid(P, worn), { cls: 'ch-lid', tf: 'translate(65 7) rotate(-13) scale(0.86) translate(-60 -30)', style: 'transform-box:view-box' });
-    s += sparkles(P, [[28, 60, 3.4], [92, 66, 3], [54, 86, 2.6], [76, 58, 2.4], [40, 74, 2.2]]);
+    s += burst(60, 41, P, grade);
+    s += g(crateBody(P, worn) + crateTop(P) + sparkles(P, [[28, 62, 3.4], [92, 68, 3], [54, 87, 2.6], [76, 60, 2.4], [40, 76, 2.2]]), { tf: CRATE_TF });
+    // Loot jumping out, and the lid blown up off the box.
+    s += lootCoin(34, 27, 4.4, -20) + lootCoin(56, 22, 4.6) + lootCoin(44, 12, 3.6, 16);
+    s += sparkle(24, 18, 4.2, '#ffffff') + sparkle(66, 8, 3, '#ffffff', { delay: 0.3 }) + sparkle(104, 34, 3.2, '#ffffff', { delay: 0.6 });
+    s += `<g class="ch-lid" style="transform-origin:86px 14px">${loopTf('translate', '0 0;0 -2.2;0 0', 1.8)}${g(crateLid(P, worn), { tf: 'translate(86 6.4) rotate(14) scale(0.56) translate(-60 -30)' })}</g>`;
     return s;
   }
-  s += halo(60, 64, 56 + 8 * k, 42 + 6 * k, P.light, k * 0.95);
-  s += crateBody(P, worn);
-  s += crateLid(P, worn);
+  s += halo(60, 60, 80, 58, P, Math.min(1, k * 1.2));
+  let c = crateBody(P, worn) + crateLid(P, worn);
   if (k > 0) {
-    const leak = seamLight('M22.5 53.4H53.5M66.5 53.4H97.5', P.light, k) + seamLight('M31 66.2H89M31 79.4H89', P.light, k * 0.55) + seamLight('M26 30.8H94', P.light, k * 0.7);
-    const rays = leakRays(22, 53, P.light, k, [-80, -100, -120], 16) + leakRays(98, 53, P.light, k, [80, 100, 120], 16) + leakRays(60, 30.5, P.light, k, [-40, -15, 15, 40], 18);
-    s += g(rays + leak, { cls: 'ch-leak' });
+    // The light builds in three stages as the knocks land: the lid seam, then the top edge
+    // (from 0.3), then the plank seams (from 0.45).
+    const leak = seamLight('M22.5 53.4H53.5M66.5 53.4H97.5', P, LK, 0.35 + 0.65 * k) + seamLight('M31 66.2H89M31 79.4H89', P, LK, Math.max(0, k - 0.45) * 1.6) + seamLight('M26 30.8H94', P, LK, Math.max(0, k - 0.3) * 1.3);
+    const rays = beams([[32, 30.4, -26, 11], [46, 30.2, -11, 14], [60, 30.2, 0, 16], [74, 30.2, 11, 14], [88, 30.4, 26, 11]], LK, k) + beams([[19.5, 53.4, -78, 10], [19.5, 53.4, -104, 8], [100.5, 53.4, 78, 10], [100.5, 53.4, 104, 8]], LK, k, 5);
+    c += `<g class="ch-leak">${loop('opacity', '1;0.72;1', 0.9)}${rays + leak}</g>`;
   }
-  s += sparkles(P, [[94, 34, 4], [27, 62, 3.4], [80, 74, 3], [44, 36, 2.6], [64, 88, 2.4]]);
-  return s;
+  c += sparkles(P, [[94, 34, 4], [27, 62, 3.4], [80, 75, 3], [44, 36, 2.6], [64, 89, 2.4]]);
+  return s + g(c, { tf: CRATE_TF });
 }
 
 // --- The Ticket Vault -------------------------------------------------------------------------
@@ -404,7 +488,7 @@ function vaultBody(P) {
   s += shade(rr(12, 82.5, 96, 9, [0, 0, 5, 5]), P);
   s += path(rr(15, 55.5, 90, 2.2, 1), P.stripes ? '#ffffff' : P.body.l, { op: P.stripes ? 0.5 : 1 });
   if (P.shine) s += shine(40, 56, 104, 90, 0.36);
-  // Gold straps and studs.
+  // Straps and studs.
   for (const x of [25, 85]) {
     s += path(rr(x, 52, 10, 39.5, 0), T.c, { sw: 2.2 }) + path(rr(x + 1.6, 53.5, 2, 36, 1), T.l, { op: 0.8 }) + path(rr(x + 6.6, 53.5, 2.2, 36.5, 1), T.d, { op: 0.6 });
     s += rivet(x + 5, 60, T, 1.7) + rivet(x + 5, 71.5, T, 1.7) + rivet(x + 5, 83, T, 1.7);
@@ -419,12 +503,15 @@ function vaultBody(P) {
   return s;
 }
 
-/** Ticket stubs poking out from under the lid (drawn before the lid). */
+/** Ticket stubs poking out from under the lid, on the front (drawn before the lid). */
 function seamTickets() {
-  return ticket(41.2, 58.5, 8.6, 20, 9, TICKETS[0]) + ticket(78.6, 57.5, 8.6, 18, -8, TICKETS[1]) + ticket(110.5, 50.5, 17, 9, -26, TICKETS[2]) + ticket(9.5, 51.5, 15, 8.4, 22, TICKETS[3]);
+  return ticket(41.2, 58.5, 8.6, 20, 9, TICKETS[0]) + ticket(78.6, 57.5, 8.6, 18, -8, TICKETS[1]);
 }
 
-function vaultLid(P) {
+const BULBS = [[42, 44], [42, 37.5], [44.2, 30.8], [49.6, 26.2], [56, 24.4], [64, 24.4], [70.4, 26.2], [75.8, 30.8], [78, 37.5], [78, 44]];
+
+/** The vault's domed lid. k (the glow) lights the marquee: half the bulbs from 0.3, all of them and the star from 0.6. */
+function vaultLid(P, LK, k = 0) {
   const T = P.trim;
   const id = uid('lid');
   let s = surface(DOME, P, { band: 8 });
@@ -435,12 +522,24 @@ function vaultLid(P) {
   const strap = (x) => path(rr(x, 10, 10, 40, 0), T.c) + path(rr(x + 1.6, 10, 2, 38, 1), T.l, { op: 0.8 }) + path(rr(x + 6.6, 10, 2.2, 38, 1), T.d, { op: 0.6 }) + line(`M${x} 10V50M${x + 10} 10V50`, O, 2.2);
   s += `<defs><clipPath id="${id}"><path d="${DOME}"/></clipPath></defs><g clip-path="url(#${id})">${strap(25)}${strap(85)}</g>`;
   s += rivet(30, 26, T, 1.7) + rivet(90, 26, T, 1.7) + rivet(30, 38, T, 1.7) + rivet(90, 38, T, 1.7);
-  // The marquee panel: a gold-framed sign with a star and a ring of bulbs.
+  // The marquee panel: a framed sign with a star and a ring of bulbs.
   const panel = 'M40 46V33C40 26 48 22.5 60 22.5C72 22.5 80 26 80 33V46Z';
   s += path(panel, T.c, { sw: 2.4 }) + path('M44 45V34C44 29.5 50 26.5 60 26.5C70 26.5 76 29.5 76 34V45Z', P.stripes ? '#4a2380' : mix(P.body.d, O, 0.35), { sw: 1.6 });
-  s += path(starPath(60, 36.5, 6.4, 2.8), P.stripes ? '#ffd23a' : T.c, { sw: 1.6 }) + path(starPath(59.2, 35.6, 2.6, 1.1), T.l, { op: 0.85 });
-  const bulbs = [[42, 44], [42, 37.5], [44.2, 30.8], [49.6, 26.2], [56, 24.4], [64, 24.4], [70.4, 26.2], [75.8, 30.8], [78, 37.5], [78, 44]];
-  for (const [x, y] of bulbs) s += circ(x, y, 1.6, P.bulbs, { sw: 1 });
+  const starLit = k >= 0.6;
+  if (starLit) {
+    const sg = uid('star');
+    const col = P.stripes ? '#ff8ae0' : P.glow;
+    s += `<defs><radialGradient id="${sg}"><stop offset="0" stop-color="#ffffff" stop-opacity="1"/><stop offset="0.35" stop-color="${col}" stop-opacity="0.9"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient></defs>`;
+    s += `<ellipse cx="60" cy="36.6" rx="14" ry="9.6" fill="url(#${sg})" class="ch-leak">${loop('opacity', '1;0.75;1', 0.9)}</ellipse>`;
+    s += path(starPath(60, 36.5, 7, 3.1), P.light, { sw: 1.6 }) + path(starPath(59.2, 35.6, 2.8, 1.2), '#ffffff');
+  } else {
+    s += path(starPath(60, 36.5, 6.4, 2.8), P.stripes ? '#ffd23a' : T.c, { sw: 1.6 }) + path(starPath(59.2, 35.6, 2.6, 1.1), T.l, { op: 0.85 });
+  }
+  BULBS.forEach(([x, y], i) => {
+    const lit = k >= 0.6 || (k >= 0.3 && i % 2 === 0);
+    if (lit) s += circ(x, y, 3.3, LK.bulb(i), { op: 0.55 }) + circ(x, y, 1.9, P.light, { sw: 1 }) + circ(x - 0.45, y - 0.45, 0.7, '#ffffff');
+    else s += circ(x, y, 1.6, P.bulbs, { sw: 1 });
+  });
   s += path(DOME, 'none', { sw: 3 });
   // The lid's front band, with the hasp that drops onto the wheel.
   s += path(rr(8.5, 45.5, 103, 9.5, 2.5), T.c, { sw: 2.6 }) + path(rr(11, 47, 98, 2, 1), T.l, { op: 0.85 }) + path(rr(10, 51.6, 100, 2.4, 1), T.d, { op: 0.55 });
@@ -451,7 +550,8 @@ function vaultLid(P) {
 
 function vaultSvg(grade, open, glow) {
   const P = LOOKS.vault[grade];
-  let s = ell(60, 95.5, 50, 4.4, O, { op: 0.2 });
+  const LK = lightKit(P);
+  let s = LK.defs + ell(60, 95.5, 50, 4.4, O, { op: 0.2 });
   const k = Math.max(0, Math.min(1, glow));
   if (open) {
     // The lid swings back: we see its lining above the box.
@@ -467,14 +567,14 @@ function vaultSvg(grade, open, glow) {
     for (let row = 0; row < 3; row++) for (let x = 8 + (row % 2) * 6.5; x < 112; x += 13) buttons += circ(x, 17.5 + row * 13, 1.1, mix(P.lining, '#ffffff', 0.3));
     s += `<defs><clipPath id="${cid}"><path d="${lidIn}"/></clipPath></defs><g clip-path="url(#${cid})">${line(tuft, mix(P.lining, O, 0.45), 1.2)}${buttons}${path('M17 49L14.4 19.4C14.2 14 32 10 60 10C40 13 22 16 24 24L26 49Z', '#ffffff', { op: 0.12 })}</g>`;
     s += line('M14 13.5C28 8.2 92 8.2 106 13.5', T.l, 1.6, { op: 0.9 });
-    // Marquee bulbs round the lid's rim.
+    // Marquee bulbs round the lid's rim, all lit now.
     for (let i = 0; i <= 10; i++) {
       const t = i / 10;
       const x = 12 + t * 96;
       const y = 7.6 + Math.pow(Math.abs(t - 0.5) * 2, 2.2) * 6.4;
-      s += circ(x, y, 1.6, P.bulbs, { sw: 1 });
+      s += circ(x, y, 1.7, P.light, { sw: 1 });
     }
-    s += burst(60, 47, P, grade, 60, 0.8);
+    s += burst(60, 47, P, grade, 66, 0.8);
     s += vaultBody(P);
     // The open top, heaped with loot.
     const rim = poly([[15, 43], [105, 43], [109.5, 52.5], [10.5, 52.5]]);
@@ -487,16 +587,22 @@ function vaultSvg(grade, open, glow) {
     s += sparkles(P, [[19, 64, 3.4], [103, 70, 3], [48, 86, 2.6], [73, 84, 2.4], [96, 58, 2.2]]);
     return s;
   }
-  s += halo(60, 58, 60 + 6 * k, 46 + 6 * k, P.light, k * 0.95);
+  s += halo(60, 59, 82, 58, P, Math.min(1, k * 1.2));
   s += vaultBody(P);
   s += seamTickets();
-  s += vaultLid(P);
+  s += vaultLid(P, LK, k);
   if (k > 0) {
-    const leak = seamLight('M11 55.6H54M66 55.6H109', P.light, k) + seamLight('M49 72.5A11.2 11.2 0 0 0 71 72.5', P.light, k * 0.6);
-    const rays = leakRays(11, 55, P.light, k, [-75, -95, -115], 16) + leakRays(109, 55, P.light, k, [75, 95, 115], 16) + leakRays(60, 56, P.light, k, [150, 180, 210], 14);
-    s += g(rays + leak, { cls: 'ch-leak' });
-    // The marquee bulbs light up as it glows.
-    if (k >= 0.5) s += circ(60, 36.5, 9 * k, P.light, { op: 0.35 * k });
+    // Three stages, like the crate: the lid seam; then (from 0.3) half the bulbs, the dome
+    // seam and a ring round the wheel; then (from 0.6) every bulb, the star and rays off the dome.
+    const k2 = Math.max(0, k - 0.3) / 0.7;
+    const k3 = Math.max(0, k - 0.6) / 0.4;
+    const leak =
+      seamLight('M11 55.6H54M66 55.6H109', P, LK, 0.35 + 0.65 * k) +
+      seamLight('M49 72.5A11.2 11.2 0 0 0 71 72.5', P, LK, k * 0.6) +
+      seamLight('M12 45.4H38.6M81.4 45.4H108', P, LK, k2 * 0.9) +
+      (k >= 0.45 ? seamLight(ringD(60, 70.5, 14.6), P, LK, 0.25 + 0.5 * k2) : '');
+    const rays = beams([[8, 55.6, -76, 10], [8, 55.6, -102, 8], [112, 55.6, 76, 10], [112, 55.6, 102, 8]], LK, k) + (k3 > 0 ? beams([[29, 21.4, -32, 9], [44, 16.8, -13, 11], [60, 15, 0, 12], [76, 16.8, 13, 11], [91, 21.4, 32, 9]], LK, 0.3 + 0.7 * k3, 4) : '');
+    s += `<g class="ch-leak">${loop('opacity', '1;0.72;1', 0.9)}${rays + leak}</g>`;
   }
   s += sparkles(P, [[104, 30, 4], [16, 66, 3.4], [96, 80, 3], [22, 33, 2.6], [50, 86, 2.4]]);
   return s;
@@ -506,14 +612,20 @@ function vaultSvg(grade, open, glow) {
 
 /**
  * A chest. kind 'crate' | 'vault'; grade 0..3 (plain, silver, gold, rainbow);
- * open: lid off with light bursting out; glow 0..1: light from the seams.
+ * open: lid off with light bursting out; glow 0..1: light from the seams;
+ * anim (default true): built-in SMIL loops (false = a static picture).
  * viewBox 0 0 120 100, stands on (60, 95).
  */
-export function chestSvg(kind, { grade = 0, open = false, glow = 0 } = {}) {
+export function chestSvg(kind, { grade = 0, open = false, glow = 0, anim = true } = {}) {
   const gr = Math.max(0, Math.min(3, Math.round(grade) || 0));
   const k = kind === 'vault' ? 'vault' : 'crate';
-  const inner = k === 'vault' ? vaultSvg(gr, !!open, +glow || 0) : crateSvg(gr, !!open, +glow || 0);
-  return `<svg class="chest chest-${k} g-${gr}${open ? ' open' : ''}" viewBox="0 0 120 100" aria-hidden="true">${inner}</svg>`;
+  ANIM = anim !== false;
+  try {
+    const inner = k === 'vault' ? vaultSvg(gr, !!open, +glow || 0) : crateSvg(gr, !!open, +glow || 0);
+    return `<svg class="chest chest-${k} g-${gr}${open ? ' open' : ''}" viewBox="0 0 120 100" overflow="visible" aria-hidden="true">${inner}</svg>`;
+  } finally {
+    ANIM = true;
+  }
 }
 
 /** A soft ground shadow for a chest, viewBox 0 0 120 20 (centre at 60, 10). */
@@ -525,15 +637,16 @@ const CLASS_COL = {
   brawler: ['#e8483f', '#b52f2b'],
   shooter: ['#3d8bf0', '#2a6cc8'],
   medic: ['#36c06a', '#23944f'],
-  tinker: ['#f5b82e', '#d18f00'],
+  tinker: ['#f0a81e', '#c27f00'],
 };
 
 /** A Badge: a round stitched patch in the class colour with its symbol. viewBox 0 0 24 24. */
 export function badgeTokenSvg(cls) {
-  const [c, d] = CLASS_COL[cls] || ['#c9b48f', '#9a8664'];
-  const glyph = classGlyph(cls, { c: WHITE, d: '#dccfbd', mono: true });
+  const known = Object.hasOwn(CLASS_COL, cls);
+  const [c, d] = known ? CLASS_COL[cls] : ['#c9b48f', '#9a8664'];
+  const glyph = known ? classGlyph(cls, { c: WHITE, d: '#dccfbd', mono: true }) : path(starPath(12, 12.4, 6.6, 3), WHITE, { sw: 2 });
   return (
-    `<svg class="badge-token b-${cls}" viewBox="0 0 24 24" aria-hidden="true">` +
+    `<svg class="badge-token b-${known ? cls : 'any'}" viewBox="0 0 24 24" aria-hidden="true">` +
     circ(12, 12, 10.6, c, { sw: 2 }) +
     path('M2.6 13.4A9.6 9.6 0 0 0 21.4 13.4A9.4 9.4 0 0 1 2.6 13.4Z', d) +
     `<circle cx="12" cy="12" r="8.2" fill="none" stroke="#ffffff" stroke-width="1" stroke-dasharray="1.5 1.3" opacity="0.8"/>` +

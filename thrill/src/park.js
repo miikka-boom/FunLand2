@@ -155,7 +155,8 @@ export class Park {
     for (const [id, zone] of Object.entries(SOUVENIR_ZONE)) {
       const sl = PARK.souvenirs && PARK.souvenirs[id];
       if (!sl || z < zone) continue;
-      const html = `<div class="souv s-${id}" style="left:${sl.x - sl.w / 2}px;top:${sl.y - sl.h}px;width:${sl.w}px;height:${sl.h}px;z-index:${Math.round(sl.y)}">${souvenirSvg(id)}${id === 'scoreboard' ? `<span class="score">${this.meta.s.best}</span>` : ''}</div>`;
+      const front = sl.z === 'front';
+      const html = `<div class="souv s-${id}" style="left:${sl.x - sl.w / 2}px;top:${sl.y - sl.h}px;width:${sl.w}px;height:${sl.h}px${front ? `;z-index:${Math.round(sl.y)}` : ''}">${souvenirSvg(id)}${id === 'scoreboard' ? `<span class="score">${this.meta.s.best}</span>` : ''}</div>`;
       if (sl.z === 'front') this.el.actors.insertAdjacentHTML('beforeend', html);
       else back += html;
     }
@@ -323,7 +324,7 @@ export class Park {
       const [bw, bh] = ZBOX[kind];
       el.innerHTML = `<div class="zfig" style="width:${bw * ZSCALE}px;height:${bh * ZSCALE}px;left:${(-bw * ZSCALE) / 2}px;top:${-bh * ZSCALE}px">${zombieSvg(kind, { flip: false, variant: i % 4 })}</div>`;
       this.el.zeds.appendChild(el);
-      const z = { el, kind, x: Z.x0 + ((Z.x1 - Z.x0) * (i + 0.5)) / n + rand(-20, 20), y: Z.y + rand(-3, 3), v: rand(4, 9) * (Math.random() < 0.5 ? -1 : 1), down: 0, bump: rand(4, 14) };
+      const z = { el, kind, variant: i % 4, x: Z.x0 + ((Z.x1 - Z.x0) * (i + 0.5)) / n + rand(-20, 20), y: Z.y + rand(-3, 3), v: rand(4, 9) * (Math.random() < 0.5 ? -1 : 1), down: 0, bump: rand(4, 14) };
       this.zombies.push(z);
       this._placeZ(z);
     }
@@ -338,6 +339,8 @@ export class Park {
     if (z.down > 0) return;
     z.down = 3.5;
     z.el.classList.add('down');
+    const fig = z.el.querySelector('.zfig');
+    fig.innerHTML = zombieSvg(z.kind, { ko: true, variant: z.variant });
     this.sound('bonk');
     const r = z.el.getBoundingClientRect();
     this.fx.float({ x: r.left + r.width / 2, y: r.top }, 'BONK!', 'bonk');
@@ -416,7 +419,10 @@ export class Park {
       for (const z of this.zombies) {
         if (z.down > 0) {
           z.down -= sec;
-          if (z.down <= 0) z.el.classList.remove('down');
+          if (z.down <= 0) {
+            z.el.classList.remove('down');
+            z.el.querySelector('.zfig').innerHTML = zombieSvg(z.kind, { variant: z.variant });
+          }
           continue;
         }
         z.x += z.v * sec;

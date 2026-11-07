@@ -14,7 +14,7 @@ import { esc } from './ui.js';
 export function face(p, { size = 56, lv = true, mood, cls = '', extra = '' } = {}) {
   return (
     `<span class="face r-${p.rarity}${p.golden ? ' golden' : ''} ${cls}" data-id="${p.id}" style="--sz:${size}px;--cls:${CLASSES[p.cls].color}">` +
-    portraitSvg(p, mood ? { mood } : {}) +
+    portraitSvg(p, { mood, crop: size <= 64 ? 'face' : undefined }) +
     (lv ? `<i class="lv">${p.level}</i>` : '') +
     extra +
     `</span>`

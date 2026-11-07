@@ -7,6 +7,8 @@
 //   el.innerHTML = `${icon('coin')}<b>120</b>`;
 //
 // classGlyph(cls, colours) is shared with chest-art.js (the Badge tokens).
+// Names: the currencies and UI glyphs, the four classes, the vibes and perks, plus
+// skip (fast-forward), back, soundOn, soundOff and tiny crate / vault chests.
 
 const O = '#2a1b12';
 const W = '#fffaf0';
@@ -99,6 +101,16 @@ function gearPath(cx, cy, ro, ri, teeth = 8, tw = 0.42) {
   return d + 'Z';
 }
 
+/** A hexagon (flat top and bottom) path. */
+function hexPath(cx, cy, r) {
+  let d = '';
+  for (let i = 0; i < 6; i++) {
+    const a = (i * Math.PI) / 3;
+    d += `${i ? 'L' : 'M'}${n(cx + Math.cos(a) * r)} ${n(cy + Math.sin(a) * r)}`;
+  }
+  return d + 'Z';
+}
+
 const wrap = (body) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
 
 // --- shared shapes ---------------------------------------------------------------------------
@@ -164,11 +176,12 @@ export function classGlyph(cls, { c, d, mono = false } = {}) {
     case 'tinker': {
       c = c || YELLOW;
       d = d || YELLOW_D;
-      const gear = P(gearPath(10.6, 12.6, 8.8, 6.5, 8), c) + P('M3.6 15.4A7.2 7.2 0 0 0 17.6 15.4', 'none', { stroke: d, sw: 1.4, cap: true }) + C(10.6, 12.6, 2.7, mono ? d : W, { sw: 1.6 });
-      // An open-end wrench in front of the gear, its jaw to the top right.
-      const wc = mono ? c : STEEL;
-      const wrench = K('M5.6 19.4L14.5 10.3', wc, 2.2, 1.7) + K('M20.05 8.17A3.3 3.3 0 1 1 16.23 4.35', wc, 2.3, 1.7) + L('M6.4 18.2L13.6 10.9', '#ffffff', 0.7, { op: 0.6 });
-      return gear + wrench;
+      // A big diagonal wrench over a hex nut (a spiky gear would read like the sun or the settings cog).
+      const nut = P(hexPath(16.4, 17, 5.2), mono ? c : STEEL) + (mono ? '' : P('M11.2 17L13.8 21.5H19L21.6 17Z', STEEL_D, { sw: 0, op: 0.7 }) + P(hexPath(16.4, 17, 5.2), 'none')) + C(16.4, 17, 1.9, mono ? d : '#5d6570', { sw: 1.4 });
+      const handle = 'M4.8 19.2L13.7 10.3';
+      const jaw = 'M19.95 8.23A3.6 3.6 0 1 1 15.77 4.05';
+      const wrench = L(handle, O, 3.6 + SW * 2) + L(jaw, O, 3.2 + SW * 2) + L(handle, c, 3.6) + L(jaw, c, 3.2) + (mono ? '' : L('M5.6 17.6L12.6 10.6', '#ffffff', 1, { op: 0.7 }) + L('M14 6.2A2.4 2.4 0 0 1 15.2 4.6', '#ffffff', 0.9, { op: 0.7 }));
+      return nut + wrench;
     }
     default:
       return C(12, 12, 6, c || '#c9b48f');
@@ -229,10 +242,11 @@ B.lock =
   HI('M7 12.6V15', 1.4, 0.8);
 
 B.up =
-  P('M12 2.6L20.8 11.6H15.6V19.8Q15.6 21 14.4 21H9.6Q8.4 21 8.4 19.8V11.6H3.2Z', LIME) +
-  P('M12 2.6L20.8 11.6H15.6V19.8Q15.6 21 14.4 21H12Z', LIME_D, { sw: 0, op: 0.55 }) +
-  P('M12 2.6L20.8 11.6H15.6V19.8Q15.6 21 14.4 21H9.6Q8.4 21 8.4 19.8V11.6H3.2Z', 'none') +
-  HI('M10.2 13V18.6M6.4 10.4L11 5.6', 1.3, 0.8);
+  // White with a green shade: it sits on green (READY dots and tags, LEVEL UP buttons), so a green fill would vanish.
+  P('M12 2.6L20.8 11.6H15.6V19.8Q15.6 21 14.4 21H9.6Q8.4 21 8.4 19.8V11.6H3.2Z', '#ffffff') +
+  P('M12 2.6L20.8 11.6H15.6V19.8Q15.6 21 14.4 21H12Z', LIME_D, { sw: 0, op: 0.4 }) +
+  P('M8.4 17.4H15.6V19.8Q15.6 21 14.4 21H9.6Q8.4 21 8.4 19.8Z', LIME_D, { sw: 0, op: 0.55 }) +
+  P('M12 2.6L20.8 11.6H15.6V19.8Q15.6 21 14.4 21H9.6Q8.4 21 8.4 19.8V11.6H3.2Z', 'none');
 
 B.check = K('M4.4 12.6L9.6 17.6L19.6 6.4', LIME, 4) + HI('M5.4 12.8L9.4 16.6', 1.1, 0.7);
 
@@ -347,7 +361,7 @@ B.sunny = (() => {
   return K(s, GOLD, 2.2, 1.6) + C(12, 12, 5.8, GOLD) + P('M7.4 13.6A5 5 0 0 0 16.6 13.6A5.8 5.8 0 0 1 7.4 13.6Z', GOLD_D, { sw: 0, op: 0.8 }) + C(12, 12, 5.8, 'none') + L('M9.8 13.2Q12 15 14.2 13.2', O, 1.1) + C(10, 11, 0.7, O, { sw: 0 }) + C(14, 11, 0.7, O, { sw: 0 }) + HI('M8.4 10A4 4 0 0 1 10.4 7.8', 1.1, 0.8);
 })();
 
-B.sleepy = K('M2.8 12.6H10L2.8 20.6H10', '#a98bff', 2.2, 1.7) + K('M12 6.4H17L12 12H17', '#a98bff', 1.9, 1.6) + K('M18.2 2.6H21.4L18.2 6.2H21.4', '#a98bff', 1.5, 1.4);
+B.sleepy = K('M2.8 11.6H11.2L2.8 20.8H11.2', '#a98bff', 2.4, 1.7) + K('M13.8 3.2H20.8L13.8 10.4H20.8', '#a98bff', 2.1, 1.6);
 
 B.showoff =
   P('M12 1.8Q13.4 9 20.8 11.6Q13.4 14.2 12 21.6Q10.6 14.2 3.2 11.6Q10.6 9 12 1.8Z', PINK) +
@@ -358,9 +372,10 @@ B.showoff =
   HI('M10.8 7.4Q11.4 5.6 11.8 4.4', 1.1, 0.85);
 
 B.jumpy =
+  // Motion lines are outlined light strokes, so they survive dark backgrounds too.
+  K('M5 5.8Q3.2 8.6 5 11.4M19 5.8Q20.8 8.6 19 11.4', '#ffd9a8', 1.3, 1.1) +
   P('M9.4 3.6Q9.4 2.4 10.6 2.4H13.4Q14.6 2.4 14.6 3.6L13.6 14.4Q13.5 15.4 12.5 15.4H11.5Q10.5 15.4 10.4 14.4Z', ORANGE) +
   C(12, 19.4, 2.4, ORANGE) +
-  L('M5 6.2Q3.4 8.6 5 11M19 6.2Q20.6 8.6 19 11', O, 1.6) +
   HI('M11.2 4.6L11.8 11.4', 1.1, 0.8);
 
 // Perks.
@@ -380,7 +395,7 @@ B.lucky = (() => {
 })();
 
 B.cheer =
-  L('M18.6 8.2Q20.6 11.6 18.6 15M20.8 6Q23.6 11.6 20.8 17.2', O, 1.5) +
+  K('M18.8 8.4Q20.6 11.6 18.8 14.8M21 6.4Q23.4 11.6 21 16.8', W, 1.2, 1) +
   R(5.6, 14.2, 3.2, 6, 1.2, '#5d6570') +
   P('M6.4 9.6L16.4 4.2Q17.4 3.8 17.4 4.8V18.4Q17.4 19.4 16.4 19L6.4 14Z', RED) +
   P('M10.6 7.4L13.2 6V17.4L10.6 16.1Z', W, { sw: 0 }) +
@@ -394,13 +409,21 @@ B.scavenger =
   K('M10 3.4A6.6 6.6 0 1 1 9.99 3.4', STEEL, 2) +
   P('M6.6 9.4A3.6 3.6 0 0 1 9.4 6.6', 'none', { stroke: '#ffffff', sw: 1.6, cap: true });
 
-B.gemnose =
-  // A cartoon nose sniffing a gem: scent wiggles in between.
-  P('M5.6 2.6C7.2 4.6 9.8 7.2 10.6 10C11.2 12.2 9.8 13.8 7.8 13.6C6.8 14.6 5 14.6 4.2 13.4C3.2 13.6 2.2 13.2 2 12.2', SKIN, { cap: true }) +
-  P('M10.6 10C11.2 12.2 9.8 13.8 7.8 13.6C8.8 12.6 9.6 11.4 9.4 9.4Z', SKIN_D, { sw: 0 }) +
-  E(6.8, 11.8, 1, 0.7, O, { sw: 0 }) +
-  L('M11.4 5.6Q13 4.6 14.2 5.6T17 5.6M12.4 9Q14 8 15.2 9', O, 1.2, { op: 0.75 }) +
-  G(gemBody(), 'translate(10.8 10.6) scale(0.56)');
+B.gemnose = (() => {
+  // A round cartoon nose, front on (bridge, bulb, two wings), sniffing a gem through scent wiggles.
+  const parts = (fill, o) => R(6.8, 2.8, 4.4, 10.4, 2.2, fill, o) + C(9, 14, 4.4, fill, o) + C(4.9, 16.6, 2.8, fill, o) + C(13.1, 16.6, 2.8, fill, o);
+  return (
+    K('M14.2 11.2Q15.2 10 16.2 11.2T18.2 11.2T20.2 11.2M16.4 14.2Q17.4 13 18.4 14.2T20.4 14.2T22.4 14.2', W, 1.2, 1) +
+    parts(SKIN, { sw: SW * 2 }) +
+    parts(SKIN, { sw: 0 }) +
+    P('M11.2 5V12.6', 'none', { stroke: SKIN_D, sw: 1.2, cap: true }) +
+    C(9.5, 13.1, 2.3, '#ff9eb5', { sw: 0, op: 0.9 }) +
+    C(8.5, 12.2, 0.9, '#ffffff', { sw: 0 }) +
+    E(7, 17.9, 1.25, 0.85, O, { sw: 0, tf: 'rotate(20 7 17.9)' }) +
+    E(11, 17.9, 1.25, 0.85, O, { sw: 0, tf: 'rotate(-20 11 17.9)' }) +
+    G(gemBody(), 'translate(13.6 0.2) scale(0.44)')
+  );
+})();
 
 B.clutch =
   P('M14 2.2L4.6 13.6H11L9.4 21.8L19.6 9.6H13.2Z', GOLD) +
@@ -408,8 +431,45 @@ B.clutch =
   P('M14 2.2L4.6 13.6H11L9.4 21.8L19.6 9.6H13.2Z', 'none') +
   HI('M12.4 4.8L7.6 11.4', 1.2, 0.85);
 
+// UI extras: skip (fast-forward), back, sound on / off, and tiny chests (chestSvg is too detailed under 30 px).
+const tri = (x, y, w, h) => `M${n(x)} ${n(y + 1.4)}V${n(y + h - 1.4)}Q${n(x)} ${n(y + h)} ${n(x + 1.3)} ${n(y + h - 0.7)}L${n(x + w - 0.6)} ${n(y + h / 2 + 0.8)}Q${n(x + w + 0.6)} ${n(y + h / 2)} ${n(x + w - 0.6)} ${n(y + h / 2 - 0.8)}L${n(x + 1.3)} ${n(y + 0.7)}Q${n(x)} ${n(y)} ${n(x)} ${n(y + 1.4)}Z`;
+B.skip = [2.2, 11.6].map((x) => P(tri(x, 4.6, 10.2, 14.8), W) + P(`M${x} 15.4V${n(19.4 - 1.4)}Q${x} 19.4 ${n(x + 1.3)} 18.7L${n(x + 9.6)} 13.2L${n(x + 9)} 12.4Z`, '#e8dcc6', { sw: 0 }) + P(tri(x, 4.6, 10.2, 14.8), 'none')).join('');
+
+B.back = G(B.arrowRight, 'translate(24 0) scale(-1 1)');
+
+const speaker = R(2.6, 8.8, 5.2, 6.4, 1.4, '#e8e2d6') + P('M7.2 8.8L12.6 4.4Q13.8 3.6 13.8 5V19Q13.8 20.4 12.6 19.6L7.2 15.2Z', W) + P('M7.2 13.4L13.8 17V19Q13.8 20.4 12.6 19.6L7.2 15.2Z', '#e3d6bf', { sw: 0 }) + P('M7.2 8.8L12.6 4.4Q13.8 3.6 13.8 5V19Q13.8 20.4 12.6 19.6L7.2 15.2Z', 'none');
+B.soundOn = K('M16.6 9Q18.2 12 16.6 15M19.4 6.4Q22.4 12 19.4 17.6', W, 1.5, 1.1) + speaker;
+B.soundOff = speaker + K('M16.4 9.4L21.4 14.6M21.4 9.4L16.4 14.6', RED, 2.2, 1.5);
+
+B.crate =
+  R(3.8, 10, 16.4, 10.8, 1.4, WOOD) +
+  R(3.8, 17.2, 16.4, 3.6, 1.2, WOOD_D, { sw: 0 }) +
+  L('M4.8 14.4H19.2', WOOD_D, 1.2) +
+  R(3.8, 10, 16.4, 10.8, 1.4, 'none') +
+  P('M3.8 16.4L8.2 20.8H5.2Q3.8 20.8 3.8 19.4Z', STEEL, { sw: 1.3 }) +
+  P('M20.2 16.4L15.8 20.8H18.8Q20.2 20.8 20.2 19.4Z', STEEL, { sw: 1.3 }) +
+  R(2.6, 4.8, 18.8, 6, 1.6, '#e6b276') +
+  R(2.6, 8.6, 18.8, 2.2, 0.6, WOOD, { sw: 0 }) +
+  R(2.6, 4.8, 18.8, 6, 1.6, 'none') +
+  R(10, 8, 4, 5, 1, STEEL, { sw: 1.4 }) +
+  C(12, 10.8, 0.7, O, { sw: 0 });
+
+B.vault =
+  P('M2.8 10.6V9.4C2.8 5.4 6.6 3 12 3C17.4 3 21.2 5.4 21.2 9.4V10.6Z', RED) +
+  L('M6 6.6Q8.4 4.8 12 4.6', '#ff8174', 1.4, { op: 0.9 }) +
+  R(3.4, 11.4, 17.2, 9.4, 1.8, RED) +
+  R(3.4, 17.6, 17.2, 3.2, 1.4, RED_D, { sw: 0 }) +
+  R(3.4, 11.4, 17.2, 9.4, 1.8, 'none') +
+  R(6.4, 3.8, 2.8, 17, 0, GOLD, { sw: 1.3 }) +
+  R(14.8, 3.8, 2.8, 17, 0, GOLD, { sw: 1.3 }) +
+  R(1.8, 9.4, 20.4, 3.4, 1.2, GOLD, { sw: 1.8 }) +
+  C(12, 16.2, 3, GOLD, { sw: 1.6 }) +
+  P('M12 16.2L12 13.8A2.4 2.4 0 0 1 14.4 16.2Z', RED, { sw: 0 }) +
+  P('M12 16.2L12 18.6A2.4 2.4 0 0 1 9.6 16.2Z', BLUE, { sw: 0 }) +
+  C(12, 16.2, 0.9, O, { sw: 0 });
+
 /** Every icon as a ready <svg class="ico">. */
 export const ICONS = Object.fromEntries(Object.entries(B).map(([k, v]) => [k, wrap(v)]));
 
 /** The icon's markup, or '' for an unknown name. */
-export const icon = (name) => ICONS[name] || '';
+export const icon = (name) => (typeof name === 'string' && Object.hasOwn(ICONS, name) ? ICONS[name] : '');

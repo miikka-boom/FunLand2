@@ -181,7 +181,7 @@ export class ChestOpening {
       `<div class="op-chest"><div class="op-chest-in">${chestSvg(kind, { grade: 0, open: false, glow: 0.2 })}</div><div class="op-knocks">${'<i></i>'.repeat(3)}</div></div>` +
       `<div class="op-loot"></div><div class="op-faces"></div><div class="op-stage"></div>` +
       `<div class="op-hint"></div>` +
-      (opened >= 3 ? `<button class="op-skip" type="button" data-skip>Skip ▸▸</button>` : '');
+      (opened >= 3 ? `<button class="op-skip" type="button" data-skip>Skip ${icon('skip')}</button>` : '');
     this.root.appendChild(el);
     this.root.classList.add('on');
     this.hud.freeze(['coins', 'gems']);
@@ -220,6 +220,7 @@ export class ChestOpening {
         b.className = `op-banner show g${grade}`;
         b.innerHTML = `<b>${G.banner}</b><span>${esc(G.line)}</span>`;
         sound('glow', { grade });
+        sound('cheer', { level: grade });
         this.haptic(40);
         fx.burst(chestIn, GRADE_COLORS[grade], 28 + grade * 8, 150 + grade * 30);
         el.classList.add(`cheer${grade}`);
@@ -312,7 +313,7 @@ export class ChestOpening {
       const b = q('.op-banner');
       b.className = 'op-banner show fin';
       b.innerHTML = `<b>FINISHER</b><span>→ ${p ? name(p) : ''}</span>`;
-      sound('badge');
+      sound('badge', { big: true });
       await drv.pause(500);
       const f = faceOf(finisher.id);
       facesEl.classList.add('show');

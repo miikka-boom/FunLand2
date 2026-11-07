@@ -150,7 +150,7 @@ export class Hud {
         const ready = m.isReady(p);
         html +=
           `<span class="face r-${p.rarity}${p.golden ? ' golden' : ''}${ready ? ' ready' : ''}${m.canLevel(p) ? ' can' : ''}" data-act="face" data-id="${p.id}" style="--cls:${CLASSES[p.cls].color}">` +
-          portraitSvg(p) +
+          portraitSvg(p, { crop: 'face' }) +
           `<i class="lv">${p.level}</i>${isCounter(p, threats) ? '<i class="ctr">×1.5</i>' : ''}${ready ? `<i class="rdy">${icon('up')}</i>` : ''}</span>`;
       }
       for (let i = squad.length; i < 3; i++) html += `<span class="face empty">+</span>`;

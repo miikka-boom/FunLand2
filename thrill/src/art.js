@@ -7,26 +7,34 @@
 //
 // The park is a fixed logical scene of 960×300 (PARK). The UI scales it with
 // scale = min(W / 960, H / 300), anchored bottom-centre. parkBackSvg() bleeds
-// sky above and hills to the sides (overflow: visible), so any extra area is
-// already painted; PARK.sky / PARK.ground are the matching CSS fallbacks.
+// sky above and the plateau, hedge and bumper wall ~340 units to each side
+// (overflow: visible), so any extra area is already painted; PARK.sky /
+// PARK.ground are the matching CSS fallbacks.
 //
 // Draw order (back to front):
-//   parkBackSvg → souvenirs with z 'back' → wheelSvg → buildings (by y) →
-//   [souvenirs with z 'front' + bus + people, sorted together by bottom/feet y] → fence zombies
-// Every sprite is 1 viewBox unit = 1 scene unit. Zombies differ in size on purpose:
-// give each its own viewBox size × ~0.82 in the park (walker ≈ 46 tall) rather than one fixed box.
+//   parkBackSvg → souvenirs with z 'back' (donut, scoreboard, jet) → wheelSvg → buildings (by y) →
+//   [souvenirs with z 'front' (fountain, anchor) + bus + people, sorted together by bottom/feet y] → fence zombies
+// 'back' souvenirs must not get a z-index above the buildings (their legs and bases are meant to
+// hide behind the rides). Every sprite is 1 viewBox unit = 1 scene unit. Zombies differ in size on
+// purpose: give each its own viewBox size × ~0.82 in the park (walker ≈ 46 tall), not one fixed box.
 //
-// Animation hooks (CSS the UI may add):
-//   .wheel-rot   rotate 0→360deg, linear, slow (origin is set inline)
-//   .gondola     the same animation in reverse, same duration (origin set inline)
-//   .z-arm       small rotate wobble (origin is the shoulder, set inline)
-//   .park-fire   flicker (scaleY) on the campfire flames (origin set inline)
-//   .confetti    twinkle / fade on neon-stage confetti bits
-//   .z-sparkle   twinkle on the golden zombie's sparkles
+// Animation hooks (CSS the UI may add; pivots are set inline with transform-box: view-box):
+//   .wheel-rot   rotate 0→360deg, linear, slow (origin = hub)
+//   .gondola     the same animation in reverse, same duration (origin = its hanger), so it hangs
 //   .gondola.lit glow pulse if wanted
+//   .z-arm       small rotate wobble (origin = the shoulder)
+//   .z-dizzy     the stars over a knocked-out zombie (ko: true), spin or bob
+//   .z-sparkle   twinkle on the golden zombie's sparkles
+//   .park-fire   flicker (scaleY) on the campfire flames (origin = the fire's base)
+//   .confetti    twinkle / fade on the neon-stage confetti bits
+//   .st-puck     the High Striker puck (can be flung up the rail by a show-off)
+//   .duck        each Shooting Gallery duck (origin = its stand), .duck.down is the knocked one
 // e.g. @keyframes spin { to { transform: rotate(360deg) } }
 //      .wheel-rot { animation: spin 80s linear infinite }
 //      .gondola   { animation: spin 80s linear infinite reverse }
+//
+// ids: only gradients, the tarp clipPaths and the stadium crowd pattern use ids, each made
+// unique per call by a module counter, so any number of copies can share a page.
 
 // --- Palette and tiny helpers ----------------------------------------------------------------
 
@@ -253,7 +261,7 @@ function ducks(x0, x1, y, n, cols = ['#ffd23f'], fallen = -1) {
     const x = n === 1 ? (x0 + x1) / 2 : x0 + ((x1 - x0) * i) / (n - 1);
     const c = cols[i % cols.length];
     const duck = ell(x, y - 4.5, 6.5, 4.6, c, { sw: 1.7 }) + circ(x + 4, y - 10.5, 3.6, c, { sw: 1.7 }) + path(`M${f(x + 7)} ${f(y - 11)}l4 1.2l-4 1.4z`, ORANGE, { sw: 1.2 }) + circ(x + 4.9, y - 11.4, 0.9, O) + path(`M${f(x - 6)} ${f(y - 6)}q-2 -3 1 -4`, 'none', { sw: 1.4 }) + rect(x - 1, y, 2, 3, STEEL, { sw: 1 });
-    s += i === fallen ? g(duck, { tf: `rotate(-80 ${f(x)} ${f(y + 2)})` }) : duck;
+    s += i === fallen ? g(duck, { cls: 'duck down', tf: `rotate(-80 ${f(x)} ${f(y + 2)})` }) : g(duck, { cls: 'duck', style: `transform-origin:${f(x)}px ${f(y + 3)}px;transform-box:view-box` });
   }
   return s;
 }
@@ -265,65 +273,99 @@ function target(cx, cy, r, ring = RED) {
 /** Level → look stage: 0 patched junk (1-2), 1 fresh paint (3-4), 2 neon (5-7). */
 const stageOf = (level) => (level >= 5 ? 2 : level >= 3 ? 1 : 0);
 
+/** A prize rosette with two ribbon tails. */
+function rosette(x, y, r = 7, c = RED) {
+  let s = path(`M${f(x - 2)} ${f(y)}L${f(x - 6)} ${f(y + r + 6)}L${f(x - 3.5)} ${f(y + r + 4)}L${f(x - 1.5)} ${f(y + r + 7)}L${f(x + 1)} ${f(y)}Z`, c, { sw: 1.4 });
+  s += path(`M${f(x + 1)} ${f(y)}L${f(x + 3)} ${f(y + r + 7)}L${f(x + 5)} ${f(y + r + 4)}L${f(x + 7.5)} ${f(y + r + 6)}L${f(x + 3)} ${f(y)}Z`, dk(c, 0.15), { sw: 1.4 });
+  const pet = [];
+  for (let i = 0; i < 10; i++) pet.push([x + Math.cos((i * Math.PI) / 5) * r * 0.78, y + Math.sin((i * Math.PI) / 5) * r * 0.78, r * 0.36]);
+  s += blob(pet, GOLD, { sw: 1.6 });
+  return s + circ(x, y, r * 0.58, c, { sw: 1.5 }) + star(x, y, r * 0.42, GOLD, { sw: 0.9 });
+}
+
+/**
+ * Lv 6 and 7 flourishes on top of the neon look: Lv 6 adds a pair of flags,
+ * Lv 7 also pins a prize rosette. flags: [[x, y, h, color, dir], ...]; ros: [x, y, r].
+ */
+function flourish(level, flags, ros) {
+  let s = '';
+  if (level >= 6) for (const [x, y, h, c, d] of flags) s += flag(x, y, h, c, d);
+  if (level >= 7 && ros) s += rosette(ros[0], ros[1], ros[2] || 7, ros[3] || RED);
+  return s;
+}
+
+/** The High Striker's bicep emblem, centred on (x, y). */
+function bicep(x, y, k, fill, sw = 1.8) {
+  const d = 'M12 62V55Q16 48 23 51Q24 48 24 45V42Q24 38 28 38Q32 38 32 42V56Q32 62 26 62Z';
+  return g(path(d, fill, { sw: sw / k }) + path('M15 56Q18 52 22 54', 'none', { sw: 1.2 / k, op: 0.5 }), { tf: `translate(${f(x - 22 * k)} ${f(y - 50 * k)}) scale(${k})` });
+}
+
 // --- The scene layout ----------------------------------------------------------------------
+
+/** The gate (in parkBackSvg): post bases at x ± 26, the arch's crown at y − 86. */
+const GATE = { x: 34, y: 206 };
 
 export const PARK = {
   w: 960,
   h: 300,
   /** CSS for any area above the scene (the scene's sky reaches #8fd8ff at y = 0). */
   sky: 'linear-gradient(180deg, #5fbdf8 0%, #8fd8ff 100%)',
-  /** CSS colour for any side fill (the hill below the horizon). */
-  ground: '#6cc044',
+  /** CSS colour of the scene's bottom edge (the slope below the wall), for fill below or beside it. */
+  ground: '#549d33',
   /** Buildings: (x, y) = bottom-centre anchor in scene units; w/h = drawn size (= viewBox). */
   slots: {
-    striker: { x: 112, y: 218, w: 120, h: 170 },
-    bigtop: { x: 262, y: 198, w: 200, h: 152 },
-    tent: { x: 392, y: 220, w: 136, h: 114 },
-    gallery: { x: 668, y: 220, w: 160, h: 124 },
-    garage: { x: 812, y: 200, w: 168, h: 132 },
+    striker: { x: 118, y: 218, w: 120, h: 170 },
+    bigtop: { x: 264, y: 198, w: 200, h: 152 },
+    tent: { x: 396, y: 220, w: 136, h: 114 },
+    gallery: { x: 664, y: 220, w: 160, h: 124 },
+    garage: { x: 804, y: 202, w: 150, h: 120 },
   },
   /** Ferris wheel hub and outer radius. wheelSvg() is 200×214 with its hub at (100, 100): box left x − 1.25r, top y − 1.25r, 2.5r × (2.5r + wheelStandH). */
   wheel: { x: 520, y: 94, r: 80 },
   wheelStandH: 14,
   /** Newcomers appear here (feet), just inside the arch, then walk down into the walk band. */
-  gate: { x: 38, y: 212 },
-  /** The squad's bus: bottom-centre. busSvg() is 124×70. */
-  bus: { x: 894, y: 222, w: 124, h: 70 },
-  /** Souvenirs: bottom-centre, w/h = viewBox. z: 'back' (draw before the wheel/buildings) or 'front' (after). */
+  gate: { x: GATE.x, y: 212 },
+  /** The squad's bus: bottom-centre. busSvg() is 110×64. */
+  bus: { x: 902, y: 252, w: 110, h: 64 },
+  /**
+   * Souvenirs: bottom-centre, w/h = viewBox. z: 'back' = paint before the wheel and the
+   * buildings (no z-index above them); 'front' = depth-sort with people by y.
+   * The donut sits on top of the gate arch; the jet rests behind the bus.
+   */
   souvenirs: {
-    donut: { x: 172, y: 172, w: 64, h: 150, z: 'back' },
-    fountain: { x: 520, y: 228, w: 108, h: 56, z: 'front' },
-    anchor: { x: 40, y: 264, w: 56, h: 66, z: 'front' },
-    scoreboard: { x: 744, y: 172, w: 84, h: 140, z: 'back' },
-    jet: { x: 942, y: 160, w: 60, h: 92, z: 'back' },
+    donut: { x: GATE.x, y: GATE.y - 84, w: 64, h: 70, z: 'back' },
+    fountain: { x: 520, y: 236, w: 108, h: 56, z: 'front' },
+    anchor: { x: 338, y: 242, w: 56, h: 66, z: 'front' },
+    scoreboard: { x: 734, y: 178, w: 64, h: 168, z: 'back', panel: { x: 8, y: 30, w: 48, h: 28 } },
+    jet: { x: 912, y: 178, w: 88, h: 60, z: 'back' },
   },
   /** Feet band where residents wander (sand path). */
-  walk: { x0: 80, x1: 848, y0: 230, y1: 256 },
+  walk: { x0: 80, x1: 836, y0: 230, y1: 256 },
   spots: {
     /** Big Top steps (sleepy residents nap here). */
-    steps: { x: 262, y: 204 },
-    /** Campfire pit; sit around it at x ± 20. */
+    steps: { x: 264, y: 204 },
+    /** Campfire pit; sit around it at x ± 24..44. */
     fire: { x: 196, y: 228 },
     /** Where the jumpy watch the fence. */
-    fence: { x: 320, y: 256 },
+    fence: { x: 300, y: 256 },
     /** In front of the wheel booth (tap the wheel for the Ladder). */
     wheel: { x: 452, y: 234 },
     /** Where a ride's class trains / show-offs perform (feet). */
     rides: {
-      striker: { x: 132, y: 232 },
-      bigtop: { x: 262, y: 214 },
-      tent: { x: 392, y: 234 },
-      gallery: { x: 668, y: 234 },
-      garage: { x: 812, y: 230 },
+      striker: { x: 124, y: 232 },
+      bigtop: { x: 264, y: 214 },
+      tent: { x: 396, y: 234 },
+      gallery: { x: 664, y: 234 },
+      garage: { x: 790, y: 232 },
     },
     /** The three squad places beside the bus (feet). */
     squad: [
-      { x: 852, y: 238 },
-      { x: 878, y: 246 },
-      { x: 904, y: 240 },
+      { x: 806, y: 246 },
+      { x: 830, y: 238 },
+      { x: 834, y: 255 },
     ],
   },
-  /** Top of the bumper-car wall along the front of the park. */
+  /** Top of the bumper-car wall along the front of the park (the wall itself runs on into the side bleed). */
   fence: { y: 262, x0: 0, x1: 960 },
   /** Fence zombies shuffle here (feet y), outside the wall, in front of it. */
   zombieZone: { x0: 16, x1: 944, y: 298 },
@@ -363,7 +405,8 @@ function tinyZombie(x, by) {
   return rect(x - 1.2, by - 4, 2.4, 4, '#7c6aa8') + circ(x, by - 5.5, 1.9, ZSKIN, { sw: 0.7, stroke: '#4d7a3a' }) + line(`M${f(x)} ${f(by - 3.5)}h3`, ZSKIN, 0.9);
 }
 
-const LANDMARK_X = [48, 214, 404, 600, 770, 1010];
+/** Distant landmarks (zone 1..6), placed where they peek out between the rides. */
+const LANDMARK_X = [155, 330, 612, 930, 728, 874];
 
 function landmark(n, x, by, reached) {
   let s = '';
@@ -445,23 +488,27 @@ function fence(x0, x1, by, ph) {
 /**
  * The static park background for the 960×300 scene: sky, distant hills, the
  * zombie town in the valley, the hilltop, paths, campfire, gate and the
- * bumper-car wall. zone 1..6 puts a little gold flag on each reached zone's
- * landmark in the distant town and adds bunting from zone 4.
+ * bumper-car wall. The plateau, hedge and wall run on about 340 units into the
+ * side bleed, so a wide window shows more park, never an edge. zone 1..6 puts a
+ * little gold flag on each reached zone's landmark in the distant town; zone 4+
+ * hangs bunting under the gate arch, zone 6 adds pennants on the gate posts.
  */
 export function parkBackSvg(zone = 1) {
   const sky = uid('sky');
   const r = rng(7);
+  const XL = -340;
+  const XR = 1300;
   let s = `<defs><linearGradient id="${sky}" gradientUnits="userSpaceOnUse" x1="0" y1="-320" x2="0" y2="150"><stop offset="0" stop-color="#5fbdf8"/><stop offset="0.68" stop-color="${SKY}"/><stop offset="1" stop-color="${SKY2}"/></linearGradient></defs>`;
   s += rect(-900, -420, 2760, 590, `url(#${sky})`);
-  s += sun(70, 38);
-  for (const [x, y, k] of [[-260, 40, 1.1], [-40, 70, 0.8], [214, 30, 1], [372, 64, 0.75], [640, 24, 1.15], [830, 58, 0.8], [1080, 36, 1], [1300, 66, 0.9]]) s += cloud(x, y, k);
+  s += sun(388, 34);
+  for (const [x, y, k] of [[-300, 40, 1.1], [-90, 66, 0.8], [178, 24, 0.82], [474, 56, 0.78], [664, 26, 1], [874, 40, 0.85], [1090, 34, 1], [1290, 64, 0.9]]) s += cloud(x, y, k);
   // Far hills.
   s += path(smooth([[-900, 132], [-700, 100], [-480, 118], [-260, 96], [-60, 114], [120, 96], [300, 110], [470, 90], [640, 108], [820, 94], [1000, 112], [1200, 98], [1450, 116], [1700, 102], [1860, 128]]) + 'L1860 180L-900 180Z', '#b9e6cf', { sw: 2, stroke: '#93cdb7' });
   s += path(smooth([[-900, 132], [-640, 118], [-380, 128], [-120, 114], [140, 122], [380, 112], [620, 124], [860, 112], [1100, 124], [1380, 114], [1860, 126]]) + 'L1860 180L-900 180Z', '#a3d98b', { sw: 2, stroke: '#82c06e' });
   // Town in the valley.
   const walls = ['#f7d7a6', '#f4b8a8', '#c9dcf5', '#f5ecc4', '#d8c6f0', '#c6e8b8'];
   const roofs = ['#d86a5a', '#7a74b8', '#5f9fd8', '#c98a4b', '#e08ab0'];
-  for (let x = -460; x < 1420; ) {
+  for (let x = XL - 60; x < XR + 60; ) {
     const w = 7 + Math.floor(r() * 8);
     const by = 140 + Math.floor(r() * 10);
     const nearL = LANDMARK_X.some((lx) => Math.abs(lx - x) < 40);
@@ -470,40 +517,36 @@ export function parkBackSvg(zone = 1) {
     x += w + 4 + Math.floor(r() * 12);
   }
   LANDMARK_X.forEach((x, i) => (s += landmark(i + 1, x, 146, zone >= i + 1)));
-  // The hill.
-  s += path('M-900 300L-900 236Q-520 220 -230 188Q-90 170 -10 152L970 152Q1050 170 1190 188Q1480 220 1860 236L1860 300Z', '#6cc044', { sw: 3 });
-  s += path('M-900 300L-900 262Q-520 246 -240 214Q-120 200 -40 196L-40 300ZM1860 300L1860 262Q1480 246 1200 214Q1080 200 1000 196L1000 300Z', GRASS_D, { op: 0.6 });
-  // Plateau top.
-  s += path('M-24 160Q-4 150 40 150L920 150Q964 150 984 160L1010 266L-50 266Z', GRASS);
-  // Back edge: hedge, picket fence and mini bumper cars.
-  s += fence(-20, 980, 156, 3);
+  // The hilltop: one flat plateau across the whole bleed.
+  s += rect(-900, 150, 2760, 160, GRASS) + line('M-900 150.5H1860', '#5a9e3a', 2);
+  // Back edge: picket fence, hedge and mini bumper cars.
+  s += fence(XL, XR, 156, 3);
   const bush = [];
-  for (let x = -30; x < 1000; x += 26 + ((x * 7) % 11)) bush.push([x, 154 + ((x * 13) % 5), 9 + ((x * 3) % 5)]);
+  for (let x = XL; x < XR; x += 26 + ((Math.abs(x) * 7) % 11)) bush.push([x, 154 + ((Math.abs(x) * 13) % 5), 9 + ((Math.abs(x) * 3) % 5)]);
   s += blob(bush, '#5aab3e', { sw: 2.4, shade: '#4a9634', light: '#79c654' });
   const cars = [RED, BLUE, GREEN, YELLOW, PURPLE];
-  for (let i = 0, x = -10; x < 990; x += 46, i++) if (i % 2 === 0) s += wallCar(x, 164, 28, cars[i % 5], (i % 3) - 1, r, i % 4 ? 1 : -1);
-  // Grass texture.
-  for (let i = 0; i < 70; i++) {
-    const x = -20 + r() * 1000;
-    const y = 166 + r() * 94;
+  for (let i = 0, x = XL + 10; x < XR; x += 46, i++) if (i % 2 === 0 && x > -120 && x < 1080) s += wallCar(x, 164, 28, cars[(i + 40) % 5], ((i + 30) % 3) - 1, r, (i + 40) % 4 ? 1 : -1);
+  // Grass texture and flowers.
+  for (let i = 0; i < 96; i++) {
+    const x = XL + r() * (XR - XL);
+    const y = 168 + r() * 94;
     s += line(`M${f(x - 3)} ${f(y)}l1.5 -4M${f(x)} ${f(y)}l0 -5M${f(x + 3)} ${f(y)}l-1.5 -4`, GRASS_D, 1.4);
   }
-  for (let i = 0; i < 40; i++) {
-    const x = -20 + r() * 1000;
+  for (let i = 0; i < 56; i++) {
+    const x = XL + r() * (XR - XL);
     const y = 168 + r() * 90;
     const c = [WHITE, '#ffe066', '#ff9ccf', '#c9a8ff'][i % 4];
     s += circ(x, y, 2.2, c, { sw: 0.9 }) + circ(x, y, 0.8, i % 4 === 1 ? ORANGE : '#ffd23f');
   }
   // Sand paths: main band + branches to every door, the plaza and the gate.
   const P = [];
-  P.push(['r', 20, 214, 930, 46, 23]);
-  P.push(['e', 520, 222, 122, 20]);
+  P.push(['r', 14, 214, 932, 46, 23]);
+  P.push(['e', 520, 230, 124, 22]);
   for (const k of ['striker', 'bigtop', 'tent', 'gallery', 'garage']) {
     const sl = PARK.slots[k];
     P.push(['r', sl.x - 20, sl.y - 12, 40, 240 - sl.y, 10]);
   }
-  P.push(['r', 16, 196, 46, 40, 14]);
-  P.push(['r', 862, 204, 84, 30, 14]);
+  P.push(['r', GATE.x - 24, 196, 48, 40, 14]);
   const shapes = (fill, grow, dy = 0) =>
     P.map((p) => (p[0] === 'r' ? rect(p[1] - grow, p[2] - grow + dy, p[3] + grow * 2, p[4] + grow * 2, fill, { rx: p[5] + grow }) : ell(p[1], p[2] + dy, p[3] + grow, p[4] + grow, fill))).join('');
   s += shapes(SAND_D, 3) + shapes(SAND, 0) + shapes('#f8e6bf', -6, -3);
@@ -513,7 +556,7 @@ export function parkBackSvg(zone = 1) {
     s += ell(x, y, 2 + r() * 2, 1.2 + r(), SAND_D, { op: 0.7 });
   }
   // Plaza tiles ring around the fountain.
-  s += ell(520, 224, 76, 12, 'none', { sw: 2, stroke: '#e6c68a' });
+  s += ell(520, 232, 78, 13, 'none', { sw: 2, stroke: '#e6c68a' });
   // Campfire.
   const F = PARK.spots.fire;
   s += ell(F.x, F.y + 1, 18, 6, '#8a7a6a', { sw: 2 }) + ell(F.x, F.y, 13, 4, '#4a3a30');
@@ -524,35 +567,36 @@ export function parkBackSvg(zone = 1) {
   s += stick(`M${F.x - 9} ${F.y + 1}L${F.x + 7} ${F.y - 4}`, WOOD_D, 3.6, 2) + stick(`M${F.x + 9} ${F.y + 1}L${F.x - 7} ${F.y - 4}`, WOOD, 3.6, 2);
   s += g(path(`M${F.x - 8} ${F.y - 2}Q${F.x - 9} ${F.y - 12} ${F.x - 3} ${F.y - 17}Q${F.x - 2} ${F.y - 11} ${F.x} ${F.y - 10}Q${F.x + 1} ${F.y - 20} ${F.x + 6} ${F.y - 24}Q${F.x + 5} ${F.y - 14} ${F.x + 9} ${F.y - 9}Q${F.x + 10} ${F.y - 4} ${F.x + 7} ${F.y - 2}Z`, ORANGE, { sw: 2 }) + path(`M${F.x - 4} ${F.y - 2}Q${F.x - 4} ${F.y - 8} ${F.x} ${F.y - 11}Q${F.x + 1} ${F.y - 7} ${F.x + 3} ${F.y - 7}Q${F.x + 5} ${F.y - 5} ${F.x + 3} ${F.y - 2}Z`, '#ffe066'), { cls: 'park-fire', style: `transform-origin:${F.x}px ${F.y}px;transform-box:view-box` });
   // Gate (back-left): striped posts, an arch with bulbs.
-  const G = { x: 38, y: 206 };
+  const G = GATE;
   s += line(`M${G.x - 26} ${G.y - 2}L${G.x - 44} ${G.y + 8}M${G.x + 26} ${G.y - 2}L${G.x + 30} ${G.y + 6}`, SAND_D, 2);
   for (const px of [G.x - 26, G.x + 26]) {
     s += rect(px - 6, G.y - 88, 12, 90, WHITE, { sw: 2.6, rx: 2 });
     for (let y = G.y - 80; y < G.y; y += 16) s += path(`M${px - 6} ${y}l12 -6v8l-12 6z`, RED);
     s += rect(px - 6, G.y - 88, 12, 90, 'none', { sw: 2.6, rx: 2 }) + rect(px - 8, G.y - 4, 16, 6, WOOD_D, { sw: 2, rx: 1 }) + circ(px, G.y - 94, 5, GOLD, { sw: 2 });
   }
+  if (zone >= 4) s += bunting(G.x - 20, G.y - 60, G.x + 20, G.y - 60, 4, 5);
   s += path(`M${G.x - 34} ${G.y - 70}Q${G.x} ${G.y - 102} ${G.x + 34} ${G.y - 70}L${G.x + 34} ${G.y - 58}Q${G.x} ${G.y - 88} ${G.x - 34} ${G.y - 58}Z`, YELLOW, { sw: 2.6 });
   s += bulbsOnQ([G.x - 30, G.y - 66], [G.x, G.y - 96], [G.x + 30, G.y - 66], 7, 0.05, 0.95, 2);
-  s += star(G.x, G.y - 96, 7, RED, { sw: 2 });
-  // Bunting (zone 4+) high over the band, strung between the gate and the striker bell.
-  if (zone >= 4) s += bunting(G.x + 30, G.y - 84, 102, 60, 6, 6);
-  // Front slope below the wall.
+  s += star(G.x, G.y - 92, 6, RED, { sw: 2 });
+  if (zone >= 6) s += flag(G.x - 26, G.y - 98, 16, PURPLE, -1) + flag(G.x + 26, G.y - 98, 16, BLUE, 1);
+  // Front slope below the wall, and the dirt track the zombies have worn into it.
   s += rect(-900, 270, 2760, 40, GRASS_D);
-  s += path('M-900 284Q-300 278 0 282T960 280T1860 284L1860 310L-900 310Z', '#549d33');
-  for (let i = 0; i < 24; i++) {
-    const x = -30 + r() * 1020;
-    s += ell(x, 290 + r() * 8, 6 + r() * 6, 2, '#b98a5a', { op: 0.5 });
+  s += path('M-900 286Q-300 280 0 284T960 282T1860 286L1860 310L-900 310Z', '#549d33');
+  s += path('M-900 292Q-420 288 0 291T960 290T1860 292L1860 310L-900 310Z', '#b48a58') + line('M-900 292Q-420 288 0 291T960 290T1860 292', '#8f6a40', 1.6);
+  for (let i = 0; i < 40; i++) {
+    const x = XL + r() * (XR - XL);
+    s += ell(x, 295 + r() * 4, 2 + r() * 3, 1.2, '#8f6a40', { op: 0.6 });
   }
-  // The bumper-car wall.
-  const wc = [RED, BLUE, YELLOW, GREEN, PURPLE, ORANGE];
+  // The bumper-car wall (muted a little so the fence zombies in front stand out).
+  const wc = [RED, BLUE, YELLOW, GREEN, PURPLE, ORANGE].map((c) => mix(c, '#4e4a58', 0.3));
   let i = 0;
-  for (let x = -40; x < 1010; x += 50, i++) {
-    if (i % 4 === 2) {
+  for (let x = XL; x < XR + 20; x += 50, i++) {
+    if ((i + 12) % 4 === 2) {
       s += tireStack(x, 288, 3, 12);
       continue;
     }
-    s += wallCar(x, 290, 54, wc[i % wc.length], (r() - 0.5) * 7, r, i % 3 === 1 ? -1 : 1);
-    if (i % 7 === 5) s += cone(x + 26, 290);
+    s += wallCar(x, 290, 54, wc[(i + 12) % wc.length], (r() - 0.5) * 7, r, (i + 12) % 3 === 1 ? -1 : 1);
+    if ((i + 12) % 7 === 5) s += cone(x + 26, 290);
   }
   return svg(960, 300, s, { cls: 'park-back', par: 'xMidYMax meet', over: true });
 }
@@ -563,6 +607,7 @@ const GONDOLA = [RED, BLUE, GREEN, YELLOW, PURPLE, ORANGE];
 
 /**
  * The Ferris wheel, viewBox 0 0 200 214, hub at (100, 100), rim radius 78 (80 with bulbs).
+ * Gondola i (zone i + 1) rests at angle −60° + i·60° (clockwise from 3 o'clock), so none sits at 6 o'clock.
  * Place it with its hub on PARK.wheel: left = x − 100, top = y − 100, size 200×214
  * (= 2.5r × (2.5r + PARK.wheelStandH)), 1 unit = 1 scene unit.
  * lit = 0..6 gondolas glowing (zones reached).
@@ -598,22 +643,24 @@ export function wheelSvg(lit = 0) {
     w += circ(cx + Math.cos(a) * (R + 0.5), cy + Math.sin(a) * (R + 0.5), 2.1, i % 2 ? '#fff4b8' : GOLD, { sw: 1.1 });
   }
   for (let i = 0; i < 6; i++) {
-    const a = -Math.PI / 2 + (i * Math.PI) / 3;
+    // Start 30° round so no gondola rests at 6 o'clock behind the booth or the fountain.
+    const a = -Math.PI / 2 + Math.PI / 6 + (i * Math.PI) / 3;
     const ax = f(cx + Math.cos(a) * R);
     const ay = f(cy + Math.sin(a) * R);
     const on = i < lit;
-    const col = on ? GONDOLA[i] : mix(GONDOLA[i], '#e4ddd2', 0.68);
-    const roof = on ? lt(GONDOLA[i], 0.15) : mix(GONDOLA[i], '#efe9e0', 0.75);
+    // Unlit: plain grey car with a dark window. Lit: its zone colour, a warm gold glow and riders.
+    const col = on ? GONDOLA[i] : '#b9b3aa';
+    const roof = on ? lt(GONDOLA[i], 0.15) : '#d3cec6';
     let gd = '';
-    if (on) gd += circ(ax, ay + 16, 20, '#ffe680', { op: 0.32 }) + circ(ax, ay + 16, 14, '#fff3a0', { op: 0.4 });
+    if (on) gd += circ(ax, ay + 16, 21, '#ffc23a', { op: 0.32 }) + circ(ax, ay + 16, 15.5, '#ffe27a', { op: 0.55 });
     gd += stick(`M${ax} ${ay}V${ay + 8}`, STEEL, 1.6, 2);
     gd += path(`M${ax - 12} ${ay + 10}H${ax + 12}L${ax + 11} ${ay + 21}Q${ax} ${ay + 28} ${ax - 11} ${ay + 21}Z`, col, { sw: 2.4 });
     gd += path(`M${ax - 9} ${ay + 22}Q${ax} ${ay + 26.5} ${ax + 9} ${ay + 22}`, 'none', { sw: 2, stroke: dk(col, 0.25), cap: true });
-    gd += rect(ax - 7.5, ay + 12.5, 15, 6.5, on ? '#fff2a8' : '#8a7e74', { rx: 2, sw: 1.6 });
+    gd += rect(ax - 7.5, ay + 12.5, 15, 6.5, on ? '#fff2a8' : '#4f4842', { rx: 2, sw: 1.6 });
     if (on) gd += circ(ax - 3, ay + 17.5, 2.1, O) + circ(ax + 3, ay + 17.8, 2.1, O);
     gd += path(`M${ax - 13.5} ${ay + 11}Q${ax} ${ay + 1} ${ax + 13.5} ${ay + 11}Z`, roof, { sw: 2.2 });
-    gd += path(`M${ax - 4} ${ay + 10.6}Q${ax} ${ay + 3.4} ${ax + 4} ${ay + 10.6}`, on ? WHITE : '#e8e2d8', { op: 0.9 });
-    if (on) gd += sparkle(ax + 14, ay + 6, 4);
+    gd += path(`M${ax - 4} ${ay + 10.6}Q${ax} ${ay + 3.4} ${ax + 4} ${ay + 10.6}`, on ? WHITE : '#ebe7e0', { op: 0.9 });
+    if (on) gd += circ(ax, ay + 1, 2.6, GOLD, { sw: 1.2 }) + sparkle(ax + 14, ay + 6, 4);
     w += `<g class="gondola${on ? ' lit' : ''}" style="transform-origin:${ax}px ${ay}px;transform-box:view-box">${gd}</g>`;
   }
   s += `<g class="wheel-rot" style="transform-origin:${cx}px ${cy}px;transform-box:view-box">${w}</g>`;
@@ -691,14 +738,13 @@ function bigTopSvg(level) {
     // A torn scallop and patches.
     s += path('M117 100L126 100L122 109Z', '#eadcbf', { sw: 1.6 });
     s += patch(48, 70, 15, 11, '#7fa6c9', -14) + patch(128, 58, 12, 13, '#9bb86a', 12) + patch(140, 110, 14, 13, '#c9a26a', 6) + patch(40, 118, 12, 10, '#8fa0b4', -5);
-    s += line('M66 52l6 4M70 50l-2 8', O, 1.2);
   } else {
     for (let k = 0; k < K; k++) s += bulb(14 + (172 * (k + 0.5)) / K, 110, true, 2.2);
   }
   // Moon-and-star bed sign over the door.
   if (st0 === 0) s += g(path('M104 76a10 10 0 1 1 -2 -14a8 8 0 1 0 2 14z', '#d8cfa0', { sw: 2 }), { tf: 'rotate(-12 100 70)' });
   else if (st0 === 1) s += circ(cx, 76, 13, '#2d4e9a', { sw: 2.4 }) + path('M104 82a8 8 0 1 1 0 -12a6.4 6.4 0 1 0 0 12z', GOLD, { sw: 1.4 }) + star(107, 71, 3, WHITE, { sw: 0.9 });
-  else s += circ(cx, 76, 14, '#24104a', { sw: 2.4 }) + neon('M104 83a8.5 8.5 0 1 1 0 -13a6.6 6.6 0 1 0 0 13z', '#ffe066', 2) + star(108, 70, 3.2, '#ffe066', { sw: 0.9 });
+  else s += circ(cx, 76, 14, '#3a3fa8', { sw: 2.4 }) + neon('M104 83a8.5 8.5 0 1 1 0 -13a6.6 6.6 0 1 0 0 13z', '#ffe066', 2) + star(108, 70, 3.2, '#ffe066', { sw: 0.9 });
   // Bulb strings along the seams.
   if (st0 >= 1) {
     s += bulbsOnQ([cx, 34], [71.4, 78], [18, 99], 7, 0.12, 0.96);
@@ -730,6 +776,7 @@ function bigTopSvg(level) {
   // Steps.
   s += rect(82, 140, 36, 6, st0 === 0 ? WOOD_D : WOOD, { sw: 2, rx: 1 }) + rect(77, 146, 46, 6, st0 === 0 ? WOOD : WOOD_L, { sw: 2, rx: 1 });
   if (st0 === 0) s += nail(86, 149) + nail(114, 149);
+  s += flourish(level, [[22, 100, 20, GOLD, -1], [178, 100, 20, PINK, 1]], [146, 126, 7.5, BLUE]);
   return svg(W, H, s, { cls: 'bld bld-bigtop', over: true });
 }
 
@@ -739,23 +786,14 @@ function strikerSvg(level) {
   const H = 170;
   const cx = 60;
   let s = shadow(cx, 165, 52, 5);
-  // Stage 2 starburst behind the bell.
+  // Stage 2: a chunky two-tone sunburst behind the bell.
   if (s0 === 2) {
-    let rays = '';
     for (let i = 0; i < 12; i++) {
-      const a = (i * Math.PI) / 6;
-      rays += `M${cx} 22L${f(cx + Math.cos(a - 0.12) * 34)} ${f(22 + Math.sin(a - 0.12) * 34)}L${f(cx + Math.cos(a + 0.12) * 34)} ${f(22 + Math.sin(a + 0.12) * 34)}Z`;
+      const a = (i * Math.PI) / 6 + Math.PI / 12;
+      const rr = i % 2 ? 26 : 32;
+      s += path(`M${cx} 22L${f(cx + Math.cos(a - 0.17) * rr)} ${f(22 + Math.sin(a - 0.17) * rr)}L${f(cx + Math.cos(a + 0.17) * rr)} ${f(22 + Math.sin(a + 0.17) * rr)}Z`, i % 2 ? '#fff3b0' : GOLD, { sw: 1.6 });
     }
-    s += path(rays, '#ffe680', { op: 0.65 });
   }
-  // Side sign on a bracket.
-  const signC = [mix(RED, '#b49a80', 0.5), RED, '#2a1052'][s0];
-  s += stick('M22 54H46', WOOD_D, 2.4) + circ(22, 54, 14, signC, { sw: 2.6 });
-  // A flexing arm.
-  const armC = [WHITE, WHITE, '#ff8a80'][s0];
-  const armD = 'M12 62V55Q16 48 23 51Q24 48 24 45V42Q24 38 28 38Q32 38 32 42V56Q32 62 26 62Z';
-  s += s0 === 2 ? neon(armD, '#ff6a5a', 1.6) : path(armD, armC, { sw: 1.8 });
-  if (s0 === 1) for (let i = 0; i < 8; i++) s += bulb(22 + Math.cos((i * Math.PI) / 4) * 14, 54 + Math.sin((i * Math.PI) / 4) * 14, true, 1.8);
   // Tower.
   const tw = 24;
   const tx = cx - tw / 2;
@@ -766,8 +804,8 @@ function strikerSvg(level) {
     tower += rect(tx, ty0, tw, ty1 - ty0, WOOD, { sw: 2.8 });
     for (let y = ty0 + 14; y < ty1; y += 14) tower += line(`M${tx + 1} ${y}H${tx + tw - 1}`, WOOD_D, 1.5);
     for (let y = ty0 + 8; y < ty1 - 4; y += 14) tower += rect(tx + 3, y, 7, 3, mix(RED, '#b49a80', 0.45), { rx: 1 });
-    tower += g(rect(tx - 4, 88, tw + 8, 7, WOOD_L, { sw: 2 }) + nail(tx - 1, 91.5) + nail(tx + tw + 1, 91.5), { tf: `rotate(-14 ${cx} 92)` });
-    tower += patch(tx + 12, 112, 10, 10, '#8fa0b4', 8);
+    tower += g(rect(tx - 4, 92, tw + 8, 7, WOOD_L, { sw: 2 }) + nail(tx - 1, 95.5) + nail(tx + tw + 1, 95.5), { tf: `rotate(-14 ${cx} 96)` });
+    tower += patch(tx + 12, 114, 10, 10, '#8fa0b4', 8);
   } else {
     const bands = 10;
     const bh = (ty1 - ty0) / bands;
@@ -781,13 +819,23 @@ function strikerSvg(level) {
     tower += rect(tx + 3, ty0 + 2, 3, ty1 - ty0 - 4, '#ffffff', { op: 0.35 });
   }
   s += tower;
-  // Rail and puck.
+  // Rail and puck (class st-puck: CSS may fling it up the rail).
   s += line(`M${cx} ${ty0 + 4}V${ty1 - 2}`, O, 1.6);
-  s += rect(cx - 7, 100, 14, 9, s0 === 0 ? '#b8b0a0' : GOLD, { sw: 2, rx: 2.5 });
+  s += g(rect(cx - 7, 100, 14, 9, s0 === 0 ? '#b8b0a0' : GOLD, { sw: 2, rx: 2.5 }) + rect(cx - 5, 101.5, 6, 2.4, '#ffffff', { op: 0.5, rx: 1 }), { cls: 'st-puck' });
   if (s0 >= 1) s += line(`M${cx - 4} 114h8M${cx - 3} 119h6`, O, 1.4, { op: 0.5 });
   // Bulbs up both sides.
   if (s0 >= 1) for (let y = ty0 + 6; y < ty1; y += 11) s += bulb(tx - 4, y, true, 2.1) + bulb(tx + tw + 4, y, true, 2.1);
   if (s0 === 2) s += neon(`M${tx - 8} ${ty1}V${ty0 - 2}M${tx + tw + 8} ${ty1}V${ty0 - 2}`, '#ff4a5a', 2.2);
+  // The Brawler emblem, fixed on the tower under the bell.
+  const my = 62;
+  if (s0 === 0) {
+    s += g(circ(cx, my, 13, WOOD_L, { sw: 2.4 }) + circ(cx, my, 10, 'none', { sw: 1, op: 0.35 }) + bicep(cx, my, 0.7, '#efe6d2', 1.6) + nail(cx, my - 10.5), { tf: `rotate(-8 ${cx} ${my})` });
+  } else if (s0 === 1) {
+    s += circ(cx, my, 13.5, RED, { sw: 2.4 }) + bicep(cx, my, 0.72, WHITE, 1.7);
+    for (let i = 0; i < 8; i++) s += bulb(cx + Math.cos((i * Math.PI) / 4 + 0.39) * 13.5, my + Math.sin((i * Math.PI) / 4 + 0.39) * 13.5, true, 1.6);
+  } else {
+    s += circ(cx, my, 13.5, RED, { sw: 2.4 }) + bicep(cx, my, 0.72, WHITE, 1.7) + neon(`M${cx} ${my - 16}a16 16 0 1 1 -0.1 0`, '#ff5aa0', 1.8);
+  }
   // Cap and bell.
   s += rect(tx - 5, ty0 - 6, tw + 10, 7, s0 === 0 ? WOOD_D : s0 === 1 ? GOLD : '#ff4a5a', { sw: 2.4, rx: 2 });
   const bellC = s0 === 0 ? '#b8b4a8' : GOLD;
@@ -813,9 +861,10 @@ function strikerSvg(level) {
   const head = s0 === 0 ? '#9aa0a8' : s0 === 1 ? RED : GOLD;
   s += stick('M96 163L84 104', s0 === 0 ? WOOD_L : WOOD, 4.2, 2.6);
   if (s0 === 0) s += line('M90 136l5 -1M89 131l5 -1', '#e0d6c0', 3);
-  s += g(rect(68, 90, 32, 17, head, { rx: 5, sw: 2.8 }) + rect(74, 90, 5, 17, s0 === 0 ? RED : s0 === 1 ? WHITE : RED, { sw: 1.6 }) + rect(89, 90, 5, 17, s0 === 0 ? RED : s0 === 1 ? WHITE : RED, { sw: 1.6 }) + rect(70, 92, 28, 4, '#ffffff', { op: 0.35, rx: 2 }), { tf: 'rotate(-12 84 98)' });
+  s += g(rect(68, 90, 32, 17, head, { rx: 5, sw: 2.8 }) + rect(74, 90, 5, 17, s0 === 1 ? WHITE : RED, { sw: 1.6 }) + rect(89, 90, 5, 17, s0 === 1 ? WHITE : RED, { sw: 1.6 }) + rect(70, 92, 28, 4, '#ffffff', { op: 0.35, rx: 2 }), { tf: 'rotate(-12 84 98)' });
   if (s0 === 0) s += tireStack(108, 166, 2, 9) + rect(4, 150, 12, 14, '#c8b48a', { sw: 2, rx: 2 });
   if (s0 === 2) s += cannon(12, 166, -1, PURPLE) + cannon(108, 166, 1, BLUE);
+  s += flourish(level, [[18, 140, 18, BLUE, -1], [102, 140, 18, GOLD, 1]], [cx, 152, 7]);
   return svg(W, H, s, { cls: 'bld bld-striker', over: true });
 }
 
@@ -825,12 +874,12 @@ function gallerySvg(level) {
   const H = 124;
   let s = shadow(80, 120, 76, 5);
   // Body.
-  const body = [WOOD, '#2f6fd0', '#244fae'][s0];
+  const body = [WOOD, '#2f6fd0', BLUE][s0];
   s += rect(10, 42, 140, 78, body, { sw: 2.8, rx: 3 });
   if (s0 === 0) for (let x = 24; x < 150; x += 14) s += line(`M${x} 44V118`, WOOD_D, 1.4);
   else s += rect(10, 42, 140, 78, 'none', { sw: 0 }) + rect(132, 44, 16, 74, O, { op: 0.12 });
   // Window with targets.
-  const back = ['#4a3020', '#1f3d7a', '#1a1f5a'][s0];
+  const back = ['#4a3020', '#1f3d7a', '#26357e'][s0];
   s += rect(20, 54, 120, 40, back, { sw: 2.6, rx: 2 });
   if (s0 >= 1) for (let i = 0; i < 9; i++) s += star(28 + i * 13.5, 60 + (i % 2) * 6, 1.8, '#ffffff', { sw: 0, op: 0.5 });
   if (s0 === 0) {
@@ -845,7 +894,7 @@ function gallerySvg(level) {
   if (s0 === 2) s += neon('M18 52H142V96H18Z', '#5ac8ff', 2.2);
   // Counter.
   s += rect(4, 92, 152, 10, s0 === 0 ? WOOD_L : WHITE, { sw: 2.6, rx: 3 });
-  const front = [WOOD_D, WHITE, '#1a1f5a'][s0];
+  const front = [WOOD_D, WHITE, RED][s0];
   s += rect(10, 102, 140, 18, front, { sw: 2.6 });
   if (s0 === 0) s += line('M10 111H150', O, 1.2, { op: 0.4 }) + patch(30, 104, 16, 12, '#8fa0b4', -4) + patch(110, 105, 14, 11, '#b9a06a', 6);
   else if (s0 === 1) for (let i = 0; i < 6; i++) s += star(22 + i * 23.2, 111, 4.4, i % 2 ? BLUE : RED, { sw: 1.3 });
@@ -858,7 +907,6 @@ function gallerySvg(level) {
     s += circ(134, 84, 6.5, tc, { sw: 1.8 }) + circ(134, 74, 6, tc, { sw: 1.8 }) + circ(129.5, 69.5, 2.4, tc, { sw: 1.4 }) + circ(138.5, 69.5, 2.4, tc, { sw: 1.4 }) + ell(134, 76, 2.6, 2, '#f0d0a0') + circ(132, 73, 0.9, O) + circ(136, 73, 0.9, O);
     s += path('M130 80l4 2l4 -2l-1 4h-6z', PINK, { sw: 1 });
   }
-  if (s0 === 2) s += line('M146 92Q150 70 144 54', O, 1.2) + circ(144, 50, 6, PINK, { sw: 1.8 }) + path('M142 47q2 -2 4 0', 'none', { sw: 1, stroke: '#ffffff' });
   // Awning.
   const K = 8;
   const aA = [mix('#8fa6bf', '#ffffff', 0.1), BLUE, BLUE][s0];
@@ -887,7 +935,7 @@ function gallerySvg(level) {
     s += bulbsOnLine(46, 4, 114, 4, 6, 1.9);
   } else {
     s += stick('M60 28V24M100 28V24', STEEL, 2.4);
-    s += circ(80, 14, 17, '#ffe680', { op: 0.3 }) + circ(80, 14, 13, '#1a1f5a', { sw: 2.6 });
+    s += circ(80, 14, 17, '#ffe680', { op: 0.3 }) + circ(80, 14, 13, '#26357e', { sw: 2.6 });
     s += neon('M80 4a10 10 0 1 1 -0.1 0', '#5ac8ff', 1.8) + neon('M80 9a5 5 0 1 1 -0.1 0', '#ff4a5a', 1.6) + circ(80, 14, 1.8, '#ffffff');
     s += star(52, 16, 6, GOLD, { sw: 1.5 }) + star(108, 16, 6, GOLD, { sw: 1.5 });
     s += flag(6, 30, 20, RED, -1) + flag(154, 30, 20, GOLD, 1);
@@ -895,6 +943,13 @@ function gallerySvg(level) {
     s += cannon(8, 122, -1, RED) + cannon(152, 122, 1, GREEN);
   }
   if (s0 === 0) s += rect(140, 106, 14, 14, '#9aa0a8', { sw: 2, rx: 1 }) + ell(147, 106, 7, 2, '#7a8088', { sw: 1.4 });
+  if (level >= 6) {
+    // A second prize: a pink bunny on the left of the counter.
+    const bx = 24;
+    s += path(`M${bx - 4} 72Q${bx - 7} 60 ${bx - 4} 58Q${bx - 1} 60 ${bx - 1.5} 72Z`, PINK, { sw: 1.4 }) + path(`M${bx + 4} 72Q${bx + 7} 60 ${bx + 4} 58Q${bx + 1} 60 ${bx + 1.5} 72Z`, PINK, { sw: 1.4 });
+    s += circ(bx, 85, 6.5, PINK, { sw: 1.8 }) + circ(bx, 75, 6, PINK, { sw: 1.8 }) + ell(bx, 77, 2.4, 1.8, '#ffe0ee') + circ(bx - 2, 74, 0.9, O) + circ(bx + 2, 74, 0.9, O);
+  }
+  s += flourish(level, [], [80, 106, 8, BLUE]);
   return svg(W, H, s, { cls: 'bld bld-gallery', over: true });
 }
 
@@ -945,8 +1000,8 @@ function tentSvg(level) {
     s += circ(cx, 44, 13, WHITE, { sw: 2.4 });
     s += path('M64 34h8v6h6v8h-6v6h-8v-6h-6v-8h6z', GREEN, { sw: 1.8 });
   } else {
-    s += circ(cx, 44, 20, '#7fffb0', { op: 0.3 }) + circ(cx, 44, 15, '#173a2a', { sw: 2.6 });
-    s += neon('M64.5 35.5h7v6h6v7h-6v6h-7v-6h-6v-7h6z', '#3af08a', 1.8);
+    s += circ(cx, 44, 20, '#7fffb0', { op: 0.3 }) + circ(cx, 44, 15, '#1f7f43', { sw: 2.6 });
+    s += neon('M64.5 35.5h7v6h6v7h-6v6h-7v-6h-6v-7h6z', '#8dffc0', 1.8);
     for (let i = 0; i < 10; i++) s += bulb(cx + Math.cos((i * Math.PI) / 5) * 15, 44 + Math.sin((i * Math.PI) / 5) * 15, true, 1.6);
   }
   // Top: crooked pole / pennant / neon cross.
@@ -967,6 +1022,8 @@ function tentSvg(level) {
     s += line('M28 104Q22 80 26 62', O, 1.2) + path('M26 62c-6 -6 -12 -1 -8 5l8 7l8 -7c4 -6 -2 -11 -8 -5z', RED, { sw: 1.8 }) + path('M20 59q2 -2 4 0', 'none', { sw: 1, stroke: '#ffffff' });
     s += cannon(8, 112, -1, GREEN) + cannon(128, 112, 1, PURPLE);
   }
+  if (level >= 6) s += line('M120 92Q126 74 120 60', O, 1.2) + path('M120 60c-6 -6 -12 -1 -8 5l8 7l8 -7c4 -6 -2 -11 -8 -5z', BLUE, { sw: 1.8 }) + path('M114 57q2 -2 4 0', 'none', { sw: 1, stroke: '#ffffff' });
+  s += flourish(level, [], [32, 88, 7, GREEN]);
   return svg(W, H, s, { cls: 'bld bld-tent', over: true });
 }
 
@@ -984,91 +1041,124 @@ function bumperCarFront(cx, by, color, glow) {
 
 function garageSvg(level) {
   const s0 = stageOf(level);
-  const W = 168;
-  const H = 132;
-  const cx = 84;
-  let s = shadow(cx, 128, 80, 5);
+  const W = 150;
+  const H = 120;
+  const cx = 75;
+  let s = shadow(cx, 116, 72, 5);
   const wall = ['#a9adb4', YELLOW, YELLOW][s0];
-  const roof = ['#8f949c', RED, '#2a2a3a'][s0];
-  // Roof (arched, corrugated).
-  s += path(`M6 58Q${cx} -4 162 58Z`, roof, { sw: 2.8 });
+  const roof = ['#8f949c', RED, PURPLE][s0];
+  // Roof: an arched, corrugated shell (quadratic from (6, 52) over (75, -4) to (144, 52)).
+  const ry = (t) => 52 - 112 * t * (1 - t);
+  const rx = (t) => 6 + 138 * t;
+  s += path(`M6 52Q${cx} -4 144 52Z`, roof, { sw: 2.8 });
   for (let i = 1; i < 9; i++) {
-    const x = 6 + (156 * i) / 9;
-    const yTop = 58 - (1 - ((x - cx) / 78) ** 2) * 31;
-    s += line(`M${f(x)} ${f(yTop + 2)}V56`, dk(roof, 0.25), 1.4);
+    const t = i / 9;
+    s += line(`M${f(rx(t))} ${f(ry(t) + 2.5)}V50`, dk(roof, 0.22), 1.4);
   }
-  s += path(`M20 46Q${cx} 6 120 22`, 'none', { sw: 3, stroke: '#ffffff', op: 0.3, cap: true });
+  s += path(smooth([0.13, 0.24, 0.36, 0.48].map((t) => [rx(t) + 1, ry(t) + 6])), 'none', { sw: 3, stroke: '#ffffff', op: 0.32, cap: true });
+  // Eave band (gold trim at the neon stage).
+  s += rect(4, 46, 142, 6, [ '#7a7e86', WHITE, GOLD][s0], { sw: 2.2, rx: 2 });
+  if (s0 === 2) s += bulbsOnLine(12, 49, 138, 49, 9, 1.7);
   // Walls.
-  s += rect(12, 54, 144, 74, wall, { sw: 2.8 });
-  s += rect(138, 56, 17, 71, O, { op: 0.1 });
+  s += rect(10, 52, 130, 64, wall, { sw: 2.8 });
+  s += rect(123, 54, 16, 61, O, { op: 0.1 }) + rect(12, 54, 4, 60, '#ffffff', { op: 0.25 });
   if (s0 === 0) {
-    for (let x = 20; x < 156; x += 8) s += line(`M${x} 56V126`, '#8a8e96', 1.2);
-    s += patch(16, 64, 16, 14, '#b86b3a', -6) + patch(134, 96, 14, 16, '#b86b3a', 8) + patch(140, 62, 10, 10, '#9bb86a', 4);
-    s += path('M22 84L30 84L26 92L32 92L22 106L25 95L19 95Z', mix(YELLOW, '#a9adb4', 0.25), { sw: 1.6 });
+    for (let x = 18; x < 140; x += 8) s += line(`M${x} 54V114`, '#8a8e96', 1.2);
+    s += patch(13, 60, 13, 12, '#b86b3a', -6) + patch(124, 88, 12, 14, '#b86b3a', 8) + patch(127, 58, 9, 9, '#9bb86a', 4);
+    s += path('M16 78L23 78L19.5 85L25 85L16 98L18.5 88L13 88Z', mix(YELLOW, '#a9adb4', 0.25), { sw: 1.5 });
   } else {
     // Hazard chevrons along the bottom.
     let ch = '';
-    for (let x = 12; x < 156; x += 12) ch += `M${x} 128L${x + 6} 118L${x + 12} 118L${x + 6} 128Z`;
-    s += rect(12, 118, 144, 10, YELLOW) + path(ch, O, { op: 0.85 }) + line('M12 118H156', O, 2.2);
+    for (let x = 10; x < 140; x += 12) ch += `M${x} 116L${x + 6} 107L${x + 12} 107L${x + 6} 116Z`;
+    s += rect(10, 107, 130, 9, YELLOW) + path(ch, O, { op: 0.85 }) + line('M10 107H140', O, 2.2);
   }
   // Door frame and roll-up door.
-  s += rect(36, 70, 96, 58, s0 === 2 ? '#1a1a2a' : '#3a3038', { sw: 2.8, rx: 2 });
-  if (s0 >= 1) s += ell(cx, 112, 40, 14, '#fff2a8', { op: 0.18 });
-  const doorH = [26, 20, 18][s0];
-  const door = [STEEL, WHITE, '#e0e4ec'][s0];
-  s += rect(38, 72, 92, doorH, door, { sw: 2 });
-  for (let y = 72 + 5; y < 72 + doorH; y += 5) s += line(`M38 ${y}H130`, dk(door, 0.2), 1.2);
-  if (s0 === 0) s += path('M70 90Q76 96 82 90', 'none', { sw: 1.6 }) + path(`M38 ${72 + doorH}L130 ${72 + doorH - 3}`, 'none', { sw: 2 });
+  s += rect(30, 62, 90, 54, s0 === 2 ? '#4a3858' : '#3a3038', { sw: 2.8, rx: 2 });
+  if (s0 >= 1) s += ell(cx, 102, 38, 13, '#fff2a8', { op: 0.2 });
+  const doorH = [24, 18, 16][s0];
+  const door = [STEEL, WHITE, '#f2f4f8'][s0];
+  s += rect(32, 64, 86, doorH, door, { sw: 2 });
+  for (let y = 64 + 5; y < 64 + doorH; y += 5) s += line(`M32 ${y}H118`, dk(door, 0.2), 1.2);
+  if (s0 === 0) s += path('M62 80Q68 85 74 80', 'none', { sw: 1.6 }) + path(`M32 ${64 + doorH}L118 ${64 + doorH - 3}`, 'none', { sw: 2 });
   // Bumper car peeking out.
-  s += bumperCarFront(cx, 128, s0 === 0 ? mix(YELLOW, '#a9adb4', 0.35) : YELLOW, s0 === 2);
-  if (s0 >= 1) for (let i = 0; i < 7; i++) s += bulb(40 + i * 14.6, 67, true, 2);
-  if (s0 >= 1) for (let i = 0; i < 4; i++) s += bulb(33, 76 + i * 14, true, 2) + bulb(135, 76 + i * 14, true, 2);
-  if (s0 === 2) s += neon('M30 128V64H138V128', '#ffe14a', 2);
-  // Tires and barrel.
-  s += tireStack(152, 128, s0 === 0 ? 3 : 2, 11);
-  if (s0 === 0) s += rect(14, 104, 16, 24, '#b86b3a', { sw: 2, rx: 2 }) + line('M14 112H30M14 120H30', '#8a4a2a', 1.6);
-  else s += rect(14, 106, 18, 22, s0 === 1 ? RED : PURPLE, { sw: 2, rx: 2 }) + rect(16, 104, 14, 4, STEEL, { sw: 1.4, rx: 1 }) + line('M18 112l6 0', '#ffffff', 1.4, { op: 0.6 });
+  s += bumperCarFront(cx, 116, s0 === 0 ? mix(YELLOW, '#a9adb4', 0.35) : YELLOW, s0 === 2);
+  if (s0 >= 1) for (let i = 0; i < 7; i++) s += bulb(34 + i * 13.7, 59, true, 2);
+  if (s0 >= 1) for (let i = 0; i < 4; i++) s += bulb(25.5, 68 + i * 13, true, 2) + bulb(124.5, 68 + i * 13, true, 2);
+  if (s0 === 2) s += neon('M21 116V55H129V116', '#ffe14a', 1.8);
+  // Tyres and a barrel at the corners.
+  s += tireStack(137, 116, s0 === 0 ? 3 : 2, 10);
+  if (s0 === 0) s += rect(12, 94, 15, 22, '#b86b3a', { sw: 2, rx: 2 }) + line('M12 101H27M12 109H27', '#8a4a2a', 1.6);
+  else s += rect(12, 96, 16, 20, s0 === 1 ? RED : PURPLE, { sw: 2, rx: 2 }) + rect(14, 94, 12, 4, STEEL, { sw: 1.4, rx: 1 }) + line('M16 102l5 0', '#ffffff', 1.4, { op: 0.6 });
   // Roof sign.
   if (s0 === 0) {
-    s += g(rect(58, 28, 52, 18, WOOD_L, { sw: 2.4, rx: 2 }) + line('M62 37l20 0', '#7a8088', 4) + circ(64, 37, 4, 'none', { sw: 2.6, stroke: '#7a8088' }) + nail(61, 31) + nail(107, 31), { tf: 'rotate(4 84 37)' });
+    s += stick('M60 30V24M90 30V24', WOOD_D, 2.2);
+    s += g(rect(50, 10, 50, 17, WOOD_L, { sw: 2.4, rx: 2 }) + line('M56 18.5l20 0', '#7a8088', 4) + circ(57, 18.5, 4, 'none', { sw: 2.6, stroke: '#7a8088' }) + path('M80 14l6 4.5l-6 4.5', 'none', { sw: 2.2, stroke: '#7a8088' }) + nail(53, 13) + nail(97, 13), { tf: 'rotate(4 75 18)' });
   } else if (s0 === 1) {
-    s += rect(56, 24, 56, 22, '#2a2a3a', { sw: 2.6, rx: 4 });
-    s += g(rect(64, 33, 36, 5, GOLD, { sw: 1.4, rx: 2 }) + path('M62 28a6 6 0 1 0 6 8l-4 -2v-4l4 -2a6 6 0 0 0 -6 0z', GOLD, { sw: 1.4 }) + path('M106 28a6 6 0 1 1 -6 8l4 -2v-4l-4 -2a6 6 0 0 1 6 0z', GOLD, { sw: 1.4 }), { tf: 'rotate(-10 84 35)' });
-    s += bulbsOnLine(58, 24, 110, 24, 6, 1.8);
+    s += stick('M60 30V24M90 30V24', STEEL, 2.2);
+    s += rect(48, 6, 54, 21, '#2a2a3a', { sw: 2.6, rx: 4 });
+    s += g(rect(57, 14, 36, 5, GOLD, { sw: 1.4, rx: 2 }) + path('M55 9a6 6 0 1 0 6 8l-4 -2v-4l4 -2a6 6 0 0 0 -6 0z', GOLD, { sw: 1.4 }) + path('M95 9a6 6 0 1 1 -6 8l4 -2v-4l-4 -2a6 6 0 0 1 6 0z', GOLD, { sw: 1.4 }), { tf: 'rotate(-10 75 16)' });
+    s += bulbsOnLine(50, 6, 100, 6, 6, 1.8);
   } else {
-    s += circ(cx, 22, 22, '#fff3a0', { op: 0.25 });
-    s += neon('M88 4L72 26H84L78 42L98 16H86L92 4Z', '#ffe14a', 2.2);
-    // Checkered flags.
-    for (const [x, d] of [[10, -1], [158, 1]]) {
-      s += stick(`M${x} 58V26`, '#e8e2d6', 1.6, 2);
+    s += circ(cx, 18, 22, '#fff3a0', { op: 0.3 });
+    s += rect(58, 4, 34, 28, '#5a2a8a', { sw: 2.6, rx: 8 }) + rect(61, 7, 28, 4, '#ffffff', { op: 0.18, rx: 2 });
+    s += neon('M79 -1L63 21H75L69 37L89 11H77L83 -1Z', '#ffe14a', 2);
+    // Checkered flags on the eaves.
+    for (const [x, d] of [[10, -1], [140, 1]]) {
+      s += stick(`M${x} 50V20`, '#e8e2d6', 1.6, 2);
       let ck = '';
-      for (let j = 0; j < 3; j++) for (let k = 0; k < 2; k++) if ((j + k) % 2 === 0) ck += rect(d > 0 ? x + j * 5 : x - (j + 1) * 5, 27 + k * 5, 5, 5, O);
-      s += rect(d > 0 ? x : x - 15, 27, 15, 10, WHITE, { sw: 1.6 }) + ck + rect(d > 0 ? x : x - 15, 27, 15, 10, 'none', { sw: 1.6 });
+      for (let j = 0; j < 3; j++) for (let k = 0; k < 2; k++) if ((j + k) % 2 === 0) ck += rect(d > 0 ? x + j * 5 : x - (j + 1) * 5, 21 + k * 5, 5, 5, O);
+      s += rect(d > 0 ? x : x - 15, 21, 15, 10, WHITE, { sw: 1.6 }) + ck + rect(d > 0 ? x : x - 15, 21, 15, 10, 'none', { sw: 1.6 });
     }
-    s += cannon(8, 130, -1, BLUE) + cannon(160, 130, 1, RED);
-    s += star(30, 50, 4, GOLD, { sw: 1.2 }) + star(138, 50, 4, GOLD, { sw: 1.2 });
+    s += cannon(6, 118, -1, BLUE) + cannon(144, 118, 1, RED);
+    s += star(36, 36, 4.2, GOLD, { sw: 1.2 }) + star(114, 36, 4.2, GOLD, { sw: 1.2 });
   }
+  s += flourish(level, [[46, 32, 15, RED, -1], [104, 32, 15, BLUE, 1]], [127, 78, 7, BLUE]);
   return svg(W, H, s, { cls: 'bld bld-garage', over: true });
 }
 
-/** Contours for the tarp over each locked building. */
+/**
+ * The tarp over each locked building: contour, ropes, padlock (top of its body),
+ * the stripe colour (the ride's class colour) and what pokes out of it.
+ */
 const TARP = {
-  bigtop: { pts: [[14, 150], [18, 118], [28, 98], [62, 64], [92, 30], [108, 30], [138, 64], [172, 98], [182, 118], [186, 150]], ropes: [[30, 96, 170, 96], [22, 124, 178, 124]], lock: [100, 112], poke: [100, 30, 100, 10] },
-  striker: { pts: [[10, 166], [14, 140], [34, 128], [44, 110], [44, 40], [48, 22], [60, 12], [72, 22], [76, 40], [76, 110], [86, 128], [106, 140], [110, 166]], ropes: [[44, 60, 76, 60], [20, 142, 100, 142]], lock: [60, 126], poke: null },
-  gallery: { pts: [[6, 120], [6, 70], [10, 40], [30, 22], [80, 14], [130, 22], [150, 40], [154, 70], [154, 120]], ropes: [[12, 50, 148, 50], [8, 92, 152, 92]], lock: [80, 84], poke: null },
-  tent: { pts: [[8, 110], [10, 80], [22, 62], [50, 34], [68, 18], [86, 34], [114, 62], [126, 80], [128, 110]], ropes: [[30, 56, 106, 56], [12, 88, 124, 88]], lock: [68, 82], poke: [68, 18, 68, 6] },
-  garage: { pts: [[8, 128], [8, 70], [20, 44], [50, 22], [84, 16], [118, 22], [148, 44], [160, 70], [160, 128]], ropes: [[16, 54, 152, 54], [10, 96, 158, 96]], lock: [84, 92], poke: null },
+  bigtop: { pts: [[14, 150], [18, 118], [28, 100], [62, 66], [92, 34], [108, 34], [138, 66], [172, 100], [182, 118], [186, 150]], ropes: [[30, 98, 170, 98], [22, 126, 178, 126]], lock: [100, 112], col: RED },
+  striker: { pts: [[8, 166], [10, 150], [20, 136], [40, 127], [60, 125], [80, 127], [100, 136], [110, 150], [112, 166]], ropes: [[14, 152, 106, 152]], lock: [60, 138], col: RED, fan: 0.3 },
+  gallery: { pts: [[6, 120], [6, 64], [6, 62], [1, 57], [3, 51], [14, 38], [40, 31], [120, 31], [146, 38], [157, 51], [159, 57], [154, 62], [154, 64], [154, 120]], ropes: [[8, 66, 152, 66], [8, 98, 152, 98]], lock: [80, 86], col: BLUE, fan: 0.9 },
+  tent: { pts: [[8, 110], [10, 76], [4, 70], [38, 46], [68, 20], [98, 46], [132, 70], [126, 76], [128, 110]], ropes: [[24, 62, 112, 62], [12, 92, 124, 92]], lock: [68, 80], col: GREEN },
+  garage: { pts: [[10, 116], [10, 64], [10, 62], [3, 58], [5, 52], [24, 38], [50, 29], [75, 27], [100, 29], [126, 38], [145, 52], [147, 58], [140, 62], [140, 64], [140, 116]], ropes: [[12, 68, 138, 68]], lock: [75, 72], col: YELLOW, fan: 0.9 },
 };
+
+/** A striped road sawhorse; (x, by) = bottom-left. */
+function sawhorse(x, by, w = 30) {
+  let s = stick(`M${x + 3} ${by}L${x + 8} ${by - 13}L${x + 13} ${by}M${x + w - 13} ${by}L${x + w - 8} ${by - 13}L${x + w - 3} ${by}`, WOOD, 2.2, 2);
+  let st = '';
+  for (let a = x + 2; a + 8 < x + w; a += 9) st += path(`M${a} ${by - 11}l4 -7h4l-4 7z`, RED);
+  return s + rect(x, by - 18, w, 7, WHITE, { sw: 1.8, rx: 1.5 }) + st + rect(x, by - 18, w, 7, 'none', { sw: 1.8, rx: 1.5 });
+}
 
 function lockedSvg(id, W, H) {
   const T = TARP[id];
-  const tarp = '#7f93ad';
+  const cid = uid('tarp');
+  const light = T.col === YELLOW ? '#fff6dc' : '#f6f1e6';
+  const band = mix(T.col, '#9a948a', 0.18);
   let s = shadow(W / 2, H - 4, W * 0.46, 5);
-  if (T.poke) s += stick(`M${T.poke[0]} ${T.poke[1] + 4}L${T.poke[2]} ${T.poke[3]}`, WOOD_D, 2.4) + circ(T.poke[2], T.poke[3], 2.6, '#9aa0a8', { sw: 1.4 });
-  // Wavy hem: replace the straight bottom with scallops.
   const pts = T.pts;
   const x0 = pts[0][0];
   const x1 = pts[pts.length - 1][0];
+  const top = pts.reduce((a, p) => (p[1] < a[1] ? p : a), pts[0]);
+  const cx = (x0 + x1) / 2;
+  // What pokes out above the tarp (drawn first, so the tarp covers its foot).
+  if (id === 'bigtop') s += stick(`M100 38L100 12`, WOOD_D, 2.4) + path('M100 13L114 16L100 21Z', band, { sw: 1.6 }) + circ(100, 11, 2.6, GOLD, { sw: 1.3 });
+  else if (id === 'tent') s += stick('M68 24L68 4', WOOD_D, 2.2) + path('M68 5L82 9L68 13Z', GREEN, { sw: 1.6 }) + rect(72, 7.6, 3, 2.6, WHITE) + circ(68, 3, 2.4, GOLD, { sw: 1.2 });
+  else if (id === 'gallery') s += stick('M80 34V16', WOOD_D, 2.4) + target(80, 13, 9, mix(RED, '#b49a80', 0.3));
+  else if (id === 'striker') {
+    // The bare tower stands boarded up; only the base is under the tarp.
+    s += rect(48, 34, 24, 100, '#b9a58c', { sw: 2.6 });
+    for (let y = 48; y < 134; y += 14) s += line(`M49 ${y}H71`, '#8f7a62', 1.4);
+    s += rect(43, 28, 34, 7, '#8f7a62', { sw: 2.2, rx: 2 }) + path('M46 28Q45 8 60 8Q75 8 74 28Z', '#b8b4a8', { sw: 2.6 }) + circ(60, 6, 3.2, '#b8b4a8', { sw: 1.8 }) + path('M52 25Q51 14 57 12', 'none', { sw: 2.4, stroke: '#ffffff', op: 0.4, cap: true });
+    s += g(rect(36, 72, 48, 8, WOOD_L, { sw: 2 }) + nail(40, 76) + nail(80, 76), { tf: 'rotate(-30 60 76)' }) + g(rect(36, 72, 48, 8, WOOD_L, { sw: 2 }) + nail(40, 76) + nail(80, 76), { tf: 'rotate(30 60 76)' });
+  }
+  // Contour with a wavy hem.
   let d = smooth(pts);
   const n = Math.max(4, Math.round((x1 - x0) / 22));
   for (let i = n - 1; i >= 0; i--) {
@@ -1076,38 +1166,54 @@ function lockedSvg(id, W, H) {
     const xb = x0 + ((x1 - x0) * (i + 1)) / n;
     d += `Q${f((xa + xb) / 2)} ${H - 1} ${f(xa)} ${H - 6}`;
   }
-  d = d.replace(/^M([\d.]+) ([\d.]+)/, (m, a) => `M${a} ${H - 6}L${a} ${pts[0][1] - 0}`);
-  s += path(d + 'Z', tarp, { sw: 2.8 });
-  // Shade on the right third, highlight on the left.
-  const cx = W / 2;
-  s += path(smooth(pts.filter((p) => p[0] >= cx)) + `L${x1} ${H - 6}L${cx + (x1 - cx) * 0.35} ${H - 6}Z`, O, { op: 0.13 });
-  const top = pts.reduce((a, p) => (p[1] < a[1] ? p : a), pts[0]);
-  s += line(`M${f(top[0] - 8)} ${f(top[1] + 10)}Q${f(x0 + (top[0] - x0) * 0.3)} ${f((top[1] + H) / 2)} ${f(x0 + 10)} ${f(H - 18)}`, '#a9bcd4', 4, { op: 0.9 });
-  // Fold lines from the top down.
+  d = d.replace(/^M([\d.]+) ([\d.]+)/, (m, a) => `M${a} ${H - 6}L${a} ${pts[0][1]}`) + 'Z';
+  // Canvas: cream base, stripes fanning down from the top, shade, highlight, folds.
+  let c = rect(0, 0, W, H, light);
+  const k = Math.max(6, Math.round((x1 - x0) / 13));
+  for (let i = 0; i < k; i += 2) {
+    const a = x0 - 10 + ((x1 - x0 + 20) * i) / k;
+    const b = x0 - 10 + ((x1 - x0 + 20) * (i + 1)) / k;
+    const fan = T.fan ?? 0.18;
+    const ta = top[0] + (a - top[0]) * fan;
+    const tb = top[0] + (b - top[0]) * fan;
+    c += path(`M${f(ta)} ${top[1] - 4}L${f(tb)} ${top[1] - 4}L${f(b)} ${H}L${f(a)} ${H}Z`, band);
+  }
+  c += path(`M${f(cx + (x1 - cx) * 0.3)} 0H${W}V${H}H${f(cx + (x1 - cx) * 0.3)}Z`, O, { op: 0.13 });
+  c += line(`M${f(top[0] - 8)} ${f(top[1] + 10)}Q${f(x0 + (top[0] - x0) * 0.3)} ${f((top[1] + H) / 2)} ${f(x0 + 10)} ${f(H - 18)}`, '#ffffff', 4, { op: 0.45 });
   for (const t of [0.3, 0.55, 0.75]) {
     const fx = x0 + (x1 - x0) * t;
-    s += line(`M${f(top[0] + (fx - top[0]) * 0.3)} ${f(top[1] + 14)}Q${f(fx + 4)} ${f((top[1] + H) / 2)} ${f(fx)} ${f(H - 8)}`, '#5f7594', 1.8);
+    c += line(`M${f(top[0] + (fx - top[0]) * 0.3)} ${f(top[1] + 14)}Q${f(fx + 4)} ${f((top[1] + H) / 2)} ${f(fx)} ${f(H - 8)}`, O, 1.6, { op: 0.3 });
+  }
+  s += `<defs><clipPath id="${cid}"><path d="${d}"/></clipPath></defs><g clip-path="url(#${cid})">${c}</g>` + path(d, 'none', { sw: 2.8 });
+  // The garage: a bumper car bulges the tarp at the front, its pole poking through.
+  if (id === 'garage') {
+    s += stick('M90 100L94 78', STEEL, 1.5, 2) + circ(94.5, 76, 2.6, RED, { sw: 1.2 });
+    s += path('M46 116Q46 94 75 92Q104 94 104 116Z', light, { sw: 2.6 });
+    s += path('M58 116Q58 98 70 96L80 96Q92 98 92 116Z', band) + path('M46 116Q46 94 75 92Q104 94 104 116Z', 'none', { sw: 2.6 });
+    s += path('M52 110Q54 98 66 95', 'none', { sw: 2.4, stroke: '#ffffff', op: 0.5, cap: true });
   }
   // Ropes.
   for (const [ax, ay, bx, by] of T.ropes) {
-    s += line(`M${ax} ${ay}Q${(ax + bx) / 2} ${ay + 6} ${bx} ${by}`, O, 4.2) + line(`M${ax} ${ay}Q${(ax + bx) / 2} ${ay + 6} ${bx} ${by}`, '#e3c48c', 2.4) + line(`M${ax} ${ay}Q${(ax + bx) / 2} ${ay + 6} ${bx} ${by}`, '#b8955a', 2.4, { dash: '2 4' });
+    const rd = `M${ax} ${ay}Q${(ax + bx) / 2} ${ay + 6} ${bx} ${by}`;
+    s += line(rd, O, 4.2) + line(rd, '#e3c48c', 2.4) + line(rd, '#b8955a', 2.4, { dash: '2 4' });
   }
   // Pegs and sandbags.
   s += rect(x0 - 4, H - 10, 4, 9, WOOD_D, { sw: 1.4 }) + rect(x1, H - 10, 4, 9, WOOD_D, { sw: 1.4 });
-  s += ell(x0 + 12, H - 6, 9, 5, '#cdb68a', { sw: 2 }) + ell(x1 - 12, H - 6, 9, 5, '#cdb68a', { sw: 2 }) + line(`M${x0 + 9} ${H - 9}l2 2M${x1 - 15} ${H - 9}l2 2`, O, 1);
   // Chain and padlock.
   const [lx, ly] = T.lock;
   const half = Math.min(36, (x1 - x0) * 0.38);
   let ch = '';
-  let k = 0;
-  for (let x = lx - half; x <= lx + half; x += 6, k++) {
+  let q = 0;
+  for (let x = lx - half; x <= lx + half; x += 6, q++) {
     const y = ly - 6 - Math.abs(x - lx) * 0.08;
-    ch += k % 2 ? rect(x - 1.6, y - 3.4, 3.2, 6.8, '#c9ced6', { sw: 1.4, rx: 1.6 }) : ell(x, y, 4.2, 2.8, 'none', { sw: 3.8 }) + ell(x, y, 4.2, 2.8, 'none', { sw: 1.8, stroke: '#c9ced6' });
+    ch += q % 2 ? rect(x - 1.6, y - 3.4, 3.2, 6.8, '#c9ced6', { sw: 1.4, rx: 1.6 }) : ell(x, y, 4.2, 2.8, 'none', { sw: 3.8 }) + ell(x, y, 4.2, 2.8, 'none', { sw: 1.8, stroke: '#c9ced6' });
   }
   s += ch;
   s += path(`M${lx - 7} ${ly}V${ly - 7}a7 7 0 0 1 14 0V${ly}`, 'none', { sw: 6.4 }) + path(`M${lx - 7} ${ly}V${ly - 7}a7 7 0 0 1 14 0V${ly}`, 'none', { sw: 3.2, stroke: '#c9ced6' });
   s += rect(lx - 12, ly - 1, 24, 20, GOLD, { sw: 2.6, rx: 4 }) + rect(lx - 12, ly + 12, 24, 7, '#d99a1a', { rx: 3 }) + rect(lx - 12, ly - 1, 24, 20, 'none', { sw: 2.6, rx: 4 });
   s += circ(lx, ly + 6, 2.8, O) + path(`M${lx - 1.4} ${ly + 7}h2.8l1 6h-4.8z`, O) + rect(lx - 9, ly + 1, 4, 8, '#fff1b0', { op: 0.7, rx: 2 });
+  // Roadworks in front: a striped sawhorse and a cone.
+  s += sawhorse(x0 + 2, H - 1, Math.min(34, (x1 - x0) * 0.28)) + cone(x1 - 10, H - 1);
   return svg(W, H, s, { cls: `bld bld-${id} bld-locked`, over: true });
 }
 
@@ -1115,7 +1221,8 @@ const BUILDERS = { bigtop: bigTopSvg, striker: strikerSvg, gallery: gallerySvg, 
 
 /**
  * A park building. id: bigtop | striker | gallery | tent | garage. level 1..7:
- * 1-2 patched junk, 3-4 fresh paint and bulbs, 5-7 neon, flags and confetti cannons.
+ * 1-2 patched junk, 3-4 fresh paint and bulbs, 5-7 neon, flags and confetti cannons
+ * (Lv 6 adds a flourish such as an extra pair of flags, Lv 7 also a prize rosette).
  * locked (or level < 1): under a tarp with a padlock. viewBox 0 0 w h = PARK.slots[id].
  */
 export function buildingSvg(id, level = 1, { locked = false } = {}) {
@@ -1127,35 +1234,35 @@ export function buildingSvg(id, level = 1, { locked = false } = {}) {
 
 // --- Souvenirs -------------------------------------------------------------------------------
 
+/** The giant donut sign, mounted on top of the gate arch (svg bottom = the arch crown). */
 function donutSvg() {
   const W = 64;
-  const H = 150;
+  const H = 70;
   const cx = 32;
-  const cy = 36;
-  let s = shadow(cx, 147, 16, 3);
-  // Striped pole.
-  s += rect(cx - 4, 60, 8, 84, WHITE, { sw: 2.4 });
-  for (let y = 66; y < 140; y += 12) s += path(`M${cx - 4} ${y}l8 -4v6l-8 4z`, RED);
-  s += rect(cx - 4, 60, 8, 84, 'none', { sw: 2.4 }) + rect(cx - 10, 138, 20, 10, '#c8c2b8', { sw: 2.2, rx: 2 });
+  const cy = 30;
+  let s = '';
+  // Struts and the base plate that sits on the arch.
+  s += stick(`M${cx - 9} 50L${cx - 7} 66M${cx + 9} 50L${cx + 7} 66`, STEEL, 3, 2.4) + line(`M${cx - 8} 60H${cx + 8}`, O, 1.6);
+  s += rect(cx - 14, 64, 28, 6, WOOD_D, { sw: 2.2, rx: 2 });
   // Donut ring (evenodd hole).
-  const R = 28;
-  const r = 10;
-  const ring = (rr, ri, ox = 0, oy = 0) => `M${cx + ox - rr} ${cy + oy}a${rr} ${rr} 0 1 0 ${rr * 2} 0a${rr} ${rr} 0 1 0 ${-rr * 2} 0ZM${cx + ox - ri} ${cy + oy}a${ri} ${ri} 0 1 1 ${ri * 2} 0a${ri} ${ri} 0 1 1 ${-ri * 2} 0Z`;
+  const R = 26;
+  const r = 9;
+  const ring = (rr, ri) => `M${cx - rr} ${cy}a${rr} ${rr} 0 1 0 ${rr * 2} 0a${rr} ${rr} 0 1 0 ${-rr * 2} 0ZM${cx - ri} ${cy}a${ri} ${ri} 0 1 1 ${ri * 2} 0a${ri} ${ri} 0 1 1 ${-ri * 2} 0Z`;
   s += path(ring(R, r), '#e3a55c', { sw: 3, rule: 'evenodd' });
+  s += path(`M${cx - 20} ${cy + 12}Q${cx} ${cy + 26} ${cx + 20} ${cy + 12}`, 'none', { sw: 3, stroke: '#c07d38', cap: true, op: 0.8 });
   // Icing: wobbly outer edge.
   let ic = '';
   for (let i = 0; i <= 36; i++) {
     const a = (i / 36) * Math.PI * 2;
-    const rr = R - 4 + Math.sin(a * 7) * 2.2 + (Math.sin(a) > 0.2 ? Math.sin(a * 7) * 1.5 + 1 : 0);
+    const rr = R - 4 + Math.sin(a * 7) * 2 + (Math.sin(a) > 0.2 ? Math.sin(a * 7) * 1.4 + 1 : 0);
     ic += (i ? 'L' : 'M') + f(cx + Math.cos(a) * rr) + ' ' + f(cy - 2 + Math.sin(a) * rr);
   }
   ic += `ZM${cx - r - 3} ${cy - 2}a${r + 3} ${r + 3} 0 1 1 ${(r + 3) * 2} 0a${r + 3} ${r + 3} 0 1 1 ${-(r + 3) * 2} 0Z`;
   s += path(ic, PINK, { sw: 2.2, rule: 'evenodd' });
-  s += path(`M${cx - 18} ${cy - 14}Q${cx - 6} ${cy - 24} ${cx + 8} ${cy - 21}`, 'none', { sw: 3.4, stroke: '#ffd0e8', cap: true });
-  const sp = [[-16, -6, 30], [-8, -18, -20], [6, -19, 60], [17, -10, 10], [19, 4, -40], [-19, 6, 70], [-10, 14, 20], [9, 14, -60], [0, -14, 0], [14, -18, 45]];
+  s += path(`M${cx - 16} ${cy - 13}Q${cx - 5} ${cy - 22} ${cx + 8} ${cy - 19}`, 'none', { sw: 3.2, stroke: '#ffd0e8', cap: true });
+  const sp = [[-15, -6, 30], [-7, -16, -20], [6, -17, 60], [16, -9, 10], [17, 4, -40], [-17, 6, 70], [-9, 13, 20], [9, 13, -60], [0, -13, 0], [13, -16, 45]];
   sp.forEach(([x, y, a], i) => (s += rect(cx + x - 1.4, cy - 2 + y - 3, 2.8, 6, [WHITE, YELLOW, BLUE, GREEN, PURPLE][i % 5], { rx: 1.2, tf: `rotate(${a} ${cx + x} ${cy - 2 + y})` })));
   s += path(ring(R, r), 'none', { sw: 3, rule: 'evenodd' });
-  // Bulbs around the sign.
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2 + 0.3;
     s += bulb(cx + Math.cos(a) * (R + 3), cy + Math.sin(a) * (R + 3), true, 1.8);
@@ -1170,7 +1277,7 @@ function fountainSvg() {
   let s = shadow(cx, 53, 50, 4);
   // Water jets behind the bowl.
   const jet = (d) => line(d, '#3aa8e8', 5.4) + line(d, '#9fe4ff', 3.2) + line(d, '#ffffff', 1.2, { op: 0.8 });
-  s += jet(`M${cx - 4} 12Q${cx - 26} -4 ${cx - 36} 30`) + jet(`M${cx + 4} 12Q${cx + 26} -4 ${cx + 36} 30`) + jet(`M${cx} 10Q${cx} -2 ${cx} 6`);
+  s += jet(`M${cx - 4} 12Q${cx - 26} -2 ${cx - 36} 30`) + jet(`M${cx + 4} 12Q${cx + 26} -2 ${cx + 36} 30`) + jet(`M${cx} 10Q${cx} 0 ${cx} 6`);
   // Basin.
   s += path(`M6 34L102 34L96 50Q${cx} 56 12 50Z`, '#5fc7c0', { sw: 2.6 });
   for (let i = 0; i < 9; i++) s += rect(12 + i * 9.6, 39, 6, 6, '#8fe0d8', { rx: 1 });
@@ -1183,7 +1290,7 @@ function fountainSvg() {
   s += path(`M${cx - 18} 12H${cx + 18}L${cx + 12} 20H${cx - 12}Z`, '#5fc7c0', { sw: 2.4 }) + ell(cx, 12, 18, 2.2, '#9fe4ff', { sw: 2 });
   // Splashes.
   for (const [x, y] of [[cx - 36, 28], [cx + 36, 28], [cx - 30, 24], [cx + 31, 23]]) s += circ(x, y, 1.8, '#c8f2ff', { sw: 1 });
-  s += sparkle(cx - 16, 4, 3.6) + sparkle(cx + 22, 8, 3);
+  s += sparkle(cx - 16, 5, 3.6) + sparkle(cx + 22, 9, 3);
   return svg(W, H, s, { cls: 'souv souv-fountain', over: true });
 }
 
@@ -1199,14 +1306,14 @@ function anchorSvg() {
   s += line(A, O, 9) + line(A, iron, 5.4) + line(`M${cx - 1.5} 18V50`, '#7aa0d0', 1.8);
   s += path(`M${cx - 25} 42L${cx - 20} 34L${cx - 15} 43Z`, iron, { sw: 2.2 }) + path(`M${cx + 25} 42L${cx + 20} 34L${cx + 15} 43Z`, iron, { sw: 2.2 });
   s += circ(cx, 10, 6, 'none', { sw: 6 }) + circ(cx, 10, 6, 'none', { sw: 3, stroke: iron });
-  // Lifebuoy leaning on the shank.
+  // Lifebuoy (orange and white) leaning on the shank.
   const lx = 16;
   const ly = 44;
   s += circ(lx, ly, 13, WHITE, { sw: 2.6 });
   for (let i = 0; i < 4; i++) {
     const a0 = (i * Math.PI) / 2 + 0.4;
     const a1 = a0 + 0.8;
-    s += path(`M${f(lx + Math.cos(a0) * 13)} ${f(ly + Math.sin(a0) * 13)}A13 13 0 0 1 ${f(lx + Math.cos(a1) * 13)} ${f(ly + Math.sin(a1) * 13)}L${f(lx + Math.cos(a1) * 6.5)} ${f(ly + Math.sin(a1) * 6.5)}A6.5 6.5 0 0 0 ${f(lx + Math.cos(a0) * 6.5)} ${f(ly + Math.sin(a0) * 6.5)}Z`, RED);
+    s += path(`M${f(lx + Math.cos(a0) * 13)} ${f(ly + Math.sin(a0) * 13)}A13 13 0 0 1 ${f(lx + Math.cos(a1) * 13)} ${f(ly + Math.sin(a1) * 13)}L${f(lx + Math.cos(a1) * 6.5)} ${f(ly + Math.sin(a1) * 6.5)}A6.5 6.5 0 0 0 ${f(lx + Math.cos(a0) * 6.5)} ${f(ly + Math.sin(a0) * 6.5)}Z`, '#ff7a2a');
   }
   s += circ(lx, ly, 13, 'none', { sw: 2.6 }) + circ(lx, ly, 6.5, '#b98a5a', { sw: 2.2 });
   s += path(`M${lx - 9} ${ly - 7}Q${lx - 4} ${ly - 13} ${lx + 4} ${ly - 12}`, 'none', { sw: 2.4, stroke: '#ffffff', op: 0.7, cap: true });
@@ -1216,57 +1323,56 @@ function anchorSvg() {
 }
 
 /** The scoreboard's blank panel (viewBox units) for the UI to overlay the Skull count. */
-const SCORE_PANEL = { x: 12, y: 22, w: 60, h: 30 };
+const SCORE_PANEL = PARK.souvenirs.scoreboard.panel;
 
 function scoreboardSvg() {
-  const W = 84;
-  const H = 140;
-  const T = 8; // board top offset
-  let s = shadow(42, 137, 30, 3);
-  for (const x of [22, 62]) {
-    s += rect(x - 3.5, 68, 7, 70, STEEL, { sw: 2.2 });
-    for (let y = 76; y < 134; y += 14) s += line(`M${x - 3} ${y}l6 7`, '#7a8088', 1.2);
+  const W = 64;
+  const H = 168;
+  let s = shadow(32, 165, 24, 3);
+  for (const x of [18, 46]) {
+    s += rect(x - 3.5, 72, 7, 92, STEEL, { sw: 2.2 });
+    for (let y = 80; y < 160; y += 14) s += line(`M${x - 3} ${y}l6 7`, '#7a8088', 1.2);
   }
-  s += line('M22 98L62 114M62 98L22 114', '#7a8088', 2) + rect(14, 132, 56, 6, '#c8c2b8', { sw: 2, rx: 2 });
-  // Lamps on top.
-  s += stick(`M16 ${T + 4}V${T - 1}M68 ${T + 4}V${T - 1}`, STEEL, 1.6, 2);
-  s += rect(8, 1, 16, 6, '#fff6c8', { sw: 2, rx: 2 }) + rect(60, 1, 16, 6, '#fff6c8', { sw: 2, rx: 2 });
+  s += line('M18 104L46 120M46 104L18 120', '#7a8088', 2) + rect(10, 160, 44, 6, '#c8c2b8', { sw: 2, rx: 2 });
+  // Floodlights on top.
+  s += stick('M14 16V8M50 16V8', STEEL, 1.6, 2);
+  s += rect(6, 1, 16, 7, '#fff6c8', { sw: 2, rx: 2 }) + rect(42, 1, 16, 7, '#fff6c8', { sw: 2, rx: 2 });
   // Board.
-  s += rect(2, T + 4, 80, 64, BLUE, { sw: 3, rx: 7 });
-  s += rect(5, T + 7, 74, 5, lt(BLUE, 0.35), { rx: 3 });
-  for (let i = 0; i < 9; i++) s += bulb(8 + i * 8.5, T + 9.5, true, 1.7);
+  s += rect(2, 16, 60, 58, BLUE, { sw: 3, rx: 7 });
+  s += rect(5, 19, 54, 4, lt(BLUE, 0.35), { rx: 2 }) + rect(52, 22, 7, 49, O, { op: 0.12, rx: 3 });
+  for (let i = 0; i < 7; i++) s += bulb(8 + i * 8, 25.5, true, 1.6);
   const P = SCORE_PANEL;
   s += rect(P.x, P.y, P.w, P.h, '#1d1a22', { sw: 2.2, rx: 3 });
   s += rect(P.x + 3, P.y + 3, P.w - 6, 3, '#ffffff', { op: 0.1 });
   // Skull icon and lights under the panel.
-  const sx = 42;
-  const sy = T + 55;
-  s += path(`M${sx - 7} ${sy}Q${sx - 7} ${sy - 8} ${sx} ${sy - 8}Q${sx + 7} ${sy - 8} ${sx + 7} ${sy}Q${sx + 7} ${sy + 3} ${sx + 4} ${sy + 4}V${sy + 7}H${sx - 4}V${sy + 4}Q${sx - 7} ${sy + 3} ${sx - 7} ${sy}Z`, WHITE, { sw: 1.8 });
-  s += circ(sx - 3, sy - 1, 2, O) + circ(sx + 3, sy - 1, 2, O) + path(`M${sx} ${sy + 1}l-1 2h2z`, O);
-  s += circ(18, sy + 1, 4, RED, { sw: 1.6 }) + circ(66, sy + 1, 4, GREEN, { sw: 1.6 }) + circ(17, sy - 0.5, 1.2, '#ffffff', { op: 0.7 }) + circ(65, sy - 0.5, 1.2, '#ffffff', { op: 0.7 });
+  const sx = 32;
+  const sy = 66;
+  s += path(`M${sx - 5.5} ${sy}Q${sx - 5.5} ${sy - 6.5} ${sx} ${sy - 6.5}Q${sx + 5.5} ${sy - 6.5} ${sx + 5.5} ${sy}Q${sx + 5.5} ${sy + 2.4} ${sx + 3.2} ${sy + 3.2}V${sy + 5.6}H${sx - 3.2}V${sy + 3.2}Q${sx - 5.5} ${sy + 2.4} ${sx - 5.5} ${sy}Z`, WHITE, { sw: 1.6 });
+  s += circ(sx - 2.4, sy - 1, 1.6, O) + circ(sx + 2.4, sy - 1, 1.6, O);
+  s += circ(13, sy, 3.4, RED, { sw: 1.5 }) + circ(51, sy, 3.4, GREEN, { sw: 1.5 }) + circ(12.2, sy - 1, 1, '#ffffff', { op: 0.7 }) + circ(50.2, sy - 1, 1, '#ffffff', { op: 0.7 });
   return svg(W, H, s, { cls: 'souv souv-scoreboard', over: true });
 }
 
+/** A jet's nose section lying on wooden blocks, nose to the left, slightly nose-up. */
 function jetSvg() {
-  const W = 60;
-  const H = 92;
-  let s = shadow(30, 89, 26, 3);
-  let b = '';
-  // Fuselage nose pointing up (drawn upright, then tilted).
-  b += path('M10 92L10 46Q10 8 30 2Q50 8 50 46L50 92Z', WHITE, { sw: 2.8 });
-  b += path('M42 20Q50 30 50 46L50 92L40 92L40 40Q40 28 36 18Z', O, { op: 0.08 });
-  b += path('M10 66L50 66L50 74L10 74Z', BLUE) + path('M10 76L50 76L50 79L10 79Z', RED);
-  b += path('M18 14Q30 4 42 14L41 20Q30 14 19 20Z', '#3a4a6a', { sw: 1.8 });
-  b += path('M21 18L24 16L25 19ZM35 16L39 18L35 19Z', '#9fd8ff');
-  b += path('M24 8Q30 2 36 8Q30 6 24 8Z', '#5a6070');
-  for (let y = 34; y < 62; y += 8) b += circ(20, y, 2.4, '#9fd8ff', { sw: 1.3 }) + circ(40, y, 2.4, '#9fd8ff', { sw: 1.3 });
-  b += path('M10 92L10 46Q10 8 30 2Q50 8 50 46L50 92', 'none', { sw: 2.8 });
-  b += path('M15 44Q15 20 26 9', 'none', { sw: 3, stroke: '#ffffff', op: 0.8, cap: true });
-  s += g(b, { tf: 'rotate(-12 30 84)' });
-  // Dirt mound and a little flag.
-  s += path('M0 92Q30 72 60 92Z', '#b98a5a', { sw: 2.4 }) + path('M8 88Q20 80 30 82', 'none', { sw: 2, stroke: '#d8aa78', cap: true });
-  s += ell(10, 90, 5, 2, GRASS_D) + ell(50, 90, 6, 2, GRASS_D);
-  s += flag(52, 84, 28, GOLD, 1);
+  const W = 88;
+  const H = 60;
+  let s = ell(46, 56, 40, 3.6, '#b98a5a', { sw: 2 }) + ell(12, 56, 5, 1.8, GRASS_D) + ell(80, 56, 6, 1.8, GRASS_D);
+  // Blocks.
+  s += rect(24, 44, 16, 12, WOOD, { sw: 2.2, rx: 1.5 }) + line('M24 50H40', WOOD_D, 1.4) + rect(56, 44, 16, 12, WOOD, { sw: 2.2, rx: 1.5 }) + line('M56 50H72', WOOD_D, 1.4);
+  const body = 'M78 14H38C20 14 9 23 9 32C9 41 18 48 34 48H78Z';
+  let b = path(body, WHITE);
+  b += path('M10.5 38C13 44 22 48 34 48H78V42H32C22 42 15 40.5 10.5 38Z', '#d9dfe8');
+  b += path('M10.2 28H78V34H9.6Z', BLUE) + path('M9.7 35.6H78V37.6H10.1Z', RED);
+  b += path('M17 24.5Q22 18 34 16.5L36.5 23Q26 23.4 19.4 27.4Z', '#2f3a55', { sw: 1.6 }) + line('M24.5 21L26 25.6M30.5 18.6L31.6 23.4', '#8fb8e0', 1.4) + line('M20 24.6Q25 20.4 31 19.2', '#ffffff', 1, { op: 0.6 });
+  for (const x of [46, 54, 62, 70]) b += circ(x, 23.5, 2.3, '#9fd8ff', { sw: 1.3 });
+  b += rect(39, 18, 5, 10, 'none', { sw: 1.1, rx: 1.5, op: 0.45 });
+  b += path(body, 'none', { sw: 2.8 });
+  b += line('M38 17.4H72', '#ffffff', 2.6, { op: 0.7 });
+  // The cut-off end: a rim and the dark inside.
+  b += ell(78, 31, 5.5, 17, '#4a4450', { sw: 2.6 }) + ell(78.6, 31, 3.2, 13.5, '#2e2a33') + line('M74.6 22.5h7M74 31h8.4M74.6 39.5h7', '#6a6470', 1.1);
+  b += flag(64, 15, 13, GOLD, 1);
+  s += g(b, { tf: 'rotate(5 60 48)' });
   return svg(W, H, s, { cls: 'souv souv-jet', over: true });
 }
 
@@ -1274,8 +1380,8 @@ const SOUVENIRS = { donut: donutSvg, fountain: fountainSvg, anchor: anchorSvg, s
 
 /**
  * A zone souvenir: donut | fountain | anchor | scoreboard | jet. viewBox 0 0 w h
- * = PARK.souvenirs[id]. The scoreboard's blank panel is at SCORE_PANEL
- * {x 12, y 22, w 60, h 30} in its viewBox (also on the returned svg as data-panel).
+ * = PARK.souvenirs[id]. The scoreboard's blank panel is PARK.souvenirs.scoreboard.panel
+ * {x 8, y 30, w 48, h 28} in its 64×168 viewBox (also on the returned svg as data-panel).
  */
 export function souvenirSvg(id) {
   const fn = SOUVENIRS[id];
@@ -1287,36 +1393,37 @@ export function souvenirSvg(id) {
 
 // --- The bus ---------------------------------------------------------------------------------
 
-/** The squad's bus: a repurposed park tram. viewBox 0 0 124 70, bottom-centre (62, 70), faces right. */
+/** The squad's bus: a repurposed park tram. viewBox 0 0 110 64, bottom-centre (55, 64), faces right. */
 export function busSvg() {
-  const W = 124;
-  const H = 70;
-  let s = shadow(62, 67, 56, 3.5);
+  const W = 110;
+  const H = 64;
+  let s = shadow(55, 61, 50, 3.2);
   // Rear flag and spare tire.
-  s += flag(7, 20, 18, RED, -1);
-  s += circ(5, 40, 8, RUBBER, { sw: 2.4 }) + circ(5, 40, 3.4, STEEL, { sw: 1.4 });
+  s += flag(6, 18, 16, RED, -1);
+  s += circ(5, 36, 7, RUBBER, { sw: 2.2 }) + circ(5, 36, 3, STEEL, { sw: 1.3 });
   // Canopy poles and seats.
-  for (const x of [12, 40, 68, 94]) s += stick(`M${x} 20V31`, WHITE, 2, 2.2);
-  for (const x of [17, 45, 72]) s += rect(x, 22, 18, 10, BLUE, { sw: 2, rx: 3 }) + rect(x + 2, 24, 14, 2.5, lt(BLUE, 0.4), { rx: 1 });
+  for (const x of [11, 36, 60, 83]) s += stick(`M${x} 18V28`, WHITE, 2, 2.2);
+  for (const x of [15, 40, 64]) s += rect(x, 20, 16, 9, BLUE, { sw: 2, rx: 3 }) + rect(x + 2, 22, 12, 2.4, lt(BLUE, 0.4), { rx: 1 });
   // Passenger body.
-  s += rect(6, 30, 94, 20, YELLOW, { sw: 2.8 });
-  s += rect(6, 37, 94, 5, RED) + line('M6 37H100M6 42H100', O, 1.2, { op: 0.5 }) + path('M9 33H97', 'none', { sw: 2.2, stroke: '#ffe28a', cap: true });
-  s += star(52, 46, 3.6, WHITE, { sw: 1.1 });
-  s += patch(22, 43, 12, 6, STEEL, -4) + nail(24, 45) + nail(32, 45);
+  s += rect(5, 27, 84, 18, YELLOW, { sw: 2.8 });
+  s += rect(5, 33, 84, 5, RED) + line('M5 33H89M5 38H89', O, 1.2, { op: 0.5 }) + path('M8 30H86', 'none', { sw: 2.2, stroke: '#ffe28a', cap: true });
+  s += star(47, 41.5, 3.2, WHITE, { sw: 1.1 });
+  s += patch(19, 38.5, 11, 5.5, STEEL, -4) + nail(21, 40.5) + nail(28, 40.5);
   // Cab with a round nose.
-  s += path('M94 50V24Q94 16 102 16H106Q121 18 121 38V50Z', YELLOW, { sw: 2.8 });
-  s += path('M101 21H106Q115 22 117 33H101Z', '#bfeaff', { sw: 2.2 }) + line('M104 30l5 -7', '#ffffff', 1.6, { op: 0.8 });
-  s += rect(94, 37, 27, 5, RED) + line('M94 37H121M94 42H121', O, 1.2, { op: 0.5 });
-  s += path('M94 50V24Q94 16 102 16H106Q121 18 121 38V50Z', 'none', { sw: 2.8 });
-  s += circ(117, 46, 3.4, '#fff6c2', { sw: 1.6 }) + circ(117, 46, 8, '#fff3a0', { op: 0.3 });
+  const cab = 'M83 45V22Q83 14 90 14H94Q107 16 107 34V45Z';
+  s += path(cab, YELLOW, { sw: 2.8 });
+  s += path('M89 19H94Q102 20 104 30H89Z', '#bfeaff', { sw: 2.2 }) + line('M91.5 27l4.5 -6', '#ffffff', 1.6, { op: 0.8 });
+  s += rect(83, 33, 24, 5, RED) + line('M83 33H107M83 38H107', O, 1.2, { op: 0.5 });
+  s += path(cab, 'none', { sw: 2.8 });
+  s += circ(102.6, 41.4, 3.4, '#fff3a0', { op: 0.6 }) + circ(102.6, 41.4, 2.4, '#fffbe0', { sw: 1.5 });
   // Canopy roof: stripes and scallops.
   let cd = '';
-  for (let i = 0; i < 9; i++) cd += path(`M${4 + i * 12} 9H${16 + i * 12}V15Q${10 + i * 12} 21 ${4 + i * 12} 15Z`, i % 2 ? WHITE : RED);
-  s += rect(2, 7, 112, 4, YELLOW, { sw: 2.2, rx: 2 }) + cd + path('M4 9H112V15' + Array.from({ length: 9 }, (_, i) => `Q${112 - i * 12 - 6} 21 ${112 - (i + 1) * 12} 15`).join('') + 'Z', 'none', { sw: 2.2 });
-  for (let i = 0; i < 9; i++) s += bulb(10 + i * 12, 19, true, 1.6);
+  for (let i = 0; i < 9; i++) cd += path(`M${4 + i * 11} 8H${15 + i * 11}V13Q${9.5 + i * 11} 18 ${4 + i * 11} 13Z`, i % 2 ? WHITE : RED);
+  s += rect(2, 6, 100, 4, YELLOW, { sw: 2.2, rx: 2 }) + cd + path('M4 8H103V13' + Array.from({ length: 9 }, (_, i) => `Q${f(103 - i * 11 - 5.5)} 18 ${103 - (i + 1) * 11}  13`).join('') + 'Z', 'none', { sw: 2.2 });
+  for (let i = 0; i < 9; i++) s += bulb(9.5 + i * 11, 17, true, 1.5);
   // Bumper-car rubber all round.
-  s += rect(1, 48, 122, 9, RUBBER, { rx: 4.5, sw: 2.6 }) + line('M7 51.5H117', '#5a525e', 1.6);
-  for (const x of [28, 96]) s += circ(x, 58, 10.5, RUBBER, { sw: 2.6 }) + circ(x, 58, 5, YELLOW, { sw: 2 }) + circ(x, 58, 1.6, O);
+  s += rect(1, 43, 108, 8, RUBBER, { rx: 4, sw: 2.6 }) + line('M7 46.5H103', '#5a525e', 1.6);
+  for (const x of [25, 86]) s += circ(x, 52.5, 9.5, RUBBER, { sw: 2.6 }) + circ(x, 52.5, 4.5, YELLOW, { sw: 2 }) + circ(x, 52.5, 1.5, O);
   return svg(W, H, s, { cls: 'bus', over: true });
 }
 
@@ -1325,7 +1432,7 @@ export function busSvg() {
 const ZPAL = {
   walker: { skin: ZSKIN, shade: ZSHADE, light: ZLIGHT, shirt: '#8a76c8', pants: '#4a5a8a', hair: '#5a4a3a' },
   runner: { skin: ZSKIN, shade: ZSHADE, light: ZLIGHT, shirt: ORANGE, pants: '#3d5a9a', hair: '#7a4a2a' },
-  brute: { skin: '#8fcb5c', shade: '#64983c', light: '#b9e584', shirt: '#e8e2d6', pants: '#6a4a3a', hair: '#3a2a20' },
+  brute: { skin: '#8fcb5c', shade: '#64983c', light: '#b9e584', shirt: '#d9483b', pants: '#4a5a8a', hair: '#3a2a20' },
   spitter: { skin: '#a8da6c', shade: '#73aa48', light: '#d0f096', shirt: '#ff8fb8', pants: '#5a4a7a', hair: '#9a5a3a' },
   horde: { skin: ZSKIN, shade: ZSHADE, light: ZLIGHT, shirt: '#5fb8e8', pants: '#5a4a7a', hair: '#5a3a2a' },
   golden: { skin: GOLD, shade: '#e09a18', light: '#fff1b0', shirt: '#fff6d8', pants: '#c98a12', hair: '#c97a10' },
@@ -1342,10 +1449,25 @@ function zHead(cx, cy, r, p, o = {}) {
   return s;
 }
 
+/** Knocked-out eyes: two little X's. */
+function xEye(x, y, k) {
+  return line(`M${f(x - k)} ${f(y - k)}L${f(x + k)} ${f(y + k)}M${f(x + k)} ${f(y - k)}L${f(x - k)} ${f(y + k)}`, O, Math.max(1.2, k * 0.6));
+}
+
+/** Dizzy stars over a knocked-out head. */
+function dizzy(cx, top, r) {
+  return g(star(cx - r * 0.7, top - 2, r * 0.32, '#ffe066', { sw: 1 }) + star(cx + r * 0.2, top - 5, r * 0.26, '#ffe066', { sw: 1 }) + star(cx + r * 0.9, top - 1, r * 0.3, '#ffe066', { sw: 1 }), { cls: 'z-dizzy' });
+}
+
 function zFace(cx, cy, r, o = {}) {
   // Faces right: big front eye, small back eye, crooked open mouth with one tooth.
   const ex = cx + r * 0.38;
   const ey = cy - r * 0.08;
+  if (o.ko) {
+    let k = xEye(ex, ey, r * 0.22) + xEye(cx - r * 0.12, cy - r * 0.02, r * 0.15);
+    k += ell(cx + r * 0.32, cy + r * 0.5, r * 0.22, r * 0.17, '#6a2a3a', { sw: 1.2 }) + path(`M${f(cx + r * 0.38)} ${f(cy + r * 0.58)}q${f(r * 0.12)} ${f(r * 0.34)} ${f(-r * 0.1)} ${f(r * 0.36)}q${f(-r * 0.12)} ${f(-r * 0.1)} ${f(-r * 0.04)} ${f(-r * 0.3)}z`, '#ff7a9a', { sw: 1 });
+    return k;
+  }
   let s = circ(ex, ey, r * 0.34, WHITE, { sw: 1.4 }) + circ(ex + r * 0.1, ey + r * 0.06, r * 0.13, O);
   s += circ(cx - r * 0.12, cy - r * 0.02, r * 0.22, WHITE, { sw: 1.3 }) + circ(cx - r * 0.1, cy + r * 0.06, r * 0.08, O);
   if (o.brow) s += line(`M${f(cx - r * 0.35)} ${f(cy - r * 0.36)}L${f(cx + r * 0.75)} ${f(cy - r * 0.46)}`, O, r * 0.16);
@@ -1372,7 +1494,7 @@ function stitch(x1, y1, x2, y2) {
 
 const shoe = (x, y, w = 5) => ell(x + 1, y, w, 2.6, '#4a3b34', { sw: 1.6 });
 
-function walkerZ(p, gold = false) {
+function walkerZ(p, ko = false) {
   let s = shadow(20, 54.5, 11, 2);
   s += stick('M17 40L14 51', p.pants, 5.4, 2.2) + shoe(14, 52.5);
   s += arm('M17 28Q25 26 32.5 28', p.skin, 4.2, 17, 28, hand(34, 28, 3, p.skin));
@@ -1381,13 +1503,14 @@ function walkerZ(p, gold = false) {
   s += stick('M23 40L26 51', p.pants, 5.4, 2.2) + shoe(26.5, 52.5);
   s += zHead(22, 14, 11, p);
   s += path('M14 6Q17 0 22 3Q25 -1 28 4', 'none', { sw: 2.2, stroke: p.hair, cap: true });
-  s += zFace(22, 14, 11);
+  s += zFace(22, 14, 11, { ko });
   s += stitch(13.5, 9, 17, 4);
+  if (ko) s += dizzy(22, 2, 11);
   s += arm('M21 29Q28 30 34.5 32', p.skin, 4.4, 21, 29, hand(35.8, 32.5, 3.2, p.skin));
   return s;
 }
 
-function runnerZ(p) {
+function runnerZ(p, ko = false) {
   let s = shadow(20, 62.5, 12, 2);
   // Back leg kicked back, front leg striding.
   s += stick('M17 42L10 50L6 58', p.pants, 4.6, 2.2) + shoe(5, 59, 4.6);
@@ -1397,35 +1520,42 @@ function runnerZ(p) {
   s += zHead(28, 13, 10, p);
   // Sweatband with flying ends.
   s += path('M18.5 9Q28 4 37.5 9L37 12.5Q28 8 19 12.5Z', RED, { sw: 1.4 }) + path('M19 10L11 6L14 11L10 14Z', RED, { sw: 1.3 });
-  s += zFace(28, 13, 10);
+  s += zFace(28, 13, 10, { ko });
   // Tongue flapping.
-  s += path('M33.5 18.5Q35 23 32 23.5Q30 22 31 18.8Z', '#ff7a9a', { sw: 1.1 });
+  if (!ko) s += path('M33.5 18.5Q35 23 32 23.5Q30 22 31 18.8Z', '#ff7a9a', { sw: 1.1 });
+  else s += dizzy(28, 2, 10);
   s += arm('M24 26Q32 22 38 16', p.skin, 3.8, 24, 26, hand(38.5, 15, 2.8, p.skin));
   s += line('M2 20h6M0 27h7M3 34h5', '#ffffff', 1.8, { op: 0.8 });
   return s;
 }
 
-function bruteZ(p) {
+function bruteZ(p, ko = false) {
   let s = shadow(32, 70.5, 22, 2.6);
   s += stick('M24 56L22 67', p.pants, 9, 2.4) + shoe(21, 68, 7);
   s += arm('M22 30Q34 34 46 44', p.skin, 9, 22, 30, hand(48, 46, 6.5, p.skin));
   // Barrel body with a torn tank top.
   s += path('M10 34Q8 18 24 16H40Q56 18 54 36L52 58H12Z', p.skin, { sw: 2.4 });
   s += path('M14 34Q14 26 20 24L24 34H40L44 24Q50 26 50 34L49 56L44 59L40 55L34 60L28 55L22 59L15 56Z', p.shirt, { sw: 2 });
-  s += path('M14 36Q14 28 18 25L16 56H15Z', O, { op: 0.1 }) + circ(38, 44, 4, dk(p.shirt, 0.08)) + stitch(20, 40, 26, 46);
+  // Lumberjack plaid.
+  s += line('M20 30V56M30 36V57M40 36V55M46 30V56', dk(p.shirt, 0.3), 1.8, { op: 0.55 }) + line('M16 42H48M15.5 50H48.5', dk(p.shirt, 0.3), 1.8, { op: 0.55 });
+  s += line('M25 36V57M35 36V57M16 46H48', '#ffd2a8', 0.9, { op: 0.45 });
+  s += path('M14 36Q14 28 18 25L16 56H15Z', O, { op: 0.1 }) + stitch(20, 40, 26, 46);
   s += stick('M40 56L42 67', p.pants, 9, 2.4) + shoe(43, 68, 7);
   // Little head sunk into shoulders.
   s += zHead(36, 14, 10, p, { noEar: true });
   s += path('M28 6Q32 2 36 5Q40 1 44 6', 'none', { sw: 2.4, stroke: p.hair, cap: true });
-  s += zFace(36, 14, 10, { brow: true, mouth: false });
-  s += path('M35 19Q40 22 45 18', 'none', { sw: 1.8, cap: true }) + path('M37 19.6l1 -3l1 3z', WHITE, { sw: 0.8 }) + path('M42 19.4l1 -3l1 2.8z', WHITE, { sw: 0.8 });
+  if (ko) s += zFace(36, 14, 10, { ko }) + dizzy(36, 3, 10);
+  else {
+    s += zFace(36, 14, 10, { brow: true, mouth: false });
+    s += path('M35 19Q40 22 45 18', 'none', { sw: 1.8, cap: true }) + path('M37 19.6l1 -3l1 3z', WHITE, { sw: 0.8 }) + path('M42 19.4l1 -3l1 2.8z', WHITE, { sw: 0.8 });
+  }
   // Bandage.
   s += rect(26, 9, 7, 4, '#f4ead4', { sw: 1.2, rx: 1, tf: 'rotate(-20 29 11)' });
   s += arm('M44 28Q53 34 55 46', p.skin, 9.4, 44, 28, hand(55.5, 50, 7, p.skin));
   return s;
 }
 
-function spitterZ(p) {
+function spitterZ(p, ko = false) {
   let s = shadow(21, 54.5, 13, 2);
   s += stick('M17 44L15 51', p.pants, 5, 2.2) + shoe(15, 52.5);
   s += arm('M14 30Q8 36 9 42', p.skin, 3.6, 14, 30, hand(9, 43.5, 2.6, p.skin));
@@ -1439,7 +1569,8 @@ function spitterZ(p) {
   s += circ(15, 11, 1.4, p.shade) + circ(19, 7, 1, p.shade);
   // Puffed cheeks.
   s += circ(31, 19, 4.6, p.light, { sw: 1.4 }) + circ(21, 20, 3.8, p.light, { sw: 1.3 });
-  s += circ(27, 11.5, 3.4, WHITE, { sw: 1.3 }) + circ(28, 12, 1.3, O) + circ(20, 12, 2.4, WHITE, { sw: 1.2 }) + circ(20.4, 12.6, 0.9, O);
+  if (ko) s += xEye(27.5, 12, 2.6) + xEye(20.2, 12.4, 1.9) + dizzy(23, 3, 11);
+  else s += circ(27, 11.5, 3.4, WHITE, { sw: 1.3 }) + circ(28, 12, 1.3, O) + circ(20, 12, 2.4, WHITE, { sw: 1.2 }) + circ(20.4, 12.6, 0.9, O);
   // Pursed lips and drool.
   s += ell(27, 21.5, 2.6, 1.8, '#6a2a3a', { sw: 1.2 });
   s += path('M27 23Q28.6 28 27.4 31Q26.2 32.6 25.6 30.6Q26.4 27 25.8 23.4Z', '#c6f04a', { sw: 1.2 }) + circ(26.4, 33.4, 1.3, '#c6f04a', { sw: 0.9 });
@@ -1448,7 +1579,7 @@ function spitterZ(p) {
   return s;
 }
 
-function hordeZ(p, v) {
+function hordeZ(p, v, ko = false) {
   const shirt = HORDE_SHIRTS[v % HORDE_SHIRTS.length];
   let s = shadow(14, 37, 8, 1.6);
   s += stick('M11 30L10 34', p.pants, 3.6, 2) + ell(10.5, 35, 3.4, 1.8, '#4a3b34', { sw: 1.3 });
@@ -1459,7 +1590,8 @@ function hordeZ(p, v) {
   if (v % 4 === 1) s += path('M8 6Q15 -1 22 6Q15 3 8 6Z', RED, { sw: 1.3 }) + line('M22 6l4 1', O, 1.6);
   else if (v % 4 === 2) s += circ(15, 2, 2.4, GOLD, { sw: 1.2 }) + path('M9 6Q15 0 21 6', 'none', { sw: 1.8, stroke: p.hair, cap: true });
   else s += path('M10 4Q13 0 16 3Q18 0 21 4', 'none', { sw: 1.8, stroke: p.hair, cap: true });
-  s += zFace(15, 11, 9);
+  s += zFace(15, 11, 9, { ko });
+  if (ko) s += dizzy(15, 1, 9);
   s += arm('M14 23Q20 24 24 26', p.skin, 3.2, 14, 23, hand(25, 26.5, 2.3, p.skin));
   return s;
 }
@@ -1471,19 +1603,20 @@ const ZVB = { walker: [40, 56], runner: [40, 64], brute: [64, 72], spitter: [44,
  * kinds: walker 40×56, runner 40×64, brute 64×72, spitter 44×56, horde 28×38, golden 40×56.
  * Arms are <g class="z-arm"> with the shoulder as transform-origin. Golden adds
  * <g class="z-sparkle">. variant (0..3, horde only) swaps shirt and hat.
+ * ko: knocked out (X eyes, tongue out, <g class="z-dizzy"> stars over the head) for the bonk fall.
  */
-export function zombieSvg(kind = 'walker', { flip = false, variant = 0 } = {}) {
+export function zombieSvg(kind = 'walker', { flip = false, variant = 0, ko = false } = {}) {
   const k = ZVB[kind] ? kind : 'walker';
   const [W, H] = ZVB[k];
   const p = ZPAL[k];
   let s;
-  if (k === 'runner') s = runnerZ(p);
-  else if (k === 'brute') s = bruteZ(p);
-  else if (k === 'spitter') s = spitterZ(p);
-  else if (k === 'horde') s = hordeZ(p, variant);
-  else s = walkerZ(p, k === 'golden');
+  if (k === 'runner') s = runnerZ(p, ko);
+  else if (k === 'brute') s = bruteZ(p, ko);
+  else if (k === 'spitter') s = spitterZ(p, ko);
+  else if (k === 'horde') s = hordeZ(p, variant, ko);
+  else s = walkerZ(p, ko);
   if (k === 'golden') {
-    s = ell(20, 30, 19.5, 25.5, '#fff3b0', { op: 0.28 }) + ell(20, 28, 14, 19, '#fff8d8', { op: 0.45 }) + s;
+    s = ell(20, 30, 19.5, 25.5, '#ffc23a', { op: 0.24 }) + ell(20, 28, 14, 19, '#ffe27a', { op: 0.4 }) + s;
     s += path('M17 6Q20 4 24 5', 'none', { sw: 2, stroke: '#ffffff', op: 0.9, cap: true });
     s += g(sparkle(5, 10, 4) + sparkle(35, 5, 3.4) + sparkle(5, 38, 3) + sparkle(36, 46, 2.6), { cls: 'z-sparkle' });
   }
@@ -1493,12 +1626,17 @@ export function zombieSvg(kind = 'walker', { flip = false, variant = 0 } = {}) {
 
 // --- Threat badges ---------------------------------------------------------------------------
 
-const THREAT_BG = { runner: '#ff9d5c', brute: '#a98bff', spitter: '#ffd84d', horde: '#ff86a8' };
+/** Each threat badge is ringed in the colour of the class that counters it (CLASSES[THREATS[t].by].color). */
+const THREAT_RING = { runner: RED, brute: BLUE, spitter: GREEN, horde: YELLOW };
 
-/** Round 24×24 badge of a threat's zombie head: runner | brute | spitter | horde. */
+/**
+ * Round 24×24 badge of a threat's zombie head: runner | brute | spitter | horde.
+ * The bright ring (countering class colour) keeps it readable on dark UI too.
+ */
 export function threatIconSvg(threat) {
-  const bg = THREAT_BG[threat] || '#cccccc';
-  let s = circ(12, 12, 11, bg, { sw: 1.6 }) + path('M4.5 8A9 9 0 0 1 16 3.6', 'none', { sw: 1.6, stroke: '#ffffff', op: 0.45, cap: true });
+  const ring = THREAT_RING[threat] || '#a3acb6';
+  let s = circ(12, 12, 11.2, ring, { sw: 1.3 }) + circ(12, 12, 8.3, mix(ring, '#ffffff', 0.72), { sw: 1 });
+  s += path('M5.2 7.4A8.6 8.6 0 0 1 14.6 3.4', 'none', { sw: 1.5, stroke: '#ffffff', op: 0.55, cap: true });
   const p = ZPAL.walker;
   const head = (cx, cy, r) => circ(cx, cy, r + 0.8, O) + circ(cx, cy, r, p.shade) + circ(cx + r * 0.08, cy - r * 0.12, r * 0.86, p.skin);
   const eyes = (cx, cy, r) => circ(cx - r * 0.38, cy - r * 0.1, r * 0.3, WHITE, { sw: 0.8 }) + circ(cx - r * 0.34, cy - r * 0.06, r * 0.12, O) + circ(cx + r * 0.36, cy - r * 0.14, r * 0.22, WHITE, { sw: 0.8 }) + circ(cx + r * 0.38, cy - r * 0.1, r * 0.09, O);
@@ -1517,23 +1655,24 @@ export function threatIconSvg(threat) {
   } else {
     s += head(6.8, 13.4, 4.4) + eyes(6.8, 13.6, 4.4) + head(17.2, 13.4, 4.4) + eyes(17.2, 13.6, 4.4);
     s += head(12, 10, 5.2) + eyes(12, 10.2, 5.2) + path('M10 13.2Q12 14.8 14.2 13Z', '#6a2a3a', { sw: 0.7 });
-    s += path('M2.2 18.5Q12 23 21.8 18.5', 'none', { sw: 0 });
   }
   return svg(24, 24, s, { cls: `threat-icon t-${threat}` });
 }
 
 // --- Raid backdrops --------------------------------------------------------------------------
+//
+// Each strip is 960×220 with the ground line at y = 180, drawn for xMidYMax slice:
+// a phone shows only about x 260..700 (667 wide) to 215..745 (844 wide), a desktop
+// window less still (about 290..670). So each zone's landmark stands in x ≈ 300..660,
+// tall enough to read above the characters (feet ≈ y 196, heads ≈ y 150), and the
+// outer thirds only add more of the same place.
 
-function skyBand(top = '#7fd0ff', bottom = SKY2) {
+function skyBand(top = '#72cafb', bottom = '#d4f4ff') {
   const id = uid('bsky');
   return `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bottom}"/></linearGradient></defs>` + rect(-40, -40, 1040, 260, `url(#${id})`);
 }
 
-function clouds(r, n, y0, y1) {
-  let s = '';
-  for (let i = 0; i < n; i++) s += cloud(60 + (i * 900) / n + r() * 60, y0 + r() * (y1 - y0), 0.7 + r() * 0.5);
-  return s;
-}
+const cloudsAt = (list) => list.map(([x, y, k]) => cloud(x, y, k)).join('');
 
 function tree(x, by, s = 1, c = '#4fae45') {
   return stick(`M${x} ${by}V${by - 22 * s}`, WOOD_D, 5 * s, 2.4) + blob([[x, by - 34 * s, 16 * s], [x - 13 * s, by - 24 * s, 11 * s], [x + 13 * s, by - 25 * s, 12 * s]], c, { sw: 2.6, shade: dk(c, 0.18), light: lt(c, 0.25) });
@@ -1543,8 +1682,18 @@ function bush(x, by, s = 1) {
   return blob([[x - 9 * s, by - 6 * s, 8 * s], [x, by - 10 * s, 10 * s], [x + 10 * s, by - 6 * s, 8 * s]], '#5aab3e', { sw: 2.4, shade: '#4a9634', light: '#79c654' });
 }
 
-function ground(top, fill, edge) {
-  return rect(-40, 180, 1040, 60, fill) + rect(-40, 178, 1040, 6, top, { sw: 0 }) + line('M-40 178H1000', edge || O, 2.6);
+/** A wall block: lit top edge, shaded right side, optional darker plinth (height). */
+function block(x, y, w, h, c, plinth = 0, sw = 2.6) {
+  let s = rect(x, y, w, h, c);
+  s += rect(x + 1.3, y + 1.3, w - 2.6, 3.4, lt(c, 0.45));
+  s += rect(x + w - Math.min(14, w * 0.14) - 1.3, y + 1.3, Math.min(14, w * 0.14), h - 2.6, O, { op: 0.09 });
+  if (plinth) s += rect(x + 1.3, y + h - plinth, w - 2.6, plinth - 1.3, dk(c, 0.16));
+  return s + rect(x, y, w, h, 'none', { sw });
+}
+
+/** The ground strip below y = 178: a lit lip, the fill, a darker foot, and a crisp edge line. */
+function groundBase(lip, fill, foot, edge) {
+  return rect(-40, 178, 1040, 50, fill) + rect(-40, 178, 1040, 5, lip) + rect(-40, 212, 1040, 12, foot) + line('M-40 178H1000', edge, 2.4);
 }
 
 function picnicTable(x, by) {
@@ -1564,15 +1713,59 @@ function umbrella(x, by, c1 = RED, c2 = WHITE) {
   return s + circ(x, by - 47, 2.4, GOLD, { sw: 1.2 });
 }
 
+/** The Picnic Grove bandstand: striped roof, white posts, a bulb-lit valance. */
+function gazebo(cx, by) {
+  let s = shadow(cx, by, 92, 5);
+  const top = by - 142;
+  const eave = by - 86;
+  // Floor shadow seen between the posts, then the platform and steps.
+  s += rect(cx - 74, by - 86, 148, 72, '#5f9e4c', { op: 0.35 });
+  s += rect(cx - 84, by - 16, 168, 13, WOOD, { sw: 2.6, rx: 3 }) + rect(cx - 82, by - 14.4, 164, 3.6, WOOD_L, { rx: 1.5 }) + line(`M${cx - 80} ${by - 7}H${cx + 80}`, WOOD_D, 1.4);
+  s += rect(cx - 22, by - 5, 44, 6, WOOD_L, { sw: 2, rx: 1.5 });
+  const xs = [cx - 74, cx - 44, cx - 15, cx + 15, cx + 44, cx + 74];
+  for (let i = 0; i < xs.length - 1; i++) {
+    if (i === 2) continue;
+    const a = xs[i] + 3.5;
+    const b = xs[i + 1] - 3.5;
+    for (let x = a + 4; x < b - 1; x += 6) s += rect(x - 1.1, by - 36, 2.2, 21, WHITE, { sw: 1 });
+    s += rect(a, by - 39, b - a, 5, WHITE, { sw: 1.8 });
+  }
+  for (const x of xs) s += rect(x - 3.5, by - 88, 7, 73, WHITE, { sw: 2.2 }) + rect(x + 0.8, by - 86.5, 2, 70, O, { op: 0.1 });
+  // Roof: stripes from the apex to the eave.
+  const M = 10;
+  for (let i = 0; i < M; i++) {
+    const xa = cx - 98 + (196 * i) / M;
+    const xb = cx - 98 + (196 * (i + 1)) / M;
+    const c = i % 2 ? WHITE : RED;
+    const fill = i >= 7 ? dk(c, 0.12) : i < 2 ? lt(c, 0.1) : c;
+    s += path(`M${cx} ${top}Q${f(cx + (xa - cx) * 0.36)} ${eave - 20} ${f(xa)} ${eave}L${f(xb)} ${eave}Q${f(cx + (xb - cx) * 0.36)} ${eave - 20} ${cx} ${top}Z`, fill);
+  }
+  s += path(`M${cx - 98} ${eave}Q${f(cx - 35.3)} ${eave - 20} ${cx} ${top}Q${f(cx + 35.3)} ${eave - 20} ${cx + 98} ${eave}Z`, 'none', { sw: 3 });
+  s += path(`M${cx - 6} ${top + 12}Q${cx - 22} ${eave - 20} ${cx - 56} ${eave - 6}`, 'none', { sw: 3, stroke: '#ffffff', op: 0.4, cap: true });
+  // Valance scallops and bulbs.
+  let vd = `M${cx - 100} ${eave - 3}L${cx + 100} ${eave - 3}L${cx + 100} ${eave}`;
+  for (let k = 11; k >= 0; k--) {
+    const xa = cx - 100 + (200 * k) / 12;
+    const xb = cx - 100 + (200 * (k + 1)) / 12;
+    vd += `Q${f((xa + xb) / 2)} ${eave + 13} ${f(xa)} ${eave}`;
+  }
+  s += path(vd + 'Z', GOLD, { sw: 2.4 });
+  for (let k = 0; k < 12; k++) s += bulb(cx - 100 + (200 * (k + 0.5)) / 12, eave + 6, true, 2);
+  s += flag(cx, top + 2, 22, GREEN, 1);
+  return s;
+}
+
 function suburbHouse(x, by, w, h, wall, roof, r) {
-  let s = rect(x, by - h, w, h, wall, { sw: 2.6 }) + rect(x + w - 10, by - h, 10, h, O, { op: 0.08 });
+  let s = block(x, by - h, w, h, wall, 6);
   s += path(`M${x - 8} ${by - h + 2}L${x + w / 2} ${by - h - w * 0.42}L${x + w + 8} ${by - h + 2}Z`, roof, { sw: 2.6 });
+  s += path(`M${x + w / 2} ${by - h - w * 0.42}L${x + w + 8} ${by - h + 2}L${x + w * 0.5 + 6} ${by - h + 2}Z`, O, { op: 0.12 });
   s += line(`M${x - 4} ${by - h - 1}L${x + w / 2} ${by - h - w * 0.38}`, lt(roof, 0.35), 2.4);
   if (r() < 0.6) s += rect(x + w * 0.7, by - h - w * 0.32, 8, 16, '#b86b5a', { sw: 2 });
   const dw = 14;
   s += rect(x + w / 2 - dw / 2, by - 26, dw, 26, dk(roof, 0.1), { sw: 2.2, rx: 1 }) + circ(x + w / 2 + 3.5, by - 13, 1.4, GOLD);
   for (const wx of [x + 8, x + w - 26]) {
     s += rect(wx, by - h + 14, 18, 16, '#bfeaff', { sw: 2.2 }) + line(`M${wx + 9} ${by - h + 14}V${by - h + 30}M${wx} ${by - h + 22}H${wx + 18}`, WHITE, 1.6);
+    s += rect(wx - 3, by - h + 30, 24, 4, WHITE, { sw: 1.6 }) + ell(wx + 9, by - h + 29, 9, 2.6, '#ff8fb8', { sw: 1.2 });
     if (r() < 0.35) s += g(rect(wx - 3, by - h + 19, 24, 5, WOOD, { sw: 1.6 }) + nail(wx, by - h + 21.5) + nail(wx + 18, by - h + 21.5), { tf: `rotate(${f((r() - 0.5) * 30)} ${wx + 9} ${by - h + 21})` });
   }
   return s;
@@ -1584,13 +1777,33 @@ function picket(x0, x1, by) {
   return s;
 }
 
-function cart(x, by, tipped) {
-  const c = `M${x - 14} ${by - 22}H${x + 14}L${x + 10} ${by - 8}H${x - 10}Z`;
-  let s = path(c, 'none', { sw: 2.2, stroke: '#7a8088' });
-  for (let i = 1; i < 5; i++) s += line(`M${x - 14 + i * 5.6} ${by - 22}L${x - 10 + i * 4} ${by - 8}`, '#9aa0a8', 1.2);
-  s += line(`M${x - 13} ${by - 15}H${x + 12}`, '#9aa0a8', 1.2) + stick(`M${x + 14} ${by - 22}L${x + 19} ${by - 27}`, RED, 2, 1.8);
-  s += line(`M${x - 10} ${by - 8}V${by - 3}M${x + 10} ${by - 8}V${by - 3}`, '#7a8088', 1.6) + circ(x - 9, by - 2.5, 2.5, RUBBER, { sw: 1.2 }) + circ(x + 9, by - 2.5, 2.5, RUBBER, { sw: 1.2 });
-  return tipped ? g(s, { tf: `rotate(-70 ${x + 12} ${by - 2})` }) : s;
+/** The Suburbs water tower: four legs, a round tank with a heart, a red cap. */
+function waterTower(cx, by) {
+  let s = '';
+  s += stick(`M${cx - 30} ${by}L${cx - 22} ${by - 92}M${cx + 30} ${by}L${cx + 22} ${by - 92}M${cx - 11} ${by}L${cx - 8} ${by - 92}M${cx + 11} ${by}L${cx + 8} ${by - 92}`, '#8a96a8', 4, 2.4);
+  s += line(`M${cx - 28} ${by - 20}L${cx + 26} ${by - 52}M${cx + 28} ${by - 20}L${cx - 26} ${by - 52}M${cx - 25} ${by - 58}L${cx + 24} ${by - 86}M${cx + 25} ${by - 58}L${cx - 24} ${by - 86}`, '#8a96a8', 2);
+  s += line(`M${cx - 26} ${by - 54}H${cx + 26}`, O, 4.4) + line(`M${cx - 26} ${by - 54}H${cx + 26}`, '#a9b4c4', 2.4);
+  const t = by - 150;
+  s += path(`M${cx - 44} ${t + 18}H${cx + 44}V${t + 54}Q${cx + 44} ${t + 66} ${cx} ${t + 68}Q${cx - 44} ${t + 66} ${cx - 44} ${t + 54}Z`, '#8ecff2', { sw: 2.8 });
+  s += path(`M${cx + 24} ${t + 20}H${cx + 42}V${t + 54}Q${cx + 40} ${t + 64} ${cx + 22} ${t + 67}Z`, O, { op: 0.1 }) + rect(cx - 40, t + 21, 8, 36, '#ffffff', { op: 0.35, rx: 3 });
+  s += line(`M${cx - 44} ${t + 36}H${cx + 44}`, '#5aa6d6', 1.6);
+  s += path(`M${cx} ${t + 54}c-11 -9 -18 -16 -14 -24c3 -6 11 -6 14 0c3 -6 11 -6 14 0c4 8 -3 15 -14 24z`, PINK, { sw: 2 }) + path(`M${cx - 9} ${t + 33}q2 -3 5 -2`, 'none', { sw: 1.6, stroke: '#ffffff', op: 0.8, cap: true });
+  s += path(`M${cx - 50} ${t + 20}L${cx} ${t - 6}L${cx + 50} ${t + 20}Z`, RED, { sw: 2.8 }) + path(`M${cx} ${t - 6}L${cx + 50} ${t + 20}H${cx + 18}Z`, O, { op: 0.12 });
+  s += stick(`M${cx} ${t - 6}V${t - 16}`, '#8a96a8', 1.6, 2) + circ(cx, t - 17, 2.6, GOLD, { sw: 1.2 });
+  s += line(`M${cx - 48} ${t + 70}H${cx + 48}`, O, 4.6) + line(`M${cx - 48} ${t + 70}H${cx + 48}`, '#a9b4c4', 2.6);
+  for (let x = cx - 44; x <= cx + 44; x += 8) s += line(`M${x} ${t + 70}V${t + 76}`, '#8a96a8', 1.2);
+  return s;
+}
+
+/** A shopping cart lying on its side (wheels toward the viewer's right). */
+function cartTipped(x, by) {
+  let s = path(`M${x - 22} ${by}L${x - 18} ${by - 26}H${x + 4}L${x + 8} ${by}Z`, '#c9ced6', { sw: 2.4 });
+  for (let i = 1; i < 4; i++) s += line(`M${x - 22 + i * 7.5} ${by - 1}L${x - 18 + i * 5.5} ${by - 25}`, '#8a909a', 1.3);
+  s += line(`M${x - 20} ${by - 13}H${x + 6}`, '#8a909a', 1.3);
+  s += stick(`M${x - 18} ${by - 26}L${x - 24} ${by - 34}`, RED, 2.4, 2);
+  s += stick(`M${x + 8} ${by - 4}H${x + 16}M${x + 6} ${by - 20}H${x + 14}`, '#8a909a', 2, 2);
+  s += circ(x + 18, by - 4, 3.6, RUBBER, { sw: 1.6 }) + circ(x + 16, by - 20, 3.6, RUBBER, { sw: 1.6 });
+  return s;
 }
 
 function lamp(x, by, h = 60) {
@@ -1598,179 +1811,290 @@ function lamp(x, by, h = 60) {
 }
 
 function palm(x, by) {
-  let s = rect(x - 9, by - 12, 18, 12, '#d86a5a', { sw: 2, rx: 2 }) + stick(`M${x} ${by - 12}Q${x + 3} ${by - 30} ${x} ${by - 46}`, WOOD, 3.6, 2.2);
-  for (const [dx, dy] of [[-18, 4], [18, 4], [-14, -6], [14, -6], [0, -10]]) s += path(`M${x} ${by - 46}Q${x + dx * 0.6} ${by - 56 + dy} ${x + dx} ${by - 44 + dy}Q${x + dx * 0.5} ${by - 48 + dy} ${x} ${by - 46}Z`, GREEN, { sw: 1.8 });
+  let s = rect(x - 10, by - 14, 20, 14, '#d86a5a', { sw: 2, rx: 2 }) + rect(x - 8, by - 12, 4, 10, '#ffffff', { op: 0.25 }) + stick(`M${x} ${by - 14}Q${x + 3} ${by - 34} ${x} ${by - 52}`, WOOD, 3.8, 2.2);
+  for (const [dx, dy] of [[-22, 6], [22, 6], [-17, -6], [17, -6], [0, -12]]) s += path(`M${x} ${by - 52}Q${x + dx * 0.6} ${by - 64 + dy} ${x + dx} ${by - 50 + dy}Q${x + dx * 0.5} ${by - 55 + dy} ${x} ${by - 52}Z`, GREEN, { sw: 1.8 });
   return s;
 }
 
 function container(x, by, w, c) {
   let s = rect(x, by - 22, w, 22, c, { sw: 2.2 });
   for (let i = x + 5; i < x + w - 2; i += 5) s += line(`M${i} ${by - 20}V${by - 2}`, dk(c, 0.2), 1.2);
-  return s + rect(x + w - 8, by - 20, 6, 18, O, { op: 0.1 });
+  return s + rect(x + 1, by - 21, w - 2, 3, lt(c, 0.35)) + rect(x + w - 8, by - 20, 6, 18, O, { op: 0.1 }) + rect(x, by - 22, w, 22, 'none', { sw: 2.2 });
 }
 
+/** A big harbour gantry crane with a container on its hook. */
 function crane(x, by, c) {
-  let s = stick(`M${x - 16} ${by}L${x - 12} ${by - 120}M${x + 16} ${by}L${x + 12} ${by - 120}`, c, 5, 2.4);
-  for (let y = by - 20; y > by - 120; y -= 22) s += line(`M${x - 15} ${y}L${x + 15} ${y - 18}M${x + 15} ${y}L${x - 15} ${y - 18}`, dk(c, 0.15), 1.6);
-  s += stick(`M${x - 70} ${by - 120}H${x + 80}`, c, 6, 2.4) + rect(x - 18, by - 136, 36, 16, c, { sw: 2.4, rx: 2 }) + rect(x - 12, by - 132, 10, 7, '#bfeaff', { sw: 1.4 });
-  s += line(`M${x + 58} ${by - 117}V${by - 70}`, O, 1.4) + rect(x + 52, by - 70, 12, 6, '#5a6070', { sw: 1.4 });
-  s += line(`M${x - 12} ${by - 136}L${x - 66} ${by - 122}M${x + 12} ${by - 136}L${x + 76} ${by - 122}`, O, 1.2);
+  let s = stick(`M${x - 30} ${by}L${x - 22} ${by - 128}M${x + 30} ${by}L${x + 22} ${by - 128}`, c, 6, 2.4);
+  for (let y = by - 20; y > by - 124; y -= 26) s += line(`M${x - 28} ${y}L${x + 27} ${y - 22}M${x + 28} ${y}L${x - 27} ${y - 22}`, dk(c, 0.18), 2);
+  s += stick(`M${x - 84} ${by - 132}H${x + 112}`, c, 8, 2.6) + line(`M${x - 80} ${by - 133.5}H${x + 108}`, lt(c, 0.35), 2);
+  s += line(`M${x - 6} ${by - 166}L${x - 80} ${by - 136}M${x + 6} ${by - 166}L${x + 108} ${by - 136}`, O, 1.6) + stick(`M${x} ${by - 128}V${by - 166}`, c, 4, 2.2);
+  s += block(x - 20, by - 150, 40, 18, c, 0, 2.4) + rect(x - 14, by - 146, 12, 8, '#bfeaff', { sw: 1.4 });
+  s += line(`M${x + 86} ${by - 128}V${by - 92}`, O, 1.6) + path(`M${x + 82} ${by - 92}h8l-2 6h-4z`, '#5a6070', { sw: 1.4 });
+  s += container(x + 62, by - 64, 48, BLUE) + line(`M${x + 86} ${by - 86}L${x + 66} ${by - 84}M${x + 86} ${by - 86}L${x + 106} ${by - 84}`, O, 1.2);
   return s;
 }
 
-function jetPlane(x, by, s = 1) {
-  const k = (n) => f(n * s);
-  let p = '';
-  p += path(`M${x - k(60)} ${by - k(16)}H${x + k(48)}Q${x + k(66)} ${by - k(16)} ${x + k(70)} ${by - k(8)}Q${x + k(66)} ${by} ${x + k(48)} ${by}H${x - k(52)}Q${x - k(60)} ${by} ${x - k(64)} ${by - k(6)}Z`, WHITE, { sw: 2.4 });
-  p += path(`M${x - k(52)} ${by - k(16)}L${x - k(66)} ${by - k(44)}H${x - k(54)}L${x - k(34)} ${by - k(16)}Z`, BLUE, { sw: 2.4 });
-  p += rect(x - k(58), by - k(9), k(118), k(3), BLUE);
-  for (let i = 0; i < 8; i++) p += circ(x - k(36) + i * k(10), by - k(10.5), k(1.8), '#5a8ac0');
-  p += path(`M${x + k(54)} ${by - k(14)}l${k(8)} 0l${k(4)} ${k(4)}h${k(-12)}z`, '#3a4a6a');
-  p += path(`M${x - k(14)} ${by - k(4)}L${x + k(18)} ${by - k(4)}L${x - k(4)} ${by + k(10)}L${x - k(20)} ${by + k(10)}Z`, '#e8eef4', { sw: 2 });
-  p += rect(x - k(8), by + k(4), k(16), k(7), STEEL, { sw: 1.6, rx: 3 });
-  p += line(`M${x - k(40)} ${by}V${by + k(10)}M${x + k(40)} ${by}V${by + k(10)}`, O, 1.6) + circ(x - k(40), by + k(11), k(3), RUBBER, { sw: 1.2 }) + circ(x + k(40), by + k(11), k(3), RUBBER, { sw: 1.2 });
-  return p;
+/** The harbour lighthouse on its rocks. */
+function lighthouse(cx, by) {
+  let s = blob([[cx - 30, by - 8, 12], [cx - 10, by - 12, 16], [cx + 14, by - 10, 14], [cx + 34, by - 6, 10]], '#a9a39a', { sw: 2.4, shade: '#8a847b', light: '#c8c2b8' });
+  const t = by - 136;
+  const body = `M${cx - 20} ${by - 14}L${cx - 13} ${t + 20}H${cx + 13}L${cx + 20} ${by - 14}Z`;
+  s += path(body, WHITE);
+  for (const [a, b] of [[0.12, 0.3], [0.48, 0.66]]) {
+    const ya = t + 20 + (by - 34 - t) * a;
+    const yb = t + 20 + (by - 34 - t) * b;
+    const wa = 13 + 7 * a;
+    const wb = 13 + 7 * b;
+    s += path(`M${f(cx - wa)} ${f(ya)}H${f(cx + wa)}L${f(cx + wb)} ${f(yb)}H${f(cx - wb)}Z`, RED);
+  }
+  s += path(`M${cx + 5} ${t + 20}H${cx + 13}L${cx + 20} ${by - 14}H${cx + 8}Z`, O, { op: 0.1 }) + path(body, 'none', { sw: 2.6 });
+  s += rect(cx - 3, by - 40, 6, 12, '#5a6070', { sw: 1.6, rx: 2 });
+  s += rect(cx - 19, t + 16, 38, 5, '#5a6070', { sw: 2 });
+  s += circ(cx, t + 6, 22, '#fff3a0', { op: 0.35 }) + rect(cx - 11, t - 2, 22, 18, '#fff6c8', { sw: 2.4 }) + line(`M${cx - 4} ${t - 1}V${t + 15}M${cx + 4} ${t - 1}V${t + 15}`, O, 1.2, { op: 0.5 });
+  s += path(`M${cx - 15} ${t - 2}Q${cx} ${t - 18} ${cx + 15} ${t - 2}Z`, RED, { sw: 2.4 }) + stick(`M${cx} ${t - 12}V${t - 20}`, '#5a6070', 1.4, 1.8) + circ(cx, t - 21, 2, GOLD, { sw: 1 });
+  return s;
+}
+
+function sailboat(x, by) {
+  let s = path(`M${x - 22} ${by - 8}H${x + 24}L${x + 16} ${by}H${x - 16}Z`, WHITE, { sw: 2.2 }) + rect(x - 18, by - 7, 36, 2.5, RED);
+  s += stick(`M${x} ${by - 8}V${by - 46}`, WOOD_D, 1.8, 1.8);
+  s += path(`M${x + 2} ${by - 44}L${x + 22} ${by - 12}H${x + 2}Z`, '#fffaf0', { sw: 2 }) + path(`M${x - 2} ${by - 38}L${x - 16} ${by - 12}H${x - 2}Z`, YELLOW, { sw: 2 });
+  return s;
+}
+
+function gull(x, y) {
+  return path(`M${x - 7} ${y}q4 -5 7 0q3 -5 7 0`, 'none', { sw: 2, stroke: '#5a6070', cap: true });
+}
+
+/** A big airliner in side view, nose to the right; (x, by) = the middle of the body's bottom. */
+function airliner(x, by) {
+  const L = x - 164;
+  const R = x + 164;
+  const T = by - 40;
+  let s = shadow(x, by + 22, 150, 4);
+  // Tail fin and stabiliser.
+  s += path(`M${L + 22} ${T + 4}L${L + 4} ${T - 56}H${L + 24}L${L + 66} ${T + 4}Z`, BLUE, { sw: 2.6 }) + path(`M${L + 12} ${T - 40}H${L + 26}L${L + 40} ${T - 18}H${L + 22}Z`, RED) + star(L + 22, T - 24, 5, GOLD, { sw: 1.2 });
+  s += path(`M${L + 22} ${T + 4}L${L + 4} ${T - 56}H${L + 24}L${L + 66} ${T + 4}Z`, 'none', { sw: 2.6 });
+  // Body.
+  const body = `M${L} ${T + 6}Q${L + 2} ${T} ${L + 24} ${T}H${R - 30}Q${R - 4} ${T} ${R + 6} ${T + 22}Q${R + 6} ${by} ${R - 24} ${by}H${L + 40}Q${L + 10} ${by} ${L} ${T + 16}Z`;
+  s += path(body, WHITE);
+  s += path(`M${L + 30} ${by - 9}H${R - 20}Q${R - 6} ${by - 9} ${R + 2} ${by - 14}Q${R} ${by} ${R - 24} ${by}H${L + 40}Q${L + 24} ${by} ${L + 16} ${by - 6}Z`, '#d9dfe8');
+  s += rect(L + 14, T + 18, R - L - 14, 5, BLUE) + rect(L + 20, T + 24, R - L - 26, 2.4, RED);
+  for (let wx = L + 44; wx < R - 44; wx += 11) s += rect(wx, T + 8, 5, 7, '#5a8ac0', { rx: 2.4 });
+  s += rect(L + 34, T + 6, 9, 19, 'none', { sw: 1.2, rx: 2, op: 0.5 }) + rect(R - 52, T + 6, 9, 19, 'none', { sw: 1.2, rx: 2, op: 0.5 });
+  s += path(`M${R - 24} ${T + 6}H${R - 12}Q${R - 4} ${T + 8} ${R} ${T + 14}H${R - 24}Z`, '#2f3a55', { sw: 1.4 });
+  s += path(body, 'none', { sw: 2.8 }) + line(`M${L + 24} ${T + 3.6}H${R - 36}`, '#ffffff', 2.6, { op: 0.8 });
+  // Wing, engine and gear.
+  s += path(`M${x - 28} ${by - 8}L${x + 40} ${by - 8}L${x - 30} ${by + 14}L${x - 56} ${by + 14}Z`, '#e8eef4', { sw: 2.4 });
+  s += rect(x - 6, by + 2, 52, 18, '#e8eef4', { sw: 2.4, rx: 9 }) + ell(x + 44, by + 11, 4, 8, '#3a4050', { sw: 1.8 }) + rect(x - 2, by + 4, 34, 3, '#ffffff', { op: 0.7, rx: 1.5 }) + rect(x + 6, by + 13, 26, 3, BLUE, { rx: 1.5 });
+  s += line(`M${x - 44} ${by}V${by + 18}M${R - 34} ${by}V${by + 18}`, O, 2.4) + circ(x - 48, by + 20, 4, RUBBER, { sw: 1.6 }) + circ(x - 40, by + 20, 4, RUBBER, { sw: 1.6 }) + circ(R - 34, by + 20, 4, RUBBER, { sw: 1.6 });
+  return s;
+}
+
+function controlTower(cx, by) {
+  let s = path(`M${cx - 12} ${by}L${cx - 8} ${by - 118}H${cx + 8}L${cx + 12} ${by}Z`, '#e8eef4', { sw: 2.6 }) + path(`M${cx + 2} ${by - 118}H${cx + 8}L${cx + 12} ${by}H${cx + 4}Z`, O, { op: 0.1 });
+  for (let y = by - 100; y < by - 8; y += 22) s += rect(cx - 3, y, 6, 8, '#bfeaff', { sw: 1.3 });
+  s += path(`M${cx - 26} ${by - 118}H${cx + 26}L${cx + 22} ${by - 126}H${cx - 22}Z`, '#cfd8e2', { sw: 2.2 });
+  s += path(`M${cx - 30} ${by - 150}H${cx + 30}L${cx + 24} ${by - 126}H${cx - 24}Z`, '#7fc4e8', { sw: 2.6 }) + line(`M${cx - 14} ${by - 149}L${cx - 12} ${by - 127}M${cx} ${by - 149}V${by - 127}M${cx + 14} ${by - 149}L${cx + 12} ${by - 127}`, '#2f5a7a', 1.6) + path(`M${cx - 26} ${by - 146}L${cx - 6} ${by - 146}L${cx - 14} ${by - 132}Z`, '#ffffff', { op: 0.35 });
+  s += path(`M${cx - 34} ${by - 150}L${cx - 24} ${by - 160}H${cx + 24}L${cx + 34} ${by - 150}Z`, '#5a6070', { sw: 2.4 });
+  s += stick(`M${cx} ${by - 160}V${by - 176}`, '#7a8088', 1.6, 2) + circ(cx, by - 177, 3, RED, { sw: 1.2 });
+  return s;
 }
 
 const BACKDROPS = {
   1(r) {
-    // Picnic Grove.
-    let s = skyBand() + sun(860, 40) + clouds(r, 5, 34, 80);
-    s += path(smooth([[-40, 150], [120, 112], [300, 136], [480, 104], [660, 132], [840, 108], [1000, 140]]) + 'L1000 190L-40 190Z', '#a9e08c', { sw: 2.2, stroke: '#86c46e' });
-    s += ell(560, 168, 90, 10, '#6fd0ff', { sw: 2.2, stroke: '#4aa8d8' }) + path('M500 166h30M580 170h40', 'none', { sw: 2, stroke: '#ffffff', op: 0.7, cap: true });
-    s += ell(560, 162, 6, 4, WHITE, { sw: 1.6 }) + circ(565, 158, 3, WHITE, { sw: 1.4 }) + path('M567.5 158l3 1l-3 1z', ORANGE);
-    for (const [x, sc] of [[60, 1.2], [210, 0.9], [420, 1.3], [700, 1], [900, 1.25]]) s += tree(x, 180, sc, r() < 0.5 ? '#4fae45' : '#5fbb4e');
-    s += bush(140, 180) + bush(330, 180, 0.8) + bush(790, 180, 0.9) + bush(980, 180);
-    s += picnicTable(300, 180) + umbrella(300, 158) + picnicTable(640, 180);
-    s += path('M690 180L720 172L740 180Z', '#d8a860', { sw: 1.8 }) + circ(728, 176, 3, RED, { sw: 1.2 });
-    s += ground('#8bd65a', GRASS, '#4f9a32') + path('M-40 196Q240 188 480 196T1000 194L1000 210Q720 202 480 210T-40 208Z', '#e8c48a', { op: 0.85 });
-    for (let i = 0; i < 26; i++) {
+    // Picnic Grove: a bandstand in the middle of a sunny meadow.
+    let s = skyBand() + sun(318, 48) + cloudsAt([[150, 40, 0.9], [452, 26, 0.7], [624, 52, 0.85], [800, 32, 0.9], [960, 56, 0.8]]);
+    s += path(smooth([[-40, 128], [120, 106], [300, 122], [470, 100], [650, 120], [820, 102], [1000, 124]]) + 'L1000 190L-40 190Z', '#c4ead0', { sw: 2, stroke: '#a2d6b6' });
+    const far = [];
+    for (let x = -30; x < 1000; x += 22) far.push([x, 132 + Math.sin(x * 0.05) * 4, 10 + ((x * 7) % 5)]);
+    s += blob(far, '#9ad884', { sw: 2, stroke: '#78b866' });
+    s += path(smooth([[-40, 150], [160, 140], [360, 150], [560, 138], [760, 148], [1000, 140]]) + 'L1000 190L-40 190Z', '#9adb72', { sw: 2.2, stroke: '#6fb24e' });
+    for (const [x, sc, c] of [[60, 1.2, '#4fae45'], [196, 1.0, '#5fbb4e'], [326, 1.35, '#4fae45'], [680, 1.25, '#5fbb4e'], [790, 1.0, '#4fae45'], [920, 1.2, '#5fbb4e']]) s += tree(x, 172, sc, c);
+    s += bush(130, 176) + bush(258, 176, 0.8) + bush(744, 176, 0.9) + bush(870, 176);
+    // A picnic blanket with a basket behind the squad.
+    s += path('M232 176L250 166H306L296 176Z', RED, { sw: 2 }) + path('M241 171H301M246 168.5L238 176M262 166L256 176M278 166L274 176', 'none', { sw: 1.6, stroke: WHITE, op: 0.9 }) + rect(276, 160, 14, 9, '#d8a860', { sw: 1.8, rx: 2 }) + path('M277 160Q283 152 289 160', 'none', { sw: 1.8 });
+    s += gazebo(480, 178);
+    s += umbrella(612, 176, BLUE, WHITE) + picnicTable(612, 178);
+    // Pond with a duck.
+    s += ell(842, 172, 60, 8, '#6fd0ff', { sw: 2.2, stroke: '#4aa8d8' }) + path('M806 171h22M852 174h26', 'none', { sw: 2, stroke: '#ffffff', op: 0.7, cap: true }) + ell(846, 167, 6, 4, WHITE, { sw: 1.6 }) + circ(851, 163, 3, WHITE, { sw: 1.4 }) + path('M853.5 163l3 1l-3 1z', ORANGE);
+    // Ground: grass lip, a dirt path the squad runs on, flowery verge.
+    s += groundBase('#93dc62', GRASS, '#6cbe44', '#4f9a32');
+    s += path('M-40 188Q240 184 480 188T1000 186L1000 206Q720 202 480 206T-40 204Z', '#ecca8e') + path('M-40 188Q240 184 480 188T1000 186', 'none', { sw: 2, stroke: '#c9a26a' }) + path('M-40 204Q240 208 480 206T1000 206', 'none', { sw: 2, stroke: '#c9a26a' });
+    for (let i = 0; i < 40; i++) s += ell(r() * 960, 191 + r() * 12, 2 + r() * 2, 1.1, '#c9a26a', { op: 0.7 });
+    for (let i = 0; i < 30; i++) {
       const x = r() * 960;
-      s += circ(x, 186 + r() * 30, 2, [WHITE, '#ffe066', '#ff9ccf'][i % 3], { sw: 0.8 });
+      const y = i % 2 ? 182 + r() * 3 : 209 + r() * 8;
+      s += circ(x, y, 2, [WHITE, '#ffe066', '#ff9ccf'][i % 3], { sw: 0.8 });
     }
     return s;
   },
   2(r) {
-    // Suburbs.
-    let s = skyBand() + clouds(r, 6, 26, 56);
-    s += path(smooth([[-40, 140], [160, 118], [380, 130], [600, 112], [820, 128], [1000, 120]]) + 'L1000 190L-40 190Z', '#a9e08c', { sw: 2, stroke: '#86c46e' });
+    // Suburbs: a street of little houses under the town water tower.
+    let s = skyBand() + cloudsAt([[140, 36, 0.9], [360, 24, 0.7], [650, 40, 0.8], [880, 30, 0.95]]);
+    const pale = ['#d9ecf5', '#e6e0f2', '#f2e3d8'];
+    for (let x = -30, i = 0; x < 990; x += 44, i++) {
+      const h = 14 + ((i * 7) % 3) * 6;
+      s += rect(x, 150 - h, 34, h, pale[i % 3], { sw: 1.6, stroke: '#a9c4d0' }) + path(`M${x - 3} ${150 - h}L${x + 17} ${136 - h}L${x + 37} ${150 - h}Z`, '#c9d6e6', { sw: 1.6, stroke: '#a9c4d0' });
+    }
+    s += path(smooth([[-40, 150], [200, 144], [420, 150], [640, 142], [860, 150], [1000, 146]]) + 'L1000 190L-40 190Z', '#a9e08c', { sw: 2, stroke: '#86c46e' });
+    s += waterTower(556, 170);
     const walls = ['#f7d38a', '#9ec9f5', '#f4a8a0', '#c3e39a', '#e3c3f5'];
     const roofs = [RED, '#5b6fb0', '#7a5a9a', '#d86a5a', '#4a8a7a'];
-    let x = 20;
-    for (let i = 0; i < 5; i++) {
-      const w = 110 + Math.floor(r() * 30);
-      s += suburbHouse(x, 168, w, 54 + Math.floor(r() * 20), walls[i], roofs[i], r);
-      if (i % 2 === 0) s += tree(x + w + 22, 168, 0.8);
-      x += w + 70;
-    }
-    s += picket(-40, 1000, 172);
-    s += stick('M250 180V160', '#7a8088', 2.4) + rect(242, 150, 18, 12, BLUE, { sw: 2, rx: 4 }) + rect(258, 146, 2, 8, RED);
-    s += rect(-40, 172, 1040, 8, '#8bd65a') + ground('#e9e3d6', '#7a7d88', '#9a958a');
-    s += rect(-40, 178, 1040, 10, '#e9e3d6') + line('M-40 188H1000', '#b8b2a6', 2.4);
-    for (let x2 = 0; x2 < 980; x2 += 60) s += line(`M${x2} 178V188`, '#c8c2b6', 1.4) + rect(x2 + 10, 203, 30, 4, '#ffd84d', { rx: 2 });
+    [[50, 120, 62], [228, 118, 58], [384, 132, 66], [622, 120, 60], [800, 126, 64]].forEach(([x, w, h], i) => (s += suburbHouse(x, 172, w, h, walls[i], roofs[i], r)));
+    s += tree(368, 172, 0.85) + tree(762, 172, 0.95, '#5fbb4e') + tree(196, 172, 0.7);
+    s += picket(-40, 1000, 178);
+    // Mailbox, a tipped bin and a tricycle.
+    s += stick('M360 180V160', '#7a8088', 2.4) + rect(351, 150, 20, 12, BLUE, { sw: 2, rx: 5 }) + rect(369, 145, 2.4, 9, RED, { sw: 0.8 });
+    s += g(rect(526, 160, 16, 20, '#6a9a7a', { sw: 2, rx: 2 }) + rect(524, 158, 20, 4, '#5a8a6a', { sw: 1.8, rx: 1.5 }), { tf: 'rotate(-80 534 180)' }) + ell(506, 177, 6, 2.6, '#c8b48a', { sw: 1.4 }) + circ(514, 175, 2.2, '#e8483f', { sw: 1 });
+    s += circ(706, 172, 6, RUBBER, { sw: 1.8 }) + circ(730, 174, 4, RUBBER, { sw: 1.6 }) + stick('M706 172L716 162L730 174M716 162L722 160', RED, 2, 1.8) + rect(712, 158, 8, 3, '#5a5a6a', { rx: 1.5 });
+    // Ground: sidewalk, curb, a grass verge and the edge of the road.
+    s += groundBase('#f6f0e4', '#ece4d4', '#7a7884', '#a89f90');
+    for (let x = 0; x < 980; x += 40) s += line(`M${x} 181V200`, '#d4cab8', 1.4);
+    s += rect(-40, 200, 1040, 4, '#d4ccbe') + line('M-40 200H1000', '#a89f90', 1.6) + rect(-40, 204, 1040, 8, '#7cc74e') + line('M-40 212H1000', '#4f9a32', 1.6);
+    for (let i = 0; i < 18; i++) s += circ(r() * 960, 207 + r() * 3, 1.8, [WHITE, '#ffe066', '#ff9ccf'][i % 3], { sw: 0.7 });
+    for (let x = 10; x < 980; x += 70) s += rect(x, 217, 34, 3, '#ffd84d', { rx: 1.5 });
     return s;
   },
   3(r) {
-    // Shopping Mall.
-    let s = skyBand() + sun(880, 36) + clouds(r, 4, 26, 60);
-    for (let i = 0; i < 8; i++) s += rect(i * 130 - 20, 90 + (i % 3) * 14, 90, 90, '#cfe2ee', { sw: 2, stroke: '#a8c4d4' });
-    s += rect(80, 66, 800, 112, '#f3e6d2', { sw: 2.8 }) + rect(80, 66, 800, 14, '#5fc7c0', { sw: 2.4 }) + rect(80, 80, 800, 6, PINK);
-    for (let i = 0; i < 10; i++) {
-      const wx = 100 + i * 78;
-      if (i === 4 || i === 5) continue;
-      s += rect(wx, 98, 60, 62, '#bfeaff', { sw: 2.4 }) + path(`M${wx + 8} 158L${wx + 34} 100M${wx + 26} 158L${wx + 52} 100`, 'none', { sw: 4, stroke: '#ffffff', op: 0.45 });
-      s += path(`M${wx - 4} 98H${wx + 64}L${wx + 60} 108H${wx}Z`, i % 2 ? RED : '#5fc7c0', { sw: 2 });
+    // Shopping Mall: the glass atrium with its fountain, shops either side.
+    let s = skyBand('#76ccfb', '#d8f5ff') + sun(860, 38) + cloudsAt([[120, 30, 0.85], [300, 22, 0.7], [700, 34, 0.8]]);
+    const tow = ['#d7e7f2', '#e4def0', '#f0e2d6'];
+    for (const [x, w, h, i] of [[40, 50, 80, 0], [150, 40, 100, 1], [250, 54, 70, 2], [700, 48, 94, 1], [790, 60, 76, 0], [900, 44, 102, 2]]) {
+      s += rect(x, 150 - h, w, h, tow[i], { sw: 1.6, stroke: '#a9c4d4' });
+      for (let y = 160 - h; y < 140; y += 12) s += rect(x + 6, y, w - 12, 5, '#c4dcec', { rx: 1 });
     }
-    s += rect(408, 92, 144, 86, '#2a3a4a', { sw: 2.6 }) + rect(414, 98, 64, 80, '#bfeaff', { sw: 2 }) + rect(482, 98, 64, 80, '#bfeaff', { sw: 2 }) + line('M480 98V178', O, 2);
-    s += rect(380, 26, 200, 44, '#5fc7c0', { sw: 2.8, rx: 10 }) + circ(480, 48, 15, '#e3a55c', { sw: 2.4 }) + circ(480, 47, 11, PINK) + circ(480, 48, 5, '#5fc7c0', { sw: 2 });
-    s += bulbsOnLine(392, 26, 568, 26, 9, 2.2);
-    s += flag(100, 66, 30, RED) + flag(860, 66, 30, BLUE);
-    s += palm(60, 180) + palm(380, 180) + palm(580, 180) + palm(910, 180);
-    s += lamp(200, 180) + lamp(740, 180);
-    s += ground('#e8d9c2', '#7b7f8a', '#a89a88');
-    s += rect(-40, 178, 1040, 8, '#e8d9c2') + line('M-40 186H1000', '#a89a88', 2.2);
-    for (let x = 0; x < 980; x += 56) s += line(`M${x} 194L${x + 14} 220`, '#ffffff', 2.4, { op: 0.8 });
-    s += cart(300, 180) + cart(660, 180, true) + cart(690, 180);
+    // Facade with shops.
+    s += block(90, 76, 780, 102, '#f3e2cc', 10);
+    s += rect(80, 66, 800, 12, '#fff4e2', { sw: 2.6, rx: 3 }) + rect(80, 76, 800, 4, '#e2cfb2');
+    const aw = [RED, '#5fc7c0', YELLOW, PINK];
+    const shop = (x, i) => {
+      let t = rect(x, 104, 64, 62, '#bfeaff', { sw: 2.4 }) + path(`M${x + 8} 164L${x + 34} 106M${x + 26} 164L${x + 52} 106`, 'none', { sw: 4, stroke: '#ffffff', op: 0.45 });
+      t += rect(x + 22, 132, 20, 34, '#9fd8f0', { sw: 2 }) + line(`M${x + 32} 132V166`, O, 1.4);
+      t += path(`M${x - 4} 86H${x + 68}V96Q${x + 59} 104 ${x + 50} 96Q${x + 41} 104 ${x + 32} 96Q${x + 23} 104 ${x + 14} 96Q${x + 5} 104 ${x - 4} 96Z`, aw[i % 4], { sw: 2.2 });
+      t += path(`M${x + 14} 86V96M${x + 32} 86V96M${x + 50} 86V96`, 'none', { sw: 4, stroke: '#ffffff', op: 0.5 });
+      return t;
+    };
+    [100, 186, 272, 612, 698, 784].forEach((x, i) => (s += shop(x, i)));
+    for (const x of [92, 178, 264, 350, 604, 690, 776, 862]) s += rect(x - 4, 80, 8, 98, '#ead6bb', { sw: 1.6 }) + rect(x - 3, 81, 2, 96, '#ffffff', { op: 0.5 });
+    // The atrium: tall glass under an arch, a big round sign with a shopping bag.
+    s += path('M392 178V84Q480 34 568 84V178Z', '#5fc7c0', { sw: 2.8 });
+    s += path('M404 178V90Q480 50 556 90V178Z', '#bfeaff', { sw: 2.2 });
+    for (const x of [430, 455, 480, 505, 530]) s += line(`M${x} ${x === 480 ? 54 : 70 - Math.abs(480 - x) * 0.2}V178`, '#5fa8c8', 1.8);
+    s += line('M404 120H556M404 146H556', '#5fa8c8', 1.8) + path('M412 170L446 92M436 170L470 84', 'none', { sw: 6, stroke: '#ffffff', op: 0.4 });
+    s += rect(446, 140, 68, 38, '#9fd8f0', { sw: 2.2 }) + line('M480 140V178', O, 1.8);
+    s += circ(480, 52, 30, '#fff3a0', { op: 0.35 }) + circ(480, 52, 24, PINK, { sw: 2.8 }) + circ(480, 52, 19, '#ff9ccf');
+    s += rect(469, 47, 22, 18, WHITE, { sw: 2, rx: 2 }) + path('M474 48Q474 38 480 38Q486 38 486 48', 'none', { sw: 2.2 }) + rect(469, 47, 22, 4, YELLOW, { sw: 1.6 });
+    for (let i = 0; i < 12; i++) s += bulb(480 + Math.cos((i * Math.PI) / 6) * 27, 52 + Math.sin((i * Math.PI) / 6) * 27, true, 1.8);
+    s += flag(392, 84, 26, RED, -1) + flag(568, 84, 26, BLUE, 1);
+    s += palm(372, 178) + palm(588, 178) + lamp(170, 178) + lamp(780, 178);
+    // The fountain in front of the doors (the zone's souvenir).
+    const jet = (d) => line(d, '#3aa8e8', 5) + line(d, '#9fe4ff', 3) + line(d, '#ffffff', 1.1, { op: 0.8 });
+    s += jet('M474 158Q452 140 444 168') + jet('M486 158Q508 140 516 168') + jet('M480 156Q480 140 480 150');
+    s += path('M436 166H524L518 178H442Z', '#5fc7c0', { sw: 2.4 }) + rect(432, 162, 96, 6, WHITE, { sw: 2.2, rx: 3 }) + ell(480, 164, 42, 1.6, '#6fd0ff') + rect(475, 152, 10, 12, WHITE, { sw: 2 }) + path('M466 152H494L489 158H471Z', '#5fc7c0', { sw: 2 });
+    // Ground: warm plaza tiles.
+    s += groundBase('#fbecd2', '#efd9b8', '#e2c79e', '#b89a72');
+    for (let x = -20; x < 990; x += 30) s += line(`M${x} 183L${x - 14} 220`, '#dcc29a', 1.4);
+    s += line('M-40 196H1000M-40 208H1000', '#dcc29a', 1.4);
+    for (let x = 0; x < 960; x += 120) s += rect(x + 40, 197, 30, 10, '#f6e6c8', { op: 0.9 });
+    s += cartTipped(706, 182) + g(rect(256, 172, 14, 12, PINK, { sw: 1.8, rx: 1 }) + path('M259 172Q263 165 267 172', 'none', { sw: 1.6 }), { tf: 'rotate(-14 263 184)' });
     return s;
   },
   4(r) {
-    // Harbor.
-    let s = skyBand('#7fd0ff', '#d6f4ff') + sun(120, 40) + clouds(r, 4, 28, 60);
-    s += rect(-40, 112, 1040, 70, '#4fb8e8') + line('M-40 112H1000', '#3a98c8', 2.4);
-    for (let i = 0; i < 18; i++) s += path(`M${r() * 960} ${120 + r() * 50}q5 -3 10 0q5 3 10 0`, 'none', { sw: 2, stroke: '#ffffff', op: 0.55, cap: true });
-    s += path('M640 110L700 96L760 110Z', '#9fd890', { sw: 2, stroke: '#7ab86e' });
+    // Harbor: the big crane, the lighthouse on its rocks, the open sea.
+    let s = skyBand('#72cafb', '#e0f7ff') + sun(150, 40) + cloudsAt([[290, 28, 0.75], [560, 22, 0.7], [820, 40, 0.9]]);
+    s += rect(-40, 110, 1040, 72, '#4fb8e8') + rect(-40, 110, 1040, 9, '#7fd0f0') + line('M-40 110H1000', '#3a98c8', 2.2);
+    s += path('M690 112Q720 96 752 104Q780 94 820 112Z', '#9fd890', { sw: 2, stroke: '#7ab86e' });
+    for (let i = 0; i < 22; i++) s += path(`M${f(r() * 960)} ${f(124 + r() * 48)}q5 -3 10 0q5 3 10 0`, 'none', { sw: 2, stroke: '#ffffff', op: 0.55, cap: true });
     // Cargo ship on the horizon.
-    s += path('M380 112H520L508 124H392Z', '#e8483f', { sw: 2.2 }) + container(396, 112, 26, BLUE) + container(424, 112, 26, YELLOW) + container(452, 112, 26, GREEN) + rect(484, 92, 20, 20, WHITE, { sw: 2 });
-    s += path('M260 150L262 126L286 148Z', WHITE, { sw: 1.8 }) + path('M246 150H292L286 158H252Z', '#c98a4b', { sw: 1.8 });
-    s += crane(170, 180, RED) + crane(760, 180, BLUE);
-    s += container(300, 180, 46, ORANGE) + container(350, 180, 46, BLUE) + container(324, 158, 46, GREEN) + container(560, 180, 50, PURPLE) + container(614, 180, 46, YELLOW);
-    // Lighthouse.
-    s += path('M896 180L904 70H928L936 180Z', WHITE, { sw: 2.6 }) + path('M898 150H934L935 166H897ZM901 110H931L932 126H900Z', RED) + path('M896 180L904 70H928L936 180Z', 'none', { sw: 2.6 });
-    s += rect(902, 52, 28, 18, '#fff6c8', { sw: 2.4 }) + path('M898 52L916 38L934 52Z', RED, { sw: 2.4 }) + circ(916, 61, 12, '#fff3a0', { op: 0.4 });
-    for (const [x, y] of [[520, 50], [560, 64], [610, 44]]) s += path(`M${x - 7} ${y}q4 -5 7 0q3 -5 7 0`, 'none', { sw: 2, stroke: '#5a6070', cap: true });
-    s += ground(WOOD_L, WOOD, '#7a4a24');
-    for (let x = -40; x < 1000; x += 34) s += line(`M${x} 180V220`, WOOD_D, 1.6);
-    s += line('M-40 198H1000', WOOD_D, 1.6);
-    for (const x of [80, 480, 860]) s += rect(x - 6, 168, 12, 12, '#5a6070', { sw: 2, rx: 3 }) + ell(x, 168, 8, 3, '#5a6070', { sw: 2 });
-    s += circ(250, 166, 10, WHITE, { sw: 2.2 }) + circ(250, 166, 5, WOOD, { sw: 1.8 }) + path('M241 162l4 3M259 162l-4 3M244 174l3 -3M256 174l-3 -3', 'none', { sw: 3.4, stroke: RED });
+    s += path('M412 112H520L510 122H420Z', RED, { sw: 2 }) + container(424, 112, 22, BLUE) + container(448, 112, 22, YELLOW) + container(472, 112, 22, GREEN) + block(498, 94, 16, 18, WHITE, 0, 2) + rect(503, 86, 5, 8, '#5a6070', { sw: 1.4 });
+    s += sailboat(520, 158) + circ(780, 160, 6, RED, { sw: 2 }) + rect(778, 148, 4, 8, RED, { sw: 1.4 }) + path('M770 162q10 4 20 0', 'none', { sw: 1.6, stroke: '#ffffff', op: 0.7 });
+    s += container(60, 180, 48, ORANGE) + container(110, 180, 48, BLUE) + container(84, 158, 48, GREEN) + container(820, 180, 50, PURPLE) + container(874, 180, 46, YELLOW) + container(846, 158, 48, RED);
+    s += crane(344, 180, RED);
+    s += lighthouse(634, 180);
+    s += gull(430, 52) + gull(560, 70) + gull(740, 36) + gull(240, 64);
+    // Ground: the dock.
+    s += groundBase(WOOD_L, WOOD, WOOD_D, '#7a4a24');
+    for (let x = -40; x < 1000; x += 34) s += line(`M${x} 183V220`, WOOD_D, 1.6) + nail(x + 5, 187) + nail(x + 29, 187);
+    s += line('M-40 199H1000', WOOD_D, 1.6);
+    for (const x of [262, 720]) s += rect(x - 7, 166, 14, 14, '#5a6070', { sw: 2, rx: 3 }) + ell(x, 166, 9, 3.4, '#5a6070', { sw: 2 }) + rect(x - 5, 168, 3, 10, '#ffffff', { op: 0.25 });
+    s += ell(418, 176, 12, 4, '#d8b878', { sw: 2 }) + ell(418, 174, 8, 2.6, 'none', { sw: 1.4, stroke: '#a88a50' });
+    s += stick('M556 180V156', WOOD_D, 3, 2) + circ(556, 158, 9, WHITE, { sw: 2 }) + circ(556, 158, 4.4, WOOD, { sw: 1.6 }) + path('M548 154l4 3M564 154l-4 3M551 165l3 -3M561 165l-3 -3', 'none', { sw: 3, stroke: '#ff7a2a' });
     return s;
   },
   5(r) {
-    // Stadium.
-    let s = skyBand() + clouds(r, 4, 24, 50);
-    // Stands: a big bowl.
-    s += path('M-40 160L-40 64Q480 20 1000 64L1000 160Z', '#dfe7ee', { sw: 2.8 });
+    // Stadium: stands (pushed back, with a tiny crowd), a big scoreboard, floodlights.
+    let s = skyBand() + cloudsAt([[110, 30, 0.8], [850, 26, 0.85]]);
+    const pid = uid('crowd');
+    const skin = ['#f2c9a0', '#d9a27a', '#a8714a', '#7a4a2e', '#f8dcc0'];
+    const top = ['#e8483f', '#3d8bf0', '#f5b82e', '#36c06a', '#b25cff', '#ffffff'];
+    let tile = '';
+    for (let i = 0; i < 4; i++) {
+      const x = 4 + i * 7;
+      const y = 6 + ((i * 3) % 4);
+      tile += rect(x - 3, y + 2, 6, 6, mix(top[(i * 5) % 6], '#c8ecfc', 0.5), { rx: 2.5 }) + circ(x, y, 2.5, mix(skin[(i * 3) % 5], '#c8ecfc', 0.4));
+    }
+    s += `<defs><pattern id="${pid}" patternUnits="userSpaceOnUse" width="28" height="17">${tile}</pattern></defs>`;
+    s += path('M-40 160L-40 62Q480 22 1000 62L1000 160Z', mix('#dfe7ee', '#bfe6fa', 0.3), { sw: 2.4, stroke: '#9fb8c8' });
     const seatC = [RED, BLUE, YELLOW, '#5fc7c0'];
     const bow = (x, row) => -20 * (1 - ((x - 480) / 620) ** 2) * (1 - row * 0.16);
     for (let row = 0; row < 5; row++) {
-      const y0 = 74 + row * 17;
+      const y0 = 70 + row * 17;
       for (let sx = -40, k = 0; sx < 1000; sx += 120, k++) {
-        const c = lt(seatC[(row + k) % 4], 0.12);
-        const x1 = sx + 115;
-        s += path(`M${sx} ${f(y0 + bow(sx, row))}L${x1} ${f(y0 + bow(x1, row))}L${x1} ${f(y0 + 14 + bow(x1, row))}L${sx} ${f(y0 + 14 + bow(sx, row))}Z`, c, { sw: 1.4, stroke: dk(c, 0.3) });
-        s += line(`M${sx + 3} ${f(y0 + 7 + bow(sx, row))}L${x1 - 3} ${f(y0 + 7 + bow(x1, row))}`, dk(c, 0.18), 1.4, { dash: '5 3' });
+        const c = mix(seatC[(row + k) % 4], '#c8ecfc', 0.45);
+        const x1 = sx + 117;
+        const d = `M${sx} ${f(y0 + bow(sx, row))}L${x1} ${f(y0 + bow(x1, row))}L${x1} ${f(y0 + 15 + bow(x1, row))}L${sx} ${f(y0 + 15 + bow(sx, row))}Z`;
+        s += path(d, c) + path(d, `url(#${pid})`);
       }
     }
-    s += path('M-40 64Q480 20 1000 64L1000 52Q480 6 -40 52Z', '#5a6070', { sw: 2.4 });
-    for (const x of [90, 870]) {
-      s += stick(`M${x} 160V18`, '#7a8088', 5, 2.4);
-      s += rect(x - 24, 0, 48, 22, '#5a6070', { sw: 2.4, rx: 3 });
-      for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) s += circ(x - 16 + i * 10.6, 6 + j * 9, 3.6, '#fff6c8', { sw: 1.2 });
-      s += circ(x, 11, 30, '#fff6c8', { op: 0.2 });
+    s += path('M-40 62Q480 22 1000 62L1000 50Q480 8 -40 50Z', '#8a96a8', { sw: 2.2, stroke: '#6a7688' });
+    // Scoreboard: squad face vs zombie face.
+    s += stick('M440 84V110M520 84V110', '#7a8088', 4, 2.4);
+    s += block(392, 30, 176, 58, BLUE, 0, 2.8) + rect(402, 42, 156, 36, '#1d1a22', { sw: 2, rx: 3 });
+    for (let i = 0; i < 10; i++) s += bulb(402 + i * 17.3, 36, true, 1.8);
+    s += circ(436, 60, 12, '#f2c9a0', { sw: 2 }) + circ(432, 58, 1.6, O) + circ(440, 58, 1.6, O) + path('M431 63q5 4 10 0', 'none', { sw: 1.6, cap: true }) + path('M424 56q12 -14 24 0q-12 -6 -24 0z', RED, { sw: 1.6 });
+    s += circ(524, 60, 12, ZSKIN, { sw: 2 }) + circ(528, 58, 3, WHITE, { sw: 1.2 }) + circ(528.6, 58.4, 1.2, O) + circ(519, 58, 2, WHITE, { sw: 1 }) + path('M518 65q6 3 11 -1', 'none', { sw: 1.6, cap: true });
+    s += circ(480, 54, 2.6, '#ffe066') + circ(480, 66, 2.6, '#ffe066');
+    for (const x of [288, 672]) {
+      s += stick(`M${x} 160V30`, '#7a8088', 5, 2.4);
+      s += block(x - 26, 6, 52, 26, '#5a6070', 0, 2.4);
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) s += circ(x - 17 + i * 11.3, 13 + j * 11, 4, '#fff6c8', { sw: 1.2 });
+      s += circ(x, 19, 34, '#fff6c8', { op: 0.22 });
     }
-    s += rect(400, 20, 160, 52, '#2a2a3a', { sw: 2.8, rx: 6 }) + rect(410, 28, 140, 30, '#1a1714', { sw: 1.6 }) + bulbsOnLine(410, 66, 550, 66, 8, 2);
-    // Advert boards.
+    // Advert boards, soft colours so the runners stand out in front.
     const ad = [RED, YELLOW, BLUE, GREEN, PURPLE, ORANGE];
-    for (let i = 0; i < 10; i++) s += rect(-40 + i * 106, 156, 102, 22, ad[i % 6], { sw: 2.4 }) + rect(-30 + i * 106, 162, 40, 10, WHITE, { rx: 3, op: 0.8 });
-    s += ground('#6fc04a', GRASS_D, '#4f9a32');
-    for (let x = -40; x < 1000; x += 80) s += rect(x, 180, 40, 40, '#6cc044', { op: 0.7 });
-    s += line('M-40 200H1000', WHITE, 2.4, { op: 0.9 }) + ell(480, 210, 70, 12, 'none', { sw: 2.4, stroke: '#ffffff' });
-    s += circ(700, 176, 6, WHITE, { sw: 2 }) + path('M697 173l3 -1l3 2l-1 3h-4z', O);
-    s += cone(260, 180) + cone(280, 180);
+    for (let i = 0; i < 10; i++) {
+      const c = mix(ad[i % 6], '#ffffff', 0.5);
+      s += rect(-40 + i * 106, 154, 102, 24, c, { sw: 2.2 }) + rect(-40 + i * 106 + 2, 155.5, 98, 3, '#ffffff', { op: 0.5 });
+      s += i % 2 ? star(-40 + i * 106 + 26, 166, 6, '#ffffff', { sw: 1.2 }) + rect(-40 + i * 106 + 40, 162, 48, 8, '#ffffff', { rx: 4, op: 0.8 }) : circ(-40 + i * 106 + 24, 166, 6, '#ffffff', { sw: 1.2 }) + rect(-40 + i * 106 + 38, 160, 34, 5, '#ffffff', { rx: 2.5, op: 0.8 }) + rect(-40 + i * 106 + 38, 168, 50, 4, '#ffffff', { rx: 2, op: 0.6 });
+    }
+    // The pitch: mowing stripes, a touchline.
+    s += groundBase('#86d45a', '#6cc044', '#5aae38', '#4f9a32');
+    for (let x = -40; x < 1000; x += 80) s += rect(x, 183, 40, 30, '#7acc4e', { op: 0.8 });
+    s += line('M-40 192H1000', WHITE, 2.6, { op: 0.95 }) + path('M400 220Q480 200 560 220', 'none', { sw: 2.4, stroke: '#ffffff', op: 0.9 });
+    s += circ(760, 176, 6, WHITE, { sw: 2 }) + path('M757 173l3 -1l3 2l-1 3h-4z', O) + cone(214, 182) + cone(234, 182);
     return s;
   },
   6(r) {
-    // Airport.
-    let s = skyBand('#7fd0ff', '#d6f4ff') + sun(120, 36) + clouds(r, 5, 24, 70);
-    s += path(smooth([[-40, 140], [200, 124], [460, 134], [720, 120], [1000, 132]]) + 'L1000 190L-40 190Z', '#b9e6cf', { sw: 2, stroke: '#93cdb7' });
-    // Terminal.
-    s += rect(40, 104, 500, 74, '#e8eef4', { sw: 2.8 }) + path('M30 104Q290 76 550 104Z', '#5fc7c0', { sw: 2.6 });
-    for (let i = 0; i < 12; i++) s += rect(52 + i * 40, 116, 32, 40, '#bfeaff', { sw: 2 }) + line(`M${58 + i * 40} 152L${74 + i * 40} 120`, '#ffffff', 3, { op: 0.5 });
-    s += rect(520, 132, 70, 16, '#cfd8e2', { sw: 2.2 }) + rect(584, 128, 20, 26, '#cfd8e2', { sw: 2.2 });
-    // Hangar.
-    s += path('M640 178V120Q720 80 800 120V178Z', '#c8d0da', { sw: 2.8 }) + rect(664, 132, 112, 46, '#5a6070', { sw: 2.2 });
-    for (let x = 670; x < 776; x += 12) s += line(`M${x} 134V176`, '#7a8088', 1.4);
-    // Control tower.
-    s += path('M860 178L868 60H892L900 178Z', '#e8eef4', { sw: 2.8 }) + rect(850, 36, 60, 24, '#7fc4e8', { sw: 2.6 }) + path('M846 36L856 26H904L914 36Z', '#5a6070', { sw: 2.4 }) + stick('M880 26V10', '#7a8088', 1.6, 2) + circ(880, 9, 3, RED, { sw: 1.2 });
-    // Windsock.
-    s += stick('M932 180V120', '#e8e2d6', 2, 2) + path('M932 122L958 126L956 134L932 136Z', ORANGE, { sw: 2 }) + path('M941 123.4V135M950 124.8V134.6', 'none', { sw: 3, stroke: WHITE });
-    s += jetPlane(300, 168, 1.1);
-    s += ground('#8a8e98', '#6b6e78', '#4a4d55');
-    s += rect(-40, 178, 1040, 6, '#9a9ea8');
-    for (let x = 0; x < 980; x += 70) s += rect(x, 199, 40, 4, WHITE, { rx: 2, op: 0.9 });
-    s += line('M-40 190H1000', '#ffd84d', 2.4);
-    for (let x = 20; x < 980; x += 120) s += circ(x, 186, 2.4, '#fff3a0', { sw: 1 });
-    s += cone(620, 180) + rect(700, 166, 40, 10, BLUE, { sw: 2, rx: 2 }) + rect(704, 158, 14, 8, YELLOW, { sw: 1.6 }) + rect(720, 160, 14, 6, RED, { sw: 1.6 }) + circ(708, 178, 3, RUBBER, { sw: 1.2 }) + circ(734, 178, 3, RUBBER, { sw: 1.2 });
+    // Airport: a big jet at the terminal, the control tower behind.
+    let s = skyBand('#72cafb', '#e0f7ff') + sun(150, 34) + cloudsAt([[330, 24, 0.7], [560, 40, 0.75], [860, 30, 0.9]]);
+    s += path(smooth([[-40, 132], [200, 118], [460, 128], [720, 114], [1000, 126]]) + 'L1000 190L-40 190Z', '#c4ead0', { sw: 2, stroke: '#a2d6b6' });
+    // Terminal: long glass building with a wave roof.
+    s += block(70, 110, 820, 62, '#e8eef4', 8);
+    for (let x = 84; x < 880; x += 34) s += rect(x, 122, 26, 34, '#bfeaff', { sw: 1.8 }) + line(`M${x + 5} 152L${x + 19} 126`, '#ffffff', 3, { op: 0.5 });
+    s += path('M58 112Q180 92 300 106T540 104T780 102T902 112L902 118L58 118Z', '#5fc7c0', { sw: 2.6 }) + path('M70 110Q180 94 300 106', 'none', { sw: 2.4, stroke: '#ffffff', op: 0.5, cap: true });
+    s += controlTower(664, 176);
+    // Apron grass strip with lights.
+    s += rect(-40, 170, 1040, 10, '#8bd65a') + line('M-40 170H1000', '#6fb24e', 1.6);
+    for (let x = 16; x < 980; x += 48) s += circ(x, 175, 2.2, x % 96 < 48 ? '#7fc4ff' : '#ffe066', { sw: 1 });
+    s += airliner(446, 150);
+    // Ground: the apron, with taxi lines and chevrons.
+    s += groundBase('#b2afbd', '#8e8b9a', '#7e7b8a', '#5a5868');
+    s += line('M-40 199H1000', '#ffd84d', 3) + line('M-40 204H1000', '#ffd84d', 1.4, { dash: '10 8' });
+    for (let x = 30; x < 980; x += 110) s += path(`M${x} 186l10 5l-10 5h-6l10 -5l-10 -5z`, '#ffffff', { op: 0.8 });
+    for (let i = 0; i < 30; i++) s += ell(r() * 960, 184 + r() * 32, 3 + r() * 4, 1.2, '#7e7b8a', { op: 0.6 });
+    s += cone(312, 182) + cone(760, 182);
+    s += rect(842, 166, 40, 10, BLUE, { sw: 2, rx: 2 }) + rect(846, 158, 14, 8, YELLOW, { sw: 1.6 }) + rect(862, 160, 14, 6, RED, { sw: 1.6 }) + circ(850, 178, 3, RUBBER, { sw: 1.2 }) + circ(876, 178, 3, RUBBER, { sw: 1.2 });
     return s;
   },
 };

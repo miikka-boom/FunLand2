@@ -12,7 +12,7 @@
 //
 // play(name, opts): see SOUND_NAMES. Options used:
 //   knock {n: 1..3}   glow {grade: 1..3}   coin {pitch: 0..1}   gem {pitch: 0..1}
-//   flip {rarity: 'rookie'|'veteran'|'hero'|'legend'}   badge {big: bool}
+//   flip {rarity: 'rookie'|'veteran'|'hero'|'legend'}   badge {big: bool}   cheer {level: 1..3}
 
 const MIN_GAP = 0.03; // seconds between two plays of the same sound
 const MAX_VOICES = 180; // oscillators/noise sources alive at once
@@ -203,12 +203,18 @@ const SOUNDS = {
   knock(k, t, o) {
     const n = Math.max(1, Math.min(3, o.n | 0 || 1));
     const f = 150 * Math.pow(2, (3 * (n - 1)) / 12); // up a minor third per knock
-    k.tone(f, t, 0.2, { gain: 0.5, to: f * 0.55, slide: 0.12, attack: 0.002 });
-    k.tone(f * 2.3, t, 0.07, { type: 'triangle', gain: 0.14, attack: 0.001 });
-    k.noise(t, 0.06, { gain: 0.28, filter: { type: 'bandpass', freq: 800 + 300 * n, q: 1.2 } });
+    const v = Math.pow(10, (1.8 * (n - 1)) / 20) * 0.82; // and about 1.8 dB louder per knock
+    k.tone(f, t, 0.2 + 0.04 * n, { gain: 0.5 * v, to: f * 0.55, slide: 0.12, attack: 0.002 });
+    k.tone(f * 2.3, t, 0.07, { type: 'triangle', gain: 0.14 * v, attack: 0.001 });
+    k.noise(t, 0.06, { gain: 0.28 * v, filter: { type: 'bandpass', freq: 800 + 300 * n, q: 1.2 } });
     // A metal ring from the corner caps, brighter on each knock.
-    k.tone(1180 * (1 + 0.12 * (n - 1)), t + 0.005, 0.28, { gain: 0.035 + 0.01 * n, attack: 0.001 });
-    k.tone(1180 * 1.53 * (1 + 0.12 * (n - 1)), t + 0.005, 0.18, { gain: 0.02, attack: 0.001 });
+    k.tone(1180 * (1 + 0.12 * (n - 1)), t + 0.005, 0.28 + 0.06 * n, { gain: (0.035 + 0.01 * n) * v, attack: 0.001 });
+    k.tone(1180 * 1.53 * (1 + 0.12 * (n - 1)), t + 0.005, 0.18, { gain: 0.02 * v, attack: 0.001 });
+    if (n === 3) {
+      // The last knock lands with a bigger body: a low boom under it and a longer rattle.
+      k.thump(t, 95, 42, 0.32, 0.4, 0);
+      k.noise(t + 0.02, 0.16, { gain: 0.07, filter: { type: 'bandpass', freq: 520, q: 1.4 } });
+    }
   },
   glow(k, t, o) {
     const grade = Math.max(1, Math.min(3, o.grade | 0 || 1));
@@ -242,18 +248,18 @@ const SOUNDS = {
   coin(k, t, o) {
     const p = clamp01(o.pitch ?? 0.35);
     const f = m2f(penta(79, Math.round(p * 9))); // G5 up two octaves, pentatonic
-    k.tone(f, t, 0.15, { type: 'triangle', gain: 0.2, attack: 0.002 });
-    k.tone(f * 2, t + 0.004, 0.09, { gain: 0.08, attack: 0.002 });
-    k.tone(f * 3.01, t + 0.004, 0.04, { gain: 0.03, attack: 0.001 });
+    k.tone(f, t, 0.15, { type: 'triangle', gain: 0.46, attack: 0.002 });
+    k.tone(f * 2, t + 0.004, 0.09, { gain: 0.17, attack: 0.002 });
+    k.tone(f * 3.01, t + 0.004, 0.04, { gain: 0.05, attack: 0.001 });
   },
   gem(k, t, o) {
     const p = clamp01(o.pitch ?? 0.3);
     const f = m2f(93 + Math.round(p * 7));
-    k.tone(f, t, 0.4, { gain: 0.13, attack: 0.001 });
-    k.tone(f * 1.506, t + 0.012, 0.3, { gain: 0.07, attack: 0.001 });
-    k.tone(f * 2.42, t + 0.006, 0.18, { gain: 0.035, attack: 0.001 });
-    k.tone(f * 0.5, t, 0.12, { type: 'triangle', gain: 0.05, attack: 0.001 });
-    k.noise(t, 0.02, { gain: 0.05, filter: { type: 'highpass', freq: 6000 } });
+    k.tone(f, t, 0.4, { gain: 0.24, attack: 0.001 });
+    k.tone(f * 1.506, t + 0.012, 0.3, { gain: 0.12, attack: 0.001 });
+    k.tone(f * 2.42, t + 0.006, 0.18, { gain: 0.06, attack: 0.001 });
+    k.tone(f * 0.5, t, 0.12, { type: 'triangle', gain: 0.09, attack: 0.001 });
+    k.noise(t, 0.02, { gain: 0.08, filter: { type: 'highpass', freq: 6000 } });
   },
   badge(k, t, o) {
     const g = o.big ? 1.6 : 1;
@@ -296,18 +302,19 @@ const SOUNDS = {
     }
   },
   drumroll(k, t) {
-    // One noise source, struck faster and louder for 1.2 s.
+    // One noise source, struck faster and louder for 1.2 s, over a low tom swell.
     const hits = [];
     let at = t;
     let i = 0;
     while (at < t + 1.2) {
       const p = (at - t) / 1.2;
-      hits.push([at, 0.04 + 0.22 * p * p + (i % 2 ? 0 : 0.02), 0.05]);
+      hits.push([at, 0.09 + 0.3 * p * p + (i % 2 ? 0 : 0.035), 0.055]);
       at += 0.062 - 0.03 * p;
       i++;
     }
-    k.noise(t, 1.3, { hits, filter: { type: 'bandpass', freq: 2300, q: 0.7 } });
-    k.tone(196, t, 1.25, { type: 'triangle', gain: 0.025, attack: 1.0, hold: 1, release: 0.1 });
+    k.noise(t, 1.3, { hits, filter: { type: 'bandpass', freq: 2100, q: 0.7 } });
+    k.tone(196, t, 1.25, { type: 'triangle', gain: 0.06, attack: 1.0, hold: 1, release: 0.1 });
+    k.tone(98, t, 1.25, { gain: 0.08, attack: 1.1, hold: 1, release: 0.1 });
   },
   golden(k, t) {
     // A harp gliss up, then a hushed shimmering chord: "…wait".
@@ -327,15 +334,16 @@ const SOUNDS = {
     k.tone(m2f(72) * 2, t + 0.22, 0.3, { gain: 0.03 });
   },
   upgrade(k, t) {
+    // Two hammer clangs (bright partials, a soft knock under them), then a confetti pop.
     for (const d of [0, 0.17]) {
       const s = d ? 1.06 : 1;
-      [[620, 0.09, 0.3], [1580, 0.06, 0.22], [2540, 0.04, 0.16], [3710, 0.025, 0.1]].forEach(([fq, g, l]) => k.tone(fq * s, t + d, l, { gain: g, attack: 0.001 }));
-      k.noise(t + d, 0.04, { gain: 0.16, filter: { type: 'highpass', freq: 2500 } });
-      k.tone(160 * s, t + d, 0.08, { gain: 0.2, to: 90, attack: 0.001 });
+      [[620, 0.07, 0.3], [1580, 0.045, 0.22], [2540, 0.03, 0.16], [3710, 0.018, 0.1]].forEach(([fq, g, l]) => k.tone(fq * s, t + d, l, { gain: g, attack: 0.002 }));
+      k.noise(t + d, 0.035, { gain: 0.06, filter: { type: 'highpass', freq: 2500 } });
+      k.tone(160 * s, t + d, 0.07, { gain: 0.07, to: 90, attack: 0.002 });
     }
     const p = t + 0.36;
-    k.noise(p, 0.12, { gain: 0.18, filter: { type: 'bandpass', freq: 1500, to: 5000, q: 1 } });
-    k.tone(320, p, 0.08, { gain: 0.16, to: 960, slide: 0.05 });
+    k.noise(p, 0.12, { gain: 0.12, filter: { type: 'bandpass', freq: 1500, to: 5000, q: 1 } });
+    k.tone(320, p, 0.08, { gain: 0.12, to: 960, slide: 0.05 });
     k.sparkle(p + 0.04, 0.3, 5, 0.04);
   },
   levelUp(k, t) {
@@ -404,14 +412,19 @@ const SOUNDS = {
     k.crash(t + 1.08, 1.4, 0.1);
     k.sparkle(t + 1.15, 1.0, 14, 0.04, 96);
   },
-  cheer(k, t) {
-    // A crowd: three formant-ish noise bands swelling, plus a few "woo"s.
-    [[480, 1.2, 0.24], [1150, 1.5, 0.18], [2500, 2, 0.09]].forEach(([fq, q, g]) => k.noise(t, 1.0, { gain: g, attack: 0.18, hold: 1, release: 0.5, filter: { type: 'bandpass', freq: fq, q } }));
-    for (let i = 0; i < 5; i++) {
+  cheer(k, t, o) {
+    // A crowd: three formant-ish noise bands swelling, plus "woo"s and claps.
+    // opts.level 1..3: louder, longer and busier at each Glow-Up grade.
+    const lv = Math.max(1, Math.min(3, o.level | 0 || 1));
+    const g = [1, 1.35, 1.8][lv - 1];
+    const len = 0.9 + 0.25 * lv;
+    [[480, 1.2, 0.24], [1150, 1.5, 0.18], [2500, 2, 0.09]].forEach(([fq, q, gn]) => k.noise(t, len, { gain: gn * g, attack: 0.16, hold: 1, release: 0.45, filter: { type: 'bandpass', freq: fq, q } }));
+    for (let i = 0; i < 3 + 2 * lv; i++) {
       const f = 480 + Math.random() * 380;
-      k.tone(f, t + 0.05 + Math.random() * 0.25, 0.5 + Math.random() * 0.2, { type: 'triangle', gain: 0.02, to: f * 1.35, slide: 0.3, attack: 0.08, vib: { rate: 5 + Math.random() * 3, depth: 8 } });
+      k.tone(f, t + 0.05 + Math.random() * 0.25 * lv, 0.5 + Math.random() * 0.2, { type: 'triangle', gain: 0.02 * g, to: f * 1.35, slide: 0.3, attack: 0.08, vib: { rate: 5 + Math.random() * 3, depth: 8 } });
     }
-    for (let i = 0; i < 6; i++) k.noise(t + 0.1 + i * 0.09 + Math.random() * 0.04, 0.03, { gain: 0.06, filter: { type: 'bandpass', freq: 2000 + Math.random() * 1500, q: 2 } });
+    const claps = 4 + 4 * lv;
+    for (let i = 0; i < claps; i++) k.noise(t + 0.1 + (i * (len - 0.35)) / claps + Math.random() * 0.04, 0.03, { gain: 0.06 * g, filter: { type: 'bandpass', freq: 2000 + Math.random() * 1500, q: 2 } });
   },
   bonk(k, t) {
     k.tone(640, t, 0.14, { gain: 0.45, to: 170, slide: 0.12, attack: 0.001 });
@@ -448,23 +461,7 @@ export class Sfx {
         const AC = typeof window !== 'undefined' ? window.AudioContext || window.webkitAudioContext : null;
         if (!AC) return;
         const ctx = new AC();
-        const bus = ctx.createGain();
-        bus.gain.value = this._gain(this.vol);
-        const comp = ctx.createDynamicsCompressor();
-        comp.threshold.value = -16;
-        comp.knee.value = 10;
-        comp.ratio.value = 5;
-        comp.attack.value = 0.003;
-        comp.release.value = 0.18;
-        bus.connect(comp);
-        comp.connect(ctx.destination);
-        const len = Math.floor(ctx.sampleRate * 2);
-        const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-        const d = buf.getChannelData(0);
-        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-        this.ctx = ctx;
-        this.bus = bus;
-        this.noiseBuf = buf;
+        this._attach(ctx);
         // iOS wants a sound started inside the gesture: a silent blip.
         const src = ctx.createBufferSource();
         src.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
@@ -478,6 +475,32 @@ export class Sfx {
     } catch (e) {
       /* no audio: stay silent */
     }
+  }
+
+  /**
+   * Build the master chain (volume bus → compressor → destination) and the noise buffer
+   * on a context. unlock() uses it; tests and the level meter can pass an OfflineAudioContext.
+   */
+  _attach(ctx) {
+    const bus = ctx.createGain();
+    bus.gain.value = this._gain(this.vol);
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -16;
+    comp.knee.value = 10;
+    comp.ratio.value = 5;
+    comp.attack.value = 0.003;
+    comp.release.value = 0.18;
+    bus.connect(comp);
+    comp.connect(ctx.destination);
+    const len = Math.floor(ctx.sampleRate * 2);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.ctx = ctx;
+    this.bus = bus;
+    this.noiseBuf = buf;
+    this.voices = 0;
+    this.last = Object.create(null);
   }
 
   _gain(v) {

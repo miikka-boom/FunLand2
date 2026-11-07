@@ -107,7 +107,7 @@ export class Crew {
     const cheer = pre.cheer ? `<span class="sib">${icon('cheer')}Cheer +${Math.round(pre.cheer * 100)}%</span>` : '';
     el.innerHTML =
       `<div class="cr-left">` +
-      `<div class="cr-head"><button class="btn back" type="button" data-act="back">← Park</button>${s.threats.map(threatChip).join('')}${pre.rally ? '<span class="rally">RALLY!</span>' : ''}</div>` +
+      `<div class="cr-head"><button class="btn back" type="button" data-act="back">${icon('back')}Park</button>${s.threats.map(threatChip).join('')}${pre.rally ? '<span class="rally">RALLY!</span>' : ''}</div>` +
       `<div class="slots">${slots.join('')}</div><div class="cr-pw">${icon('star')}Squad <b>${Math.round(pre.S)}</b> vs threat <b>${Math.round(pre.T)}</b></div>` +
       `<div class="cr-hint">${s.threats.map((t) => `${CLASSES[THREATS[t].by].plural} beat ${THREATS[t].name}`).join(' · ')}${sibs}${cheer}</div>` +
       `<div class="crownodds o-${pre.label.id}">${WAVES.map((w, i) => `<div class="co"><span class="co-c">${icon('crown')}</span><b>${Math.round(waves[i] * 100)}%</b><small>${esc(w.name)}</small></div>`).join('<span class="co-arrow">›</span>')}<div class="co-all"><small>All 3</small><b>${Math.round(pre.three * 100)}%</b><span>${pre.label.name}</span></div></div>` +
