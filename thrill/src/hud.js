@@ -8,7 +8,7 @@ import { fmtNum, fmtTime } from './format.js';
 import { portraitSvg } from './portrait.js';
 import { chestSvg } from './chest-art.js';
 import { threatIconSvg } from './art.js';
-import { THREATS, CHESTS, CLASSES } from './config.js';
+import { THREATS, CHESTS, CLASSES, THREAT_STREAK } from './config.js';
 import { isCounter } from './raid.js';
 import { esc } from './ui.js';
 
@@ -74,7 +74,7 @@ export class Hud {
   _chestBtn(kind) {
     return (
       `<button class="chestbtn ${kind}" type="button" data-act="chest" data-k="${kind}" aria-label="${CHESTS[kind].name}">` +
-      `<span class="cart"></span><span class="ctxt"><small>${CHESTS[kind].short}</small><b class="cst"></b></span><span class="clv"></span></button>`
+      `<span class="cart"></span><span class="ctxt"><small>${CHESTS[kind].short}</small><b class="cst"></b></span><span class="clv"></span><span class="cgem"></span></button>`
     );
   }
 
@@ -163,12 +163,16 @@ export class Hud {
     this.el.best.classList.toggle('show', best.better);
     // Threats + odds.
     const pre = m.raidPreview();
-    const tKey = threats.join('+') + (pre.rally ? '!' : '');
+    const left = Math.max(1, s.threatLeft || 1);
+    const tKey = threats.join('+') + (pre.rally ? '!' : '') + left;
     if (this.cache.get('threats') !== tKey) {
       this.cache.set('threats', tKey);
+      // Pips: how many more raids these threats stay.
+      const pips = s.raids > 0 ? `<span class="streak" title="Raids left against these">${Array.from({ length: THREAT_STREAK }, (_, i) => `<i class="${i < left ? 'on' : ''}"></i>`).join('')}</span>` : '';
       this.el.threats.innerHTML =
         (pre.rally ? `<span class="rally">RALLY!</span>` : '') +
-        threats.map((t) => `<span class="chip t-${t}">${threatIconSvg(t)}<b>${THREATS[t].name}</b></span>`).join('');
+        threats.map((t) => `<span class="chip t-${t}">${threatIconSvg(t)}<b>${THREATS[t].name}</b></span>`).join('') +
+        pips;
     }
     const oddsHtml = crownPips(pre.odds) + `<span>${pre.label.name}</span>`;
     this._set(this.el.odds, 'odds', oddsHtml, true);
@@ -185,7 +189,15 @@ export class Hud {
       el.querySelector('.cart').innerHTML = chestSvg(kind, { grade: 0, open: false, glow: st.ready ? 0.6 : 0 });
       el.querySelector('.clv').textContent = `Lv ${st.level}`;
     }
+    // Before the first raid the chests wait quietly: one call to action at a time.
     el.classList.toggle('ready', st.ready);
+    el.classList.toggle('quiet', st.ready && m.s.raids === 0);
+    const gem = el.querySelector('.cgem');
+    const showGem = !st.ready && m.s.gems >= st.cost;
+    if (gem.dataset.v !== String(showGem ? st.cost : '')) {
+      gem.dataset.v = String(showGem ? st.cost : '');
+      gem.innerHTML = showGem ? `${icon('gem')}${st.cost}` : '';
+    }
     const cst = el.querySelector('.cst');
     if (st.ready) {
       if (cst.dataset.state !== 'open') {

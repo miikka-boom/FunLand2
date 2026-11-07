@@ -66,7 +66,7 @@ export function waveChance(S, d) {
  * { waves: [p1, p2, p3], atLeast: [1, P(≥1), P(≥2), P(3)], dist: [P0..P3], expected }
  */
 export function crownOdds(S, T) {
-  const waves = WAVES.map((w) => waveChance(S, T * w.diff));
+  const waves = WAVES.map((w) => Math.min(w.max ?? 1, waveChance(S, T * w.diff)));
   const atLeast = [1];
   let run = 1;
   for (const p of waves) {

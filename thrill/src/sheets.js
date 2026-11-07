@@ -27,6 +27,11 @@ export function survivorCard(meta, id, ui) {
   if (need === null) lvBtn = `<button class="btn" type="button" disabled>Max level</button>`;
   else if (p.badges < need) lvBtn = `<button class="btn" type="button" disabled>${icon('badge')}Needs ${need - p.badges} more Badges</button>`;
   else lvBtn = `<button class="btn green big${m.canLevel(p) ? ' glow' : ''}" type="button" data-act="level" data-id="${p.id}">${icon('up')}LEVEL UP ${coins(cost, m.s.coins < cost ? 'short' : '')}</button>`;
+  // Chain level-ups: after this one, the next person who can level up is one tap away.
+  if (!m.canLevel(p)) {
+    const nxt = [...m.squadPeople(), ...m.s.people].find((q) => q.id !== p.id && m.canLevel(q));
+    if (nxt) lvBtn += `<button class="btn green" type="button" data-act="card" data-id="${nxt.id}">${icon('arrowRight')}NEXT: ${name(nxt)}</button>`;
+  }
   const inSquad = m.inSquad(p.id);
   let sq;
   if (inSquad) sq = `<button class="btn" type="button" data-act="squad" data-id="${p.id}">${icon('check')}In the squad · take out</button>`;
@@ -120,7 +125,7 @@ export function chestSheet(meta, kind, ui) {
     `<div class="ci">${icon('badge')}<span><b>${info.badges[0]}–${info.badges[1]}</b> Badges for each squad member</span></div>` +
     `<div class="ci">${icon('people')}<span>${newcomer}</span></div>` +
     `<div class="ci">${icon('gem')}<span>${info.gems.chance >= 1 ? `<b>${info.gems.lo}</b> gems` : `${Math.round(info.gems.chance * 100)}% chance of ${info.gems.lo}–${info.gems.hi} gems`}</span></div>` +
-    (info.finisher ? `<div class="ci">${icon('badge')}<span><b>Finisher:</b> ${info.finisher}+ Badges for whoever is closest to READY</span></div>` : '') +
+    (info.finisher ? `<div class="ci">${icon('badge')}<span><b>${kind === 'vault' ? 'Finisher' : 'Top-up'}:</b> ${info.finisher}+ Badges for the squad member closest to READY</span></div>` : '') +
     `</div>` +
     `<div class="kicker">Newcomer odds, Glow-Ups included</div><div class="oddlist">${odds}</div>` +
     (info.secondOdds ? `<div class="note">The second newcomer uses the Crate's odds.</div>` : '') +

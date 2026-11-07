@@ -110,10 +110,10 @@ export class Crew {
     el.innerHTML =
       `<div class="cr-left">` +
       `<div class="cr-head"><button class="btn back" type="button" data-act="back">${icon('back')}Park</button>${s.threats.map(threatChip).join('')}${pre.rally ? '<span class="rally">RALLY!</span>' : ''}</div>` +
-      `<div class="slots">${slots.join('')}</div><div class="cr-pw">${icon('star')}Squad <b>${Math.round(pre.S)}</b> vs threat <b>${Math.round(pre.T)}</b></div>` +
+      `<div class="slots">${slots.join('')}</div>` +
       `<div class="cr-hint">${s.threats.map((t) => `${CLASSES[THREATS[t].by].plural} beat ${THREATS[t].name}`).join(' · ')}${sibs}${cheer}</div>` +
-      `<div class="crownodds o-${pre.label.id}">${WAVES.map((w, i) => `<div class="co"><span class="co-c">${icon('crown')}</span><b>${Math.round(waves[i] * 100)}%</b><small>${esc(w.name)}</small></div>`).join('<span class="co-arrow">›</span>')}<div class="co-all"><small>All 3</small><b>${Math.round(pre.three * 100)}%</b><span>${pre.label.name}</span></div></div>` +
-      `<div class="cr-btns"><button class="btn bestbtn${best.better ? ' pulse' : ''}" type="button" data-act="best"${best.better ? '' : ' disabled'}>${icon('best')}BEST${best.better ? ` +${Math.round(best.S - best.cur)}` : ''}</button>` +
+      `<div class="crownodds o-${pre.label.id}">${WAVES.map((w, i) => `<div class="co"><span class="co-c" style="--f:${pre.odds.atLeast[i + 1].toFixed(2)}"><span class="g">${icon('crown')}</span><span class="c">${icon('crown')}</span></span><small>${esc(w.name)}</small></div>`).join('<span class="co-arrow">›</span>')}<div class="co-all"><small>3 crowns</small><b>${Math.round(pre.three * 100)}%</b><span>${pre.label.name}</span></div></div>` +
+      `<div class="cr-btns"><button class="btn bestbtn${best.better ? ' pulse' : ''}" type="button" data-act="best"${best.better ? '' : ' disabled'}>${icon('best')}BEST${best.better ? ` ${Math.round(pre.three * 100)}→${Math.round(m.raidPreview(best.ids).three * 100)}%` : ''}</button>` +
       `<button class="btn yellow big go" type="button" data-act="go"${sq.length ? '' : ' disabled'}>${icon('play')}GO!</button></div>` +
       `</div>` +
       `<div class="cr-right"><div class="cr-rhead"><span class="kicker">Everyone in the park</span><span class="count">${icon('people')}${s.people.length}</span></div><div class="roster scroll">${roster}</div></div>`;
@@ -167,7 +167,7 @@ export class Crew {
       const after = m.raidPreview().S;
       this.sound('levelUp');
       this.fx.burst(t, ['#ffd36b', '#62e6ff', '#ffffff'], 18, 80);
-      if (after > before) this.fx.float(t, `+${Math.round(after - before)} power`, 'good');
+      if (after > before) this.fx.float(t, `${icon('crown')}${Math.round(m.raidPreview().three * 100)}%`, 'good');
       this.onChange();
     } else if (act === 'go') {
       this.close().then(() => this.onGo());

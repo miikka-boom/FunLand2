@@ -62,11 +62,9 @@ export const LEVEL_COINS = [20, 50, 100, 200, 400, 650, 950, 1300, 1800];
 export const PERKS = {
   lucky: { name: 'Lucky', v: 0.1, text: (v) => `+${Math.round(v * 100)}% raid coins` },
   cheer: { name: 'Cheer', v: 0.04, text: (v) => `+${Math.round(v * 100)}% squad power` },
-  scavenger: { name: 'Scavenger', v: 0.03, text: (v) => `+${Math.round(v * 100)} pts stray chance on 3-crown raids` },
-  gemnose: { name: 'Gem Nose', v: 0.05, text: (v) => `${Math.round(v * 100)}% chance of +3 gems on a 2+ crown raid` },
   clutch: { name: 'Clutch', v: 0.1, text: (v) => `+${Math.round(v * 100)} pts clutch-save chance` },
 };
-export const PERK_ORDER = ['lucky', 'cheer', 'scavenger', 'gemnose', 'clutch'];
+export const PERK_ORDER = ['lucky', 'cheer', 'clutch'];
 
 /** Behaviour only: one idle animation and a favourite spot in the park. */
 export const VIBES = {
@@ -146,6 +144,12 @@ export const CHESTS = {
     odds: { base: { rookie: 65, veteran: 28, hero: 6, legend: 1 }, per: { rookie: -4, veteran: 2, hero: 1.5, legend: 0.5 } },
     gems: { chance: 0.15, min: 2, max: 4 },
     gemCap: 12,
+    // A little top-up for the squad member closest to READY (topped up to what
+    // they need if that is within max(8, a quarter of their bar)).
+    finisher: (lv) => 2 + lv,
+    finisherTopUp: (need) => Math.max(8, Math.round(need * 0.25)),
+    // The first refills are quick (onboarding): waits after openings 1..4.
+    ramp: [3 * MIN, 5 * MIN, 10 * MIN, 20 * MIN],
   },
   vault: {
     name: 'Ticket Vault',
@@ -160,7 +164,7 @@ export const CHESTS = {
     odds: { base: { rookie: 0, veteran: 72, hero: 24, legend: 4 }, per: { rookie: 0, veteran: -3, hero: 2, legend: 1 } },
     gems: { chance: 1, min: 6, max: 6, perLevel: 1 },
     finisher: (lv) => 8 + 2 * lv,
-    finisherTopUp: 20,
+    finisherTopUp: (need) => Math.max(20, Math.round(need * 0.4)),
     gemCap: 48,
   },
 };
@@ -179,8 +183,12 @@ export const GRADES = [
   { id: 'rainbow', name: 'Rainbow', mult: 3, floor: 'legend', banner: 'RAINBOW!!', line: 'A LEGEND inside' },
 ];
 export const KNOCKS = 3;
-/** A Legend is guaranteed by the PITY-th chest newcomer without one. */
+/** A Legend is guaranteed by the PITY-th chest newcomer without one (the very first by FIRST_PITY). */
 export const PITY = 30;
+export const FIRST_PITY = 8;
+/** First-time surprises come early: a golden survivor by the Nth newcomer, a sibling by the Nth once 4+ live in the park. */
+export const FIRST_GOLDEN = 6;
+export const FIRST_SIBLING = 5;
 
 // --- Raids and the Skull ladder ----------------------------------------------------------
 
@@ -207,9 +215,13 @@ export const GATE_GEMS = 20;
 export const WAVES = [
   { name: 'Wave 1', diff: 0.5 },
   { name: 'Wave 2', diff: 0.75 },
-  { name: 'The big one', diff: 1.0 },
+  { name: 'The big one', diff: 1.0, max: 0.85 },
 ];
-export const WAVE_ODDS = { a: 0.5, b: 0.9, min: 0.05, max: 0.97 };
+export const WAVE_ODDS = { a: 0.5, b: 0.9, min: 0.05, max: 0.95 };
+/** A raid's threats hold for this many raids, so the squad can stay a team. */
+export const THREAT_STREAK = 3;
+/** BEST pulses when it beats the current squad by this much. */
+export const BEST_MARGIN = 1.1;
 /** The label on PLAY comes from the chance of all three crowns. */
 export const ODDS_LABELS = [
   { min: 0.6, id: 'easy', name: 'Easy' },
@@ -218,7 +230,7 @@ export const ODDS_LABELS = [
   { min: 0, id: 'risky', name: 'Risky' },
 ];
 /** A near miss on the big one (r < p + window) can still be cleared: a second roll under chance + Clutch perks. */
-export const CLUTCH = { window: 0.1, chance: 0.35 };
+export const CLUTCH = { window: 0.1, chance: 0.5 };
 /** Rewards by crowns (index 0..3). */
 export const CROWN_REWARD = {
   skulls: [-10, 10, 20, 30],
@@ -229,7 +241,6 @@ export const RALLY = { losses: 2, bad: 2, threat: 0.8, coins: 2 };
 /** Surprises in raids. */
 export const STRAY = { chance: 0.04 }; // a newcomer follows you home after a 3-crown raid (Crate Lv 1 odds)
 export const GOLDEN_ZOMBIE = { chance: 1 / 15, coins: 2, gems: 3 }; // shows up in wave 2; clear it to bag it
-export const GEM_NOSE_GEMS = 3;
 
 /**
  * Milestones every STEP Skulls between gates (not on a gate), claimed once each

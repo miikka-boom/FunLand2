@@ -37,6 +37,11 @@ import {
   GRADES,
   KNOCKS,
   PITY,
+  FIRST_PITY,
+  FIRST_GOLDEN,
+  FIRST_SIBLING,
+  THREAT_STREAK,
+  BEST_MARGIN,
   ZONES,
   GATE_GEMS,
   WAVES,
@@ -45,7 +50,6 @@ import {
   RALLY,
   STRAY,
   GOLDEN_ZOMBIE,
-  GEM_NOSE_GEMS,
   MILESTONES,
   GIFT,
   START,
@@ -101,6 +105,7 @@ export function newState(now, seed = (Math.random() * 2 ** 32) >>> 0) {
     chests: { crate: { readyAt: now, opened: 0 }, vault: { readyAt: now, opened: 0 } },
     pity: 0,
     threats: [START.firstThreat],
+    threatLeft: 1, // raids left with these threats (the first raid is its own)
     raids: 0,
     losses: 0,
     gift: null,
@@ -320,7 +325,7 @@ export class Meta {
   bestGain() {
     const cur = this.raidPreview().S;
     const best = this.bestSquad();
-    return { ids: best.ids, S: best.S, cur, better: best.S > cur * 1.03 + 0.01 };
+    return { ids: best.ids, S: best.S, cur, better: best.S > cur * BEST_MARGIN + 0.01 };
   }
 
   useBest() {
@@ -470,13 +475,14 @@ export class Meta {
     const rarity = spec.rarity;
     const cls = spec.cls || this._newcomerClass(rng);
     const level = clamp(this.arrivalBase() + RARITIES[rarity].arrive, 1, MAX_LEVEL);
+    const met = RARITY_ORDER.reduce((a, r) => a + s.stats.newcomers[r], 0); // newcomers so far
     let golden = spec.golden;
-    if (golden === undefined) golden = this.force.golden ?? rng() < GOLDEN_CHANCE;
+    if (golden === undefined) golden = this.force.golden ?? (rng() < GOLDEN_CHANCE || (!s.stats.goldens && met >= FIRST_GOLDEN - 1));
     if (this.force.golden !== undefined && spec.golden === undefined) delete this.force.golden;
     let sibling = null;
     const sibRoll = rng();
     if (spec.sibling !== false && s.people.length >= SIBLINGS.minResidents) {
-      const want = this.force.sibling ?? sibRoll < SIBLINGS.chance;
+      const want = this.force.sibling ?? (sibRoll < SIBLINGS.chance || (!s.stats.siblings && met >= FIRST_SIBLING - 1));
       if (this.force.sibling !== undefined) delete this.force.sibling;
       if (want) sibling = pick(rng, s.people);
     }
@@ -554,7 +560,8 @@ export class Meta {
     specs.forEach((sp, i) => {
       let rarity = sp.rarity || this._rollRarity(rng, sp.oddsKind, lv);
       if (i === 0 && G.floor && rank(rarity) < rank(G.floor)) rarity = G.floor;
-      if (!sp.scripted && s.pity >= PITY - 1) rarity = 'legend';
+      const pityAt = s.stats.newcomers.legend > 0 ? PITY : FIRST_PITY;
+      if (!sp.scripted && s.pity >= pityAt - 1) rarity = 'legend';
       if (this.force.rarity) {
         rarity = this.force.rarity;
         delete this.force.rarity;
@@ -564,11 +571,12 @@ export class Meta {
       newcomers.push(this._admit(person));
     });
 
-    const finisher = c.finisher ? this._applyFinisher(c.finisher(lv)) : null;
+    const finisher = c.finisher ? this._applyFinisher(c.finisher(lv), c.finisherTopUp) : null;
 
     const period = this.chestPeriod(kind);
     const bought = s.chests[kind].bought;
-    s.chests[kind].readyAt = bought ? this.now() + period : nextReadyAt(period, st.readyAt, this.now());
+    if (c.ramp && n < c.ramp.length) s.chests[kind].readyAt = this.now() + c.ramp[n] * this.tuning.chestTime; // quick first refills
+    else s.chests[kind].readyAt = bought ? this.now() + period : nextReadyAt(period, st.readyAt, this.now());
     s.chests[kind].bought = false;
     // Testing overrides for "the next chest" are spent by this chest, newcomer or not.
     for (const k of ['grade', 'rarity', 'golden', 'sibling']) delete this.force[k];
@@ -582,24 +590,24 @@ export class Meta {
    * The Vault finisher: Badges for whoever is fewest from their next level,
    * topped up to exactly what they need if that is FINISHER_TOPUP or less.
    */
-  _applyFinisher(size) {
+  _applyFinisher(size, topUp) {
     const f = { n: size };
-    const pool = this.s.people.filter((p) => p.level < MAX_LEVEL);
+    // The squad (the people you play with); everyone only if the squad is maxed.
+    const squadOpen = this.squadPeople().filter((p) => p.level < MAX_LEVEL);
+    const pool = squadOpen.length ? squadOpen : this.s.people.filter((p) => p.level < MAX_LEVEL);
     if (!pool.length) {
       const coins = f.n * MAXED_BADGE_COINS;
       this.s.coins += coins;
       return { id: null, n: f.n, coins, finisher: true };
     }
     const gap = (p) => this.need(p) - p.badges;
-    // The squad first (the people you play with), closest to READY first.
-    const squadPool = pool.filter((p) => this.inSquad(p.id) && gap(p) > 0);
-    const notReady = squadPool.length ? squadPool : pool.filter((p) => gap(p) > 0);
+    const notReady = pool.filter((p) => gap(p) > 0);
     const list = (notReady.length ? notReady : pool).slice();
-    list.sort((a, b) => gap(a) - gap(b) || Number(this.inSquad(b.id)) - Number(this.inSquad(a.id)) || b.level - a.level);
+    list.sort((a, b) => gap(a) - gap(b) || b.level - a.level);
     const target = list[0];
     const missing = gap(target);
     let n = f.n;
-    if (missing > n && missing <= CHESTS.vault.finisherTopUp) n = missing;
+    if (missing > n && missing <= topUp(this.need(target))) n = missing;
     return { ...this._giveBadges(target, n), finisher: true };
   }
 
@@ -664,13 +672,7 @@ export class Meta {
     if (rally) coins *= RALLY.coins;
     if (bagged) coins *= GOLDEN_ZOMBIE.coins;
     coins = Math.round(coins * this.tuning.coins);
-    let gems = bagged ? GOLDEN_ZOMBIE.gems : 0;
-    let gemNose = null;
-    for (const p of squad) {
-      const roll = rng();
-      if (crowns >= 2 && !gemNose && p.perk === 'gemnose' && roll < perkValue(p)) gemNose = p.id;
-    }
-    if (gemNose) gems += GEM_NOSE_GEMS;
+    const gems = bagged ? GOLDEN_ZOMBIE.gems : 0;
 
     const before = s.skulls;
     const floor = zoneOf(zone).gate;
@@ -695,10 +697,9 @@ export class Meta {
     if (bagged) st.goldenZombies++;
 
     // A stray follows you home after a 3-crown raid.
-    const scav = squad.reduce((a, p) => a + (p.perk === 'scavenger' ? perkValue(p) : 0), 0);
     const strayRoll = rng();
     let stray = null;
-    if (won && n > 0 && (this.force.stray || strayRoll < STRAY.chance + scav)) {
+    if (won && n > 0 && (this.force.stray || strayRoll < STRAY.chance)) {
       const rarity = this._rollRarity(rng, 'crate', 1);
       stray = this._admit(this._makeNewcomer(rng, { rarity, golden: rng() < GOLDEN_CHANCE, sibling: undefined }, 'stray'));
       st.strays++;
@@ -707,7 +708,11 @@ export class Meta {
 
     const milestones = this._claimMilestones();
     const zones = this._advanceZones(rng);
-    if (!zones.length) s.threats = this._nextThreats(rng, n);
+    s.threatLeft = (s.threatLeft || 1) - 1;
+    if (!zones.length && s.threatLeft <= 0) {
+      s.threats = this._nextThreats(rng, n);
+      s.threatLeft = THREAT_STREAK;
+    }
 
     const fix = crowns >= 2 ? null : this._fix();
     return {
@@ -727,7 +732,6 @@ export class Meta {
       bagged,
       coins,
       gems,
-      gemNose,
       skulls: s.skulls - before,
       skullsBefore: before,
       skullsAfter: s.skulls,
@@ -736,6 +740,7 @@ export class Meta {
       milestones,
       zones,
       next: s.threats.slice(),
+      threatLeft: s.threatLeft,
       nextRally: this.isRally(),
       fix,
       squad: squad.map((p) => p.id),
@@ -816,6 +821,7 @@ export class Meta {
     }
     let gift = null;
     if (Z.gift) gift = this._admit(this._makeNewcomer(rng, { rarity: Z.gift.rarity, cls: Z.gift.cls || undefined, golden: Z.gift.golden, sibling: false }, 'gate'));
+    s.threatLeft = THREAT_STREAK;
     const fresh = Z.threats.filter((t) => !prev.threats.includes(t));
     if (fresh.length && !Z.two) s.threats = [fresh[0]];
     else if (Z.two && !prev.two) s.threats = this._nextThreats(rng, -1);

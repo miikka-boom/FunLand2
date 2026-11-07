@@ -21,12 +21,14 @@ function weighted(rng, list, weights) {
 
 // --- Names ------------------------------------------------------------------------------------
 
+// Short, friendly first names from everywhere (Finnish ones included) and a
+// mixed bag of surnames: a theme-park crew, not anyone in particular.
 export const FIRST = {
-  f: ['Aino', 'Dot', 'Rosa', 'Ana', 'Mia', 'Sanna', 'Kaisa', 'Maya', 'Priya', 'Fatima', 'Lucia', 'Zoe', 'Hana', 'Amara', 'Ingrid', 'Nadia', 'Leila', 'Mei', 'Tove', 'Elsa', 'Noor', 'Ayla', 'Iris', 'Marta', 'Yuki', 'Freya', 'Lotta', 'Bea', 'Pia', 'Vera', 'Gigi', 'Ola'],
-  m: ['Pete', 'Kai', 'Ville', 'Eero', 'Juha', 'Mikko', 'Tomasz', 'Diego', 'Kenji', 'Omar', 'Theo', 'Arjun', 'Kwame', 'Lars', 'Mateo', 'Felix', 'Hugo', 'Sami', 'Jonah', 'Tariq', 'Bruno', 'Emil', 'Kofi', 'Luca', 'Hiro', 'Anton', 'Pekka', 'Malik', 'Otto', 'Raul', 'Ezra', 'Gus'],
-  n: ['Sal', 'Alex', 'Sam', 'Robin', 'Jordan', 'Noa', 'Rene', 'Charlie', 'Sasha', 'Riley', 'Quinn', 'Eli', 'Toni', 'Ari', 'Jules', 'Max'],
+  f: ['Aili', 'Bea', 'Cleo', 'Dot', 'Edie', 'Fia', 'Gigi', 'Hilja', 'Ines', 'Juno', 'Kiki', 'Lumi', 'Mabel', 'Nell', 'Oona', 'Pip', 'Roxy', 'Saara', 'Tilda', 'Uma', 'Vivi', 'Wren', 'Xia', 'Yara', 'Zuri', 'Ada', 'Coco', 'Dina', 'Elli', 'Femi', 'Hoa', 'Rosa'],
+  m: ['Abe', 'Bram', 'Cass', 'Dex', 'Eino', 'Fred', 'Gus', 'Hal', 'Iggy', 'Jari', 'Kofi', 'Lou', 'Moe', 'Ned', 'Ossi', 'Pele', 'Raf', 'Sid', 'Teo', 'Uli', 'Vic', 'Wim', 'Yusuf', 'Zeke', 'Arvo', 'Benny', 'Cal', 'Dov', 'Fitz', 'Hamza', 'Jin', 'Kai'],
+  n: ['Ash', 'Blue', 'Kit', 'Lake', 'Max', 'Nico', 'Pax', 'Remy', 'Sky', 'Tam', 'Val', 'Wynn', 'Rio', 'Sol', 'Indy', 'Sal'],
 };
-export const LAST = ['Virtanen', 'Laine', 'Korhonen', 'Nieminen', 'Salo', 'Heikkinen', 'Okafor', 'Nowak', 'Ramos', 'Shah', 'Mori', 'Haddad', 'Silva', 'Kim', 'Novak', 'Jensen', 'Rossi', 'Mensah', "O'Brien", 'Duarte', 'Lindqvist', 'Abebe', 'Tanaka', 'Costa', 'Moreau', 'Becker', 'Nguyen', 'Hughes', 'Santos', 'Wolfe', 'Byrne', 'Ahmed', 'Chen', 'Park', 'Moreno', 'Fischer', 'Adeyemi', 'Varga', 'Holm', 'Reyes', 'Kask', 'Bianchi'];
+export const LAST = ['Aho', 'Bramble', 'Castillo', 'Dahl', 'Eklund', 'Fontaine', 'Gallo', 'Hakala', 'Ibarra', 'Jokinen', 'Kowalczyk', 'Lindgren', 'Mbeki', 'Novotny', 'Oyelaran', 'Pihlaja', 'Quist', 'Rahman', 'Sato', 'Toivonen', 'Ueda', 'Vasquez', 'Wójcik', 'Xu', 'Yilmaz', 'Zambrano', 'Akhtar', 'Bianco', 'Carvalho', 'Duda', 'Esposito', 'Farouk', 'Gruber', 'Haapala', 'Iwu', 'Janssen', 'Kaur', 'Lund', 'Marsh', 'Nakamura', 'Okoro', 'Pajari'];
 
 const NICKS = {
   brawler: ['Big', 'Bonk', 'Iron', 'Crusher', 'Mad', 'Knuckles'],

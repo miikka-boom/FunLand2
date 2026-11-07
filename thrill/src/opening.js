@@ -11,7 +11,7 @@
 
 import { chestSvg, badgeTokenSvg, coinSvg, gemSvg } from './chest-art.js';
 import { figureSvg, portraitSvg } from './portrait.js';
-import { GRADES, CHESTS, RARITIES, CLASSES } from './config.js';
+import { GRADES, CHESTS, RARITIES, CLASSES, THREATS } from './config.js';
 import { displayName, siblingLine } from './people.js';
 import { face, rarityTag, classTag, name, perkLine, pw, coins as coinAmt, gems as gemAmt } from './kit.js';
 import { icon } from './icons.js';
@@ -82,6 +82,13 @@ export function driver(el) {
   };
 }
 
+/** "Joins your best squad" or what they counter, under a newcomer's card. */
+function bestLine(meta, p) {
+  const b = meta.bestSquad();
+  if (b.ids.includes(p.id) && !meta.inSquad(p.id)) return `<div class="nc-best good">${icon('best')}Joins your best squad</div>`;
+  return `<div class="nc-best">Counters ${THREATS[CLASSES[p.cls].counters].name}</div>`;
+}
+
 /** The face-down card, then the flip with drama that matches the rarity. Returns the card element. */
 export async function revealNewcomer(stage, p, { meta, fx, sound, drv, line = '' }) {
   const card = document.createElement('div');
@@ -93,7 +100,7 @@ export async function revealNewcomer(stage, p, { meta, fx, sound, drv, line = ''
     `<div class="nc-name"><b>${name(p)}</b><span>${esc(p.first)} ${esc(p.last)}, ${p.age}</span></div>` +
     `<div class="nc-tags">${rarityTag(p)}${classTag(p.cls)}<span class="lvtag">Lv ${p.level}</span></div>` +
     `<div class="nc-lines">${pw(meta.power(p))}${perkLine(p)}</div>` +
-    `<div class="nc-quirk">“${esc(p.quirk)}”</div></div></div>` +
+    `<div class="nc-quirk">“${esc(p.quirk)}”</div>${bestLine(meta, p)}</div></div>` +
     `<div class="nc-banner"></div>`;
   stage.appendChild(card);
   sound('whoosh');

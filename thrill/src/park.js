@@ -50,7 +50,7 @@ export class Park {
       const sl = PARK.slots[id];
       if (!sl) continue;
       const b = document.createElement('div');
-      b.className = 'bld';
+      b.className = 'p-bld';
       b.dataset.id = id;
       b.dataset.tap = 'bld';
       b.style.cssText = `left:${sl.x - sl.w / 2}px;top:${sl.y - sl.h}px;width:${sl.w}px;height:${sl.h}px`;
@@ -65,7 +65,7 @@ export class Park {
     }
     const bus = PARK.bus;
     if (bus) {
-      this.el.bus.innerHTML = `<div class="bus" style="left:${bus.x}px;top:${bus.y}px">${busSvg()}</div>`;
+      this.el.bus.innerHTML = `<div class="p-bus" style="left:${bus.x}px;top:${bus.y}px">${busSvg()}</div>`;
     }
     const wh = PARK.wheel;
     this.el.wheel.style.cssText = `left:${wh.x - wh.r * 1.25}px;top:${wh.y - wh.r * 1.25}px;width:${wh.r * 2.5}px;height:${wh.r * 2.5 + (PARK.wheelStandH || wh.r * 1.1)}px`;
@@ -110,6 +110,8 @@ export class Park {
   update(force = false) {
     const m = this.meta;
     const s = m.s;
+    const step = m.nextStep();
+    this._hot = step.kind === 'build' ? step.id : null;
     if (force || this.cache.get('zone') !== s.zone) {
       this.cache.set('zone', s.zone);
       this.el.back.innerHTML = parkBackSvg(s.zone);
@@ -135,12 +137,16 @@ export class Park {
       const tag = this.el.tags.querySelector(`.btag[data-id="${id}"]`);
       const up = m.canUpgrade(id);
       const B = BUILDINGS[id];
-      const html = lv <= 0 ? `${icon('lock')}<b>Zone ${B.zone}</b>` : `${up.ok ? `<i class="arrow">${icon('up')}</i>` : ''}<b>Lv ${lv}</b>`;
+      // Only the one building worth upgrading next bounces; others that you
+      // could afford just show a small dot. None while someone in the squad can level up.
+      const hot = up.ok && this._hot === id;
+      const html = lv <= 0 ? `${icon('lock')}<b>Zone ${B.zone}</b>` : `${hot ? `<i class="arrow">${icon('up')}</i>` : up.ok ? '<i class="dot"></i>' : ''}<b>Lv ${lv}</b>`;
       if (this.cache.get(`t:${id}`) !== html) {
         this.cache.set(`t:${id}`, html);
         tag.innerHTML = html;
       }
-      tag.classList.toggle('can', !!up.ok);
+      tag.classList.toggle('can', hot);
+      tag.classList.toggle('canish', !!up.ok && !hot);
       tag.classList.toggle('locked', lv <= 0);
     }
     this._syncWalkers();
@@ -151,12 +157,12 @@ export class Park {
   _souvenirs() {
     const z = this.meta.s.zone;
     let back = '';
-    for (const old of this.el.actors.querySelectorAll('.souv')) old.remove();
+    for (const old of this.el.actors.querySelectorAll('.p-souv')) old.remove();
     for (const [id, zone] of Object.entries(SOUVENIR_ZONE)) {
       const sl = PARK.souvenirs && PARK.souvenirs[id];
       if (!sl || z < zone) continue;
       const front = sl.z === 'front';
-      const html = `<div class="souv s-${id}" style="left:${sl.x - sl.w / 2}px;top:${sl.y - sl.h}px;width:${sl.w}px;height:${sl.h}px${front ? `;z-index:${Math.round(sl.y)}` : ''}">${souvenirSvg(id)}${id === 'scoreboard' ? `<span class="score">${this.meta.s.best}</span>` : ''}</div>`;
+      const html = `<div class="p-souv s-${id}" style="left:${sl.x - sl.w / 2}px;top:${sl.y - sl.h}px;width:${sl.w}px;height:${sl.h}px${front ? `;z-index:${Math.round(sl.y)}` : ''}">${souvenirSvg(id)}${id === 'scoreboard' ? `<span class="score">${this.meta.s.best}</span>` : ''}</div>`;
       if (sl.z === 'front') this.el.actors.insertAdjacentHTML('beforeend', html);
       else back += html;
     }
@@ -246,6 +252,19 @@ export class Park {
       setTimeout(() => w.el.remove(), 400);
       this.walkers.delete(id);
     };
+  }
+
+  /** One resident cheers where they stand (a level-up). */
+  cheerPerson(id) {
+    const w = this.walkers.get(id);
+    if (!w || w.leaving) return;
+    w.tx = w.x;
+    w.ty = w.y;
+    this._pose(w, 'cheer');
+    w.wait = 2.5;
+    w.el.classList.remove('jump');
+    void w.el.offsetWidth;
+    w.el.classList.add('jump');
   }
 
   /** Residents of a class run over to a building and cheer (after an upgrade). */

@@ -330,11 +330,23 @@ function levelUp(id, el) {
   }
   sound('levelUp');
   haptic(30);
-  const faceEl = $('modals').querySelector('.cs-face') || el;
-  fx.burst(faceEl, ['#7dffa1', '#ffd36b', '#ffffff'], 26, 120);
-  fx.float(faceEl, `Lv ${r.to}!`, 'lvl');
   save();
   refresh();
+  // The card re-rendered: celebrate on it. The power ticks up, a stamp lands, the park figure cheers.
+  const faceEl = $('modals').querySelector('.cs-face') || el;
+  fx.burst(faceEl, ['#7dffa1', '#ffd36b', '#ffffff'], 30, 130);
+  fx.stamp(faceEl, `Lv ${r.to}!`, 'ready');
+  fx.pop(faceEl, 1.1);
+  const pwEl = $('modals').querySelector('.cs-power .pw b');
+  if (pwEl) {
+    const from = Math.round(r.powerBefore);
+    const to = Math.round(r.powerAfter);
+    for (let v = from; v <= to; v++) setTimeout(() => {
+      pwEl.textContent = String(v);
+      if (v > from) sound('coin', { pitch: (v - from) / Math.max(1, to - from) });
+    }, (v - from) * Math.min(90, 420 / Math.max(1, to - from)));
+  }
+  park.cheerPerson(id);
   ui.capRaids = true; // shown once this card closes
   void p;
 }

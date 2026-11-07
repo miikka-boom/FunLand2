@@ -7,7 +7,7 @@ import { generatePerson, displayName } from '../thrill/src/people.js';
 import { squadPower, crownOdds, waveChance, oddsLabel, basePower, threatFor } from '../thrill/src/raid.js';
 import { rarityOdds, gradeAtLeast, glowChance, nextReadyAt, openNowCost } from '../thrill/src/chests.js';
 import { mulberry32 } from '../thrill/src/util.js';
-import { CLASSES, CLASS_ORDER, LOOK, RARITIES, CHESTS, ZONES, LEVEL_BADGES, LEVEL_COINS, MAX_LEVEL, PITY, TUNING_DEFAULTS, START, MAXED_BADGE_COINS, COUNTER, GATE_GEMS, MILESTONES, CROWN_REWARD, BIGTOP_COINS } from '../thrill/src/config.js';
+import { CLASSES, CLASS_ORDER, LOOK, RARITIES, CHESTS, ZONES, LEVEL_BADGES, LEVEL_COINS, MAX_LEVEL, PITY, TUNING_DEFAULTS, START, MAXED_BADGE_COINS, COUNTER, GATE_GEMS, MILESTONES, CROWN_REWARD, BIGTOP_COINS, THREAT_STREAK } from '../thrill/src/config.js';
 
 const T0 = 1_700_000_000_000;
 const MIN = 60_000;
@@ -29,10 +29,11 @@ function add(meta, { cls = 'shooter', rarity = 'rookie', level = 1, perk = null,
   return p;
 }
 
-/** Skip the scripted first chests and the forced first raid. */
+/** Skip the scripted first chests, the quick first Crate refills and the forced first raid. */
 function unscripted(meta) {
   meta.s.seen.noScript = true;
   meta.s.raids = 1;
+  meta.s.chests.crate.opened = CHESTS.crate.ramp.length;
 }
 
 test('a fresh park: three generated founders in the squad, both chests ready', () => {
@@ -237,7 +238,7 @@ test('power: rarity, ride and golden multiply; a Lv 6 Rookie beats a Lv 1 Legend
   const sp = squadPower([{ id: 1, ...rookie6 }, { id: 2, cls: 'shooter', rarity: 'rookie', level: 6 }], ['runner'], b);
   assert.ok(sp.members[0].counter && !sp.members[1].counter);
   assert.ok(Math.abs(sp.members[0].power / sp.members[0].base - COUNTER) < 1e-9);
-  assert.equal(waveChance(1000, 10), 0.97);
+  assert.equal(waveChance(1000, 10), 0.95);
   assert.equal(waveChance(0, 10), 0.05);
   assert.equal(oddsLabel(0.7).id, 'easy');
   assert.equal(oddsLabel(0.4).id, 'good');
@@ -317,8 +318,9 @@ test('raids: three waves, a crown each; the first raid is a 3-crown win; Skulls 
 
 test('crowns stop at the first missed wave and follow the posted odds', () => {
   const o = crownOdds(36, 36);
-  assert.deepEqual(o.waves.map((x) => Math.round(x * 100)), [97, 80, 50]);
-  assert.ok(Math.abs(o.three - 0.97 * 0.8 * 0.5) < 1e-9);
+  assert.deepEqual(o.waves.map((x) => Math.round(x * 100)), [95, 80, 50]);
+  assert.ok(Math.abs(o.three - 0.95 * 0.8 * 0.5) < 1e-9);
+  assert.equal(crownOdds(1000, 36).waves[2], 0.85, 'the big one is never a formality');
   assert.ok(Math.abs(o.dist.reduce((a, b) => a + b, 0) - 1) < 1e-9);
   const { meta, state } = make(31);
   unscripted(meta);
@@ -340,16 +342,24 @@ test('crowns stop at the first missed wave and follow the posted odds', () => {
   assert.ok(Math.abs(counts[1] / N - expect[1]) < 0.04);
 });
 
-test('threats never repeat a single threat twice in a row; Zone 4 raids have two different threats', () => {
+test('threats hold for a streak of raids, then change (never to the same single threat); Zone 4 raids have two different threats', () => {
   const { meta, state } = make();
   unscripted(meta);
   meta.tuning.outcome = 'lose';
   let prev = state.threats.join();
+  let held = 0;
+  const streaks = [];
   for (let i = 0; i < 40; i++) {
     meta.raid();
-    assert.notEqual(state.threats.join(), prev);
-    prev = state.threats.join();
+    held++;
+    if (state.threats.join() !== prev) {
+      streaks.push(held);
+      held = 0;
+      assert.notEqual(state.threats.join(), prev);
+      prev = state.threats.join();
+    }
   }
+  assert.ok(streaks.slice(1).every((n) => n === THREAT_STREAK), `streaks ${streaks}`);
   meta.cheat('skulls', ZONES[3].gate + 10);
   assert.equal(state.zone, 4);
   for (let i = 0; i < 20; i++) {
@@ -357,6 +367,21 @@ test('threats never repeat a single threat twice in a row; Zone 4 raids have two
     assert.equal(state.threats.length, 2);
     assert.notEqual(state.threats[0], state.threats[1]);
   }
+});
+
+test('the first Crate refills are quick, then every 2 hours; every Crate tops up the squad', () => {
+  const { meta, clock, state } = make(12);
+  const waits = [];
+  for (let i = 0; i < CHESTS.crate.ramp.length + 1; i++) {
+    const r = meta.openChest('crate');
+    assert.ok(r.ok, r.reason);
+    assert.ok(r.finisher && r.finisher.finisher && meta.inSquad(r.finisher.id), 'the top-up goes to the squad');
+    waits.push(meta.chestState('crate').msLeft);
+    clock.warp(meta.chestState('crate').msLeft);
+  }
+  assert.deepEqual(waits.slice(0, -1), CHESTS.crate.ramp);
+  assert.equal(waits.at(-1), CHESTS.crate.period);
+  void state;
 });
 
 test('zones: gems, rides open at Lv 1, a gate gift walks in, the building cap rises, a new threat comes with its counter', () => {

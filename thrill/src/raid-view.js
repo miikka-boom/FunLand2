@@ -267,10 +267,6 @@ export class RaidView {
     if (r.rally) lines.push(`<div class="rl">${icon('star')}<b>Rally</b> ×2 coins</div>`);
     if (r.bagged) lines.push(`<div class="rl gold">${icon('star')}<b>Golden zombie bagged!</b> ×2 coins, +${GOLDEN_ZOMBIE.gems} ${icon('gem')}</div>`);
     else if (r.goldenZombie) lines.push(`<div class="rl">${icon('star')}The golden zombie got away</div>`);
-    if (r.gemNose) {
-      const p = meta.person(r.gemNose);
-      lines.push(`<div class="rl">${icon('gemnose')}<b>${p ? name(p) : ''}</b> sniffed out +3 ${icon('gem')}</div>`);
-    }
     if (r.skullsAfter === r.floor && r.skulls > -10 && r.skulls <= 0) lines.push(`<div class="rl">${icon('zone')}You never drop below ${esc(ZONES[r.zone - 1].name)}</div>`);
     for (const m of r.milestones) {
       const what = m.kind === 'coins' ? coinAmt(m.coins) : m.kind === 'gems' ? gemAmt(m.gems) : `<span class="amt">${icon('badge')}<b>+${m.badges}</b></span> each`;
@@ -302,7 +298,7 @@ export class RaidView {
     const nx = L.next3[0];
     const span = Math.max(1, L.barTo - L.barFrom);
     const prog = nx
-      ? `<div class="rr-prog"><span>${icon('skull')}${L.skulls}</span><i><u style="transform:scaleX(${Math.max(0, Math.min(1, (L.skulls - L.barFrom) / span)).toFixed(3)})"></u></i><span>${nx.at}: ${nx.kind === 'gate' ? `<b>${esc(nx.name)}</b>` : nx.kind === 'coins' ? `${icon('coin')}${nx.coins}` : nx.kind === 'gems' ? `${icon('gem')}${nx.gems}` : `${icon('badge')}${nx.badges} each`}</span></div>`
+      ? `<div class="rr-prog"><span>${icon('skull')}${L.skulls}</span><i><u data-to="${Math.max(0, Math.min(1, (L.skulls - L.barFrom) / span)).toFixed(3)}" style="transform:scaleX(${Math.max(0, Math.min(1, (r.skullsBefore - L.barFrom) / span)).toFixed(3)})"></u></i><span>${nx.at}: ${nx.kind === 'gate' ? `<b>${esc(nx.name)}</b>` : nx.kind === 'coins' ? `${icon('coin')}${nx.coins}` : nx.kind === 'gems' ? `${icon('gem')}${nx.gems}` : `${icon('badge')}${nx.badges} each`}</span></div>`
       : '';
     const pre = meta.raidPreview();
     panel.innerHTML =
@@ -349,6 +345,8 @@ export class RaidView {
       });
     });
     this.hud.thaw(['skulls']);
+    const bar = panel.querySelector('.rr-prog u');
+    if (bar) requestAnimationFrame(() => (bar.style.transform = `scaleX(${bar.dataset.to})`));
     if (r.skulls) {
       fx.fly({ from: panel.querySelector('.rr-sk'), to: this.hud.target('skulls'), html: icon('skull'), count: 4, size: 24 });
       sound(r.skulls > 0 ? 'milestone' : 'farewell');
