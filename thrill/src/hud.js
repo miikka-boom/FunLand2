@@ -267,7 +267,9 @@ export class Hud {
     const above = r.top > innerHeight * 0.45;
     c.style.left = `${left}px`;
     c.style.width = `${w}px`;
-    c.style.top = above ? `${r.top - 74}px` : `${r.bottom + 44}px`;
+    // Clear the hand (about 46px) and whatever sits just above the target.
+    const h = c.offsetHeight || 40;
+    c.style.top = above ? `${Math.max(4, r.top - 58 - h)}px` : `${r.bottom + 50}px`;
   }
 
   setPlayLabel(text) {
