@@ -6,6 +6,7 @@ import { DEG, clamp, rand, randSpread, rayCircle, smoothstep, wrapAngle } from '
 import { damageZombie, alertZombie } from './zombies.js';
 import { HUNTER, deadstop, struggle, damageRock } from './specials.js';
 import { hotDef, shootBoards, shoveBoards } from './loot.js';
+import { damageExplosive } from './world-events.js';
 
 export const SHOVE_REACH = 52;
 export const SHOVE_HALF_ANGLE = 65 * DEG;
@@ -380,6 +381,7 @@ export function hitscan(game, p, mx, my, ang, def, alarms = true) {
     game.effects.sparks(x1 - dx * 2, y1 - dy * 2, -dx, -dy, def.pellets > 1 ? 2 : 4);
     if (alarms && wall.obstacle.alarm) game.director.triggerAlarm(wall.obstacle);
     if (alarms && wall.obstacle.boards) shootBoards(game, wall.obstacle, def, dx, dy, x1, y1);
+    if (alarms && wall.obstacle.explosive) damageExplosive(game, wall.obstacle, def.dmg);
   }
   return n > 0;
 }

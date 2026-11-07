@@ -10,6 +10,7 @@ import { SKINS, SHIRTS } from '../game/zombies.js';
 import { ALLY } from '../game/ally.js';
 import { TAU, rectsOverlap, pointInRect } from '../util.js';
 import { drawFloors, drawChalk, drawLoot, drawLootBright, drawBoards } from './loot-render.js';
+import { drawQwall, drawCanopies, drawFeatureProp, drawFeatureDecor, drawCheckpoints, drawFeaturesBright, drawAmmo } from './features-render.js';
 
 const GROUND = {
   street: '#24272b',
@@ -22,6 +23,7 @@ const GROUND = {
   park: '#1e2b1c',
   plaza: '#393632',
   construction: '#382f24',
+  station: '#2b2d31',
 };
 
 // Interior floors by room type: base colour + optional pattern.
@@ -186,6 +188,7 @@ export class Renderer {
     if (sw > 0 && sh > 0) ctx.drawImage(fx.decal, sx, sy, sw, sh, sx / ds, sy / ds, sw / ds, sh / ds);
 
     this.drawProps(ctx, game, vr);
+    drawCheckpoints(ctx, game, vr);
     drawLoot(ctx, game, vr);
     this.drawPickups(ctx, game, vr);
     this.drawCorpses(ctx, game, vr);
@@ -207,6 +210,7 @@ export class Renderer {
 
     this.drawBright(ctx, game, vr);
     drawLootBright(ctx, game, vr);
+    drawFeaturesBright(ctx, game, vr);
     this.drawBuffAura(ctx, game);
     this.drawRoofs(ctx, game, vr);
 
@@ -363,6 +367,7 @@ export class Renderer {
           drawChalk(ctx, d);
           break;
         default:
+          drawFeatureDecor(ctx, d);
           break;
       }
     }
@@ -667,6 +672,7 @@ export class Renderer {
           else ctx.fillRect(o.x + o.w / 2 - 0.5, o.y, 1, o.h);
           break;
         default:
+          drawFeatureProp(ctx, o, game);
           break;
       }
     }
@@ -727,6 +733,11 @@ export class Renderer {
         ctx.translate(-k.x, -k.y);
       }
       const bob = Math.sin(game.time * 3 + k.bob) * 1.5;
+      if (k.kind === 'ammo') {
+        drawAmmo(ctx, k, bob);
+        if (popping) ctx.restore();
+        continue;
+      }
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(k.x - 9, k.y - 5, 20, 14);
       ctx.fillStyle = '#e8e8e2';
@@ -1491,6 +1502,10 @@ export class Renderer {
         drawBoards(ctx, o, game.time);
         continue;
       }
+      if (o.kind === 'qwall') {
+        drawQwall(ctx, o, night, game.world.map.h);
+        continue;
+      }
       if (o.kind === 'pillar') {
         ctx.fillStyle = night ? '#57544e' : '#6a665f';
         ctx.fillRect(o.x, o.y, o.w, o.h);
@@ -1537,6 +1552,7 @@ export class Renderer {
         ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
       }
     }
+    drawCanopies(ctx, game, vr);
     // Door jambs so openings read as doorways.
     const doors = game.world.map.doors;
     if (doors) {

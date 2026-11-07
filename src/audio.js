@@ -300,6 +300,34 @@ export class Audio {
     this._tone({ f0: 95, f1: 40, dur: 0.3, gain: 0.45, out });
   }
 
+  /** The holdout control box clunks on. */
+  switchOn() {
+    if (!this._ok('switch', 0.3)) return;
+    this._noise({ dur: 0.05, type: 'highpass', freq: 2400, gain: 0.4 });
+    this._tone({ type: 'square', f0: 660, dur: 0.12, gain: 0.08, at: 0.08 });
+    this._tone({ type: 'square', f0: 990, dur: 0.16, gain: 0.08, at: 0.22 });
+  }
+
+  /** The holdout gate slams fully open. */
+  gateOpen(x, y) {
+    if (!this._ok('gateOpen', 0.5)) return;
+    const s = this._spatial(x, y, 2000);
+    const out = this._out(s.pan, 0.4 + s.gain * 0.6);
+    this._noise({ dur: 0.4, type: 'lowpass', freq: 500, gain: 0.8, out });
+    this._tone({ f0: 120, f1: 60, dur: 0.35, gain: 0.4, out });
+    [523, 659, 784].forEach((f, i) => this._tone({ type: 'triangle', f0: f, dur: 0.3, gain: 0.14, at: 0.25 + i * 0.09 }));
+  }
+
+  explosion(x, y) {
+    if (!this._ok('boom', 0.15)) return;
+    const s = this._spatial(x, y, 3000);
+    const out = this._out(s.pan, 0.45 + s.gain * 0.55);
+    this._noise({ dur: 1.4, type: 'lowpass', freq: 900, sweepTo: 120, gain: 1, attack: 0.004, out });
+    this._noise({ dur: 0.25, type: 'bandpass', freq: 1800, q: 0.7, gain: 0.5, out });
+    this._tone({ f0: 70, f1: 28, dur: 1.1, gain: 0.7, out });
+    this._noise({ dur: 0.9, type: 'highpass', freq: 3000, gain: 0.12, at: 0.15, out });
+  }
+
   /** Armor soaked a hit. */
   armorHit() {
     if (!this._ok('armorHit', 0.1)) return;
@@ -369,7 +397,17 @@ export class Audio {
     f.frequency.value = 2600;
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t0);
-    if (kind === 'fire') {
+    if (kind === 'siren') {
+      // Holdout siren: a slow rising and falling wail.
+      o.type = 'sawtooth';
+      for (let t = 0; t < dur; t += 2.4) {
+        o.frequency.setValueAtTime(420, t0 + t);
+        o.frequency.linearRampToValueAtTime(880, t0 + t + 1.2);
+        o.frequency.linearRampToValueAtTime(420, t0 + t + 2.4);
+      }
+      g.gain.exponentialRampToValueAtTime(0.1, t0 + 0.4);
+      g.gain.setValueAtTime(0.1, t0 + Math.max(0.5, dur - 0.5));
+    } else if (kind === 'fire') {
       // Fire alarm: a flat horn, gated on/off.
       o.frequency.setValueAtTime(960, t0);
       for (let t = 0; t < dur - 0.3; t += 0.3) {

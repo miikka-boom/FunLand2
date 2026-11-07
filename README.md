@@ -316,8 +316,29 @@ and no dependencies.
   - The loot lasts for the run: armor (soaks damage before HP), hot rounds
     (×1.5 damage, +1 pierce, orange tracers), adrenaline (20 s of speed, no
     slow-down from hits, quicker reloads and shoves), extended mags (+50%),
-    +25 max HP, and medkits. The end screen shows what you found. Turn it off
-    under **Level** in the tuning panel.
+    +25 max HP, and medkits. The end screen shows what you found. Each part
+    (stashes, boarded rooms, the secret) has its own switch under **World**
+    in the tuning panel.
+- **World features** (off by default, so new players aren't swamped: switch
+  them on under **World** in the tuning panel, or tap **Everything**):
+  - **Holdout gate:** a quarantine wall splits the map from edge to edge, down
+    a street or along a corridor wall indoors, where every door is welded shut.
+    The only way through is a locked gate. Stand at its control box to start
+    it, then hold out: a siren calls waves from your side of the wall while the
+    gate slides open (30 s by default; **Gate opening time** sets it).
+  - **Two routes:** a second wall, with its open checkpoint at the far end, so
+    the safe way snakes up one side and down the other. Next to it is a boarded
+    **breach**: six shoves (or a lot of bullets), very loud, with a nest of
+    sleepers right behind it, alarm cars and no light, but it saves a quarter
+    to a third of the walk. "DANGER" and "GATE →" are sprayed beside it.
+  - **Landmarks:** on the streets a gas station (shoot a pump: the whole
+    station blows up, kills everything close and burns for 25 s), a crashed
+    helicopter still burning with a medkit and an ammo can, and an army
+    checkpoint across a street with sandbag cover, a chicane, floodlights and
+    supplies. In the building: a rack of gas cylinders (they blow up too), a
+    sandbagged field post and a collapsed ceiling under a shaft of moonlight.
+  - **Default**, **Everything** and **Bare map** buttons set all the World
+    switches at once.
 - **An AI Director**: build-up, peak and relax phases, wanderers, small groups,
   and mobs ("HERE THEY COME!") that spawn out of sight and come round corners.
   Shooting a car with a blinking red light sets off the **alarm**, which brings
@@ -456,16 +477,16 @@ src/settings.js            every tunable value + panel schema + presets
 src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
-src/world/                 seeded city + building generators, scavenging pass (stashes, boarded rooms, secret, chalk), collision, ray casts, flow field
-src/game/                  player, AI teammate, weapons, zombies, director, loot, effects, game state
-src/render/                renderer, lighting (night + LOS), HUD
+src/world/                 seeded city + building generators, world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), collision, ray casts, flow field
+src/game/                  player, AI teammate, weapons, zombies, director, loot, world events (holdout, breach, explosions), effects, game state
+src/render/                renderer, lighting (night + LOS), HUD, loot + world-feature drawing
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
 hope/                      Hope Street metagame prototype (separate page; map in docs/HOPE-STREET.md)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging placement, the four metagames, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging + world-feature placement, the four metagames, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

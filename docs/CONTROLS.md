@@ -153,7 +153,8 @@ someone else in the fight.
 ## Scavenging: rewards for leaving the route
 
 Each map hides finds off the straight line from the start to the safe room
-(**Stashes + secrets** under **Level** in the tuning panel; on by default).
+(on by default; **Supply stashes**, **Boarded-up rooms** and **Secret stash**
+under **World** in the tuning panel switch each part).
 "Off the route" is measured as the detour: the walk start → find → safe room,
 minus the walk start → safe room. Placement is seeded from the map, so the
 same map always has the same finds.
@@ -195,6 +196,68 @@ same map always has the same finds.
     when you're hurt), so you can leave them for later.
 - The end screen tallies supplies, boarded rooms and whether you found the
   secret.
+
+## World features: holdout gate, two routes, landmarks
+
+Off by default, so the base game stays readable: each has a switch under
+**World** in the tuning panel (changing one restarts the run), and the
+**Everything** button turns them all on. Placement is seeded from the map and
+checked on a grid that only counts spots a body fits in: the safe room always
+stays reachable, or the piece isn't placed.
+
+- **Holdout gate.** A quarantine wall cuts the map from edge to edge, mid-route.
+  On the streets it runs down the middle of a north-south street; indoors it
+  follows the east wall of a cross corridor, where every door is welded shut
+  (the corridor keeps its full width). The only way through is a locked gate.
+  - "THE GATE IS LOCKED" shows when you get within ~480 u. A dashed ring marks
+    where to stand at the yellow control box.
+  - Stand in the ring for 1.2 s to start it. A siren goes off (it alerts
+    everything within 1100 u), red beacons turn amber, and a bar under the
+    timer counts the gate open: 2 s, then **Gate opening time** (30 s by
+    default, 15–60 s). The gate slides open from the top, so you can squeeze
+    through a little early.
+  - Waves of 14–20 (× horde size) come every quarter of the time, at most every
+    6–10 s. While the gate is shut, nothing spawns on the far side of the wall,
+    so every wave comes from your side. The normal mob timer is held back
+    until it's over, and a Tank on you pauses the waves.
+  - The gate is bars: you can see and shoot through it, but nothing gets past
+    until it's open.
+- **Two routes.** A second wall, with its open checkpoint at the far end from
+  the first wall's gate, so the safe way snakes up one side and down the
+  other. A boarded **breach** in the second wall is the short way. Every map
+  is checked to save at least 15% of the walk (about a third on the streets, a
+  quarter indoors).
+  - The breach takes six shoves (240 board HP; bullets do 40% damage, an
+    explosion does a lot). It's loud (1000 u), and a nest of 10–13 sleepers
+    waits right behind it. On the streets there are alarm cars just past it.
+    Nearby lamps are dead.
+  - "DANGER" is sprayed in front of it and "GATE" with an arrow points along
+    the wall to the checkpoint. The first time you see it: "A BREACH: THE
+    SHORT WAY".
+  - Once it's broken, the safe-room arrow and the zombies' pathing both use
+    the short way.
+  - With the holdout on as well, the first wall's gate is the holdout gate
+    (unavoidable). The breach saves the walk after it.
+- **Landmarks** (each called out the first time you get close):
+  - **Gas station** (streets, on the way): a lit canopy over four pumps. Shoot
+    a pump (a couple of rifle bullets): the whole station explodes. The blast
+    (320 u) kills commons close in, hurts specials, throws you (up to 60
+    damage if you're too close), breaks boards and sets off other explosives
+    in range. It leaves a fire that burns for 25 s and kills zombies that walk
+    into it (it hurts you too).
+  - **Crashed helicopter** (streets, a little off the way): a burning wreck
+    with its tail torn off and rotor blades strewn around. Medkit and ammo
+    can.
+  - **Army checkpoint** (streets, across a street on the way): sandbag
+    emplacements you can shoot over, jersey barriers in a chicane, an army
+    truck, floodlights and barbed wire. Ammo can and medkit.
+  - **Gas cylinders** (building): a rack of red and blue cylinders. Same as the
+    pumps: a 250 u blast and an 18 s fire.
+  - **Field post** (building, in a big room on the way): a sandbag ring with
+    floodlights, a crate, an ammo can and a medkit.
+  - **Collapsed ceiling** (building): a heap of slabs under a shaft of
+    moonlight.
+  - **Ammo cans** give 40 hot rounds (×1.5 damage, +1 pierce).
 
 ## Camera
 
@@ -265,6 +328,12 @@ same map always has the same finds.
 - **Massive hordes** (Horde size ×10–×25): does a shove still clear space in
   a packed crowd? Does aim assist still pick the zombie you meant, or does it
   jump around? Keep the debug read-out on and note the fps on your phone.
+- **Holdout gate** (World → Holdout): is it clear where to stand? Is 30 s with
+  the default waves tense or a slog? Try 20 s and 45 s.
+- **Two routes:** do you understand the choice when you first see the breach?
+  Which way do you take, and does the short way feel worth the nest?
+- **Landmarks:** do you remember the gas station / helicopter afterwards? Did
+  you lure a horde to the pumps on purpose?
 - **Scavenging:** do you notice the chalk arrows, and do you follow them? Is a
   detour worth the extra hordes it costs? Does breaking into a boarded room
   feel risky but worth it? Did anyone find the secret without being told? Is

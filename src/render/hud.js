@@ -52,6 +52,7 @@ export function drawHud(ctx, game, input, ui, renderer) {
   if (S.showTouches) drawTouchDebug(ctx, input.touch, L);
 
   drawBossBar(ctx, game, L);
+  drawHoldoutBar(ctx, game, L);
   if (p.pinnedBy && p.alive) drawPinned(ctx, game, L);
   drawMessages(ctx, game, L);
   if (game.won || game.lost) drawEnd(ctx, game, L);
@@ -594,11 +595,23 @@ function drawEnd(ctx, game, L) {
       `hunters ${st.hunters} (skeets ${st.skeets}, deadstops ${st.deadstops}, pinned ${st.pins})   ·   tank ${st.tanks ? 'down' : game.director.tankSpawned ? 'survived' : '-'}`,
     );
   }
-  if (game.lootOn && game.loot) {
+  if (game.loot) {
     const T = game.loot.totals;
-    const parts = [`supplies ${st.stashes}/${T.stash}`];
+    const parts = [];
+    if (T.stash) parts.push(`supplies ${st.stashes}/${T.stash}`);
     if (T.room) parts.push(`boarded rooms ${st.rooms}/${T.room}`);
     if (T.secret) parts.push(st.secrets ? 'secret FOUND' : 'secret not found');
+    if (parts.length) lines.push(parts.join('   ·   '));
+  }
+  const E = game.events;
+  if (E && (E.holdout || E.breach || E.explosives.length)) {
+    const parts = [];
+    if (E.holdout) {
+      const ht = st.holdoutTime;
+      parts.push(st.holdouts ? `gate held ${Math.floor(ht / 60)}:${Math.floor(ht % 60).toString().padStart(2, '0')}` : E.holdout.state === 'running' ? 'gate still opening' : 'gate never opened');
+    }
+    if (E.breach) parts.push(st.shortcut ? 'took the shortcut' : 'went the long way');
+    if (E.explosives.length) parts.push(`explosions ${st.explosions}`);
     lines.push(parts.join('   ·   '));
   }
   if (game.ally) {
@@ -633,6 +646,26 @@ function drawBossBar(ctx, game, L) {
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#fff';
   ctx.fillText('TANK', L.w / 2, y + 5.5);
+}
+
+/** While the holdout gate opens: a bar under the timer (below the Tank's, if it's up). */
+function drawHoldoutBar(ctx, game, L) {
+  const H = game.events && game.events.holdout;
+  if (!H || H.state !== 'running' || game.won || game.lost) return;
+  const w = Math.min(280, L.w * 0.34);
+  const x = L.w / 2 - w / 2;
+  const y = L.safe.t + 34 + (game.director.tankAlive ? 24 : 0);
+  ctx.fillStyle = 'rgba(8,10,14,0.6)';
+  ctx.fillRect(x - 4, y - 4, w + 8, 18);
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(x, y, w, 10);
+  ctx.fillStyle = H.f > 0 ? '#ffb347' : 'rgba(255,179,71,0.45)';
+  ctx.fillRect(x, y, w * clamp(H.f, 0, 1), 10);
+  ctx.font = `900 10px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(H.f > 0 ? `HOLD OUT · GATE ${Math.floor(H.f * 100)}%` : 'HOLD OUT · GATE STARTING', L.w / 2, y + 5.5);
 }
 
 function drawPinned(ctx, game, L) {

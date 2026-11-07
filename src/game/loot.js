@@ -71,7 +71,7 @@ export function updateLoot(game, dt) {
     }
   } else L.rustleT = 0;
   for (const k of L.planks) k.t += dt;
-  for (const room of L.sealed) if (room.boards.hitT > 0) room.boards.hitT -= dt;
+  for (const o of game.boards || []) if (o.hitT > 0) o.hitT -= dt;
 }
 
 function openStash(game, s) {
@@ -177,11 +177,8 @@ export function shootBoards(game, o, def, dx, dy, x, y) {
 
 /** Shove hits boards in front of you within reach. Returns how many were hit. */
 export function shoveBoards(game, p, ang, reach, halfAngle) {
-  const L = game.loot;
-  if (!L) return 0;
   let hits = 0;
-  for (const room of L.sealed) {
-    const o = room.boards;
+  for (const o of game.boards || []) {
     if (o.broken) continue;
     const cx = clamp(p.x, o.x, o.x + o.w);
     const cy = clamp(p.y, o.y, o.y + o.h);
@@ -227,6 +224,7 @@ function breakBoards(game, o, dx, dy) {
   game.noise(cx, cy, 700); // loud: the street hears it
   game.director.addIntensity(0.15);
   game.stats.boards++;
+  if (o.breach && game.onBreach) game.onBreach(o);
   if (room) {
     for (const z of game.zombies) {
       if (z.alive && z.state === 'idle' && pointInRect(z.x, z.y, room.interior, 12)) alertZombie(game, z, rand(0.15, 0.6), false);

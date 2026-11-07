@@ -1,7 +1,7 @@
 // DOM tuning panel (opened by the sliders button / Esc). Pauses the game.
 // Every control writes straight into the live settings object.
 
-import { SCHEMA, PRESETS, DEFAULTS, diffFromDefaults, saveSettings } from './settings.js';
+import { SCHEMA, PRESETS, WORLD_PRESETS, DEFAULTS, diffFromDefaults, saveSettings } from './settings.js';
 
 // Log-scale sliders (item.log): position 0..LOG_STEPS maps to min..max
 // exponentially; values snap to two significant digits (0.25, 1.0, 4.5, 12).
@@ -89,6 +89,21 @@ export class SettingsPanel {
     for (const group of SCHEMA) {
       const sec = el('div', 'panel-section');
       sec.appendChild(el('div', 'panel-group', group.group));
+      if (group.presets === 'world') {
+        const row = el('div', 'panel-row');
+        for (const p of WORLD_PRESETS) {
+          const b = el('button', 'btn chip', p.name);
+          b.addEventListener('click', () => {
+            Object.assign(S, p.values);
+            this.sync();
+            saveSettings(S);
+            this.actions.onChange('world');
+            this._flash(`World: ${p.name}`);
+          });
+          row.appendChild(b);
+        }
+        sec.appendChild(row);
+      }
       for (const item of group.items) sec.appendChild(this._control(item, el));
       card.appendChild(sec);
     }

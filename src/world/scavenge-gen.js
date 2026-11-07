@@ -10,8 +10,9 @@
 //     remote, given away only by a glint. The best loot.
 //
 // "Off the route" = detour: path(start -> x) + path(x -> goal) - route length.
-// Runs as a pass over a finished map (any generator), seeded from the map
-// seed, so the base map is identical with the feature off.
+// Runs as a pass over a finished map (any generator, after the world
+// features), seeded from the map seed, so the base map is identical with it
+// off. opts picks the parts: { stashes, rooms, secret } (all on by default).
 
 import { World, FlowField, NAV_CELL } from './world.js';
 import { mulberry32, shuffle, rectsOverlap, pointInRect, clamp } from '../util.js';
@@ -40,7 +41,8 @@ export const TUNE = {
   interior: { stashes: 4, rooms: 2, minDetour: 300, roomDetour: 260, secretDetour: 520 },
 };
 
-export function addScavenging(map, seed) {
+export function addScavenging(map, seed, opts = {}) {
+  const want = { stashes: opts.stashes !== false, rooms: opts.rooms !== false, secret: opts.secret !== false };
   const rnd = mulberry32((Math.imul(seed | 0, 0x9e3779b1) ^ 0x51ed270b) >>> 0);
   const r = (a, b) => a + rnd() * (b - a);
   const interior = map.theme === 'interior';
@@ -49,8 +51,9 @@ export function addScavenging(map, seed) {
   // Analysis on the untouched map: carving only ever turns solid building
   // into room, so free space stays free and these fields stay valid outside.
   // Strict: a find must be reachable by a body, not just by the nav grid
-  // (which can see a passage in a sliver between two buildings).
-  const world = new World(map, { strict: true });
+  // (which can see a passage in a sliver between two buildings). Things that
+  // open during the run (the holdout gate) count as open.
+  const world = new World({ ...map, obstacles: map.obstacles.filter((o) => !o.opens), sealed: [] }, { strict: true });
   const A = analyse(world, map);
   const er = map.endRoom.interior;
   const goal = { x: er.x + er.w / 2, y: er.y + er.h / 2 };
@@ -80,7 +83,7 @@ export function addScavenging(map, seed) {
   };
 
   // --- Boarded rooms ------------------------------------------------------------------
-  const rooms = interior ? sealInteriorRooms(map, world, A, rnd, T, awayFromEnds) : carveCityRooms(map, world, A, rnd, T, awayFromEnds);
+  const rooms = !want.rooms ? [] : interior ? sealInteriorRooms(map, world, A, rnd, T, awayFromEnds) : carveCityRooms(map, world, A, rnd, T, awayFromEnds);
   for (const room of rooms) {
     const loot = rollDistinct(LOOT_TABLES.room, 2);
     loot.push('medkit');
@@ -115,7 +118,7 @@ export function addScavenging(map, seed) {
     .filter((q) => q.det >= T.secretDetour && q.prog > 0.15 && q.prog < 0.92 && world.isFree(q.x, q.y, 22))
     .map((q) => ({ q, s: Math.min(q.det, 2600) / 2600 + (darkRoom(q.x, q.y) ? 0.5 : 0) + (q.area ? 0.2 : 0) + rnd() * 0.6 }))
     .sort((a, b) => b.s - a.s);
-  for (const { q } of secretPool) {
+  for (const { q } of want.secret ? secretPool : []) {
     if (!farFrom(q.x, q.y, 700)) continue;
     const loot = [roll(LOOT_TABLES.secretRare), 'armorbig', 'hotbig'];
     map.stashes.push({ id: nextId++, tier: 'secret', x: q.x, y: q.y, loot, look: interior ? 'hatch' : 'manhole', a: r(0, Math.PI * 2) });
@@ -124,7 +127,7 @@ export function addScavenging(map, seed) {
   }
 
   // --- Supply stashes: one per stretch of the route, in the best nook there ------------------
-  const n = T.stashes;
+  const n = want.stashes ? T.stashes : 0;
   const scored = cands.map((q) => ({
     q,
     s: q.enc / 24 + (q.area ? 0.6 : 0) + clamp(q.det / 1200, 0, 1) * 0.5 - (q.det > 2600 ? 0.6 : 0) + rnd() * 0.45,
@@ -334,6 +337,7 @@ function sealInteriorRooms(map, world, A, rnd, T, awayFromEnds) {
   const out = [];
   const doorsOf = (rm) =>
     map.doors.filter((d) => {
+      if (d.plugged) return false;
       if (d.vertical) {
         const touches = Math.abs(d.x + d.w - rm.x) <= 2 || Math.abs(d.x - (rm.x + rm.w)) <= 2;
         return touches && d.y >= rm.y - 2 && d.y + d.h <= rm.y + rm.h + 2;

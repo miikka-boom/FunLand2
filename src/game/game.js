@@ -3,6 +3,8 @@
 import { generateCity } from '../world/map-gen.js';
 import { generateBuilding } from '../world/building-gen.js';
 import { addScavenging } from '../world/scavenge-gen.js';
+import { addWorldFeatures } from '../world/features-gen.js';
+import { worldSignature } from '../settings.js';
 import { World, SpatialHash, FlowField } from '../world/world.js';
 import { Player, updatePlayer, shove, startReload, swapWeapon } from './player.js';
 import { updateZombies, resolveCrowd, alertZombie, ZHASH_CELL } from './zombies.js';
@@ -11,6 +13,7 @@ import { Director } from './director.js';
 import { Ally, updateAlly, hurtAlly, allySpotNear } from './ally.js';
 import { Effects } from './effects.js';
 import { initLoot, spawnSleepers, updateLoot } from './loot.js';
+import { initWorldEvents, updateWorldEvents, spawnNest, openBreach, takeAmmo } from './world-events.js';
 import { dampFactor, pointInRect, rand } from '../util.js';
 
 export class Game {
@@ -37,12 +40,13 @@ export class Game {
       map = gen(seed + k);
       world = new World(map);
     }
-    // Stashes, boarded rooms and a secret off the route (changes the map, so rebuild the world).
-    this.lootOn = !!this.settings.loot;
-    if (this.lootOn) {
-      addScavenging(map, map.seed);
-      world = new World(map);
-    }
+    // World features, then scavenging (both change the map, so rebuild the world).
+    const S = this.settings;
+    this.worldSig = worldSignature(S);
+    const base = map.obstacles.slice();
+    if (S.holdout || S.routes || S.landmarks) addWorldFeatures(map, map.seed, { holdout: S.holdout, routes: S.routes, landmarks: S.landmarks });
+    if (S.stashes || S.boardedRooms || S.secret) addScavenging(map, map.seed, { stashes: S.stashes, rooms: S.boardedRooms, secret: S.secret });
+    if (map.obstacles.length !== base.length || map.obstacles.some((o, i) => o !== base[i])) world = new World(map);
     this.world = world;
     // Static field toward the goal: route progress (places the Tank) and the
     // walking distance shown on the safe-room arrow.
@@ -79,14 +83,23 @@ export class Game {
       hunters: 0, skeets: 0, deadstops: 0, pins: 0, breakFrees: 0, tanks: 0, rocksShot: 0,
       allyKills: 0, allySaves: 0, allyDowns: 0, revives: 0,
       stashes: 0, rooms: 0, secrets: 0, boards: 0,
+      holdouts: 0, holdoutAt: 0, holdoutTime: 0, shortcut: 0, explosions: 0,
     };
+    this.boards = map.obstacles.filter((o) => o.boards); // boarded rooms + the breach
     initLoot(this, map);
+    initWorldEvents(this, map);
     this.killCredit = null; // 'ally' while the teammate's bullets/shoves land
     this.world.flow.compute(this.player.x, this.player.y);
     this.ally = null;
     this.syncAlly();
     this.director.populate();
     spawnSleepers(this);
+    spawnNest(this);
+  }
+
+  /** The breach boards came down: the short way is open. */
+  onBreach(o) {
+    openBreach(this, o);
   }
 
   /** Spawn or remove the AI teammate to match the setting (a dead one stays dead until the next run). */
@@ -251,11 +264,16 @@ export class Game {
     this.zombies.length = j;
 
     updateLoot(this, dt);
+    updateWorldEvents(this, dt);
 
     // Pickups.
     for (const k of this.pickups) {
       if (k.pop !== undefined && k.pop < 1) k.pop = Math.min(1, k.pop + dt * 3);
       if (k.taken || !p.alive) continue;
+      if (k.kind === 'ammo') {
+        if (Math.hypot(k.x - p.x, k.y - p.y) < p.r + 14) takeAmmo(this, k);
+        continue;
+      }
       if (Math.hypot(k.x - p.x, k.y - p.y) < p.r + 14 && p.hp < p.maxHp) {
         k.taken = true;
         const heal = Math.round(Math.max(30, (p.maxHp - p.hp) * 0.8));

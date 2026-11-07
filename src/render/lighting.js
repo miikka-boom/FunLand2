@@ -97,6 +97,13 @@ export class Lighting {
       for (const o of game.world.obstacles) {
         if (o.alarmOn && Math.sin(t * 10) > 0 && rectsOverlap(o, vr, 150)) this.radial(ctx, o.x + o.w / 2, o.y + o.h / 2, 140, 0.75);
       }
+      if (game.events) {
+        for (const b of game.events.burns) {
+          if (!pointInRect(b.x, b.y, vr, b.r * 2)) continue;
+          const k = Math.min(1, b.t / 3);
+          this.radial(ctx, b.x, b.y, b.r * 1.9 * (0.6 + 0.4 * k), 0.9 * (0.5 + 0.5 * k) * (0.9 + 0.1 * Math.sin(t * 12)));
+        }
+      }
       for (const L of game.effects.lights) this.radial(ctx, L.x, L.y, L.r, L.k * (L.life / L.max));
       ctx.globalCompositeOperation = 'source-over';
     }

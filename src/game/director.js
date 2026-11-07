@@ -8,6 +8,7 @@ import { rand, randInt, pointInRect } from '../util.js';
 import { Zombie, alertZombie } from './zombies.js';
 import { spawnHunter, spawnTank } from './specials.js';
 import { NAV_CELL } from '../world/world.js';
+import { spawnBlocked } from './world-events.js';
 
 const INF = 0x3fffffff;
 
@@ -269,6 +270,7 @@ export class Director {
       W.cellCenter(i, c);
       if (pointInRect(c.x, c.y, startRoom.outer, 30) || pointInRect(c.x, c.y, endRoom.outer, 30)) continue;
       if (W.sealedAt(c.x, c.y)) continue; // nailed-shut rooms: nothing new appears in there
+      if (spawnBlocked(g, c.x, c.y)) continue; // beyond a shut holdout gate
       if (pointInRect(c.x, c.y, view)) {
         if (Math.hypot(c.x - p.x, c.y - p.y) < 380) continue;
         if (W.segmentClear(p.x, p.y, c.x, c.y)) continue;

@@ -1,6 +1,6 @@
 // Boot, resize/safe-area handling, screens and the frame loop.
 
-import { loadSettings, saveSettings } from './settings.js';
+import { loadSettings, saveSettings, worldSignature } from './settings.js';
 import { computeLayout } from './layout.js';
 import { Input } from './input/input.js';
 import { Game } from './game/game.js';
@@ -86,10 +86,9 @@ const panel = new SettingsPanel(panelEl, settings, {
   onChange: (key) => {
     const all = key === '*'; // presets / reset all
     if (key === 'volume' || all) audio.setVolume(settings.volume);
-    if (key === 'level' || key === 'loot' || all) {
-      if (game.level !== settings.level || game.lootOn !== settings.loot) game.newRun(settings.seed);
-      syncLevelPicker();
-    }
+    // Level / world switches regenerate the map (only if something really changed).
+    if (game.worldSig !== worldSignature(settings)) game.newRun(settings.seed);
+    if (key === 'level' || all) syncLevelPicker();
     if (key === 'ally' || key === 'allyWeapon' || all) game.syncAlly();
     layout = computeLayout(layout.w, layout.h, safe, settings);
     ui.layout = layout;

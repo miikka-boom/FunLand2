@@ -5,7 +5,15 @@ const STORAGE_KEY = 'funland2.p0.tuning.v1';
 
 export const DEFAULTS = Object.freeze({
   level: 'city', // 'city' (streets) | 'interior' (building floor)
-  loot: true, // stashes, boarded rooms and a secret off the main route
+
+  // --- World: what each map has (changes restart the run) -----------------
+  stashes: true, // supply stashes off the main route, with chalk arrows
+  boardedRooms: true, // boarded-up rooms with a better stash (and company)
+  secret: true, // one hidden stash per map
+  holdout: false, // a wall across the map: start the gate, hold out while it opens
+  holdoutTime: 30, // seconds the gate takes to open
+  routes: false, // two ways through: the long way round, or a loud shortcut
+  landmarks: false, // crashed helicopter, army checkpoint, a gas station that blows up
 
   // --- Sticks -------------------------------------------------------------
   moveMode: 'dynamic', // 'dynamic' (base follows thumb) | 'floating' | 'fixed'
@@ -100,7 +108,19 @@ export const SCHEMA = [
           ['interior', 'Building – interior floor'],
         ],
       },
-      { key: 'loot', label: 'Stashes + secrets off the route (restarts the run)', type: 'toggle' },
+    ],
+  },
+  {
+    group: 'World (changes restart the run)',
+    presets: 'world',
+    items: [
+      { key: 'stashes', label: 'Supply stashes + chalk arrows', type: 'toggle' },
+      { key: 'boardedRooms', label: 'Boarded-up rooms', type: 'toggle' },
+      { key: 'secret', label: 'Secret stash', type: 'toggle' },
+      { key: 'holdout', label: 'Holdout gate mid-route', type: 'toggle' },
+      { key: 'holdoutTime', label: 'Gate opening time', type: 'range', min: 15, max: 60, step: 5, fmt: (v) => `${v}s` },
+      { key: 'routes', label: 'Two routes: long way or loud shortcut', type: 'toggle' },
+      { key: 'landmarks', label: 'Landmarks: heli crash, checkpoint, gas station', type: 'toggle' },
     ],
   },
   {
@@ -219,6 +239,17 @@ export const SCHEMA = [
       { key: 'showTouches', label: 'Show touches + zones', type: 'toggle' },
     ],
   },
+];
+
+/** World toggles that change how a map is generated (holdoutTime only matters at run time). */
+export const WORLD_KEYS = ['level', 'stashes', 'boardedRooms', 'secret', 'holdout', 'routes', 'landmarks'];
+export const worldSignature = (S) => WORLD_KEYS.map((k) => String(S[k])).join('|');
+
+/** One-tap world setups, so nobody has to flip six switches to try things. */
+export const WORLD_PRESETS = [
+  { name: 'Default', values: { stashes: true, boardedRooms: true, secret: true, holdout: false, routes: false, landmarks: false } },
+  { name: 'Everything', values: { stashes: true, boardedRooms: true, secret: true, holdout: true, routes: true, landmarks: true } },
+  { name: 'Bare map', values: { stashes: false, boardedRooms: false, secret: false, holdout: false, routes: false, landmarks: false } },
 ];
 
 // One-tap control presets for quick A/B comparisons. Only control keys.

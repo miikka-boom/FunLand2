@@ -15,6 +15,7 @@ export class Effects {
     this.flashes = [];
     this.lights = [];
     this.arcs = [];
+    this.blasts = [];
     this.corpses = [];
     this.decal = document.createElement('canvas');
     this.decal.width = Math.ceil(w * DECAL_SCALE);
@@ -92,6 +93,33 @@ export class Effects {
       const s = rand(90, 190);
       this._p({ kind: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.25, 0.5), max: 0.5, size: rand(1.4, 2.4) });
     }
+  }
+
+  /** A big blast: fireball ring, flying debris and sparks, a flash of light, a scorch mark. */
+  explosion(x, y, R) {
+    this.blasts.push({ x, y, r: R, life: 0.55, max: 0.55 });
+    this.light(x, y, R * 2.4, 0.7, 1);
+    this.debris(x, y, 26, ['#3a2f28', '#5a4636', '#2a2420', '#7a5a36']);
+    for (let i = 0; i < 26; i++) {
+      const a = Math.random() * TAU;
+      const s = rand(160, 520);
+      this._p({ kind: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.25, 0.7), max: 0.7, size: rand(1.6, 3) });
+    }
+    for (let i = 0; i < 14; i++) this.smoke(x + rand(-R, R) * 0.35, y + rand(-R, R) * 0.35, rand(18, 32));
+    this.scorch(x, y, R * 0.55);
+  }
+
+  /** Burnt ground painted into the decal layer. */
+  scorch(x, y, r) {
+    const c = this.dctx;
+    const g = c.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, 'rgba(10,8,6,0.85)');
+    g.addColorStop(0.6, 'rgba(18,14,10,0.5)');
+    g.addColorStop(1, 'rgba(18,14,10,0)');
+    c.fillStyle = g;
+    c.beginPath();
+    c.arc(x, y, r, 0, TAU);
+    c.fill();
   }
 
   smoke(x, y, size = 10) {
@@ -269,6 +297,7 @@ export class Effects {
     age(this.flashes);
     age(this.lights);
     age(this.arcs);
+    age(this.blasts);
 
     const cs = this.corpses;
     for (let i = cs.length - 1; i >= 0; i--) {

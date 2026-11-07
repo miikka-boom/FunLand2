@@ -94,6 +94,13 @@ export class World {
     const n = this.navW * this.navH;
     this.blocked = new Uint8Array(n);
     this.penalty = new Uint8Array(n);
+    this._markNav(0, 0, this.navW - 1, this.navH - 1);
+  }
+
+  /** (Re)build blocked cells and wall penalties inside a cell window. */
+  _markNav(cx0, cy0, cx1, cy1) {
+    const cs = NAV_CELL;
+    for (let y = cy0; y <= cy1; y++) for (let x = cx0; x <= cx1; x++) this.blocked[y * this.navW + x] = 0;
     // Thin obstacles (walls, glass, fences, shelves: < one cell thick) block
     // every cell they touch, or they could slip between rows of cell centres
     // and the field would route bodies straight through them. Bulky props
@@ -119,24 +126,32 @@ export class World {
         y0 = Math.ceil((o.y - inf) / cs - 0.5);
         y1 = Math.floor((o.y + o.h + inf) / cs - 0.5);
       }
-      x0 = Math.max(0, x0);
-      y0 = Math.max(0, y0);
-      x1 = Math.min(this.navW - 1, x1);
-      y1 = Math.min(this.navH - 1, y1);
+      x0 = Math.max(cx0, x0);
+      y0 = Math.max(cy0, y0);
+      x1 = Math.min(cx1, x1);
+      y1 = Math.min(cy1, y1);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) this.blocked[y * this.navW + x] = 1;
     }
     if (this.strict) {
       const c = { x: 0, y: 0 };
-      for (let i = 0; i < n; i++) {
-        if (this.blocked[i]) continue;
-        this.cellCenter(i, c);
-        if (!this.isFree(c.x, c.y, STRICT_R)) this.blocked[i] = 1;
+      for (let y = cy0; y <= cy1; y++) {
+        for (let x = cx0; x <= cx1; x++) {
+          const i = y * this.navW + x;
+          if (this.blocked[i]) continue;
+          this.cellCenter(i, c);
+          if (!this.isFree(c.x, c.y, STRICT_R)) this.blocked[i] = 1;
+        }
       }
     }
     // Prefer the middle of corridors: small cost next to walls.
-    for (let y = 0; y < this.navH; y++) {
-      for (let x = 0; x < this.navW; x++) {
+    const px0 = Math.max(0, cx0 - 1);
+    const py0 = Math.max(0, cy0 - 1);
+    const px1 = Math.min(this.navW - 1, cx1 + 1);
+    const py1 = Math.min(this.navH - 1, cy1 + 1);
+    for (let y = py0; y <= py1; y++) {
+      for (let x = px0; x <= px1; x++) {
         const i = y * this.navW + x;
+        this.penalty[i] = 0;
         if (this.blocked[i]) continue;
         for (const [dx, dy] of DIRS) {
           const nx = x + dx;
@@ -148,6 +163,16 @@ export class World {
         }
       }
     }
+  }
+
+  /** Re-mark the nav grid around a rect after an obstacle there was removed (a breach broken in). */
+  refreshNav(r) {
+    const cs = NAV_CELL;
+    const x0 = clamp(Math.floor(r.x / cs) - 2, 0, this.navW - 1);
+    const x1 = clamp(Math.floor((r.x + r.w) / cs) + 2, 0, this.navW - 1);
+    const y0 = clamp(Math.floor(r.y / cs) - 2, 0, this.navH - 1);
+    const y1 = clamp(Math.floor((r.y + r.h) / cs) + 2, 0, this.navH - 1);
+    this._markNav(x0, y0, x1, y1);
   }
 
   /** Take an obstacle out of the world (broken boards). The nav grid never had it. */
