@@ -10,7 +10,7 @@ const TAP_MOVE = 8; // px a finger may wander and still be a tap
 const TAP_MS = 350;
 const LONG_MS = 350; // a still press this long lifts a movable thing
 const DOUBLE_MS = 320; // two taps this close zoom in or out
-const LIFT_Y = 40; // a lifted thing floats this far above the finger
+const LIFT_Y = 40; // without a grab point (never in play), a dragged ghost centres this far above the finger
 const EDGE = 48; // dragging near the edge pans the view
 const EDGE_SPEED = 0.6; // px per ms at the very edge
 const FRICTION = 0.0045; // inertia decay per ms
@@ -384,7 +384,7 @@ export class IsoView {
   //
   // One finger: a tap selects; a drag pans (with inertia); a still press of
   // LONG_MS asks onLongPress, which may lift the thing (then the drag moves the
-  // ghost, floating LIFT_Y px above the finger, and the view pans near the
+  // ghost, which keeps the point where it was grabbed, and the view pans near the
   // edges). A drag that starts on the ghost moves it too. In paint mode one
   // finger paints tiles. Two fingers pinch and pan. Two quick taps zoom.
 
@@ -488,7 +488,7 @@ export class IsoView {
           if (!id && target && target.dataset.wid) {
             // A person (or zombie) drawn over the object takes the press: nothing lifts.
             const hit = this._hitObjectZ(w.x, w.y);
-            id = hit && hit.d > (Number(target.style.zIndex) || 0) ? hit.oid : null;
+            id = hit && hit.d > (Number(target.style.zIndex) || 0) && this.opaqueAt(hit.rec, w.x, w.y) ? hit.oid : null;
             if (!id) return;
           }
           if (!id) id = this._hitObject(w.x, w.y) || this._objectOnTile(t.i, t.j);
@@ -523,11 +523,57 @@ export class IsoView {
       const w = rec.w || 1;
       const h = rec.h || 1;
       const body = rec.hitH ?? Math.max(0, (rec.artH || 0) * 0.85 - (w + h) * (TH / 2));
-      if (!inHexagon(rec.i, rec.j, w, h, body, wx, wy)) continue;
+      let inside = inHexagon(rec.i, rec.j, w, h, body, wx, wy);
+      // Tall art (a tower, a mast) answers above its body only where it is drawn.
+      if (!inside && rec.tallH > body && inHexagon(rec.i, rec.j, w, h, rec.tallH, wx, wy)) inside = this.opaqueAt(rec, wx, wy);
+      if (!inside) continue;
       const d = depth(rec.i, rec.j, w, h) * 10 + (rec.z || 0);
-      if (!best || d > best.d) best = { oid, d };
+      if (!best || d > best.d) best = { oid, d, rec };
     }
     return best;
+  }
+
+  /**
+   * Is an image object drawn (not transparent) at a world point? Samples the
+   * alpha of its <img> from a cached canvas. If the canvas can't be read
+   * (tainted or not loaded yet), it counts as drawn.
+   */
+  opaqueAt(rec, wx, wy) {
+    const img = rec && rec.el && rec.el.querySelector('img');
+    if (!img || !rec.box) return true;
+    if (!img.complete || !img.naturalWidth) return true;
+    const W = Math.round(rec.box.right - rec.box.left + 2 * PAD);
+    const H = Math.round(rec.box.bottom - rec.box.top + 2 * PAD);
+    const key = `${img.src.length}:${img.src.slice(-64)}:${W}x${H}`;
+    let data = alphaCache.get(key);
+    if (data === undefined) {
+      data = null;
+      try {
+        const c = document.createElement('canvas');
+        c.width = W;
+        c.height = H;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, W, H);
+        data = ctx.getImageData(0, 0, W, H).data;
+      } catch {
+        data = null;
+      }
+      alphaCache.set(key, data);
+      if (alphaCache.size > 60) alphaCache.delete(alphaCache.keys().next().value);
+    }
+    if (!data) return true;
+    const x = Math.round(wx - (rec.box.left - PAD));
+    const y = Math.round(wy - (rec.box.top - PAD));
+    if (x < 0 || y < 0 || x >= W || y >= H) return false;
+    // A little slack: any drawn pixel within 2 px counts.
+    for (let dy = -2; dy <= 2; dy += 2)
+      for (let dx = -2; dx <= 2; dx += 2) {
+        const xx = x + dx;
+        const yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+        if (data[(yy * W + xx) * 4 + 3] > 24) return true;
+      }
+    return false;
   }
 
   _hitObject(wx, wy) {
@@ -568,30 +614,12 @@ export class IsoView {
     }
     if (g.kind === 'paint') {
       if (this.pointers.size !== 1) return;
-      const t = this._tileAt(p);
-      const k = `${t.i},${t.j}`;
       // Not yet clearly a one-finger stroke: a second finger may still turn it into a pan.
       if (g.pending && (Math.hypot(p.x - g.start.x, p.y - g.start.y) <= TAP_MOVE || performance.now() - g.t0 < 90)) {
         g.last = p;
         return;
       }
-      if (k !== g.tile) {
-        const [pi, pj] = g.tile.split(',').map(Number);
-        if (g.pending) {
-          const q = g.pending;
-          g.pending = null;
-          if (this.cb.onPaint) this.cb.onPaint({ i: q.i, j: q.j, first: true });
-        }
-        g.tile = k;
-        // Every tile between the last one and this (a fast finger skips tiles between events).
-        const n = Math.max(Math.abs(t.i - pi), Math.abs(t.j - pj));
-        for (let s = 1; s <= n; s++) {
-          const ii = Math.round(pi + ((t.i - pi) * s) / n);
-          const jj = Math.round(pj + ((t.j - pj) * s) / n);
-          if (this.cb.onPaint) this.cb.onPaint({ i: ii, j: jj, first: false });
-        }
-      }
-      g.last = p;
+      this._paintTo(g, p);
       return;
     }
     if (g.kind === 'lift') {
@@ -628,6 +656,31 @@ export class IsoView {
     g.last = p;
   }
 
+  /**
+   * Paint along the screen segment from the last painted point to p, every
+   * tile it crosses (a fast finger skips tiles between events).
+   */
+  _paintTo(g, p) {
+    if (g.pending) {
+      const q = g.pending;
+      g.pending = null;
+      if (this.cb.onPaint) this.cb.onPaint({ i: q.i, j: q.j, first: true });
+      g.lastPaint = g.start;
+    }
+    const from = g.lastPaint || g.start;
+    const len = Math.hypot(p.x - from.x, p.y - from.y);
+    const n = Math.max(1, Math.ceil(len / 6));
+    for (let k = 1; k <= n; k++) {
+      const t = this._tileAt({ x: from.x + ((p.x - from.x) * k) / n, y: from.y + ((p.y - from.y) * k) / n });
+      const key = `${t.i},${t.j}`;
+      if (key === g.tile) continue;
+      g.tile = key;
+      if (this.cb.onPaint) this.cb.onPaint({ i: t.i, j: t.j, first: false });
+    }
+    g.lastPaint = p;
+    g.last = p;
+  }
+
   _up(e, cancel = false) {
     clearTimeout(this._longT);
     const g = this.gesture;
@@ -650,7 +703,11 @@ export class IsoView {
     this.gesture = null;
     if (!g) return;
     if (g.kind === 'paint') {
-      if (g.pending && !cancel && !g.halted && this.cb.onPaint) this.cb.onPaint({ ...g.pending, first: true }); // a one-finger tap paints one tile
+      if (g.pending && !cancel && !g.halted) {
+        // A quick stroke that ended inside the hold-off still paints all the way; a tap paints one tile.
+        if (Math.hypot(g.last.x - g.start.x, g.last.y - g.start.y) > TAP_MOVE) this._paintTo(g, g.last);
+        else if (this.cb.onPaint) this.cb.onPaint({ ...g.pending, first: true });
+      }
       if (this.cb.onPaintEnd) this.cb.onPaintEnd();
       return;
     }
@@ -686,9 +743,9 @@ export class IsoView {
       id = g.target.dataset.oid || null;
       // A walker's box takes the pointer even where an object is drawn over
       // it: whichever is drawn on top wins.
-      // (Zombies always keep theirs: BONK beats the lot card behind them.)
+      // (The object wins only where its art is actually drawn over the walker.)
       const wid = g.target.dataset.wid;
-      if (!id && wid) id = hit && hit.d > (Number(g.target.style.zIndex) || 0) && !/^z/.test(String(wid)) ? hit.oid : `w:${wid}`;
+      if (!id && wid) id = hit && hit.d > (Number(g.target.style.zIndex) || 0) && this.opaqueAt(hit.rec, wp.x, wp.y) ? hit.oid : `w:${wid}`;
     }
     if (!id) id = (hit && hit.oid) || this._objectOnTile(t.i, t.j);
     if (lt && now - lt.t < DOUBLE_MS && Math.hypot(p.x - lt.x, p.y - lt.y) < 30 && !g.target) {
@@ -721,6 +778,7 @@ export class IsoView {
 }
 
 const PAD = 16; // world px of room around the viewBox for small overhangs (flags, smoke)
+const alphaCache = new Map(); // image key -> RGBA pixels (for taps on tall art)
 const imgCache = new Map();
 
 /** An <img> of an SVG string, padded so overhangs past the viewBox still show. */

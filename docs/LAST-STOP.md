@@ -160,7 +160,7 @@ it.
 
 ## Wishes, junk, visitors
 
-**Wishes.** One is open at a time and never expires (the simulated player, who plays four 20-minute sessions a day, grants about two a session): "Aino would love
+**Wishes.** One is open at a time and never expires, unless the home stays boxed in for 30 minutes, when the wisher gives it up and another wish comes on the usual clock (the simulated player, who plays four 20-minute sessions a day, grants about two a session): "Aino would love
 something Garden by her cabin." It's granted the moment any piece of that set
 stands within 2 tiles of her home, bought, unboxed or **moved** there for free:
 4 + 2 × zone Badges, a heart and a plaque. The squad is three times as likely
@@ -174,7 +174,8 @@ home glows while you drag a match in range. Wishes never get the arrow.
 **Junk.** 70% coins (10 + 10 × zone ±25%), 15% 2–4 gems, 12% a common
 decoration, 3% a rare one; separately a 3% "someone's in the trunk!" survivor
 (the first by the 12th pile, never more than 40 apart). The first pile you pop
-yourself holds a Lawn Flamingo and starts the first wish (Party).
+yourself holds a Lawn Flamingo and starts the first wish (Party), when there is
+room by the Show-off founder's tent.
 
 **Visitors** (on returning after an hour): a costume zombie at the fence (1 in
 5; BONK it for a common decoration or 20 × zone coins) or a golden zombie (1 in

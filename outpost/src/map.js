@@ -209,7 +209,7 @@ export class TownMap {
         if (L.kind === 'L') art = A.landmark(L.landmark, false);
         else if (L.kind === '?') art = A.mystery(haze);
         else art = A.ruin(key, haze);
-        this.view.upsert(wid, { i: a * LOT + 2, j: b * LOT + 2, w: 3, h: 3, html: art.svg, artH: art.artH, cls: `o-wild k-${L.kind}`, lot: [a, b], img: true, hitH: Math.max(art.bodyH || 0, art.artH - 3 * 32 - 12) });
+        this.view.upsert(wid, { i: a * LOT + 2, j: b * LOT + 2, w: 3, h: 3, html: art.svg, artH: art.artH, cls: `o-wild k-${L.kind}`, lot: [a, b], img: true, hitH: art.bodyH, tallH: art.artH - 3 * 32 - 12 });
         if (L.kind === 'L') this._boss(key, L.landmark, a, b);
       }
   }
@@ -296,7 +296,7 @@ export class TownMap {
       const was = this.cache.get(id);
       this.cache.set(id, key);
       const art = this._objHtml(o);
-      const el = this.view.upsert(id, { i: o.i, j: o.j, w: o.size, h: o.size, html: art.svg, artH: art.artH, cls: `o-${o.kind}${o.kind === 'building' ? ` b-${o.ref}` : ''}`, oid: o.id, img: true, hitH: art.bodyH });
+      const el = this.view.upsert(id, { i: o.i, j: o.j, w: o.size, h: o.size, html: art.svg, artH: art.artH, cls: `o-${o.kind}${o.kind === 'building' ? ` b-${o.ref}` : ''}`, oid: o.id, img: true, hitH: art.bodyH, tallH: o.kind === 'landmark' ? art.artH - 3 * 32 - 12 : undefined });
       // A front overlay (a hot tub's wall, a hammock's lip) so someone can sit in it.
       if (art.front) this.view.upsert(`of${o.id}`, { i: o.i, j: o.j, w: o.size, h: o.size, html: art.front.svg, artH: art.front.artH, cls: 'o-front', z: art.front.z ?? 2, img: true, noTap: true });
       else this.view.remove(`of${o.id}`);
@@ -972,11 +972,17 @@ export class TownMap {
       if ((w.sprint && w.path.length) || w.seat) continue; // the squad's BONK sprint goes straight on purpose
       const ci = Math.floor(w.fi);
       const cj = Math.floor(w.fj);
+      const endRun = () => {
+        w.run = false;
+        w.sprint = false;
+        w.runSpeed = 0;
+      };
       if (!this._walkable(ci, cj)) {
         const t = this._nearestFree(ci, cj);
         w.path = t ? [{ i: t.i + 0.5, j: t.j + 0.5 }] : [];
         w.then = 'idle';
         w.heart = false;
+        endRun();
         continue;
       }
       if (!w.path.length) continue;
@@ -986,6 +992,7 @@ export class TownMap {
         if (!o || `${o.i},${o.j}` !== end.seat.at) {
           w.path = [];
           w.wait = 0;
+          endRun();
           continue;
         }
       }
@@ -995,6 +1002,7 @@ export class TownMap {
         if (!last || !this._walkable(Math.floor(last.i), Math.floor(last.j)) || !this._route(w, { i: Math.floor(last.i), j: Math.floor(last.j) })) {
           w.path = [];
           w.wait = 0;
+          endRun();
         }
       }
     }
@@ -1371,6 +1379,10 @@ export class TownMap {
           this._unseat(w);
           w.wait = 0;
         }
+      }
+      if (w.run) {
+        w.run = false; // a run with nowhere to go ends
+        w.runSpeed = 0;
       }
       w.wait -= sec;
       if (w.wait <= 0) {

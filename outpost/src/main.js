@@ -806,7 +806,10 @@ async function junkFollowUp(list) {
   if (ncs.length) {
     // Clear the screen like a chest does: no drawer or ghost under the reveal.
     closeDrawer();
-    if (map.placing) map.placeCancel();
+    map.endPlace(); // only the ghost being confirmed can be up: end it without its cancel side effects
+    ui.undo = null;
+    clearTimeout(ui.undoT);
+    hud.showUndo(false);
     arm();
     setBusy(true);
     try {
@@ -1005,7 +1008,10 @@ async function clearBeats(r, L, c, cw) {
   }
   if (r.campers.length) toasts.show(`${A.townIcon('home')}<b>${r.campers.length}</b> roof camper${r.campers.length > 1 ? 's' : ''} moved into new homes`, '', 2600);
   // The hand shows a junk pile, session 1 only.
-  if (meta.once('hint.junk') && meta.s.junk.length) ui.junkHint = meta.s.junk[0].id;
+  if (meta.once('hint.junk') && meta.s.junk.length) {
+    ui.junkHint = meta.s.junk[0].id;
+    ui.junkGlided = false;
+  }
 }
 
 /** Three knocks like a chest, each a Glow-Up chance; then the prize pops. */
@@ -1434,6 +1440,18 @@ function showHint() {
   if (el) hud.pointAt(el, label, true);
 }
 
+/** The map element a next step points at (a lot tag, a building's arrow, a READY bubble, the gift), or null. */
+function stepEl(step) {
+  if (step.kind === 'lot') return map.tagEl(step.a, step.b);
+  if (step.kind === 'build') {
+    const o = meta.s.objects.find((x) => x.kind === 'building' && x.ref === step.id);
+    return (o && map.pinEl(`b:${o.id}`)) || map.buildingEl(step.id);
+  }
+  if (step.kind === 'ready' && !meta.inSquad(step.id)) return map.pinEl(`r:${step.id}`);
+  if (step.kind === 'gift') return map.giftEl();
+  return null;
+}
+
 /** Is an element inside the map's clear area (not under the HUD)? */
 function inSafe(el) {
   const r = el.getBoundingClientRect();
@@ -1534,13 +1552,24 @@ document.addEventListener('visibilitychange', () => {
 });
 addEventListener('pagehide', save);
 // Touching the map counts as activity: the hand steps aside.
-$('map').addEventListener('pointerdown', () => {
-  hud.poke();
-  // The player is looking around: don't pull the camera back for this step.
-  ui.hintGlide = JSON.stringify(meta.nextStep());
-  ui.junkGlided = true;
-});
-$('map').addEventListener('pointerup', () => hud.poke());
+{
+  let down = null;
+  $('map').addEventListener('pointerdown', (e) => {
+    hud.poke();
+    down = { x: e.clientX, y: e.clientY, panned: false };
+  });
+  $('map').addEventListener('pointermove', (e) => {
+    if (!down || down.panned || Math.hypot(e.clientX - down.x, e.clientY - down.y) < 12) return;
+    down.panned = true;
+    // The player is looking around: don't pull the camera back for this step.
+    ui.hintGlide = JSON.stringify(meta.nextStep());
+    if (ui.junkHint) ui.junkGlided = true;
+  });
+  $('map').addEventListener('pointerup', () => {
+    hud.poke();
+    down = null;
+  });
+}
 
 // --- Frame loop ---------------------------------------------------------------------------------------
 
@@ -1571,14 +1600,30 @@ function frame(now) {
     const st = meta.station();
     hud.showHome(st && !map.view.onScreen(st.i + 1.5, st.j + 1.5, -60) && !busy);
     const step = map.step || meta.nextStep();
-    const t = !busy && !map.placing && !modals.isOpen && !overlay.classList.contains('on') ? stepTile(step) : null;
+    const quiet = !busy && !map.placing && !modals.isOpen && !crew.isOpen && !drawer.isOpen && !overlay.classList.contains('on');
+    const t = quiet ? stepTile(step) : null;
     if (t && !map.view.onScreen(t.i, t.j, 40)) hud.edgeAt(map.view.tileScreen(t.i, t.j));
-    else hud.edgeAt(null);
+    else if (t && !hud.handOn) {
+      // Its tile is on screen but its tag or bubble hides under the HUD: point there.
+      const el = stepEl(step);
+      if (el && !inSafe(el)) {
+        const r = el.getBoundingClientRect();
+        hud.edgeAt({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+      } else hud.edgeAt(null);
+    } else hud.edgeAt(null);
+    // A housewarming put off by a sheet or a sequence plays once the map is back.
+    if (quiet && ui.housewarm && ui.housewarm.length) housewarming();
   }
   slowT += dt;
   if (slowT > 5000) {
     slowT = 0;
     const w = meta.tick();
+    if (meta.letGo) {
+      const p = meta.person(meta.letGo.id);
+      meta.letGo = null;
+      if (p) toasts.show(`${icon('heart')}<b>${name(p)}</b> gave up on that wish: no room by the home.`, '', 3200);
+      refresh();
+    }
     if (w) {
       save();
       refresh();

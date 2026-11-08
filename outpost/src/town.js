@@ -1244,7 +1244,8 @@ export class Town extends Meta {
     else if (this.now() - w.blockedAt >= WISH_BLOCKED_MS) {
       s.wish = null;
       s.lastWisher = w.id;
-      s.wishNextAt = this.now();
+      s.wishNextAt = this.now() + WISH.after; // another comes on the usual clock
+      this.letGo = w; // the UI says so once
     }
   }
 

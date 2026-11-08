@@ -54,6 +54,12 @@ export function migrate(saved, now) {
   s.nextObj = Math.max(s.nextObj || 1, ...s.objects.map((o) => o.id + 1));
   s.nextJunk = Math.max(s.nextJunk || 1, ...s.junk.map((o) => o.id + 1));
   s.boxSerial = Math.max(s.boxSerial || 0, ...s.box.map((x) => x.n || 0));
+  // Saves from before box serials: stamp the entries, and keep the old "seen" count.
+  if (s.box.some((x) => !x.n)) {
+    const seenN = Math.min(s.seen.boxSeen || 0, s.box.length);
+    for (const x of s.box) if (!x.n) x.n = ++s.boxSerial;
+    if (s.seen.boxSerial == null) s.seen.boxSerial = seenN ? s.box[seenN - 1].n : 0;
+  }
   if (s.wish && !s.people.some((p) => p.id === s.wish.id)) s.wish = null;
   for (const p of s.people) {
     for (const [k, v] of Object.entries(PERSON_DEFAULTS)) if (p[k] === undefined) p[k] = v;
