@@ -57,9 +57,10 @@ class Heap {
  * Shortest path from (si, sj) to (ti, tj) on a cols × rows grid. blocked(i, j)
  * says whether a tile can't be walked. The goal may be blocked (walk next to
  * it). Returns [[i, j], ...] tile centres from the start's neighbour to the
- * goal, [] if already there, or null if no path (within maxNodes).
+ * goal, [] if already there, or null if no path (within maxNodes). cost(i, j)
+ * (optional, ≥ 1) is the price of stepping onto a tile (paths 1, grass 3).
  */
-export function findPath(cols, rows, blocked, si, sj, ti, tj, maxNodes = 4000) {
+export function findPath(cols, rows, blocked, si, sj, ti, tj, maxNodes = 4000, cost = null) {
   si = Math.floor(si);
   sj = Math.floor(sj);
   ti = Math.floor(ti);
@@ -96,7 +97,7 @@ export function findPath(cols, rows, blocked, si, sj, ti, tj, maxNodes = 4000) {
       if (!free(i, j)) continue;
       if (di && dj && (!free(n.i + di, n.j) || !free(n.i, n.j + dj))) continue; // no corner cutting
       const k = key(i, j);
-      const ng = gn + c;
+      const ng = gn + c * (cost ? cost(i, j) : 1);
       if (ng < (g.get(k) ?? Infinity)) {
         g.set(k, ng);
         from.set(k, key(n.i, n.j));

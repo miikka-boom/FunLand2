@@ -8,10 +8,18 @@ import { TW, TH, Camera, footBox, footBottom, depth, diamondPoints, mapBounds, t
 
 const TAP_MOVE = 8; // px a finger may wander and still be a tap
 const TAP_MS = 350;
+const LONG_MS = 350; // a still press this long lifts a movable thing
+const DOUBLE_MS = 320; // two taps this close zoom in or out
+const LIFT_Y = 40; // a lifted thing floats this far above the finger
+const EDGE = 48; // dragging near the edge pans the view
+const EDGE_SPEED = 0.6; // px per ms at the very edge
+const FRICTION = 0.0045; // inertia decay per ms
 
 export class IsoView {
   /**
-   * cb: { onTap({ id, i, j, sx, sy }), onGhostMove({ i, j }), onCamera() }
+   * cb: { onTap({ id, i, j, sx, sy, ui }), onGhostMove({ i, j }), onCamera(),
+   *       onLongPress({ id, i, j }) -> true to lift, onDrop({ i, j }) when a lifted
+   *       drag ends, onPaint({ i, j, first }) in paint mode, onDoubleTap({ sx, sy }) }
    */
   constructor(root, { cols, rows }, cb = {}) {
     this.root = root;
@@ -24,6 +32,10 @@ export class IsoView {
     this.ghost = null;
     this.pointers = new Map();
     this.gesture = null;
+    this.mode = 'normal'; // or 'paint': one finger paints tiles, two pan
+    this.vel = null; // pan inertia { x, y } in screen px per ms
+    this.lastTap = null;
+    this.edge = null; // edge auto-pan while dragging the ghost
     const b = mapBounds(cols, rows);
     this.bounds = b;
     root.classList.add('iso');
@@ -32,11 +44,13 @@ export class IsoView {
       `<div class="iso-ground" style="left:${b.left}px;top:${b.top}px;width:${b.right - b.left}px;height:${b.bottom - b.top}px"></div>` +
       `<svg class="iso-marks" style="left:${b.left}px;top:${b.top}px" width="${b.right - b.left}" height="${b.bottom - b.top}" viewBox="${b.left} ${b.top} ${b.right - b.left} ${b.bottom - b.top}"></svg>` +
       `<div class="iso-objects"></div>` +
+      `<div class="iso-ui"></div>` +
       `</div>`;
     this.world = root.querySelector('.iso-world');
     this.groundEl = root.querySelector('.iso-ground');
     this.marks = root.querySelector('.iso-marks');
     this.layer = root.querySelector('.iso-objects');
+    this.ui = root.querySelector('.iso-ui');
     this.cam.x = (b.left + b.right) / 2;
     this.cam.y = (b.top + b.bottom) / 2;
     // Keep the view centre over the diamond (not its empty bounding-box corners).
@@ -65,34 +79,118 @@ export class IsoView {
 
   apply() {
     this.world.style.transform = this.cam.css();
+    // In-world buttons keep a readable size: counter-scaled by max(1, 0.9 / zoom).
+    const k = Math.max(1, 0.9 / this.cam.zoom).toFixed(3);
+    if (k !== this._uiK) {
+      this._uiK = k;
+      this.world.style.setProperty('--ui-k', k);
+    }
     if (this.cb.onCamera) this.cb.onCamera();
   }
 
+  /** Per frame: pan inertia and edge auto-pan. */
+  tick(dt) {
+    if (this.vel && !this.pointers.size) {
+      const decay = Math.exp(-FRICTION * dt);
+      this.vel.x *= decay;
+      this.vel.y *= decay;
+      if (Math.hypot(this.vel.x, this.vel.y) < 0.02) this.vel = null;
+      else {
+        this.cam.panBy(this.vel.x * dt, this.vel.y * dt);
+        this.apply();
+      }
+    }
+    const g = this.gesture;
+    if (g && g.kind === 'lift' && this.ghost) {
+      const p = g.last;
+      const vw = this.cam.vw;
+      const vh = this.cam.vh;
+      const ex = p.x < EDGE ? (EDGE - p.x) / EDGE : p.x > vw - EDGE ? -(p.x - (vw - EDGE)) / EDGE : 0;
+      const ey = p.y < EDGE ? (EDGE - p.y) / EDGE : p.y > vh - EDGE ? -(p.y - (vh - EDGE)) / EDGE : 0;
+      if (ex || ey) {
+        this.cam.panBy(ex * EDGE_SPEED * dt, ey * EDGE_SPEED * dt);
+        this.apply();
+        this._dragGhost(p);
+      }
+    }
+  }
+
+  /** An in-world HTML element (tags, bubbles, arrows) pinned to a world point, counter-scaled. */
+  pin(id, x, y, html, cls = '') {
+    let el = this.ui.querySelector(`[data-pin="${id}"]`);
+    if (!el) {
+      el = document.createElement('div');
+      el.dataset.pin = id;
+      this.ui.appendChild(el);
+    }
+    if (el._html !== html) {
+      el.innerHTML = html;
+      el._html = html;
+    }
+    el.className = `iso-pin ${cls}`;
+    el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) scale(var(--ui-k, 1))`;
+    return el;
+  }
+
+  unpin(id) {
+    const el = this.ui.querySelector(`[data-pin="${id}"]`);
+    if (el) el.remove();
+  }
+
+  pinEl(id) {
+    return this.ui.querySelector(`[data-pin="${id}"]`);
+  }
+
+  /** Stop any running glide or inertia. */
+  stop() {
+    this.vel = null;
+    this._glide = null;
+  }
+
   /** Centre the camera on a tile (optionally animate). */
-  focus(i, j, { zoom = null, ms = 450 } = {}) {
+  focus(i, j, { zoom = null, ms = 450, dy = 0 } = {}) {
     const to = tileToWorld(i, j);
     const from = { x: this.cam.x, y: this.cam.y, z: this.cam.zoom };
-    const tz = zoom ?? this.cam.zoom;
+    const tz = Math.min(this.cam.max, Math.max(this.cam.min, zoom ?? this.cam.zoom));
+    // dy: screen px to shift the point down (e.g. above a bottom drawer).
+    to.y += dy / tz;
+    this.vel = null;
     if (!ms) {
       this.cam.x = to.x;
       this.cam.y = to.y;
       this.cam.zoom = tz;
       this.cam.clamp();
       this.apply();
-      return;
+      return Promise.resolve();
     }
     const t0 = performance.now();
-    const step = (now) => {
-      const k = Math.min(1, (now - t0) / ms);
-      const e = 1 - (1 - k) ** 3;
-      this.cam.x = from.x + (to.x - from.x) * e;
-      this.cam.y = from.y + (to.y - from.y) * e;
-      this.cam.zoom = from.z + (tz - from.z) * e;
-      this.cam.clamp();
-      this.apply();
-      if (k < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
+    const token = {};
+    this._glide = token;
+    return new Promise((resolve) => {
+      const step = (now) => {
+        if (this._glide !== token) return resolve();
+        const k = Math.min(1, (now - t0) / ms);
+        const e = 1 - (1 - k) ** 3;
+        this.cam.x = from.x + (to.x - from.x) * e;
+        this.cam.y = from.y + (to.y - from.y) * e;
+        this.cam.zoom = from.z + (tz - from.z) * e;
+        this.cam.clamp();
+        this.apply();
+        if (k < 1) requestAnimationFrame(step);
+        else {
+          this._glide = null;
+          resolve();
+        }
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  /** Is a tile on screen (with a margin in px)? */
+  onScreen(i, j, margin = 0) {
+    const p = tileToWorld(i, j);
+    const s = this.cam.worldToScreen(p.x, p.y);
+    return s.x >= margin && s.y >= margin && s.x <= this.cam.vw - margin && s.y <= this.cam.vh - margin;
   }
 
   setGround(svgHtml) {
@@ -203,14 +301,22 @@ export class IsoView {
   showGhost(g) {
     this.ghost = { ...this.ghost, ...g };
     const G = this.ghost;
-    this.upsert('__ghost', { i: G.i, j: G.j, w: G.w, h: G.h, html: G.html, artH: G.artH, cls: `ghost ${G.valid ? 'ok' : 'bad'}`, z: 5 });
-    this.setMarks(`<polygon class="foot ${G.valid ? 'ok' : 'bad'}" points="${diamondPoints(G.i, G.j, G.w, G.h)}"/>`);
+    this.upsert('__ghost', { i: G.i, j: G.j, w: G.w, h: G.h, html: G.html, artH: G.artH, cls: `ghost ${G.valid ? 'ok' : 'bad'}${G.lifted ? ' lifted' : ''}`, z: 100000 }); // a lifted thing floats over everything
+    this.ghostMark = `<polygon class="foot ${G.valid ? 'ok' : 'bad'}" points="${diamondPoints(G.i, G.j, G.w, G.h)}"/>`;
+    this.setMarks((this.extraMarks || '') + this.ghostMark);
   }
 
   hideGhost() {
     this.ghost = null;
+    this.ghostMark = '';
     this.remove('__ghost');
-    this.setMarks('');
+    this.setMarks(this.extraMarks || '');
+  }
+
+  /** Marks that stay under the ghost (a wish range, a selection). */
+  setExtraMarks(svg) {
+    this.extraMarks = svg;
+    this.setMarks(svg + (this.ghostMark || ''));
   }
 
   /** Screen point of a tile (for HUD bubbles over the map). */
@@ -222,6 +328,12 @@ export class IsoView {
   }
 
   // --- Gestures -----------------------------------------------------------------------------
+  //
+  // One finger: a tap selects; a drag pans (with inertia); a still press of
+  // LONG_MS asks onLongPress, which may lift the thing (then the drag moves the
+  // ghost, floating LIFT_Y px above the finger, and the view pans near the
+  // edges). A drag that starts on the ghost moves it too. In paint mode one
+  // finger paints tiles. Two fingers pinch and pan. Two quick taps zoom.
 
   _local(e) {
     const r = this.root.getBoundingClientRect();
@@ -234,10 +346,12 @@ export class IsoView {
     el.addEventListener('pointermove', (e) => this._move(e));
     el.addEventListener('pointerup', (e) => this._up(e));
     el.addEventListener('pointercancel', (e) => this._up(e, true));
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener(
       'wheel',
       (e) => {
         e.preventDefault();
+        this.stop();
         const p = this._local(e);
         this.cam.zoomAt(Math.exp(-e.deltaY * 0.0015), p.x, p.y);
         this.apply();
@@ -246,8 +360,27 @@ export class IsoView {
     );
   }
 
+  /** The tile under a screen point (local px), optionally lifted by LIFT_Y. */
+  _tileAt(p, lift = 0) {
+    const w = this.cam.screenToWorld(p.x, p.y - lift);
+    return tileAt(w.x, w.y);
+  }
+
+  _dragGhost(p) {
+    if (!this.ghost) return;
+    const w = this.cam.screenToWorld(p.x, p.y - LIFT_Y);
+    // Snap the footprint's centre under the (lifted) finger.
+    const t = worldToTile(w.x, w.y);
+    const i = Math.round(t.i - this.ghost.w / 2);
+    const j = Math.round(t.j - this.ghost.h / 2);
+    if (i !== this.ghost.i || j !== this.ghost.j) {
+      if (this.cb.onGhostMove) this.cb.onGhostMove({ i, j });
+    }
+  }
+
   _down(e) {
     if (e.button !== undefined && e.button > 0) return;
+    this.stop();
     try {
       this.root.setPointerCapture(e.pointerId);
     } catch {
@@ -257,12 +390,51 @@ export class IsoView {
     this.pointers.set(e.pointerId, p);
     if (this.pointers.size === 1) {
       const onGhost = !!(this.ghost && e.target.closest && e.target.closest('[data-oid="__ghost"]'));
+      const ui = e.target.closest ? e.target.closest('.iso-pin [data-ui], .iso-pin') : null;
       const target = e.target.closest ? e.target.closest('[data-oid],[data-wid]') : null;
-      this.gesture = { kind: 'press', start: p, last: p, t0: performance.now(), target, onGhost, moved: false };
+      const g = { kind: 'press', start: p, last: p, t0: performance.now(), lt: performance.now(), target, ui, onGhost, moved: false, samples: [] };
+      this.gesture = g;
+      if (this.mode === 'paint' && !ui) {
+        g.kind = 'paint';
+        const t = this._tileAt(p);
+        g.tile = `${t.i},${t.j}`;
+        if (this.cb.onPaint) this.cb.onPaint({ i: t.i, j: t.j, first: true });
+        return;
+      }
+      if (!onGhost && !ui) {
+        clearTimeout(this._longT);
+        this._longT = setTimeout(() => {
+          if (this.gesture !== g || g.moved || this.pointers.size !== 1) return;
+          const t = this._tileAt(g.start);
+          let id = target ? target.dataset.oid || null : null;
+          if (!id) id = this._objectOnTile(t.i, t.j);
+          if (this.cb.onLongPress && this.cb.onLongPress({ id, i: t.i, j: t.j })) {
+            g.kind = 'lift';
+            g.moved = true;
+          }
+        }, LONG_MS);
+      }
     } else if (this.pointers.size === 2) {
+      clearTimeout(this._longT);
+      const g = this.gesture;
+      if (g && g.kind === 'lift') return; // a lifted thing stays lifted; the second finger is ignored
       const [a, b] = [...this.pointers.values()];
       this.gesture = { kind: 'pinch', dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
     }
+  }
+
+  _objectOnTile(i, j) {
+    let best = null;
+    for (const [oid, rec] of this.objects) {
+      if (oid === '__ghost' || rec.noTap) continue;
+      const ww = rec.w || 1;
+      const hh = rec.h || 1;
+      if (i >= rec.i && i < rec.i + ww && j >= rec.j && j < rec.j + hh) {
+        const d = depth(rec.i, rec.j, ww, hh);
+        if (!best || d > best.d) best = { oid, d };
+      }
+    }
+    return best ? best.oid : null;
   }
 
   _move(e) {
@@ -282,57 +454,120 @@ export class IsoView {
       this.apply();
       return;
     }
-    if (g.kind !== 'press') return;
-    if (!g.moved && Math.hypot(p.x - g.start.x, p.y - g.start.y) > TAP_MOVE) g.moved = true;
-    if (!g.moved) return;
-    if (g.onGhost && this.ghost) {
-      // Drag the ghost: snap its footprint centre under the finger.
-      const w = this.cam.screenToWorld(p.x, p.y);
-      const t = tileAt(w.x, w.y + (TH * (this.ghost.h + this.ghost.w)) / 4);
-      const i = t.i - Math.floor(this.ghost.w / 2);
-      const j = t.j - Math.floor(this.ghost.h / 2);
-      if (i !== this.ghost.i || j !== this.ghost.j) {
-        if (this.cb.onGhostMove) this.cb.onGhostMove({ i, j });
+    if (g.kind === 'paint') {
+      if (this.pointers.size !== 1) return;
+      const t = this._tileAt(p);
+      const k = `${t.i},${t.j}`;
+      if (k !== g.tile) {
+        g.tile = k;
+        if (this.cb.onPaint) this.cb.onPaint({ i: t.i, j: t.j, first: false });
       }
-    } else {
-      this.cam.panBy(p.x - g.last.x, p.y - g.last.y);
-      this.apply();
+      g.last = p;
+      return;
     }
+    if (g.kind === 'lift') {
+      g.last = p;
+      this._dragGhost(p);
+      return;
+    }
+    if (g.kind !== 'press') return;
+    if (!g.moved && Math.hypot(p.x - g.start.x, p.y - g.start.y) > TAP_MOVE) {
+      g.moved = true;
+      clearTimeout(this._longT);
+      if (g.onGhost && this.ghost) g.kind = 'lift';
+    }
+    if (!g.moved) return;
+    if (g.kind === 'lift') {
+      g.last = p;
+      this._dragGhost(p);
+      return;
+    }
+    const now = performance.now();
+    const dx = p.x - g.last.x;
+    const dy = p.y - g.last.y;
+    this.cam.panBy(dx, dy);
+    this.apply();
+    g.samples.push({ dx, dy, dt: Math.max(1, now - g.lt) });
+    if (g.samples.length > 5) g.samples.shift();
+    g.lt = now;
     g.last = p;
   }
 
   _up(e, cancel = false) {
+    clearTimeout(this._longT);
     const g = this.gesture;
     this.pointers.delete(e.pointerId);
     if (g && g.kind === 'pinch') {
       if (this.pointers.size === 1) {
         const [p] = [...this.pointers.values()];
-        this.gesture = { kind: 'press', start: p, last: p, t0: performance.now(), target: null, onGhost: false, moved: true };
+        this.gesture = { kind: 'press', start: p, last: p, t0: performance.now(), lt: performance.now(), target: null, onGhost: false, moved: true, samples: [] };
       } else if (!this.pointers.size) this.gesture = null;
       return;
     }
+    if (this.pointers.size) return;
     this.gesture = null;
-    if (cancel || !g || g.kind !== 'press' || g.moved || performance.now() - g.t0 > TAP_MS * 2) return;
+    if (!g) return;
+    if (g.kind === 'paint') {
+      if (this.cb.onPaintEnd) this.cb.onPaintEnd();
+      return;
+    }
+    if (g.kind === 'lift') {
+      if (this.cb.onDrop && this.ghost) this.cb.onDrop({ i: this.ghost.i, j: this.ghost.j, cancel, sx: e.clientX, sy: e.clientY });
+      return;
+    }
+    if (g.kind !== 'press') return;
+    if (g.moved) {
+      // Fling: keep the last few moves' speed.
+      const n = g.samples.length;
+      if (n && performance.now() - g.lt < 80) {
+        const sx = g.samples.reduce((a, q) => a + q.dx, 0);
+        const sy = g.samples.reduce((a, q) => a + q.dy, 0);
+        const st = g.samples.reduce((a, q) => a + q.dt, 0);
+        const v = { x: sx / st, y: sy / st };
+        if (Math.hypot(v.x, v.y) > 0.25) this.vel = { x: Math.max(-3, Math.min(3, v.x)), y: Math.max(-3, Math.min(3, v.y)) };
+      }
+      return;
+    }
+    if (cancel || performance.now() - g.t0 > TAP_MS * 2) return;
     const p = this._local(e);
-    const w = this.cam.screenToWorld(p.x, p.y);
-    const t = tileAt(w.x, w.y);
+    const t = this._tileAt(p);
+    if (g.ui) {
+      if (this.cb.onTap) this.cb.onTap({ id: null, ui: g.ui, i: t.i, j: t.j, sx: e.clientX, sy: e.clientY });
+      return;
+    }
+    // Double tap on empty ground zooms (0.9 <-> 1.4).
+    const now = performance.now();
+    const lt = this.lastTap;
+    this.lastTap = { t: now, x: p.x, y: p.y };
     let id = null;
     if (g.target) id = g.target.dataset.oid || (g.target.dataset.wid ? `w:${g.target.dataset.wid}` : null);
-    if (!id) {
-      // No art under the finger: whatever stands on the tapped tile.
-      let best = null;
-      for (const [oid, rec] of this.objects) {
-        if (oid === '__ghost') continue;
-        const ww = rec.w || 1;
-        const hh = rec.h || 1;
-        if (t.i >= rec.i && t.i < rec.i + ww && t.j >= rec.j && t.j < rec.j + hh) {
-          const d = depth(rec.i, rec.j, ww, hh);
-          if (!best || d > best.d) best = { oid, d };
-        }
-      }
-      if (best) id = best.oid;
+    if (!id) id = this._objectOnTile(t.i, t.j);
+    if (lt && now - lt.t < DOUBLE_MS && Math.hypot(p.x - lt.x, p.y - lt.y) < 30 && !g.target) {
+      this.lastTap = null;
+      const to = this.cam.zoom < 1.15 ? 1.4 : 0.9;
+      this.zoomTo(to, p.x, p.y);
+      if (this.cb.onDoubleTap) this.cb.onDoubleTap({ sx: e.clientX, sy: e.clientY });
+      return;
     }
     if (this.cb.onTap) this.cb.onTap({ id, i: t.i, j: t.j, sx: e.clientX, sy: e.clientY });
+  }
+
+  /** Animate the zoom about a screen point. */
+  zoomTo(z, sx, sy, ms = 260) {
+    const z0 = this.cam.zoom;
+    const t0 = performance.now();
+    const token = {};
+    this._glide = token;
+    const step = (now) => {
+      if (this._glide !== token) return;
+      const k = Math.min(1, (now - t0) / ms);
+      const e = 1 - (1 - k) ** 3;
+      const target = z0 + (z - z0) * e;
+      this.cam.zoomAt(target / this.cam.zoom, sx, sy);
+      this.apply();
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 }
 
