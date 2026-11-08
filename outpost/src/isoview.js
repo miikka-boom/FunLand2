@@ -96,7 +96,11 @@ export class IsoView {
       this.vel.y *= decay;
       if (Math.hypot(this.vel.x, this.vel.y) < 0.02) this.vel = null;
       else {
+        const x0 = this.cam.x;
+        const y0 = this.cam.y;
         this.cam.panBy(this.vel.x * dt, this.vel.y * dt);
+        // Stopped by the roam limit: the glide is over (so a tap isn't taken for "stop").
+        if (Math.abs(this.cam.x - x0) + Math.abs(this.cam.y - y0) < 0.01) this.vel = null;
         this.apply();
       }
     }
@@ -263,8 +267,10 @@ export class IsoView {
       if (B.right <= l || B.left >= r || B.bottom <= t || B.top >= b) continue;
       const w = rec.w || 1;
       const h = rec.h || 1;
-      if (fi >= rec.i + w || fj >= rec.j + h) lo = Math.max(lo, rec.zi + 1);
-      else if (fi >= rec.i && fi < rec.i + w && fj >= rec.j && fj < rec.j + h) continue; // standing on it (a seat)
+      const on = fi >= rec.i && fi < rec.i + w && fj >= rec.j && fj < rec.j + h;
+      if (on && rec.fence === 'front') hi = Math.min(hi, rec.zi - 1); // the fence stands on the strip's outer edge, in front
+      else if (fi >= rec.i + w || fj >= rec.j + h) lo = Math.max(lo, rec.zi + 1);
+      else if (on) continue; // standing on it (a seat)
       else hi = Math.min(hi, rec.zi - 1);
     }
     if (lo > hi) return lo;
@@ -314,7 +320,8 @@ export class IsoView {
     const p = tileToWorld(fi, fj);
     if (zFixed !== undefined) rec.zFixed = zFixed;
     if (lift !== undefined) rec.lift = lift;
-    rec.el.style.transform = `translate3d(${(p.x - rec.w / 2).toFixed(1)}px, ${(p.y - rec.h - (rec.lift || 0)).toFixed(1)}px, 0)${flip ? ' scaleX(-1)' : ''}`;
+    rec.el.style.transform = `translate3d(${(p.x - rec.w / 2).toFixed(1)}px, ${(p.y - rec.h - (rec.lift || 0)).toFixed(1)}px, 0)`;
+    rec.el.classList.toggle('flip', !!flip); // mirrors the figure only (names and badges stay readable)
     // Re-sort only when the walker crosses half a tile or objects moved.
     const key = `${Math.floor(fi * 2)},${Math.floor(fj * 2)},${this.zGen || 0}`;
     if ((rec.zKey !== key || rec.zAuto === undefined) && rec.zFixed == null) {
@@ -412,7 +419,10 @@ export class IsoView {
     return tileAt(w.x, w.y);
   }
 
-  /** Where the finger grabbed the ghost, in tiles (kept while dragging so it never jumps). */
+  /**
+   * Where the finger grabbed the ghost, in tiles: kept while dragging, so the
+   * thing follows the finger from where it was picked up and never jumps.
+   */
   _grabAt(p) {
     const w = this.cam.screenToWorld(p.x, p.y);
     const t = worldToTile(w.x, w.y);
@@ -475,6 +485,12 @@ export class IsoView {
           const t = this._tileAt(g.start);
           const w = this.cam.screenToWorld(g.start.x, g.start.y);
           let id = target ? target.dataset.oid || null : null;
+          if (!id && target && target.dataset.wid) {
+            // A person (or zombie) drawn over the object takes the press: nothing lifts.
+            const hit = this._hitObjectZ(w.x, w.y);
+            id = hit && hit.d > (Number(target.style.zIndex) || 0) ? hit.oid : null;
+            if (!id) return;
+          }
           if (!id) id = this._hitObject(w.x, w.y) || this._objectOnTile(t.i, t.j);
           if (this.cb.onLongPress && this.cb.onLongPress({ id, i: t.i, j: t.j })) {
             const cur = this.pointers.get(g.pid) || g.start;
@@ -554,14 +570,26 @@ export class IsoView {
       if (this.pointers.size !== 1) return;
       const t = this._tileAt(p);
       const k = `${t.i},${t.j}`;
+      // Not yet clearly a one-finger stroke: a second finger may still turn it into a pan.
+      if (g.pending && (Math.hypot(p.x - g.start.x, p.y - g.start.y) <= TAP_MOVE || performance.now() - g.t0 < 90)) {
+        g.last = p;
+        return;
+      }
       if (k !== g.tile) {
+        const [pi, pj] = g.tile.split(',').map(Number);
         if (g.pending) {
           const q = g.pending;
           g.pending = null;
           if (this.cb.onPaint) this.cb.onPaint({ i: q.i, j: q.j, first: true });
         }
         g.tile = k;
-        if (this.cb.onPaint) this.cb.onPaint({ i: t.i, j: t.j, first: false });
+        // Every tile between the last one and this (a fast finger skips tiles between events).
+        const n = Math.max(Math.abs(t.i - pi), Math.abs(t.j - pj));
+        for (let s = 1; s <= n; s++) {
+          const ii = Math.round(pi + ((t.i - pi) * s) / n);
+          const jj = Math.round(pj + ((t.j - pj) * s) / n);
+          if (this.cb.onPaint) this.cb.onPaint({ i: ii, j: jj, first: false });
+        }
       }
       g.last = p;
       return;
@@ -622,7 +650,7 @@ export class IsoView {
     this.gesture = null;
     if (!g) return;
     if (g.kind === 'paint') {
-      if (g.pending && !cancel && this.cb.onPaint) this.cb.onPaint({ ...g.pending, first: true }); // a one-finger tap paints one tile
+      if (g.pending && !cancel && !g.halted && this.cb.onPaint) this.cb.onPaint({ ...g.pending, first: true }); // a one-finger tap paints one tile
       if (this.cb.onPaintEnd) this.cb.onPaintEnd();
       return;
     }
@@ -658,7 +686,9 @@ export class IsoView {
       id = g.target.dataset.oid || null;
       // A walker's box takes the pointer even where an object is drawn over
       // it: whichever is drawn on top wins.
-      if (!id && g.target.dataset.wid) id = hit && hit.d > (Number(g.target.style.zIndex) || 0) ? hit.oid : `w:${g.target.dataset.wid}`;
+      // (Zombies always keep theirs: BONK beats the lot card behind them.)
+      const wid = g.target.dataset.wid;
+      if (!id && wid) id = hit && hit.d > (Number(g.target.style.zIndex) || 0) && !/^z/.test(String(wid)) ? hit.oid : `w:${wid}`;
     }
     if (!id) id = (hit && hit.oid) || this._objectOnTile(t.i, t.j);
     if (lt && now - lt.t < DOUBLE_MS && Math.hypot(p.x - lt.x, p.y - lt.y) < 30 && !g.target) {

@@ -69,6 +69,7 @@ export class BuildDrawer {
     if (!this.isOpen) return;
     const m = this.meta;
     const s = m.s;
+    if (this.tab === 'decor') m.boxLooked(); // the box has been seen (before the tab dots are drawn)
     const n = m.lotCount();
     const cap = m.landCap();
     const cz = m.capZone();
@@ -76,10 +77,7 @@ export class BuildDrawer {
     let body = '';
     if (this.tab === 'buildings') body = this._buildings();
     else if (this.tab === 'homes') body = this._homes();
-    else if (this.tab === 'decor') {
-      body = this._decor();
-      s.seen.boxSeen = s.box.length; // the BUILD dot clears once the box has been seen
-    }
+    else if (this.tab === 'decor') body = this._decor();
     else body = this._paths();
     this.root.innerHTML = `<div class="dr-in">${head}<div class="dr-row scroll-x">${body}</div></div>`;
     void s;
@@ -89,7 +87,7 @@ export class BuildDrawer {
     const m = this.meta;
     if (id === 'buildings') return m.s.kits.some((k) => k.kind === 'building');
     if (id === 'homes') return m.campers().length > 0;
-    if (id === 'decor') return m.s.box.length > (m.s.seen.boxSeen || 0) || m.s.kits.some((k) => k.kind !== 'building');
+    if (id === 'decor') return m.boxHasNew() || m.s.kits.some((k) => k.kind !== 'building');
     return false;
   }
 

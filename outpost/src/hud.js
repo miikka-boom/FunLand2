@@ -175,8 +175,7 @@ export class Hud {
     this.ladder = L;
     for (const k of ['crate', 'vault']) this._chest(k);
     // BUILD: a dot when something waits (a kit, the box, a camper).
-    if ((s.seen.boxSeen || 0) > s.box.length) s.seen.boxSeen = s.box.length; // things left the box
-    const waits = s.kits.length > 0 || m.campers().length > 0 || s.box.length > (s.seen.boxSeen || 0);
+    const waits = s.kits.length > 0 || m.campers().length > 0 || m.boxHasNew();
     this.el.build.classList.toggle('has', waits);
     // Squad faces.
     const squad = m.squadPeople();

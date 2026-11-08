@@ -4664,31 +4664,19 @@ body.drawer-open #map {
   overflow: visible;
 }
 
-.iso-walker.flip .wfig {
-  transform: scaleX(-1);
+/* Facing left: the figure is mirrored with the scale property, so it composes with the bob, jump and shamble animations. */
+.iso-walker.flip .wfig,
+.iso-walker.flip .zfig {
+  scale: -1 1;
 }
 
 .iso-walker.walking .wfig {
   animation: bob 0.36s ease-in-out infinite;
 }
 
-.iso-walker.flip.walking .wfig {
-  animation: bobf 0.36s ease-in-out infinite;
-}
-
 @keyframes bob {
   50% {
     transform: translateY(-2px);
-  }
-}
-
-@keyframes bobf {
-  0%,
-  100% {
-    transform: scaleX(-1);
-  }
-  50% {
-    transform: scaleX(-1) translateY(-2px);
   }
 }
 
@@ -4799,10 +4787,6 @@ body.drawer-open #map {
 
 .iso-walker .zfig {
   animation: shamble 1.1s ease-in-out infinite;
-}
-
-.iso-walker.flip .zfig {
-  transform: scaleX(-1);
 }
 
 @keyframes shamble {

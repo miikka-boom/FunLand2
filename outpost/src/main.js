@@ -474,6 +474,8 @@ function levelUp(id, el) {
 
 /** After tier-changing level-ups, the camera visits each new home (at most 4). */
 async function housewarming() {
+  clearTimeout(ui.housewarmT);
+  if (busy || crew.isOpen || modals.isOpen) return; // later, when the map is back
   const ids = (ui.housewarm || []).slice(-4);
   ui.housewarm = [];
   if (!ids.length) return;
@@ -499,7 +501,14 @@ async function housewarming() {
     }
   } finally {
     setBusy(false);
+    ui.hintGlide = null; // the camera moved: a hint may glide again
   }
+}
+
+/** Back on the map after a sequence: housewarming visits first, else glide to the next step. */
+function afterSequence() {
+  if (ui.housewarm && ui.housewarm.length) housewarming();
+  else glideToStep();
 }
 
 function upgrade(id, el) {
@@ -533,7 +542,10 @@ function openCard(id) {
   modals.open(() => survivorCard(meta, id, ui), {
     cls: 'm-card',
     onClose: (replaced) => {
-      if (!replaced && ui.housewarm && ui.housewarm.length && !crew.isOpen) setTimeout(() => housewarming(), 250);
+      if (!replaced && ui.housewarm && ui.housewarm.length && !crew.isOpen) {
+        clearTimeout(ui.housewarmT);
+        ui.housewarmT = setTimeout(() => housewarming(), 250);
+      }
     },
   });
 }
@@ -565,18 +577,16 @@ function openRename() {
   ui.nameColor = meta.s.town.color;
   ui.nameIdeas = null;
   modals.open(() => renameSheet(meta, ui), { cls: 'm-rename' });
-  setTimeout(() => {
-    const inp = $('modals').querySelector('.tname-in');
-    if (inp)
-      inp.addEventListener('input', () => {
-        ui.nameDraft = inp.value;
-      });
-  }, 30);
 }
+
+// What you type in the name box survives re-renders (an idea, More, a colour).
+$('modals').addEventListener('input', (e) => {
+  if (e.target && e.target.classList && e.target.classList.contains('tname-in')) ui.nameDraft = e.target.value;
+});
 
 function saveName() {
   const inp = $('modals').querySelector('.tname-in');
-  const n = (inp && inp.value.trim()) || ui.nameDraft || meta.s.town.name;
+  const n = inp ? inp.value.trim() || meta.s.town.name : ui.nameDraft || meta.s.town.name;
   const r = meta.rename(n, ui.nameColor);
   if (!r.ok) {
     sound('error');
@@ -625,6 +635,7 @@ async function showHome(id) {
 function openDrawer(tab = null) {
   modals.close();
   if (!tab && meta.s.wish && meta.s.wish.set) tab = 'decor';
+  if (tab && tab !== 'paths') stopPaint();
   drawer.open(tab);
   hud.setMode('drawer');
   sound('open');
@@ -715,7 +726,7 @@ function wishSpot(set, size) {
   const spots = meta.wishSpots(h, size);
   if (spots.length) return spots[0];
   const p = meta.person(w.id);
-  toasts.show(`${icon('heart')}Nothing fits within 2 tiles of <b>${p ? name(p) : 'their'}</b>'s home. Move something away first (long-press it).`, 'warn', 3600);
+  toasts.show(`${icon('heart')}Nothing fits within 2 tiles of <b>${p ? name(p) : 'their'}</b>'s home, so this one won't grant the wish. Move something away first (long-press it).`, 'warn', 4200);
   return null;
 }
 
@@ -789,13 +800,27 @@ function afterLanding(r) {
 }
 
 /** What popped junk brings beyond loot: trunk survivors and the scripted first wish. */
-function junkFollowUp(list) {
+async function junkFollowUp(list) {
   const ncs = list.filter((p) => p.newcomer).map((p) => p.newcomer);
-  if (ncs.length) showNewcomers(ncs, "Someone's in the trunk!");
   const first = list.map((p) => p.wish).find((w) => w && w.first);
+  if (ncs.length) {
+    // Clear the screen like a chest does: no drawer or ghost under the reveal.
+    closeDrawer();
+    if (map.placing) map.placeCancel();
+    arm();
+    setBusy(true);
+    try {
+      await showNewcomers(ncs, "Someone's in the trunk!");
+    } catch (e) {
+      recover(e);
+    } finally {
+      setBusy(false);
+      refresh();
+    }
+  }
   // Only while it is still open (a drop can start it and grant it at once).
   if (first && meta.s.wish === first) {
-    setTimeout(() => toasts.show(`${icon('heart')}<b>${name(meta.person(first.id))}</b>: “Something fun by my tent?”`, 'gift', 3600), 900);
+    setTimeout(() => toasts.show(`${icon('heart')}<b>${name(meta.person(first.id))}</b>: “Something fun by my tent?”`, 'gift', 3600), ncs.length ? 200 : 900);
   }
 }
 
@@ -1065,6 +1090,7 @@ async function wishTap() {
   const p = meta.person(w.id);
   const h = meta.homeOf(w.id);
   if (h) await map.glide(h.i + 1, h.j + 1, { ms: 450, zoom: Math.max(0.9, map.view.cam.zoom) });
+  ui.hintGlide = null;
   if (w.set) {
     toasts.show(`${icon('heart')}<b>${name(p)}</b> would love something <b>${esc(SETS[w.set].name)}</b> within 2 tiles of home.`, 'gift', 3400);
     openDrawer('decor');
@@ -1191,6 +1217,7 @@ async function showNewcomers(list, title) {
   const last = list[list.length - 1];
   if (last && last.home) {
     await map.showTile(last.home.i + 1, last.home.j + 1, { ms: 450 });
+    ui.hintGlide = null; // the game moved the camera: a hint may glide again
     const he = map.homeEl(last.person.id);
     if (he) {
       he.classList.remove('drop');
@@ -1204,6 +1231,7 @@ async function showNewcomers(list, title) {
 
 async function startRaid() {
   if (busy) return;
+  clearTimeout(ui.housewarmT); // a queued housewarming waits for the raid to end
   modals.close();
   closeDrawer();
   const r = meta.raid();
@@ -1237,7 +1265,7 @@ async function startRaid() {
   if (st && r.coins) fx.burst(st, ['#ffd36b', '#fff2b0'], 12, 50);
   if (res === 'again') startRaid();
   else if (res && res.fix) applyFix(res.fix);
-  else glideToStep();
+  else afterSequence();
   maybeNameTown();
 }
 
@@ -1329,6 +1357,12 @@ function stepTile(step) {
     const h = m.homeOf(step.id);
     return h ? { i: h.i + 1, j: h.j + 1 } : null;
   }
+  if (step.kind === 'gift') {
+    const w = map.walkers.get(step.id);
+    if (w) return { i: w.fi, j: w.fj };
+    const h = m.homeOf(step.id);
+    return h ? { i: h.i + 1, j: h.j + 1 } : null;
+  }
   return null;
 }
 
@@ -1351,6 +1385,8 @@ function showHint() {
       }
       ui.junkHint = null;
       if (inSafe(el)) return hud.pointAt(el, 'Junk! Tap a pile to pop it.', true);
+      hud.idle = (hud.hintDelay || 1400) - 700;
+      return;
     }
   }
   const step = meta.nextStep();
@@ -1392,7 +1428,8 @@ function showHint() {
       hud.idle = (hud.hintDelay || 1400) - 700; // point once it's there
       return;
     }
-    return; // still hidden: the edge pointer does the job
+    hud.idle = (hud.hintDelay || 1400) - 700; // still hidden: the edge pointer does the job (check again later)
+    return;
   }
   if (el) hud.pointAt(el, label, true);
 }
@@ -1497,7 +1534,13 @@ document.addEventListener('visibilitychange', () => {
 });
 addEventListener('pagehide', save);
 // Touching the map counts as activity: the hand steps aside.
-$('map').addEventListener('pointerdown', () => hud.poke());
+$('map').addEventListener('pointerdown', () => {
+  hud.poke();
+  // The player is looking around: don't pull the camera back for this step.
+  ui.hintGlide = JSON.stringify(meta.nextStep());
+  ui.junkGlided = true;
+});
+$('map').addEventListener('pointerup', () => hud.poke());
 
 // --- Frame loop ---------------------------------------------------------------------------------------
 
@@ -1508,7 +1551,7 @@ function frame(now) {
   const dt = Math.min(100, now - last);
   last = now;
   clock.advance(dt);
-  const canHint = !busy && !modals.isOpen && !crew.isOpen && !dev.open && !drawer.isOpen && !map.placing && !$('title-card') && performance.now() > captionUntil;
+  const canHint = !busy && !modals.isOpen && !crew.isOpen && !dev.open && !drawer.isOpen && !map.placing && !overlay.classList.contains('on') && !(ui.housewarm && ui.housewarm.length) && !$('title-card') && performance.now() > captionUntil;
   hud.hintDelay = meta.s.stats.raids < 3 ? 1400 : 4000;
   hud.animate(dt, canHint);
   map.tick(dt);
@@ -1528,7 +1571,7 @@ function frame(now) {
     const st = meta.station();
     hud.showHome(st && !map.view.onScreen(st.i + 1.5, st.j + 1.5, -60) && !busy);
     const step = map.step || meta.nextStep();
-    const t = !busy && !map.placing && !modals.isOpen ? stepTile(step) : null;
+    const t = !busy && !map.placing && !modals.isOpen && !overlay.classList.contains('on') ? stepTile(step) : null;
     if (t && !map.view.onScreen(t.i, t.j, 40)) hud.edgeAt(map.view.tileScreen(t.i, t.j));
     else hud.edgeAt(null);
   }

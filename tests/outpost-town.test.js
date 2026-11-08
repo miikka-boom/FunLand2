@@ -447,3 +447,40 @@ test('only people with a home bring gifts (campers have no walker to carry one)'
     assert.ok(m.homeOf(g.id), 'the bearer has a home');
   }
 });
+
+test('the BUILD dot tracks new box items by serial, not by count', () => {
+  const { m, s } = make(7);
+  s.coins = 1e5;
+  m.cheat('people', 1);
+  assert.equal(m.boxHasNew(), false);
+  m._toBox({ kind: 'decor', ref: 'bench' });
+  assert.equal(m.boxHasNew(), true);
+  m.boxLooked();
+  assert.equal(m.boxHasNew(), false);
+  // One thing leaves the box and another arrives: still a dot.
+  const at = m.freeSpot(1, {});
+  assert.ok(m.unbox(0, at.i, at.j).ok);
+  m._toBox({ kind: 'decor', ref: 'planter' });
+  assert.equal(s.box.length, 1);
+  assert.equal(m.boxHasNew(), true);
+  // Placed things don't carry the serial.
+  assert.ok(!s.objects.some((o) => 'n' in o));
+});
+
+test('a wish whose home stays boxed in for half an hour is let go; the first wish needs room', () => {
+  const { m, s, clock } = make(5);
+  s.coins = 1e6;
+  m.clear(1, 2);
+  const showoff = s.people.find((p) => p.origin === 'founder' && p.vibe === 'showoff');
+  const h = m.homeOf(showoff.id);
+  // Fill every tile around the home.
+  for (let i = h.i - 3; i < h.i + 5; i++) for (let j = h.j - 3; j < h.j + 5; j++) if (m.ownsTile(i, j) && m._free(i, j, 1)) m._addObject('decor', 'bench', i, j, 1);
+  assert.equal(m.wishRoom({ i: h.i, j: h.j, w: 2, h: 2 }), false);
+  assert.equal(m._scriptWish(), null, 'no scripted wish without room');
+  s.wish = { id: showoff.id, set: 'garden', at: m.now() };
+  m.tick();
+  assert.ok(s.wish && s.wish.blockedAt != null);
+  clock.add(31 * 60 * 1000);
+  m._wishStillPossible();
+  assert.equal(s.wish, null, 'let go');
+});

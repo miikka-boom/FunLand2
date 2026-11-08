@@ -168,6 +168,7 @@ export class TownMap {
     this._junk();
     this._fence();
     this._tags();
+    this._visitor();
     this._bubbles();
     this._syncWalkers();
     if (!this.zeds.length) this._spawnZeds();
@@ -208,7 +209,7 @@ export class TownMap {
         if (L.kind === 'L') art = A.landmark(L.landmark, false);
         else if (L.kind === '?') art = A.mystery(haze);
         else art = A.ruin(key, haze);
-        this.view.upsert(wid, { i: a * LOT + 2, j: b * LOT + 2, w: 3, h: 3, html: art.svg, artH: art.artH, cls: `o-wild k-${L.kind}`, lot: [a, b], img: true, hitH: art.bodyH });
+        this.view.upsert(wid, { i: a * LOT + 2, j: b * LOT + 2, w: 3, h: 3, html: art.svg, artH: art.artH, cls: `o-wild k-${L.kind}`, lot: [a, b], img: true, hitH: Math.max(art.bodyH || 0, art.artH - 3 * 32 - 12) });
         if (L.kind === 'L') this._boss(key, L.landmark, a, b);
       }
   }
@@ -389,7 +390,7 @@ export class TownMap {
         }
         // Back edges sit under everything on the lot; front pieces over what stands behind them.
         const z = back ? -depth(i, j, w, h) * 10 + (I + J) * 10 - 4 : 8;
-        this.view.upsert(`f:${e.a},${e.b},${e.side},${off}`, { i, j, w, h, html: f.svg, artH: f.artH, cls: `o-fence${before ? ' hop' : ''}`, z, noTap: true, img: true });
+        this.view.upsert(`f:${e.a},${e.b},${e.side},${off}`, { i, j, w, h, html: f.svg, artH: f.artH, cls: `o-fence${before ? ' hop' : ''}`, z, noTap: true, img: true, fence: back ? 'back' : 'front' });
       }
     }
   }
@@ -462,7 +463,7 @@ export class TownMap {
       if (h) {
         const pt = over(h, -4);
         const ic = s.wish.set ? A.setBadge(s.wish.set) : icon('heart');
-        v.pin('wish', pt.x + 26, pt.y, `<button class="bub wish" type="button" data-ui="wish">${icon('heart')}<span class="ws">${ic}</span></button>`, 'pin-bub');
+        v.pin('wish', pt.x + 26, pt.y, `<button class="bub wish" type="button" data-ui="wish">${icon('heart')}<span class="ws">${ic}</span></button>`, `pin-bub${this._wishIn ? ' inrange' : ''}`);
         live.add('wish');
       }
     }
@@ -567,6 +568,7 @@ export class TownMap {
         // Where a piece can stand: up to R tiles between it and the home.
         marks = `<polygon class="wishring" points="${diamondPoints(h.i - R - 1, h.j - R - 1, h.size + 2 * R + 2, h.size + 2 * R + 2)}"/>`;
         const inRange = gapBetween(foot(h), { i: P.i, j: P.j, w: P.size, h: P.size }) <= R && P.valid;
+        this._wishIn = inRange;
         const pin = this.view.pinEl('wish');
         if (pin) pin.classList.toggle('inrange', inRange);
       }
@@ -615,6 +617,7 @@ export class TownMap {
     this.view.hideGhost();
     this.view.unpin('placebtns');
     this.view.setExtraMarks('');
+    this._wishIn = false;
     const pin = this.view.pinEl('wish');
     if (pin) pin.classList.remove('inrange');
   }
@@ -815,6 +818,7 @@ export class TownMap {
     if (this.painting) return;
     if (id && id.startsWith('w:')) {
       const wid = id.slice(2);
+      if (wid === 'zv') return this.cb.onVisitor(this.view.walkerEl('zv'));
       if (wid.startsWith('z')) return this._bonkZed(wid);
       if (wid === 'bus') return this.cb.onBus && this.cb.onBus();
       const pid = Number(wid);
@@ -965,7 +969,7 @@ export class TownMap {
   /** Something was placed or moved: walkers on its way find another way (or step out from under it). */
   _reroute() {
     for (const w of this.walkers.values()) {
-      if (w.run || w.seat) continue; // the squad's BONK sprint goes straight on purpose
+      if ((w.sprint && w.path.length) || w.seat) continue; // the squad's BONK sprint goes straight on purpose
       const ci = Math.floor(w.fi);
       const cj = Math.floor(w.fj);
       if (!this._walkable(ci, cj)) {
@@ -1101,7 +1105,7 @@ export class TownMap {
     for (const w of this.walkers.values()) {
       if (cls ? w.cls !== cls : n >= 5) continue;
       n++;
-      if (this._route(w, this._door(o))) {
+      if (this._route(w, this._door(o)) && w.path.length) {
         w.then = 'cheer';
         w.wait = 0;
         w.run = true;
@@ -1290,8 +1294,12 @@ export class TownMap {
       const n = 10;
       const fi0 = w.fi;
       const fj0 = w.fj;
-      w.path = Array.from({ length: n }, (_, k) => ({ i: fi0 + ((target.i + rand(-1.5, 1.5) - fi0) * (k + 1)) / n, j: fj0 + ((target.j + rand(-1.5, 1.5) - fj0) * (k + 1)) / n }));
+      const ti = target.i + rand(-1.5, 1.5);
+      const tj = target.j + rand(-1.5, 1.5);
+      w.path = Array.from({ length: n }, (_, k) => ({ i: fi0 + ((ti - fi0) * (k + 1)) / n, j: fj0 + ((tj - fj0) * (k + 1)) / n }));
       w.run = true;
+      w.sprint = true;
+      w.runSpeed = Math.max(3.2, Math.hypot(ti - fi0, tj - fj0) / 0.45); // there in time for the BONK
       w.then = 'cheer';
       w.wait = 2;
     }
@@ -1320,7 +1328,7 @@ export class TownMap {
         const di = t.i - w.fi;
         const dj = t.j - w.fj;
         const d = Math.hypot(di, dj);
-        const sp = (w.run ? 3.2 : 1.1) * sec;
+        const sp = (w.run ? w.runSpeed || 3.2 : 1.1) * sec;
         if (d <= sp) {
           w.fi = t.i;
           w.fj = t.j;
@@ -1337,6 +1345,13 @@ export class TownMap {
         this._render(w);
         if (!w.path.length) {
           w.run = false;
+          w.sprint = false;
+          w.runSpeed = 0;
+          // A sprint can end inside something that landed meanwhile: step out.
+          if (!w.seat && !this._walkable(Math.floor(w.fi), Math.floor(w.fj)) && this.meta.ownsTile(Math.floor(w.fi), Math.floor(w.fj))) {
+            const t = this._nearestFree(Math.floor(w.fi), Math.floor(w.fj));
+            if (t) w.path = [{ i: t.i + 0.5, j: t.j + 0.5 }];
+          }
           if (w.then) this._setPose(w, w.then);
           if (w.heart && this.fx) {
             const el = this.view.walkerEl(w.id);

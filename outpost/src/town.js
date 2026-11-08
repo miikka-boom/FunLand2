@@ -66,6 +66,7 @@ import { rarityOdds } from './chests.js';
 import { rngFor, randInt, pick, pickWeighted, clamp } from './util.js';
 
 const DAY = 24 * 60 * 60 * 1000;
+const WISH_BLOCKED_MS = 30 * 60 * 1000;
 const fail = (reason, extra = {}) => ({ ok: false, reason, ...extra });
 const rank = (r) => RARITY_ORDER.indexOf(r);
 
@@ -152,6 +153,7 @@ export function newTownState(now, seed) {
   s.junk = [];
   s.nextJunk = 1;
   s.box = [];
+  s.boxSerial = 0;
   s.kits = [];
   s.wish = null;
   s.wishNextAt = now + WISH.after;
@@ -487,7 +489,7 @@ export class Town extends Meta {
       const o = this._addObject('decor', kind, spot.i, spot.j, size);
       return { kind, id: o.id, i: o.i, j: o.j };
     }
-    this.s.box.push({ kind: 'decor', ref: kind });
+    this._toBox({ kind: 'decor', ref: kind });
     return { kind, boxed: true };
   }
 
@@ -585,6 +587,24 @@ export class Town extends Meta {
     return { ok: true, id: o.id, price: c.price, ...this._landed(o) };
   }
 
+  /** Into the box, stamped with a serial so the BUILD dot can tell new things from seen ones. */
+  _toBox(item) {
+    const { n: _n, ...rest } = item;
+    this.s.boxSerial = (this.s.boxSerial || 0) + 1;
+    this.s.box.push({ ...rest, n: this.s.boxSerial });
+  }
+
+  /** Is anything in the box the player hasn't looked at yet? */
+  boxHasNew() {
+    const seen = this.s.seen.boxSerial || 0;
+    return this.s.box.some((x) => (x.n || 0) > seen);
+  }
+
+  /** The player looked at the box (BUILD → Decor). */
+  boxLooked() {
+    this.s.seen.boxSerial = this.s.boxSerial || 0;
+  }
+
   /** The footprint size of a box entry or kit. */
   sizeOf(item) {
     if (item.kind === 'decor') return DECOR[item.ref].size;
@@ -610,7 +630,7 @@ export class Town extends Meta {
     const at = this.canPlaceAt(i, j, size);
     if (!at.ok) return at;
     this.s.box.splice(index, 1);
-    const { kind, ref, ...extra } = item;
+    const { kind, ref, n: _n, ...extra } = item;
     const o = this._addObject(kind, ref, i, j, size, extra);
     return { ok: true, id: o.id, ...this._landed(o) };
   }
@@ -662,7 +682,7 @@ export class Town extends Meta {
     this.s.objects = this.s.objects.filter((x) => x !== o);
     this._dirty();
     const { id: _id, i: _i, j: _j, size: _size, ...item } = o;
-    this.s.box.push(item);
+    this._toBox(item);
     return { ok: true, item };
   }
 
@@ -836,7 +856,7 @@ export class Town extends Meta {
         const o = this._addObject('keepsake', kind, spot.i, spot.j, size, { owner: p.id });
         keepsake = { kind, id: o.id, i: o.i, j: o.j };
       } else {
-        this.s.box.push({ kind: 'keepsake', ref: kind, owner: p.id });
+        this._toBox({ kind: 'keepsake', ref: kind, owner: p.id });
         keepsake = { kind, boxed: true };
       }
     }
@@ -976,7 +996,7 @@ export class Town extends Meta {
       const pool = kind === 'flamingo' ? ['flamingo'] : kind === 'rare' ? RARE_DECOR : COMMON_DECOR.filter((d) => (DECOR[d].zone || 1) <= s.zone);
       out.decor = pick(rng, pool);
       out.rare = kind === 'rare';
-      s.box.push({ kind: 'decor', ref: out.decor });
+      this._toBox({ kind: 'decor', ref: out.decor });
       this.t.decorFound++;
       if (kind === 'flamingo') {
         s.seen.scriptFlamingo = true;
@@ -1073,8 +1093,8 @@ export class Town extends Meta {
     s.seen.firstWish = true;
     const who = s.people.find((p) => p.origin === 'founder' && p.vibe === 'showoff' && this.homeOf(p.id)) || s.people.find((p) => this.homeOf(p.id));
     if (!who) return null;
-    const near = this.setsNear(foot(this.homeOf(who.id)));
-    if (near.has('party')) return null;
+    const home = foot(this.homeOf(who.id));
+    if (this.setsNear(home).has('party') || !this.wishRoom(home)) return null;
     s.wish = { id: who.id, set: 'party', at: this.now(), first: true };
     return s.wish;
   }
@@ -1149,7 +1169,7 @@ export class Town extends Meta {
   _payMilestone(i) {
     const m = this.milestoneReward(i);
     if (m.kind !== 'decor') return super._payMilestone(i);
-    this.s.box.push({ kind: 'decor', ref: m.decor });
+    this._toBox({ kind: 'decor', ref: m.decor });
     this.t.decorFound++;
     return m;
   }
@@ -1196,7 +1216,36 @@ export class Town extends Meta {
   /** Call now and then while playing (wishes come on their own clock). */
   tick() {
     this._statueCheck();
+    this._wishStillPossible();
     return this.maybeWish();
+  }
+
+  /**
+   * A wish never expires, but one whose home has been boxed in for half an
+   * hour (no room for a piece, or the sibling's home can't come near) is let
+   * go, and another comes on the usual clock.
+   */
+  _wishStillPossible() {
+    const s = this.s;
+    const w = s.wish;
+    if (!w) return;
+    const h = this.homeOf(w.id);
+    let ok = !!h;
+    if (h && w.set) ok = this.wishRoom(foot(h)) || this.wishMet(w);
+    else if (h && w.sib != null) {
+      const g = this.homeOf(w.sib);
+      ok = !!g && (this.wishRoom(foot(g), HOME_SIZE, h.id) || this.wishRoom(foot(h), HOME_SIZE, g.id));
+    }
+    if (ok) {
+      delete w.blockedAt;
+      return;
+    }
+    if (w.blockedAt == null) w.blockedAt = this.now();
+    else if (this.now() - w.blockedAt >= WISH_BLOCKED_MS) {
+      s.wish = null;
+      s.lastWisher = w.id;
+      s.wishNextAt = this.now();
+    }
   }
 
   _statueCheck() {
@@ -1228,7 +1277,7 @@ export class Town extends Meta {
     if (rng() < VISITORS.costume.decorChance) {
       const pool = COMMON_DECOR.filter((d) => (DECOR[d].zone || 1) <= s.zone);
       const decor = pick(rng, pool);
-      s.box.push({ kind: 'decor', ref: decor });
+      this._toBox({ kind: 'decor', ref: decor });
       return { ok: true, kind: 'costume', done: true, decor };
     }
     const coins = VISITORS.costume.coins(s.zone);

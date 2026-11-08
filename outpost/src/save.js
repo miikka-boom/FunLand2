@@ -53,6 +53,7 @@ export function migrate(saved, now) {
   s.objects = s.objects.filter((o) => o && Number.isFinite(o.i) && Number.isFinite(o.j) && o.size > 0 && (o.kind !== 'home' || s.people.some((p) => p.id === o.ref)));
   s.nextObj = Math.max(s.nextObj || 1, ...s.objects.map((o) => o.id + 1));
   s.nextJunk = Math.max(s.nextJunk || 1, ...s.junk.map((o) => o.id + 1));
+  s.boxSerial = Math.max(s.boxSerial || 0, ...s.box.map((x) => x.n || 0));
   if (s.wish && !s.people.some((p) => p.id === s.wish.id)) s.wish = null;
   for (const p of s.people) {
     for (const [k, v] of Object.entries(PERSON_DEFAULTS)) if (p[k] === undefined) p[k] = v;

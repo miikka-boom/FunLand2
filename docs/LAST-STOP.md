@@ -235,7 +235,8 @@ are unchanged.
   decoration with its price or where to find it) and Paths (Dirt, Planks,
   Brick, the Eraser; paint with one finger, pan with two).
 - **Placing** something new: it appears on a free spot near the screen centre
-  over a green or red footprint; drag it (it floats above your finger), then ✓.
+  over a green or red footprint; drag it (it follows your finger from where you
+  grabbed it), then ✓.
 - **Naming**: after the first wish (or the third raid) the game asks for the
   town's name (three suggestions or your own) and a flag colour; the Gas
   Station's sign shows it from the Fixed-up look on.
