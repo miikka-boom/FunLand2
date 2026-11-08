@@ -879,7 +879,6 @@ h2 {
 
 .chestbtn.ready {
   background: linear-gradient(180deg, #8ff07f, var(--green2));
-  animation: readyglow 1.2s ease-in-out infinite;
 }
 
 .chestbtn.ready .ctxt small {
@@ -892,10 +891,22 @@ h2 {
   text-shadow: 0 2px 0 var(--ink), 2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 -2px 0 var(--ink);
 }
 
+/* Glows pulse by opacity on a pseudo-element (box-shadow animations repaint every frame). */
 @keyframes readyglow {
   50% {
-    box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.2), 0 3px 0 var(--ink), 0 0 16px 4px rgba(150, 255, 120, 0.75);
+    opacity: 1;
   }
+}
+
+.chestbtn.ready::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 18px;
+  box-shadow: 0 0 16px 4px rgba(150, 255, 120, 0.75);
+  opacity: 0;
+  animation: readyglow 1.2s ease-in-out infinite;
+  pointer-events: none;
 }
 
 .chestbtn .clv {
@@ -996,7 +1007,6 @@ h2 {
 @keyframes bestp {
   50% {
     transform: scale(1.1);
-    box-shadow: 0 2px 0 var(--ink), 0 0 14px 4px rgba(255, 208, 58, 0.9);
   }
 }
 
@@ -4574,7 +4584,6 @@ body.drawer-open #map {
 }
 
 .iso-obj.o-junk {
-  animation: junkwob 3.2s ease-in-out infinite;
   transform-origin: 50% 100%;
 }
 
@@ -4594,6 +4603,7 @@ body.drawer-open #map {
 
 /* The boss on a ruined landmark's roof. */
 .boss {
+  will-change: transform;
   position: absolute;
   transform: translate(-50%, -100%);
   transform-origin: 50% 100%;
@@ -4999,8 +5009,11 @@ body.drawer-open #map {
 @keyframes taghot {
   50% {
     transform: translate(-50%, -100%) translateY(-5px);
-    box-shadow: 0 3px 0 var(--ink), 0 0 14px 4px rgba(255, 208, 58, 0.85);
   }
+}
+
+.tag.hot {
+  box-shadow: 0 3px 0 var(--ink), 0 0 12px 3px rgba(255, 208, 58, 0.8);
 }
 
 .pin-tag > .tag.hot {
@@ -5060,9 +5073,10 @@ body.drawer-open #map {
   color: #fff;
 }
 
+/* Bounces use the translate property (composited; it stacks with the pins' own transform). */
 @keyframes arrowb {
   50% {
-    margin-top: -5px;
+    translate: 0 -5px;
   }
 }
 
@@ -5083,7 +5097,7 @@ body.drawer-open #map {
 
 @keyframes wishb {
   50% {
-    margin-top: -3px;
+    translate: 0 -3px;
   }
 }
 

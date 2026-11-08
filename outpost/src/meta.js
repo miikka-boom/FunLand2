@@ -921,9 +921,15 @@ export class Meta {
     return this._makeGift(rng);
   }
 
+  /** Who may bring a gift (a variation can narrow it). */
+  _giftBearers() {
+    return this.s.people;
+  }
+
   _makeGift(rng) {
-    const sunny = this.s.people.filter((p) => p.vibe === 'sunny');
-    const who = pick(rng, sunny.length ? sunny : this.s.people);
+    const pool = this._giftBearers();
+    const sunny = pool.filter((p) => p.vibe === 'sunny');
+    const who = pick(rng, sunny.length ? sunny : pool);
     if (!who) return null;
     const kind = pickWeighted(rng, Object.fromEntries(GIFT.table.map((g) => [g.kind, g.w])));
     const row = GIFT.table.find((g) => g.kind === kind);

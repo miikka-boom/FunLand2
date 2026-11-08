@@ -9,7 +9,8 @@
 
 import { zoneBackdropSvg, zombieSvg, threatIconSvg } from './thrill-art.js';
 import { figureSvg } from './portrait.js';
-import { CLASSES, THREATS, ZONES, WAVES, GOLDEN_ZOMBIE } from './config.js';
+import { CLASSES, THREATS, ZONES, WAVES, GOLDEN_ZOMBIE, DECOR } from './config.js';
+import { townIcon } from './art.js';
 import { displayName } from './people.js';
 import { name, coins as coinAmt, gems as gemAmt, threatChip } from './kit.js';
 import { coinSvg } from './chest-art.js';
@@ -273,7 +274,7 @@ export class RaidView {
     }
     if (r.skullsAfter === r.floor && r.skulls > -10 && r.skulls <= 0) lines.push(`<div class="rl">${icon('zone')}You never drop below ${esc(ZONES[r.zone - 1].name)}</div>`);
     for (const m of r.milestones) {
-      const what = m.kind === 'coins' ? coinAmt(m.coins) : m.kind === 'gems' ? gemAmt(m.gems) : `<span class="amt">${icon('badge')}<b>+${m.badges}</b></span> each`;
+      const what = m.kind === 'coins' ? coinAmt(m.coins) : m.kind === 'gems' ? gemAmt(m.gems) : m.kind === 'decor' ? `<span class="amt">${townIcon('set')}<b>${esc(DECOR[m.decor].name)}</b></span> in the box` : `<span class="amt">${icon('badge')}<b>+${m.badges}</b></span> each`;
       lines.push(`<div class="rl ms">${icon('skull')}<b>${m.at} Skulls!</b>${what}</div>`);
     }
     let fixHtml = '';
@@ -303,7 +304,7 @@ export class RaidView {
     const nx = L.next3[0];
     const span = Math.max(1, L.barTo - L.barFrom);
     const prog = nx
-      ? `<div class="rr-prog"><span>${icon('skull')}${L.skulls}</span><i><u data-to="${Math.max(0, Math.min(1, (L.skulls - L.barFrom) / span)).toFixed(3)}" style="transform:scaleX(${Math.max(0, Math.min(1, (r.skullsBefore - L.barFrom) / span)).toFixed(3)})"></u></i><span>${nx.at}: ${nx.kind === 'gate' ? `<b>${esc(nx.name)}</b>` : nx.kind === 'coins' ? `${icon('coin')}${nx.coins}` : nx.kind === 'gems' ? `${icon('gem')}${nx.gems}` : `${icon('badge')}${nx.badges} each`}</span></div>`
+      ? `<div class="rr-prog"><span>${icon('skull')}${L.skulls}</span><i><u data-to="${Math.max(0, Math.min(1, (L.skulls - L.barFrom) / span)).toFixed(3)}" style="transform:scaleX(${Math.max(0, Math.min(1, (r.skullsBefore - L.barFrom) / span)).toFixed(3)})"></u></i><span>${nx.at}: ${nx.kind === 'gate' ? `<b>${esc(nx.name)}</b>` : nx.kind === 'coins' ? `${icon('coin')}${nx.coins}` : nx.kind === 'gems' ? `${icon('gem')}${nx.gems}` : nx.kind === 'decor' ? `${townIcon('set')}${esc(DECOR[nx.decor].name)}` : `${icon('badge')}${nx.badges} each`}</span></div>`
       : '';
     const pre = meta.raidPreview();
     panel.innerHTML =

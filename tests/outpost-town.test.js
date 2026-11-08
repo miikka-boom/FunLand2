@@ -373,3 +373,77 @@ test('pacing: the simulated player keeps Thrill Hill pace and puts about a third
         }
   }
 });
+
+test('wishes only go where something fits; a boxed-in home gets no set wish', () => {
+  const { m, s, clock } = make(31);
+  s.coins = 1e5;
+  m.clear(1, 2);
+  // Box in every founder's home: no free tile within 2 tiles of any of them.
+  const founders = s.people.filter((p) => p.origin === 'founder');
+  for (const p of founders) {
+    const h = m.homeOf(p.id);
+    assert.equal(m.wishSpots(h, 1).length > 0, m.wishRoom({ i: h.i, j: h.j, w: 2, h: 2 }));
+  }
+  // Fill the whole start lot's free tiles.
+  for (let i = 14; i < 21; i++) for (let j = 14; j < 21; j++) if (m._free(i, j, 1)) m.buy('bench', i, j) || s.coins++;
+  clock.add(WISH.after + 1);
+  s.wish = null;
+  s.lastWisher = null;
+  const w = m.maybeWish({ force: true });
+  if (w) {
+    const h = m.homeOf(w.id);
+    assert.ok(w.sib != null || m.wishRoom({ i: h.i, j: h.j, w: 2, h: 2 }), 'the wisher has room for a piece');
+  }
+});
+
+test("a camper's keepsake comes out of the box by their new home", () => {
+  const { m, s } = make(3);
+  s.coins = 1e5;
+  // Fill the snug plot, then a Hero arrives: no room, a roof camper, keepsake boxed.
+  m.cheat('people', 1);
+  m.force.rarity = 'hero';
+  const nc = m._admit(m._makeNewcomer(() => 0.5, { rarity: 'hero' }, 'vault'));
+  assert.ok(nc.camper, 'the start lot is full: a roof camper');
+  {
+    assert.ok(s.box.some((x) => x.kind === 'keepsake' && x.owner === nc.person.id));
+    const r = m.clear(1, 2);
+    const moved = r.campers.find((c) => c.id === nc.person.id);
+    assert.ok(moved, 'the camper moves down');
+    assert.ok(moved.keepsake, 'and the keepsake comes out');
+    assert.ok(!s.box.some((x) => x.kind === 'keepsake' && x.owner === nc.person.id));
+  }
+});
+
+test('decoration milestones go round every common; late milestones still promise land', () => {
+  const { m, s } = make();
+  const seen = new Set();
+  for (let i = 3; i < 4 * 30; i += 4) {
+    const r = m.milestoneReward(i);
+    assert.equal(r.kind, 'decor');
+    seen.add(r.decor);
+  }
+  assert.ok(seen.size >= 10, `${seen.size} different decorations`);
+  s.coins = 1e7;
+  m.cheat('skulls', 2500);
+  for (let k = 0; k < 30 && m.lotCount() < m.landCap(); k++) {
+    const f = m.frontier().find((x) => x.can.ok);
+    if (!f) break;
+    m.clear(f.a, f.b);
+  }
+  const f = m.frontier()[0];
+  const c = m.canClear(f.a, f.b);
+  assert.equal(c.capped, true);
+  assert.ok(c.at > 2500, 'the next lot opens at a later milestone');
+  assert.ok(!/as big/.test(c.reason));
+});
+
+test('only people with a home bring gifts (campers have no walker to carry one)', () => {
+  const { m, s } = make(5);
+  for (let k = 0; k < 8; k++) m.cheat('people', 1);
+  assert.ok(m.campers().length > 0);
+  for (let k = 0; k < 30; k++) {
+    s.gift = null;
+    const g = m.giftNow();
+    assert.ok(m.homeOf(g.id), 'the bearer has a home');
+  }
+});

@@ -6,7 +6,7 @@
 // file only shows them and reports taps.
 
 import { IsoView, svgImg } from './isoview.js';
-import { footBox, tileToWorld, diamondPoints } from './iso.js';
+import { footBox, tileToWorld, diamondPoints, depth } from './iso.js';
 import { findPath } from './path.js';
 import { MAP, LOT, LOTS_ACROSS, LOTS, LOT_KINDS, LANDMARKS, BUILDINGS, DECOR, KEEPSAKES, HOME_TIERS, CLASSES, SETS, TOWN_COLORS, ROOF_TENTS, PARK_WALKERS, WISH } from './config.js';
 import { lotKey, lotOf, tierOf, setOf, gapBetween } from './town.js';
@@ -39,7 +39,8 @@ export class TownMap {
     this.cache = new Map();
     this.walkers = new Map();
     this.zeds = [];
-    this.paused = false;
+    this.paused = false; // walkers frozen
+    this.locked = false; // taps and lifts ignored (a sequence is playing)
     this.placing = null; // { size, art, ok(i, j), onOk, onCancel, ... }
     this.lifted = null; // { o, from }
     this.painting = null; // { type }
@@ -159,6 +160,11 @@ export class TownMap {
     this._roam();
     this._lots();
     this._objects();
+    const occ = this.meta.occupancy();
+    if (occ !== this._occSeen) {
+      this._occSeen = occ;
+      this._reroute();
+    }
     this._junk();
     this._fence();
     this._tags();
@@ -382,7 +388,7 @@ export class TownMap {
           h = 1;
         }
         // Back edges sit under everything on the lot; front pieces over what stands behind them.
-        const z = back ? -((i + w + j + h) * 10) + (I + J) * 10 - 4 : 8;
+        const z = back ? -depth(i, j, w, h) * 10 + (I + J) * 10 - 4 : 8;
         this.view.upsert(`f:${e.a},${e.b},${e.side},${off}`, { i, j, w, h, html: f.svg, artH: f.artH, cls: `o-fence${before ? ' hop' : ''}`, z, noTap: true, img: true });
       }
     }
@@ -413,7 +419,7 @@ export class TownMap {
           const lock = can.capped;
           const html =
             `<button class="tag k-${KIND_ICON[L.kind]}${lock ? ' locked' : ''}${can.ok ? ' can' : ''}${hot ? ' hot' : ''}" type="button" data-ui="lot" data-lot="${key}">` +
-            `<span class="ti">${A.townIcon(KIND_ICON[L.kind])}</span><span class="tt"><b>${esc(L.name)}</b>${lock ? `<em>${icon('lock')}Zone ${can.zone || '·'}</em>` : `<em class="pr${m.s.coins < price ? ' short' : ''}">${icon('coin')}${price}</em>`}</span>${hot ? `<i class="arrow">${icon('up')}</i>` : ''}</button>`;
+            `<span class="ti">${A.townIcon(KIND_ICON[L.kind])}</span><span class="tt"><b>${esc(L.name)}</b>${lock ? `<em>${can.zone ? `${icon('lock')}Zone ${can.zone}` : can.at ? `${icon('skull')}${can.at}` : `${icon('lock')}Full`}</em>` : `<em class="pr${m.s.coins < price ? ' short' : ''}">${icon('coin')}${price}</em>`}</span>${hot ? `<i class="arrow">${icon('up')}</i>` : ''}</button>`;
           v.pin(`t:${key}`, c.x, c.y - 34, html, 'pin-tag');
           live.add(`t:${key}`);
         } else {
@@ -521,6 +527,7 @@ export class TownMap {
    */
   startPlace(opts) {
     this.endPlace();
+    this._unlift();
     const m = this.meta;
     const c = this.centreTile();
     const at = opts.at || m.freeSpot(opts.size, { near: { i: c.i, j: c.j }, avoidJunk: false }) || { i: Math.round(c.i - opts.size / 2), j: Math.round(c.j - opts.size / 2) };
@@ -557,7 +564,8 @@ export class TownMap {
       const h = m.homeOf(w.id);
       if (h) {
         const R = WISH.range;
-        marks = `<polygon class="wishring" points="${diamondPoints(h.i - R, h.j - R, h.size + 2 * R, h.size + 2 * R)}"/>`;
+        // Where a piece can stand: up to R tiles between it and the home.
+        marks = `<polygon class="wishring" points="${diamondPoints(h.i - R - 1, h.j - R - 1, h.size + 2 * R + 2, h.size + 2 * R + 2)}"/>`;
         const inRange = gapBetween(foot(h), { i: P.i, j: P.j, w: P.size, h: P.size }) <= R && P.valid;
         const pin = this.view.pinEl('wish');
         if (pin) pin.classList.toggle('inrange', inRange);
@@ -622,7 +630,7 @@ export class TownMap {
 
   /** Long press: lift a movable thing (the rules say what moves). */
   _longPress({ id }) {
-    if (this.placing || this.painting || this.paused) return false;
+    if (this.placing || this.painting || this.paused || this.locked) return false;
     if (!id || !id.startsWith('o')) return false;
     const o = this.meta.object(Number(id.slice(1)));
     if (!o || !this.meta.isMovable(o)) return false;
@@ -632,6 +640,8 @@ export class TownMap {
   /** Lift something placed: it follows the finger; let go on green to move it. */
   lift(o, { byTap = false } = {}) {
     if (this.cb.onLift && this.cb.onLift(o) === false) return false;
+    this.endPlace();
+    this._unlift();
     const art = this._objHtml(o);
     this.lifted = { o, from: { i: o.i, j: o.j } };
     const el = this.objectEl(o.id);
@@ -645,7 +655,10 @@ export class TownMap {
       lift: !byTap,
       set: setOf(o),
       onOk: (i, j) => this._moveTo(o, i, j),
-      onCancel: () => this._unlift(),
+      onCancel: () => {
+        this._unlift();
+        if (this.cb.onDropped) this.cb.onDropped();
+      },
     };
     this._showPlace();
     try {
@@ -662,7 +675,9 @@ export class TownMap {
     const from = { i: o.i, j: o.j };
     const r = this.meta.move(o.id, i, j);
     this._unlift();
-    if (r.ok && (from.i !== i || from.j !== j) && this.cb.onMoved) this.cb.onMoved(r, o);
+    if (r.ok && (from.i !== i || from.j !== j)) {
+      if (this.cb.onMoved) this.cb.onMoved(r, o);
+    } else if (r.ok && this.cb.onDropped) this.cb.onDropped();
     return r;
   }
 
@@ -674,9 +689,17 @@ export class TownMap {
     this.lifted = null;
   }
 
-  _drop({ i, j, sx, sy }) {
+  _drop({ i, j, cancel, sx, sy }) {
     const P = this.placing;
     if (!P) return;
+    if (cancel && this.lifted && P.lift) {
+      // The system took the touch: not a let-go, so it slides home.
+      this.endPlace();
+      this._unlift();
+      this.update();
+      if (this.cb.onDropped) this.cb.onDropped();
+      return;
+    }
     P.i = i;
     P.j = j;
     if (this.lifted) {
@@ -760,13 +783,14 @@ export class TownMap {
   // --- Taps ------------------------------------------------------------------------------------------
 
   _tap({ id, ui, i, j }) {
-    if (this.paused) return;
+    if (this.paused || this.locked) return;
     if (ui) {
       const b = ui.closest('[data-ui]') || ui.querySelector('[data-ui]');
       if (!b) return;
       const k = b.dataset.ui;
       if (k === 'place-ok') return this.cb.onPlaceOk ? this.cb.onPlaceOk() : this.placeOk();
       if (k === 'place-x') return this.placeCancel();
+      if (this.placing) return; // a ghost is up: only ✓ / ✕ answer
       if (k === 'lot') {
         const [a, bb] = b.dataset.lot.split(',').map(Number);
         return this.cb.onLot(a, bb, b);
@@ -803,8 +827,12 @@ export class TownMap {
       const o = this.meta.object(Number(id.slice(1)));
       if (o) return this.cb.onObject(o, this.view.objectEl(id));
     }
+    // A tall ruin or landmark reaches over the lot behind it: its own lot answers.
+    if (id && id.startsWith('wild:')) {
+      const [wa, wb] = id.slice(5).split(',').map(Number);
+      return this.cb.onLot(wa, wb, this.view.objectEl(id));
+    }
     const { a, b } = lotOf(i, j);
-    if (id && id.startsWith('wild:')) return this.cb.onLot(a, b, this.view.objectEl(id));
     if (i < 0 || j < 0 || i >= MAP || j >= MAP) return;
     if (this.meta.owns(a, b)) return this.cb.onGround(i, j);
     return this.cb.onLot(a, b, null);
@@ -932,6 +960,50 @@ export class TownMap {
     if (to.exact) w.path.push({ i: to.exact.i, j: to.exact.j });
     if (to.seat) w.path.push({ i: to.seat.i, j: to.seat.j, seat: to.seat });
     return true;
+  }
+
+  /** Something was placed or moved: walkers on its way find another way (or step out from under it). */
+  _reroute() {
+    for (const w of this.walkers.values()) {
+      if (w.run || w.seat) continue; // the squad's BONK sprint goes straight on purpose
+      const ci = Math.floor(w.fi);
+      const cj = Math.floor(w.fj);
+      if (!this._walkable(ci, cj)) {
+        const t = this._nearestFree(ci, cj);
+        w.path = t ? [{ i: t.i + 0.5, j: t.j + 0.5 }] : [];
+        w.then = 'idle';
+        w.heart = false;
+        continue;
+      }
+      if (!w.path.length) continue;
+      const end = w.path[w.path.length - 1];
+      if (end.seat) {
+        const o = this.meta.object(end.seat.oid);
+        if (!o || `${o.i},${o.j}` !== end.seat.at) {
+          w.path = [];
+          w.wait = 0;
+          continue;
+        }
+      }
+      const steps = w.path.filter((q) => !q.seat);
+      if (steps.some((q) => !this._walkable(Math.floor(q.i), Math.floor(q.j)))) {
+        const last = steps[steps.length - 1];
+        if (!last || !this._walkable(Math.floor(last.i), Math.floor(last.j)) || !this._route(w, { i: Math.floor(last.i), j: Math.floor(last.j) })) {
+          w.path = [];
+          w.wait = 0;
+        }
+      }
+    }
+  }
+
+  _nearestFree(i, j) {
+    for (let r = 1; r <= 6; r++)
+      for (let di = -r; di <= r; di++)
+        for (let dj = -r; dj <= r; dj++) {
+          if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue;
+          if (this._walkable(i + di, j + dj)) return { i: i + di, j: j + dj };
+        }
+    return null;
   }
 
   /** Sit (or stand) on a piece: drawn just over it, lifted by the seat height. */
@@ -1065,7 +1137,7 @@ export class TownMap {
     const fi = st.i + bu;
     const fj = st.j + bv;
     this.busAt = { i: fi, j: fj };
-    this.view.walker('bus', fi, fj, { html: `<div class="busfig">${svgImgPlain(busSvg())}</div>`, w: 66, h: 38, z: (st.i + st.size + st.j + st.size) * 10 + 2 });
+    this.view.walker('bus', fi, fj, { html: `<div class="busfig">${svgImgPlain(busSvg())}</div>`, w: 66, h: 38 });
   }
 
   /** The bus drives off (a raid) and comes back. */
@@ -1163,6 +1235,7 @@ export class TownMap {
   _visitor() {
     const v = this.meta.s.visitor;
     if (!v) {
+      this._visitorKey = null;
       if (this._visitorAt) {
         this._visitorAt = null;
         this.view.removeWalker('zv');

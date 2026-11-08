@@ -78,8 +78,8 @@ function spend(meta, log) {
 /** A spot for a footprint within the wish range of a home, or null. */
 function spotNear(meta, home, size, ignore = null) {
   const R = WISH.range;
-  for (let i = home.i - R - size + 1; i <= home.i + home.size + R - 1; i++)
-    for (let j = home.j - R - size + 1; j <= home.j + home.size + R - 1; j++) {
+  for (let i = home.i - R - size; i <= home.i + home.size + R; i++)
+    for (let j = home.j - R - size; j <= home.j + home.size + R; j++) {
       if (gapBetween({ i, j, w: size, h: size }, { i: home.i, j: home.j, w: home.size, h: home.size }) > R) continue;
       if (meta.canPlaceAt(i, j, size, ignore).ok) return { i, j };
     }
@@ -97,6 +97,10 @@ function grantWish(meta, log) {
     if (!other) return;
     const at = spotNear(meta, other, home.size, home.id);
     if (at) meta.move(home.id, at.i, at.j);
+    else {
+      const back = spotNear(meta, home, other.size, other.id);
+      if (back) meta.move(other.id, back.i, back.j);
+    }
     return;
   }
   // A boxed piece of that set.

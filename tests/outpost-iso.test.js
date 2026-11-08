@@ -77,3 +77,15 @@ test('hit hexagons: a tall object is tappable above its footprint, not beside it
   const bottom = tw(6, 6);
   assert.ok(!inHexagon(4, 4, 2, 2, 80, bottom.x, bottom.y + 4), 'not in front of it');
 });
+
+test('draw order by footprint centre: a small thing beside a big one\'s front face draws over it', async () => {
+  const { depth } = await import('../outpost/src/iso.js');
+  // A 1×1 just past a 3×3's front-right face, in its back row.
+  assert.ok(depth(3, 0, 1, 1) > depth(0, 0, 3, 3));
+  // A 1×1 just past the front-left face.
+  assert.ok(depth(0, 3, 1, 1) > depth(0, 0, 3, 3));
+  // Behind it stays behind.
+  assert.ok(depth(0, -1, 1, 1) < depth(0, 0, 3, 3));
+  // Two 2×2s side by side along i: the one at higher i is in front.
+  assert.ok(depth(2, 0, 2, 2) > depth(0, 0, 2, 2));
+});

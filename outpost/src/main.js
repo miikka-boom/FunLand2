@@ -23,6 +23,7 @@ import { zoneBackdropSvg } from './thrill-art.js';
 import { coinSvg, gemSvg } from './chest-art.js';
 import { face, name, threatChip } from './kit.js';
 import { lotKey, tierOf } from './town.js';
+import { tileToWorld } from './iso.js';
 
 // --- State -------------------------------------------------------------------------------------------
 
@@ -44,10 +45,12 @@ let busy = false;
 let resetting = false;
 let staleTab = false;
 
-function setBusy(v) {
+/** Busy: a sequence is playing. Taps are locked; walkers keep walking only if `walk`. */
+function setBusy(v, { walk = false } = {}) {
   busy = v;
   document.body.classList.toggle('busy', v);
-  map.paused = v && !map.allowWalk;
+  map.locked = v;
+  map.paused = v && !walk;
 }
 
 const haptic = (ms) => {
@@ -97,6 +100,7 @@ const map = new TownMap($('map'), meta, {
   onGround: (i, j) => guard(() => tapGround(i, j)),
   onKit: (kit) => showKit(kit),
   onPlaceOk: () => placeOk(),
+  onLift: () => !busy,
   onLifted: (o) => {
     hud.setMode('lift');
     hud.showBox(meta.isBoxable(o));
@@ -206,6 +210,33 @@ const dev = new Dev($('dev'), {
     arm();
     ds();
   };
+  // Back closes the drawer, a ghost or a lifted thing too.
+  const dop = drawer.open.bind(drawer);
+  drawer.open = (...a) => {
+    arm();
+    return dop(...a);
+  };
+  const sp = map.startPlace.bind(map);
+  map.startPlace = (...a) => {
+    arm();
+    return sp(...a);
+  };
+  const lf = map.lift.bind(map);
+  map.lift = (...a) => {
+    arm();
+    return lf(...a);
+  };
+  // Housewarming visits wait for the Crew screen to close (GO! still starts the raid first).
+  const cc = crew.close.bind(crew);
+  crew.close = (...a) => {
+    const r = cc(...a);
+    Promise.resolve(r).then(() =>
+      setTimeout(() => {
+        if (!busy && !crew.isOpen && !modals.isOpen && ui.housewarm && ui.housewarm.length) housewarming();
+      }, 0),
+    );
+    return r;
+  };
 }
 
 function refresh(full = false) {
@@ -230,6 +261,7 @@ function recover(e) {
   overlay.classList.remove('on');
   hud.thaw();
   map.paused = false;
+  map.locked = false;
   toasts.show('Oops, that went wrong. The game carries on.', 'warn');
 }
 
@@ -445,8 +477,7 @@ async function housewarming() {
   const ids = (ui.housewarm || []).slice(-4);
   ui.housewarm = [];
   if (!ids.length) return;
-  setBusy(true);
-  map.allowWalk = true;
+  setBusy(true, { walk: true });
   try {
     for (const id of ids) {
       const h = meta.homeOf(id);
@@ -467,7 +498,6 @@ async function housewarming() {
       await wait(650);
     }
   } finally {
-    map.allowWalk = false;
     setBusy(false);
   }
 }
@@ -503,7 +533,7 @@ function openCard(id) {
   modals.open(() => survivorCard(meta, id, ui), {
     cls: 'm-card',
     onClose: (replaced) => {
-      if (!replaced && ui.housewarm && ui.housewarm.length) setTimeout(() => housewarming(), 250);
+      if (!replaced && ui.housewarm && ui.housewarm.length && !crew.isOpen) setTimeout(() => housewarming(), 250);
     },
   });
 }
@@ -546,7 +576,7 @@ function openRename() {
 
 function saveName() {
   const inp = $('modals').querySelector('.tname-in');
-  const n = (inp && inp.value.trim()) || ui.nameDraft || (ui.nameIdeas && ui.nameIdeas[0]);
+  const n = (inp && inp.value.trim()) || ui.nameDraft || meta.s.town.name;
   const r = meta.rename(n, ui.nameColor);
   if (!r.ok) {
     sound('error');
@@ -682,20 +712,23 @@ function wishSpot(set, size) {
   if (!w || !w.set || w.set !== set) return null;
   const h = meta.homeOf(w.id);
   if (!h) return null;
-  // Nearest first, and in front of the home (where it shows) before behind it.
-  let best = null;
-  for (let i = h.i - 2 - size + 1; i <= h.i + h.size + 1; i++)
-    for (let j = h.j - 2 - size + 1; j <= h.j + h.size + 1; j++) {
-      const g = Math.max(0, i - (h.i + h.size), h.i - (i + size), j - (h.j + h.size), h.j - (j + size));
-      if (g > 2 || !meta.canPlaceAt(i, j, size).ok || meta.pathAt(i, j)) continue;
-      const score = g * 10 - (i + j - h.i - h.j);
-      if (!best || score < best.score) best = { i, j, score };
-    }
-  return best;
+  const spots = meta.wishSpots(h, size);
+  if (spots.length) return spots[0];
+  const p = meta.person(w.id);
+  toasts.show(`${icon('heart')}Nothing fits within 2 tiles of <b>${p ? name(p) : 'their'}</b>'s home. Move something away first (long-press it).`, 'warn', 3600);
+  return null;
+}
+
+/** Leave path painting (placing, moving and other tabs need one-finger drags back). */
+function stopPaint() {
+  if (!map.painting) return;
+  map.endPaint();
+  drawer.paint = null;
 }
 
 /** Place something new: the drawer and HUD slide away, the ghost appears near the centre. */
 function placeNew(spec) {
+  stopPaint();
   drawer.hide(true);
   hud.setMode('place');
   map.noKit = true;
@@ -748,12 +781,27 @@ function afterPlaceUi() {
 
 /** Junk popped under a drop, and a wish granted by the drop or move. */
 function afterLanding(r) {
-  for (const p of r.popped || []) junkLoot(p, null);
+  const popped = r.popped || [];
+  for (const p of popped) junkLoot(p, null);
   if (r.wish) grantWish(r.wish);
+  junkFollowUp(popped);
+  if (r.keepsake) toasts.show(`${A.townIcon('set')}The keepsake came out of the box, by the new home.`, '', 2400);
+}
+
+/** What popped junk brings beyond loot: trunk survivors and the scripted first wish. */
+function junkFollowUp(list) {
+  const ncs = list.filter((p) => p.newcomer).map((p) => p.newcomer);
+  if (ncs.length) showNewcomers(ncs, "Someone's in the trunk!");
+  const first = list.map((p) => p.wish).find((w) => w && w.first);
+  // Only while it is still open (a drop can start it and grant it at once).
+  if (first && meta.s.wish === first) {
+    setTimeout(() => toasts.show(`${icon('heart')}<b>${name(meta.person(first.id))}</b>: “Something fun by my tent?”`, 'gift', 3600), 900);
+  }
 }
 
 function liftByTap(o) {
-  if (!meta.isMovable(o)) return;
+  if (!meta.isMovable(o) || busy) return;
+  stopPaint();
   closeDrawerSoft();
   map.glide(o.i + o.size / 2, o.j + o.size / 2, { ms: 350 });
   map.lift(o, { byTap: true });
@@ -832,8 +880,7 @@ async function clearLot(a, b) {
   }
   save();
   arm();
-  setBusy(true);
-  map.allowWalk = true;
+  setBusy(true, { walk: true });
   hud.hideHand();
   closeDrawer();
   hud.freeze(['coins', 'gems']);
@@ -843,7 +890,6 @@ async function clearLot(a, b) {
   } catch (e) {
     recover(e);
   } finally {
-    map.allowWalk = false;
     hud.thaw(['coins', 'gems']);
     setBusy(false);
     map.resetZeds();
@@ -991,11 +1037,7 @@ function popJunk(id, el) {
   junkLoot(r, at);
   save();
   refresh();
-  if (r.newcomer) showNewcomers([r.newcomer], "Someone's in the trunk!");
-  if (r.wish && !r.wish.badges) {
-    // The scripted first wish appears with the flamingo.
-    setTimeout(() => toasts.show(`${icon('heart')}<b>${name(meta.person(r.wish.id))}</b>: “Something fun by my tent?”`, 'gift', 3600), 900);
-  }
+  junkFollowUp([r]);
 }
 
 function junkLoot(r, at) {
@@ -1297,9 +1339,19 @@ function showHint() {
   if (meta.s.stats.raids >= ONBOARDING_RAIDS && meta.s.stats.levelUps >= 3 && meta.s.town.stats.lots >= 2) return;
   // Session 1: the hand shows a junk pile once (junk never gets the arrow).
   if (ui.junkHint) {
-    const el = map.junkEl(ui.junkHint);
-    ui.junkHint = null;
-    if (el) return hud.pointAt(el, 'Junk! Tap a pile to pop it.', true);
+    const k = meta.s.junk.find((x) => x.id === ui.junkHint) || meta.s.junk[0];
+    const el = k && map.junkEl(k.id);
+    if (!el) ui.junkHint = null;
+    else {
+      if (!inSafe(el) && !ui.junkGlided) {
+        ui.junkGlided = true;
+        if (!map.view.pointers.size) map.glide(k.i + 0.5, k.j + 0.5, { ms: 500 });
+        hud.idle = (hud.hintDelay || 1400) - 700; // point once it's there
+        return;
+      }
+      ui.junkHint = null;
+      if (inSafe(el)) return hud.pointAt(el, 'Junk! Tap a pile to pop it.', true);
+    }
   }
   const step = meta.nextStep();
   let el = null;
@@ -1325,18 +1377,30 @@ function showHint() {
       label = `<b>${name(dot)}:</b> Zombies at the fence! Let's bonk some.`;
     } else if (meta.s.raids === 1) label = 'Three waves, a crown for each one you clear.';
   }
-  // A map target hidden under the HUD or off-screen: bring it into view first.
+  // A map target hidden under the HUD or off-screen: bring it into view, once per step
+  // (never a tug-of-war with a player who is panning), centring the target itself.
   const t = stepTile(step);
-  if (el && t && map.root.contains(el)) {
-    const r = el.getBoundingClientRect();
-    const safe = r.top > 54 && r.bottom < innerHeight - 84 && r.left > 8 && r.right < innerWidth - 8;
-    if (!safe) {
-      map.glide(t.i, t.j, { ms: 500 });
+  if (el && t && map.root.contains(el) && !inSafe(el)) {
+    const key = JSON.stringify(step);
+    if (ui.hintGlide !== key && !map.view.pointers.size) {
+      ui.hintGlide = key;
+      const r = el.getBoundingClientRect();
+      const w = tileToWorld(t.i, t.j);
+      const sc = map.view.cam.worldToScreen(w.x, w.y);
+      const dy = (r.top + r.bottom) / 2 - map.root.getBoundingClientRect().top - sc.y; // a pin sits above its tile
+      map.glide(t.i, t.j, { ms: 500, dy });
       hud.idle = (hud.hintDelay || 1400) - 700; // point once it's there
       return;
     }
+    return; // still hidden: the edge pointer does the job
   }
   if (el) hud.pointAt(el, label, true);
+}
+
+/** Is an element inside the map's clear area (not under the HUD)? */
+function inSafe(el) {
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.top > 54 && r.bottom < innerHeight - 84 && r.left > 8 && r.right < innerWidth - 8;
 }
 
 // --- Title card (first visit) --------------------------------------------------------------------------
@@ -1432,6 +1496,8 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 addEventListener('pagehide', save);
+// Touching the map counts as activity: the hand steps aside.
+$('map').addEventListener('pointerdown', () => hud.poke());
 
 // --- Frame loop ---------------------------------------------------------------------------------------
 

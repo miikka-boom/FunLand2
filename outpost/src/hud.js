@@ -175,7 +175,8 @@ export class Hud {
     this.ladder = L;
     for (const k of ['crate', 'vault']) this._chest(k);
     // BUILD: a dot when something waits (a kit, the box, a camper).
-    const waits = s.kits.length > 0 || m.campers().length > 0;
+    if ((s.seen.boxSeen || 0) > s.box.length) s.seen.boxSeen = s.box.length; // things left the box
+    const waits = s.kits.length > 0 || m.campers().length > 0 || s.box.length > (s.seen.boxSeen || 0);
     this.el.build.classList.toggle('has', waits);
     // Squad faces.
     const squad = m.squadPeople();
@@ -274,6 +275,7 @@ export class Hud {
       for (const kind of ['crate', 'vault']) this._chest(kind);
     }
     this.idle += dt;
+    if (this.handOn && !this.handOn.isConnected) this.poke(); // its target went away (a popped pile, re-drawn faces)
     if (canHint && this.idle > (this.hintDelay || 4000) && !this.handOn) this.onAct('hint', {}, null);
     if (!canHint && this.handOn) this.hideHand();
     if (this.handOn && this.handFollow) this._placeHand(this.handOn);

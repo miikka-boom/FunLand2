@@ -160,12 +160,13 @@ it.
 
 ## Wishes, junk, visitors
 
-**Wishes.** One is open at a time and never expires: "Aino would love
+**Wishes.** One is open at a time and never expires (the simulated player, who plays four 20-minute sessions a day, grants about two a session): "Aino would love
 something Garden by her cabin." It's granted the moment any piece of that set
 stands within 2 tiles of her home, bought, unboxed or **moved** there for free:
 4 + 2 × zone Badges, a heart and a plaque. The squad is three times as likely
 to wish, Heroes and Legends twice, nobody twice in a row, and only for sets the
-home lacks. A sibling may instead wish to live near their family. A new wish
+home lacks and has room for (a sibling wish only when one home fits near the
+other). A sibling may instead wish to live near their family. A new wish
 comes 20 minutes after the last is granted, or on returning after an hour. Tap
 the bubble and BUILD opens on Decor with a ♥ on matching cards; the ♥ over her
 home glows while you drag a match in range. Wishes never get the arrow.
@@ -204,11 +205,11 @@ and every zone day stay within ±5%, and that land takes 25–35% of coins.
 
 | Day | raids | zone | lots (cap) | people | squad Lv | landmarks | decorations | wishes | junk | coins earned | on land |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | 16 | 3 | 5 (7) | 17 | 4.7 | 0 | 7 | 6 | 16 | 3,550 | 950 (26%) |
-| 3 | 48 | 4 | 8 (10) | 29 | 6.7 | 3 | 15 | 11 | 28 | 13,000 | 3,550 (27%) |
-| 7 | 112 | 6 | 12 (18) | 54 | 9.0 | 6 | 29 | 15 | 44 | 39,400 | 11,050 (28%) |
+| 1 | 16 | 3 | 5 (7) | 17 | 4.7 | 0 | 9 | 8 | 16 | 3,630 | 950 (26%) |
+| 3 | 48 | 4 | 8 (10) | 29 | 6.3 | 3 | 18 | 24 | 28 | 12,750 | 3,550 (27%) |
+| 7 | 112 | 6 | 12 (19) | 53 | 8.7 | 6 | 35 | 56 | 44 | 39,000 | 11,050 (28%) |
 
-Squad level on day 7 is 9.0 in both games, and zones open on the same days
+Squad level on day 7 is 8.7 against Thrill Hill's 9.0 (−4%), and zones open on the same days
 (2 and 3 on day 1, 4 on day 3, 5 on day 4, 6 on day 7). The remaining 13 lots
 cost about 75,000 coins: a weeks-long tail.
 
@@ -221,6 +222,9 @@ are unchanged.
   and Skull bar (the ladder), coins, gems, the gear. Along the bottom: the
   Supply Crate, BUILD, the squad's faces with the threat and PLAY, CREW, the
   Bank Vault. A home button appears when the station is off-screen.
+- **Performance**: map art is drawn as cached SVG images and taps use each
+  object's footprint hexagon. A full town (220 objects, 27 walkers) pans at
+  about 45 fps with the CPU throttled 4× in headless Chrome.
 - **Gestures**: drag pans (with inertia), pinch or the wheel zooms 0.35–1.8,
   a double tap zooms 0.9 ↔ 1.4, a tap opens what's there (a person's card, a
   building's sheet, a lot card, pops junk, BONKs a zombie), and a long press

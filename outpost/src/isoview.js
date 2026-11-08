@@ -101,7 +101,7 @@ export class IsoView {
       }
     }
     const g = this.gesture;
-    if (g && g.kind === 'lift' && this.ghost) {
+    if (g && g.kind === 'lift' && g.armed && this.ghost) {
       const p = g.last;
       const vw = this.cam.vw;
       const vh = this.cam.vh;
@@ -249,7 +249,7 @@ export class IsoView {
    * whose box overlaps the sprite, and below every object it stands behind.
    */
   _walkerZ(fi, fj, ww, hh) {
-    const base = Math.round((fi + fj) * 10 + 5);
+    const base = Math.round((fi + fj) * 10 + 4);
     const p = tileToWorld(fi, fj);
     const l = p.x - ww / 2;
     const r = p.x + ww / 2;
@@ -412,13 +412,31 @@ export class IsoView {
     return tileAt(w.x, w.y);
   }
 
+  /** Where the finger grabbed the ghost, in tiles (kept while dragging so it never jumps). */
+  _grabAt(p) {
+    const w = this.cam.screenToWorld(p.x, p.y);
+    const t = worldToTile(w.x, w.y);
+    return { i: this.ghost.i - t.i, j: this.ghost.j - t.j };
+  }
+
   _dragGhost(p) {
     if (!this.ghost) return;
-    const w = this.cam.screenToWorld(p.x, p.y - LIFT_Y);
-    // Snap the footprint's centre under the (lifted) finger.
-    const t = worldToTile(w.x, w.y);
-    const i = Math.round(t.i - this.ghost.w / 2);
-    const j = Math.round(t.j - this.ghost.h / 2);
+    const g = this.gesture;
+    const off = g && g.grab;
+    let i;
+    let j;
+    if (off) {
+      const w = this.cam.screenToWorld(p.x, p.y);
+      const t = worldToTile(w.x, w.y);
+      i = Math.round(t.i + off.i);
+      j = Math.round(t.j + off.j);
+    } else {
+      // No grab point: snap the footprint's centre under the (lifted) finger.
+      const w = this.cam.screenToWorld(p.x, p.y - LIFT_Y);
+      const t = worldToTile(w.x, w.y);
+      i = Math.round(t.i - this.ghost.w / 2);
+      j = Math.round(t.j - this.ghost.h / 2);
+    }
     if (i !== this.ghost.i || j !== this.ghost.j) {
       if (this.cb.onGhostMove) this.cb.onGhostMove({ i, j });
     }
@@ -426,6 +444,7 @@ export class IsoView {
 
   _down(e) {
     if (e.button !== undefined && e.button > 0) return;
+    const halted = !!this.vel && Math.hypot(this.vel.x, this.vel.y) > 0.1; // this press stops a fling
     this.stop();
     try {
       this.root.setPointerCapture(e.pointerId);
@@ -438,13 +457,15 @@ export class IsoView {
       const onGhost = !!(this.ghost && e.target.closest && e.target.closest('[data-oid="__ghost"]'));
       const ui = e.target.closest ? e.target.closest('.iso-pin [data-ui], .iso-pin') : null;
       const target = e.target.closest ? e.target.closest('[data-oid],[data-wid]') : null;
-      const g = { kind: 'press', start: p, last: p, t0: performance.now(), lt: performance.now(), target, ui, onGhost, moved: false, samples: [] };
+      const g = { kind: 'press', pid: e.pointerId, start: p, last: p, t0: performance.now(), lt: performance.now(), target, ui, onGhost, moved: false, samples: [], halted };
       this.gesture = g;
       if (this.mode === 'paint' && !ui) {
+        // Painted on the first move to another tile, or on lift: a second finger
+        // (a two-finger pan) arriving first means nothing gets painted.
         g.kind = 'paint';
         const t = this._tileAt(p);
         g.tile = `${t.i},${t.j}`;
-        if (this.cb.onPaint) this.cb.onPaint({ i: t.i, j: t.j, first: true });
+        g.pending = { i: t.i, j: t.j };
         return;
       }
       if (!onGhost && !ui) {
@@ -452,21 +473,23 @@ export class IsoView {
         this._longT = setTimeout(() => {
           if (this.gesture !== g || g.moved || this.pointers.size !== 1) return;
           const t = this._tileAt(g.start);
+          const w = this.cam.screenToWorld(g.start.x, g.start.y);
           let id = target ? target.dataset.oid || null : null;
-          if (!id) {
-            const w = this.cam.screenToWorld(g.start.x, g.start.y);
-            id = this._hitObject(w.x, w.y) || this._objectOnTile(t.i, t.j);
-          }
+          if (!id) id = this._hitObject(w.x, w.y) || this._objectOnTile(t.i, t.j);
           if (this.cb.onLongPress && this.cb.onLongPress({ id, i: t.i, j: t.j })) {
+            const cur = this.pointers.get(g.pid) || g.start;
             g.kind = 'lift';
             g.moved = true;
+            g.last = cur;
+            g.armed = false; // the edge pan waits until the finger really moves
+            g.grab = this.ghost ? this._grabAt(cur) : null;
           }
         }, LONG_MS);
       }
     } else if (this.pointers.size === 2) {
       clearTimeout(this._longT);
       const g = this.gesture;
-      if (g && g.kind === 'lift') return; // a lifted thing stays lifted; the second finger is ignored
+      if (g && g.kind === 'lift') return; // a lifted thing stays with its finger; others are ignored
       const [a, b] = [...this.pointers.values()];
       this.gesture = { kind: 'pinch', dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
     }
@@ -474,9 +497,10 @@ export class IsoView {
 
   /**
    * The object under a world point: its footprint diamond extruded upward by
-   * its body height (a hexagon), highest depth first. Used for image objects.
+   * its body height (a hexagon), front-most first. Returns { oid, d } (d = its
+   * draw order) or null.
    */
-  _hitObject(wx, wy) {
+  _hitObjectZ(wx, wy) {
     let best = null;
     for (const [oid, rec] of this.objects) {
       if (oid === '__ghost' || rec.noTap) continue;
@@ -487,7 +511,12 @@ export class IsoView {
       const d = depth(rec.i, rec.j, w, h) * 10 + (rec.z || 0);
       if (!best || d > best.d) best = { oid, d };
     }
-    return best ? best.oid : null;
+    return best;
+  }
+
+  _hitObject(wx, wy) {
+    const b = this._hitObjectZ(wx, wy);
+    return b ? b.oid : null;
   }
 
   _objectOnTile(i, j) {
@@ -526,6 +555,11 @@ export class IsoView {
       const t = this._tileAt(p);
       const k = `${t.i},${t.j}`;
       if (k !== g.tile) {
+        if (g.pending) {
+          const q = g.pending;
+          g.pending = null;
+          if (this.cb.onPaint) this.cb.onPaint({ i: q.i, j: q.j, first: true });
+        }
         g.tile = k;
         if (this.cb.onPaint) this.cb.onPaint({ i: t.i, j: t.j, first: false });
       }
@@ -533,6 +567,8 @@ export class IsoView {
       return;
     }
     if (g.kind === 'lift') {
+      if (e.pointerId !== g.pid) return; // only the finger that holds it moves it
+      if (!g.armed && Math.hypot(p.x - g.start.x, p.y - g.start.y) > TAP_MOVE) g.armed = true;
       g.last = p;
       this._dragGhost(p);
       return;
@@ -541,7 +577,11 @@ export class IsoView {
     if (!g.moved && Math.hypot(p.x - g.start.x, p.y - g.start.y) > TAP_MOVE) {
       g.moved = true;
       clearTimeout(this._longT);
-      if (g.onGhost && this.ghost) g.kind = 'lift';
+      if (g.onGhost && this.ghost) {
+        g.kind = 'lift';
+        g.armed = true;
+        g.grab = this._grabAt(g.start);
+      }
     }
     if (!g.moved) return;
     if (g.kind === 'lift') {
@@ -571,15 +611,19 @@ export class IsoView {
       } else if (!this.pointers.size) this.gesture = null;
       return;
     }
+    // A lift ends when the finger that holds it lets go (other fingers don't count).
+    if (g && g.kind === 'lift') {
+      if (e.pointerId !== g.pid) return;
+      this.gesture = null;
+      if (this.cb.onDrop && this.ghost) this.cb.onDrop({ i: this.ghost.i, j: this.ghost.j, cancel, sx: e.clientX, sy: e.clientY });
+      return;
+    }
     if (this.pointers.size) return;
     this.gesture = null;
     if (!g) return;
     if (g.kind === 'paint') {
+      if (g.pending && !cancel && this.cb.onPaint) this.cb.onPaint({ ...g.pending, first: true }); // a one-finger tap paints one tile
       if (this.cb.onPaintEnd) this.cb.onPaintEnd();
-      return;
-    }
-    if (g.kind === 'lift') {
-      if (this.cb.onDrop && this.ghost) this.cb.onDrop({ i: this.ghost.i, j: this.ghost.j, cancel, sx: e.clientX, sy: e.clientY });
       return;
     }
     if (g.kind !== 'press') return;
@@ -596,6 +640,7 @@ export class IsoView {
       return;
     }
     if (cancel || performance.now() - g.t0 > TAP_MS * 2) return;
+    if (g.halted) return; // a tap that stops a fling only stops it
     const p = this._local(e);
     const t = this._tileAt(p);
     if (g.ui) {
@@ -606,12 +651,16 @@ export class IsoView {
     const now = performance.now();
     const lt = this.lastTap;
     this.lastTap = { t: now, x: p.x, y: p.y };
+    const wp = this.cam.screenToWorld(p.x, p.y);
+    const hit = this._hitObjectZ(wp.x, wp.y);
     let id = null;
-    if (g.target) id = g.target.dataset.oid || (g.target.dataset.wid ? `w:${g.target.dataset.wid}` : null);
-    if (!id) {
-      const w = this.cam.screenToWorld(p.x, p.y);
-      id = this._hitObject(w.x, w.y) || this._objectOnTile(t.i, t.j);
+    if (g.target) {
+      id = g.target.dataset.oid || null;
+      // A walker's box takes the pointer even where an object is drawn over
+      // it: whichever is drawn on top wins.
+      if (!id && g.target.dataset.wid) id = hit && hit.d > (Number(g.target.style.zIndex) || 0) ? hit.oid : `w:${g.target.dataset.wid}`;
     }
+    if (!id) id = (hit && hit.oid) || this._objectOnTile(t.i, t.j);
     if (lt && now - lt.t < DOUBLE_MS && Math.hypot(p.x - lt.x, p.y - lt.y) < 30 && !g.target) {
       this.lastTap = null;
       const to = this.cam.zoom < 1.15 ? 1.4 : 0.9;

@@ -34,7 +34,9 @@ export class BuildDrawer {
       if (!b || b.disabled) return;
       const d = b.dataset;
       if (d.pick === 'tab') {
+        const leave = this.paint !== null && d.tab !== 'paths';
         this.tab = d.tab;
+        if (leave) return this.onPick('paintdone', d, b); // main ends painting and re-renders
         this.render();
         return;
       }
@@ -70,11 +72,14 @@ export class BuildDrawer {
     const n = m.lotCount();
     const cap = m.landCap();
     const cz = m.capZone();
-    const head = `<div class="dr-head"><span class="land">${A.townIcon('lot')}Land <b>${n}/${cap}</b>${n >= cap && cz ? ` · Zone ${cz} opens more` : ''}</span>` + `<span class="tabs">${TABS.map((t) => `<button type="button" class="tab${t.id === this.tab ? ' on' : ''}" data-pick="tab" data-tab="${t.id}">${A.townIcon(t.ico)}<b>${t.name}</b>${this._tabDot(t.id) ? '<i class="dot"></i>' : ''}</button>`).join('')}</span>` + `<button type="button" class="dr-x" data-pick="close" aria-label="Close">${icon('close')}</button></div>`;
+    const head = `<div class="dr-head"><span class="land">${A.townIcon('lot')}Land <b>${n}/${cap}</b>${n >= cap && cz ? ` · Zone ${cz} opens more` : n >= cap && m.nextLandAt() ? ` · next lot at ${m.nextLandAt()} Skulls` : ''}</span>` + `<span class="tabs">${TABS.map((t) => `<button type="button" class="tab${t.id === this.tab ? ' on' : ''}" data-pick="tab" data-tab="${t.id}">${A.townIcon(t.ico)}<b>${t.name}</b>${this._tabDot(t.id) ? '<i class="dot"></i>' : ''}</button>`).join('')}</span>` + `<button type="button" class="dr-x" data-pick="close" aria-label="Close">${icon('close')}</button></div>`;
     let body = '';
     if (this.tab === 'buildings') body = this._buildings();
     else if (this.tab === 'homes') body = this._homes();
-    else if (this.tab === 'decor') body = this._decor();
+    else if (this.tab === 'decor') {
+      body = this._decor();
+      s.seen.boxSeen = s.box.length; // the BUILD dot clears once the box has been seen
+    }
     else body = this._paths();
     this.root.innerHTML = `<div class="dr-in">${head}<div class="dr-row scroll-x">${body}</div></div>`;
     void s;
@@ -84,7 +89,7 @@ export class BuildDrawer {
     const m = this.meta;
     if (id === 'buildings') return m.s.kits.some((k) => k.kind === 'building');
     if (id === 'homes') return m.campers().length > 0;
-    if (id === 'decor') return m.s.box.length > 0 || m.s.kits.some((k) => k.kind !== 'building');
+    if (id === 'decor') return m.s.box.length > (m.s.seen.boxSeen || 0) || m.s.kits.some((k) => k.kind !== 'building');
     return false;
   }
 

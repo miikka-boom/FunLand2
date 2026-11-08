@@ -48,9 +48,13 @@ export function footBox(i, j, w = 1, h = 1) {
   return { left, top: top.y, width: right - left, height: bottom - top.y };
 }
 
-/** Draw order: things whose front corner is further down the screen go on top. */
+/**
+ * Draw order: by the footprint's centre (i + j + (w + h) / 2), so a small
+ * thing beside a big one's front face draws over it. Exact for square
+ * footprints that don't overlap.
+ */
 export function depth(i, j, w = 1, h = 1) {
-  return i + w + (j + h);
+  return i + j + (w + h) / 2;
 }
 
 /** SVG points string for a footprint's diamond, relative to an origin. */

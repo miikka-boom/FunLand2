@@ -268,6 +268,14 @@ export class Town extends Meta {
     return null;
   }
 
+  /** At the last zone (below LAND_MAX): the Skulls at which the next lot opens, else null. */
+  nextLandAt() {
+    const n = this.lotCount();
+    if (this.s.zone < ZONES.length || n >= LAND_MAX) return null;
+    // Each late milestone lifts the cap by one.
+    return milestoneAt(this.s.milestones + Math.max(0, n - this.landCap()));
+  }
+
   nextLotPrice() {
     return lotPriceFor(this.lotCount() + 1);
   }
@@ -291,7 +299,8 @@ export class Town extends Meta {
     if (!this.isFrontier(a, b)) return fail('Clear a lot next to it first', { far: true });
     if (this.lotCount() >= this.landCap()) {
       const z = this.capZone();
-      return fail(z ? `Reach Zone ${z} to own more land` : 'Your town is as big as it gets', { capped: true, zone: z });
+      const at = z ? null : this.nextLandAt();
+      return fail(z ? `Reach Zone ${z} to own more land` : at ? `A new lot opens at ${at} Skulls` : 'Your town is as big as it gets', { capped: true, zone: z, at });
     }
     const price = this.nextLotPrice();
     if (this.s.coins < price) return fail(`Needs ${price - this.s.coins} more coins`, { short: 'coins', price });
@@ -666,7 +675,8 @@ export class Town extends Meta {
     const at = this.canPlaceAt(i, j, HOME_SIZE);
     if (!at.ok) return at;
     const o = this._addObject('home', personId, i, j, HOME_SIZE);
-    return { ok: true, id: o.id, ...this._landed(o) };
+    const keepsake = this._unboxKeepsake(p, o);
+    return { ok: true, id: o.id, keepsake, ...this._landed(o) };
   }
 
   /**
@@ -772,13 +782,31 @@ export class Town extends Meta {
 
   /** Roof campers move down where there's room now. */
   _placeCampers() {
-    const out = [];
+    // Homes first, then keepsakes, so a keepsake never takes another camper's plot.
+    const moved = [];
     for (const p of this.campers()) {
       const o = this._settle(p);
       if (!o) break;
-      out.push({ id: p.id, home: o.id, i: o.i, j: o.j });
+      moved.push([p, o]);
     }
-    return out;
+    return moved.map(([p, o]) => ({ id: p.id, home: o.id, i: o.i, j: o.j, keepsake: this._unboxKeepsake(p, o) }));
+  }
+
+  /**
+   * A camper's keepsake waited in the box; put it by their new home if it
+   * fits. (A camper never had a home, so this is the one boxed on arrival.)
+   */
+  _unboxKeepsake(p, home) {
+    if (!p || !home) return null;
+    const k = this.s.box.findIndex((x) => x.kind === 'keepsake' && x.owner === p.id);
+    if (k < 0) return null;
+    const { ref } = this.s.box[k];
+    const size = KEEPSAKES[ref].size;
+    const spot = this._keepsakeSpot(home, size);
+    if (!spot) return null;
+    this.s.box.splice(k, 1);
+    const o = this._addObject('keepsake', ref, spot.i, spot.j, size, { owner: p.id });
+    return { kind: ref, id: o.id, i: o.i, j: o.j };
   }
 
   /** People found in town arrive a little below chest newcomers (FOUND_ARRIVE). */
@@ -982,6 +1010,34 @@ export class Town extends Meta {
     return out;
   }
 
+  /**
+   * Is there room for a size × size piece within the wish range of a
+   * footprint? (`ignore` = an object that may move out of the way.)
+   */
+  wishRoom(f, size = 1, ignore = null) {
+    const R = WISH.range;
+    for (let i = f.i - R - size; i <= f.i + f.w + R; i++)
+      for (let j = f.j - R - size; j <= f.j + f.h + R; j++) {
+        if (gapBetween(f, { i, j, w: size, h: size }) > R) continue;
+        if (this.canPlaceAt(i, j, size, ignore).ok) return true;
+      }
+    return false;
+  }
+
+  /** The free spots within the wish range of a home for a size × size piece, nearest and frontmost first. */
+  wishSpots(home, size = 1, ignore = null) {
+    const R = WISH.range;
+    const f = foot(home);
+    const out = [];
+    for (let i = f.i - R - size; i <= f.i + f.w + R; i++)
+      for (let j = f.j - R - size; j <= f.j + f.h + R; j++) {
+        const g = gapBetween(f, { i, j, w: size, h: size });
+        if (g > R || !this.canPlaceAt(i, j, size, ignore).ok) continue;
+        out.push({ i, j, g, score: g * 10 - (i + j - f.i - f.j) + (this.pathAt(i, j) ? 30 : 0) });
+      }
+    return out.sort((a, b) => a.score - b.score);
+  }
+
   /** Is the open wish granted by the town as it stands? */
   wishMet(w = this.s.wish) {
     if (!w) return false;
@@ -1036,10 +1092,17 @@ export class Town extends Meta {
       const h = this.homeOf(p.id);
       if (!h) continue;
       const near = this.setsNear(foot(h));
-      const sets = SET_ORDER.filter((st) => !near.has(st));
+      // Only sets the home lacks and has room for (every set has a 1×1 Zone 1 piece).
+      const sets = this.wishRoom(foot(h)) ? SET_ORDER.filter((st) => !near.has(st)) : [];
       let sib = null;
       if (p.family != null) {
-        const far = s.people.filter((q) => q.family === p.family && q.id !== p.id && this.homeOf(q.id) && gapBetween(foot(h), foot(this.homeOf(q.id))) > WISH.range);
+        // Only when one home fits near the other.
+        const far = s.people.filter((q) => {
+          if (q.family !== p.family || q.id === p.id) return false;
+          const g = this.homeOf(q.id);
+          if (!g || gapBetween(foot(h), foot(g)) <= WISH.range) return false;
+          return this.wishRoom(foot(g), HOME_SIZE, h.id) || this.wishRoom(foot(h), HOME_SIZE, g.id);
+        });
         if (far.length) sib = far[0].id;
       }
       if (!sets.length && sib == null) continue;
@@ -1079,7 +1142,7 @@ export class Town extends Meta {
     const at = milestoneAt(i);
     const m = super.milestoneReward(i);
     const pool = COMMON_DECOR.filter((d) => (DECOR[d].zone || 1) <= m.zone);
-    const decor = pool[i % pool.length];
+    const decor = pool[Math.floor(i / MILESTONES.cycle.length) % pool.length]; // every common in turn
     return { i, at, kind, zone: m.zone, decor };
   }
 
@@ -1104,6 +1167,11 @@ export class Town extends Meta {
   }
 
   // --- Coming back ------------------------------------------------------------------------------------------------
+
+  /** Only people with a home walk about, so only they can bring a gift. */
+  _giftBearers() {
+    return this.s.people.filter((p) => this.homeOf(p.id));
+  }
 
   /** Boot and return: gifts (Thrill's), wishes, visitors at the fence, the Founders' Statue. */
   arrive() {
@@ -1198,7 +1266,7 @@ export class Town extends Meta {
     if (chest) return { kind: 'chest', id: chest };
     const ready = [...this.squadPeople(), ...s.people.filter((p) => !this.inSquad(p.id))].find((p) => this.canLevel(p));
     if (ready) return { kind: 'ready', id: ready.id };
-    if (s.gift) return { kind: 'gift', id: s.gift.id };
+    if (s.gift && this.homeOf(s.gift.id)) return { kind: 'gift', id: s.gift.id };
     if (s.kits.length) return { kind: 'kit', item: s.kits[0] };
     if (this.bestGain().better) return { kind: 'best' };
     const order = [];
