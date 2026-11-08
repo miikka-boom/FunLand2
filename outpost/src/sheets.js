@@ -252,15 +252,15 @@ export function decorSheet(meta, o) {
   } else if (o.kind === 'keepsake') {
     const owner = m.person(o.owner);
     title = `${owner ? `${displayName(owner)}'s ` : ''}${KEEPSAKES[o.ref].name}`;
-    art = A.keepsake(o.ref);
+    art = A.keepsake(o.ref, owner ? owner.first : '');
     line = `<span class="note">A keepsake. ${owner ? `${name(owner)} brought it when they moved in.` : ''}</span>`;
   } else if (o.kind === 'souvenir') {
     const z = ZONES.find((zz) => zz.souvenir === o.ref);
     title = `Souvenir from ${z ? z.name : 'the road'}`;
-    art = A.souvenir(o.ref);
+    art = A.souvenir(o.ref, m.s.best);
   } else if (o.kind === 'statue') {
     title = "Founders' Statue";
-    art = A.statue();
+    art = A.statue(m.s.people.filter((p) => p.origin === 'founder').slice(0, 3));
     line = `<span class="note">${m.s.people
       .filter((p) => p.origin === 'founder')
       .map((p) => name(p))

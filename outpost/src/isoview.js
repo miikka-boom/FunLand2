@@ -236,7 +236,39 @@ export class IsoView {
     const box = footBox(rec.i, rec.j, w, h);
     const bottom = footBottom(rec.i, rec.j, w, h).y;
     const artH = rec.artH || box.height;
-    rec.el.style.cssText = `left:${box.left}px;top:${bottom - artH}px;width:${box.width}px;height:${artH}px;z-index:${Math.round(depth(rec.i, rec.j, w, h) * 10 + (rec.z || 0))}`;
+    rec.zi = Math.round(depth(rec.i, rec.j, w, h) * 10 + (rec.z || 0));
+    rec.box = { left: box.left, right: box.left + box.width, top: bottom - artH, bottom };
+    rec.el.style.cssText = `left:${box.left}px;top:${bottom - artH}px;width:${box.width}px;height:${artH}px;z-index:${rec.zi}`;
+    this.zGen = (this.zGen || 0) + 1; // walkers re-sort against moved objects
+  }
+
+  /**
+   * A walker's draw order. Sorting by the feet alone puts someone standing in
+   * front of a building's side behind it, so: above every object whose
+   * footprint the walker stands in front of (fi ≥ i + w or fj ≥ j + h) and
+   * whose box overlaps the sprite, and below every object it stands behind.
+   */
+  _walkerZ(fi, fj, ww, hh) {
+    const base = Math.round((fi + fj) * 10 + 5);
+    const p = tileToWorld(fi, fj);
+    const l = p.x - ww / 2;
+    const r = p.x + ww / 2;
+    const t = p.y - hh;
+    const b = p.y;
+    let lo = -Infinity;
+    let hi = Infinity;
+    for (const [oid, rec] of this.objects) {
+      if (oid === '__ghost' || !rec.box) continue;
+      const B = rec.box;
+      if (B.right <= l || B.left >= r || B.bottom <= t || B.top >= b) continue;
+      const w = rec.w || 1;
+      const h = rec.h || 1;
+      if (fi >= rec.i + w || fj >= rec.j + h) lo = Math.max(lo, rec.zi + 1);
+      else if (fi >= rec.i && fi < rec.i + w && fj >= rec.j && fj < rec.j + h) continue; // standing on it (a seat)
+      else hi = Math.min(hi, rec.zi - 1);
+    }
+    if (lo > hi) return lo;
+    return Math.min(hi, Math.max(lo, base));
   }
 
   move(id, i, j) {
@@ -252,6 +284,7 @@ export class IsoView {
     if (!rec) return;
     rec.el.remove();
     this.objects.delete(id);
+    this.zGen = (this.zGen || 0) + 1;
   }
 
   objectEl(id) {
@@ -260,7 +293,11 @@ export class IsoView {
   }
 
   /** Walkers: small figures at fractional tile positions (feet on the point). */
-  walker(id, fi, fj, { html, w = 30, h = 48, flip = false, z: zFixed = null } = {}) {
+  /**
+   * opts: { html, w, h, flip, z (a fixed draw order, or null for automatic),
+   * lift (px the figure is raised, e.g. sitting on a bench) }
+   */
+  walker(id, fi, fj, { html, w = 30, h = 48, flip = false, z: zFixed, lift } = {}) {
     let rec = this.walkers.get(id);
     if (!rec) {
       const el = document.createElement('div');
@@ -275,10 +312,16 @@ export class IsoView {
       rec.shown = html;
     }
     const p = tileToWorld(fi, fj);
-    const z = Math.round((fi + fj) * 10 + 5);
-    rec.el.style.transform = `translate3d(${(p.x - rec.w / 2).toFixed(1)}px, ${(p.y - rec.h).toFixed(1)}px, 0)${flip ? ' scaleX(-1)' : ''}`;
-    if (zFixed != null) rec.zFixed = zFixed;
-    const zz = rec.zFixed != null ? rec.zFixed : z;
+    if (zFixed !== undefined) rec.zFixed = zFixed;
+    if (lift !== undefined) rec.lift = lift;
+    rec.el.style.transform = `translate3d(${(p.x - rec.w / 2).toFixed(1)}px, ${(p.y - rec.h - (rec.lift || 0)).toFixed(1)}px, 0)${flip ? ' scaleX(-1)' : ''}`;
+    // Re-sort only when the walker crosses half a tile or objects moved.
+    const key = `${Math.floor(fi * 2)},${Math.floor(fj * 2)},${this.zGen || 0}`;
+    if ((rec.zKey !== key || rec.zAuto === undefined) && rec.zFixed == null) {
+      rec.zKey = key;
+      rec.zAuto = this._walkerZ(fi, fj, rec.w, rec.h);
+    }
+    const zz = rec.zFixed != null ? rec.zFixed : rec.zAuto;
     if (rec.z !== zz) {
       rec.z = zz;
       rec.el.style.zIndex = String(zz);

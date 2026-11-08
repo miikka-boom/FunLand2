@@ -15,13 +15,18 @@
 // y = artH − (w+h)·16 + (u + v)·16 − z (see frame()).
 //
 // Every art function returns { svg, artH, bodyH }: bodyH is the height of the main body
-// above the footprint (for the hit hexagon). Anchors the game needs (roof tents, the pump
-// the bus parks at, where the supply crate sits, doors, bosses) are in ANCHORS / BOSS_SPOT.
+// above the footprint (for the hit hexagon). Buildings, homes and landmarks also return top:
+// the viewBox y of the art's highest point (put bubbles and tags there, not at the box top).
+// Options: night (lit windows, lamps, the Drive-in's B-movie beam, the long lighthouse beam),
+// homes' wish (mailbox flag up) and name, the wheel's zones (lit gondolas), fences' start and
+// edge (one pillar rhythm along an edge cut into pieces). Anchors the game needs (roof
+// campers, the bus bay, the shop door, where the supply crate sits, walker spots that sort
+// in front, bosses) are in ANCHORS / BOSS_SPOT.
 //
-// Animation hooks (pivots set inline). ART_CSS holds matching keyframes; map objects are <img>
-// data URLs that page CSS cannot reach, so withAnimation(svg) embeds them in the SVG itself:
-//   .ls-blink   radio mast and pad lights (opacity blink)
-//   .ls-beacon  the Drop Pad beacon's glow (pulse)
+// Animation hooks (pivots set inline). ART_CSS holds all the keyframes; map objects are <img>
+// data URLs that page CSS cannot reach, so withAnimation(svg) embeds the ones an SVG uses:
+//   .ls-blink   radio mast lights (opacity blink)
+//   .ls-beacon  the Drop Pad beacon's glow, the clinic's cherry (pulse)
 //   .ls-beam    the lighthouse beam (rotate/sweep about the lamp)
 //   .ls-swing   the Tin Can Range targets (small rotate about the hanger)
 //   .ls-ball    the wrecking ball (small rotate about the jib end)
@@ -54,13 +59,47 @@ const RUBBER = '#3d3540';
 const GLASS = '#9fd8ff';
 const LIT = '#ffe58a';
 const CONC = '#d9d3c5';
-const TARP = '#4f93c4';
 const BRICK = '#c8553d';
 const GRASS = '#7ccf4a';
 const GRASS_D = '#5fb03a';
 const OLIVE = '#8d9160';
 const NIGHT = '#2b2140';
 const CONFETTI = [RED, BLUE, GREEN, YELLOW, PURPLE, PINK];
+// Candy paint for the Patched stage: junk, but cheerfully painted (the start lot must pop
+// against the olive wild).
+const TEAL = '#4cc9c0';
+const BUBBLE = '#ff8fc0';
+const LEMON = '#ffd84d';
+const SKY = '#7cc8f5';
+
+/** Night art (lit windows, lamps, the B-movie, the beam): set for the length of one call. */
+let NITE = false;
+const withNight = (night, fn) => {
+  NITE = !!night;
+  try {
+    return fn();
+  } finally {
+    NITE = false;
+  }
+};
+
+/**
+ * The highest drawn point (viewBox y) of each art variant, measured in a browser with getBBox
+ * (the gallery's ?s=measure section prints this table). Bubbles and tags go here, not at the
+ * box top (artH is fixed per id; low variants sit well below it).
+ */
+const TOPS = {
+  'b:bigtop:1': 24, 'b:bigtop:2': 24, 'b:bigtop:3': 22,
+  'b:crate:1': 17, 'b:crate:2': 11, 'b:crate:3': 11,
+  'b:vault:1': 27, 'b:vault:2': 1, 'b:vault:3': 1,
+  'b:striker:1': 63, 'b:striker:2': 63, 'b:striker:3': 6,
+  'b:gallery:1': 47, 'b:gallery:2': 35, 'b:gallery:3': 4,
+  'b:tent:1': 49, 'b:tent:2': 45, 'b:tent:3': 18,
+  'b:garage:1': 79, 'b:garage:2': 44, 'b:garage:3': 44,
+  'h:tent': 29, 'h:shack': 18, 'h:cabin': 13, 'h:cottage': 14, 'h:tower': 21, 'h:gold': 22,
+  'l:tower:0': 24, 'l:tower:1': -3, 'l:drivein:0': 31, 'l:drivein:1': 26, 'l:radio:0': 18, 'l:radio:1': 14, 'l:fire:0': 60, 'l:fire:1': 36, 'l:wheel:0': 15, 'l:wheel:1': 14, 'l:light:0': 33, 'l:light:1': 17,
+};
+const topOf = (k, H) => TOPS[k] ?? Math.round(H * 0.1);
 
 /** Half-pixel rounding keeps the strings short (and turns -0 into 0). */
 const N = (n) => {
@@ -79,21 +118,22 @@ function mix(a, b, t) {
 }
 const dk = (c, t = 0.22) => mix(c, O, t);
 const lt = (c, t = 0.4) => mix(c, '#ffffff', t);
-/** Ruined landmark colours: olive-grey and tired. */
-const ruinC = (c) => mix(mix(c, '#858a5e', 0.62), O, 0.05);
 
 const isHex = (c) => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c);
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-// Elements inherit stroke #2a1b12, width 2, round joins and caps, and fill none, from the root group:
-// every filled shape names its fill.
-function at(o) {
-  if (!o) return '';
+// Elements inherit stroke #2a1b12, width 1.2 (the commonest), round joins and caps, fill none
+// and the sign font from the root group: every filled shape names its fill, and a shape with
+// no width given gets the chunky 2.
+const SW0 = 1.2;
+function at(o, grp = false) {
+  if (!o) return grp ? '' : ' stroke-width="2"';
   let s = '';
   if (o.ns) s += ' stroke="none"';
   else {
     if (o.stroke) s += ` stroke="${o.stroke}"`;
-    if (o.sw != null) s += ` stroke-width="${o.sw}"`;
+    const sw = o.sw ?? (grp ? null : 2);
+    if (sw != null && sw !== SW0) s += ` stroke-width="${sw}"`;
   }
   if (o.op != null) s += ` opacity="${o.op}"`;
   if (o.dash) s += ` stroke-dasharray="${o.dash}"`;
@@ -107,8 +147,8 @@ const path = (d, fill, o) => `<path d="${d}" fill="${fill}"${at(o)}/>`;
 const circ = (x, y, r, fill, o) => `<circle cx="${N(x)}" cy="${N(y)}" r="${N(r)}" fill="${fill}"${at(o)}/>`;
 const ell = (x, y, rx, ry, fill, o) => `<ellipse cx="${N(x)}" cy="${N(y)}" rx="${N(rx)}" ry="${N(ry)}" fill="${fill}"${at(o)}/>`;
 const rect = (x, y, w, h, fill, o = {}) => (o.rx ? `<rect x="${N(x)}" y="${N(y)}" width="${N(w)}" height="${N(h)}" rx="${o.rx}" fill="${fill}"${at(o)}/>` : `<path d="M${N(x)} ${N(y)}h${N(w)}v${N(h)}h${N(-w)}z" fill="${fill}"${at(o)}/>`);
-const line = (d, color, w, o = {}) => `<path d="${d}"${color === O ? '' : ` stroke="${color}"`} stroke-width="${w}"${o.op != null ? ` opacity="${o.op}"` : ''}${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cls ? ` class="${o.cls}"` : ''}/>`;
-const g = (inner, o) => `<g${at(o)}>${inner}</g>`;
+const line = (d, color, w, o = {}) => `<path d="${d}"${color === O ? '' : ` stroke="${color}"`}${w === SW0 ? '' : ` stroke-width="${w}"`}${o.op != null ? ` opacity="${o.op}"` : ''}${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cls ? ` class="${o.cls}"` : ''}/>`;
+const g = (inner, o) => `<g${at(o, true)}>${inner}</g>`;
 /** An outlined stroke: a fat dark line under a coloured one. */
 const stick = (d, color, w, ow = 2.2) => line(d, O, w + ow) + line(d, color, w);
 const M = (x, y) => `M${N(x)} ${N(y)}`;
@@ -122,7 +162,7 @@ const epath = (list) => list.map(([x, y, rx, ry]) => `M${N(x - rx)} ${N(y)}a${N(
 function txt(x, y, s, fs, fill, o = {}) {
   const tl = o.tl ? ` textLength="${N(o.tl)}" lengthAdjust="spacingAndGlyphs"` : '';
   const sk = o.ol ? ` stroke="${o.ol}" stroke-width="${o.olw || 2.4}" paint-order="stroke"` : ' stroke="none"';
-  return `<text x="${N(x)}" y="${N(y)}" font-size="${N(fs)}" font-family="system-ui,sans-serif" font-weight="900" text-anchor="middle" fill="${fill}"${sk}${tl}${o.op != null ? ` opacity="${o.op}"` : ''}>${esc(s)}</text>`;
+  return `<text x="${N(x)}" y="${N(y)}" font-size="${N(fs)}" fill="${fill}"${sk}${tl}${o.op != null ? ` opacity="${o.op}"` : ''}>${esc(s)}</text>`;
 }
 /** Text centred in a w × h box at (x, y): picks a size and squeezes long words. */
 function fitText(x, y, w, h, s, fill, o = {}) {
@@ -406,9 +446,10 @@ function bricks(w, h, col = '#7a2e1e', op = 0.4) {
 
 function win(x, y, w, h, o = {}) {
   const fr = o.frame || WHITE;
+  const lit = o.lit || (NITE && !o.glass);
   let s = rect(x, y, w, h, fr, { sw: 1.3 });
-  s += rect(x + 1.6, y + 1.6, w - 3.2, h - 3.2, o.lit ? LIT : o.glass || GLASS, { sw: 0.9 });
-  if (!o.lit) s += line(`${M(x + 3, y + h - 3)}L${N(x + w * 0.5)} ${N(y + 3)}`, '#ffffff', 1.3, { op: 0.7 });
+  s += rect(x + 1.6, y + 1.6, w - 3.2, h - 3.2, lit ? LIT : o.glass || GLASS, { sw: 0.9 });
+  if (!lit) s += line(`${M(x + 3, y + h - 3)}L${N(x + w * 0.5)} ${N(y + 3)}`, '#ffffff', 1.3, { op: 0.7 });
   if (o.bars !== false) s += line(`${M(x + w / 2, y + 1.6)}V${N(y + h - 1.6)}M${N(x + 1.6)} ${N(y + h / 2)}H${N(x + w - 1.6)}`, fr, 1.2);
   return s;
 }
@@ -416,67 +457,91 @@ function boarded(x, y, w, h) {
   const cx = x + w / 2;
   return rect(x, y, w, h, '#3b2c24', { sw: 1.3 }) + rect(x - 1.5, y + h * 0.22, w + 3, 3.6, WOOD_L, { sw: 1, tf: `rotate(-16 ${N(cx)} ${N(y + h * 0.22)})` }) + rect(x - 1.5, y + h * 0.6, w + 3, 3.6, WOOD, { sw: 1, tf: `rotate(13 ${N(cx)} ${N(y + h * 0.6)})` });
 }
+/** Upright planks across a w × h face (local coords), painted from cols in turn (one path per colour). */
+function plankWall(w, h, cols, pw = 6.4, x0 = 0, y0 = 0) {
+  const d = {};
+  let k = 0;
+  for (let x = x0; x < x0 + w - 0.1; x += pw, k++) {
+    const c = cols[k % cols.length];
+    const ww = Math.min(pw, x0 + w - x);
+    d[c] = (d[c] || '') + `M${N(x)} ${N(y0 + (k % 3 === 1 ? 1 : 0))}h${N(ww)}v${N(h - (k % 3 === 1 ? 1 : 0))}h${N(-ww)}z`;
+  }
+  let s = '';
+  for (const c in d) s += path(d[c], c, { ns: 1 });
+  return s + vlines(x0 + w, y0 + h, pw, O, 0.32, y0, 1, x0);
+}
+/** Candy colours for patched planks, the town colour first. */
+const candyCols = (color) => [color, color, LEMON, LEMON, TEAL, TEAL, BUBBLE, BUBBLE, SKY, SKY, color, color];
+/** Stripes for a tarp or awning: path data of bands across a w × h box (local coords). */
+function stripesD(w, h, step = 8) {
+  let d = '';
+  for (let x = 0; x < w - 0.5; x += step * 2) d += `M${N(x)} 0H${N(Math.min(w, x + step))}V${N(h)}H${N(x)}Z`;
+  return d;
+}
 function door(x, y, w, h, col, o = {}) {
   let s = o.arch ? path(`${M(x, y + h)}V${N(y + w / 2)}A${N(w / 2)} ${N(w / 2)} 0 0 1 ${N(x + w)} ${N(y + w / 2)}V${N(y + h)}Z`, col, { sw: 1.4 }) : rect(x, y, w, h, col, { sw: 1.4 });
-  if (o.glass) s += rect(x + w * 0.25, y + (o.arch ? w * 0.45 : 3), w * 0.5, h * 0.28, o.lit ? LIT : GLASS, { sw: 0.9 });
+  if (o.glass) s += rect(x + w * 0.25, y + (o.arch ? w * 0.45 : 3), w * 0.5, h * 0.28, o.lit || NITE ? LIT : GLASS, { sw: 0.9 });
   return s + circ(x + w - 2.4, y + h * 0.58, 1.1, o.knob || GOLD, { sw: 0.7 });
 }
 
 // --- Small owner bits (homes) ------------------------------------------------------------------
 
-/** A mailbox on a post standing at screen (x, y). */
-function mailbox(x, y, golden) {
+/**
+ * A mailbox on a post standing at screen (x, y): golden for golden survivors, the red flag up
+ * while the owner has a wish open, the owner's name on a little board under it.
+ */
+function mailbox(x, y, golden, wish, name) {
   const c = golden ? GOLD : '#d6dbe3';
-  let s = stick(`${M(x, y)}V${N(y - 11)}`, WOOD, 2, 1.8);
-  s += path(`${M(x - 5.5, y - 10.5)}V${N(y - 15)}Q${N(x - 5.5)} ${N(y - 19)} ${N(x - 1.5)} ${N(y - 19)}H${N(x + 2)}Q${N(x + 5.5)} ${N(y - 19)} ${N(x + 5.5)} ${N(y - 15)}V${N(y - 10.5)}Z`, c, { sw: 1.3 });
-  s += line(`${M(x - 4, y - 16.5)}Q${N(x - 3.2)} ${N(y - 18)} ${N(x - 1.5)} ${N(y - 18)}`, '#ffffff', 1, { op: 0.8 });
-  s += path(`${M(x + 4, y - 14)}V${N(y - 21)}H${N(x + 7.5)}V${N(y - 18.4)}H${N(x + 5.4)}V${N(y - 14)}Z`, RED, { sw: 1 });
-  if (golden) s += sparkle(x - 6.5, y - 21, 3);
+  let s = stick(`${M(x, y)}V${N(y - 14)}`, WOOD, 2.4, 1.8);
+  s += path(`${M(x - 7, y - 13)}V${N(y - 19)}Q${N(x - 7)} ${N(y - 24.5)} ${N(x - 2)} ${N(y - 24.5)}H${N(x + 2)}Q${N(x + 7)} ${N(y - 24.5)} ${N(x + 7)} ${N(y - 19)}V${N(y - 13)}Z`, c, { sw: 1.4 });
+  s += line(`${M(x - 5, y - 20)}Q${N(x - 4)} ${N(y - 23)} ${N(x - 1)} ${N(y - 23)}`, '#ffffff', 1.3, { op: 0.8 });
+  s += wish ? path(`${M(x + 6, y - 14)}V${N(y - 32)}H${N(x + 13)}V${N(y - 26.5)}H${N(x + 8.6)}V${N(y - 14)}Z`, RED, { sw: 1.1 }) : path(`${M(x + 6, y - 14)}H${N(x + 14)}V${N(y - 17.4)}H${N(x + 6)}Z`, RED, { sw: 1.1 });
+  if (name) s += rect(x - 12, y - 11.5, 24, 7.5, CREAM, { sw: 1, rx: 1.5 }) + fitText(x - 11.5, y - 11.5, 23, 7.5, name, O, { k: 0.9 });
+  if (golden) s += sparkle(x - 9.5, y - 27, 3.6);
   return s;
 }
 
-/** Hat silhouettes for the roof weathervane, bottom-centre at (x, y). */
-function hatVane(hat, x, y, col) {
+/** Hat silhouettes for the roof weathervane, bottom-centre at (0, 0) (drawn scaled up). */
+function hatVane(hat, col) {
   switch (hat) {
     case 'cap':
-      return path(`${M(x - 5.5, y)}Q${N(x - 5.5)} ${N(y - 8)} ${N(x)} ${N(y - 8)}Q${N(x + 5.5)} ${N(y - 8)} ${N(x + 5.5)} ${N(y)}Z`, col, { sw: 1.3 }) + path(`${M(x + 3, y - 1)}L${N(x + 10)} ${N(y - 0.5)}Q${N(x + 10.5)} ${N(y + 1.8)} ${N(x + 8)} ${N(y + 1.8)}L${N(x + 2)} ${N(y + 1.4)}Z`, dk(col, 0.15), { sw: 1.2 }) + circ(x + 1, y - 5, 1.3, WHITE, { ns: 1 });
+      return path('M-5.5 0Q-5.5 -8 0 -8Q5.5 -8 5.5 0Z', col, { sw: 1.2 }) + path('M3 -1L10 -0.5Q10.5 1.8 8 1.8L2 1.4Z', dk(col, 0.15), { sw: 1.1 }) + circ(1, -5, 1.3, WHITE, { ns: 1 });
     case 'headphones':
-      return line(`${M(x - 6, y - 1)}Q${N(x - 6)} ${N(y - 10)} ${N(x)} ${N(y - 10)}Q${N(x + 6)} ${N(y - 10)} ${N(x + 6)} ${N(y - 1)}`, O, 2.8) + line(`${M(x - 6, y - 1)}Q${N(x - 6)} ${N(y - 10)} ${N(x)} ${N(y - 10)}Q${N(x + 6)} ${N(y - 10)} ${N(x + 6)} ${N(y - 1)}`, '#5a5f6e', 1.2) + rect(x - 8.5, y - 5, 5, 7, col, { sw: 1.2, rx: 1.5 }) + rect(x + 3.5, y - 5, 5, 7, col, { sw: 1.2, rx: 1.5 });
+      return line('M-6 -1Q-6 -10 0 -10Q6 -10 6 -1', O, 2.8) + line('M-6 -1Q-6 -10 0 -10Q6 -10 6 -1', '#5a5f6e', 1.2) + rect(-8.5, -5, 5, 7, col, { sw: 1.1, rx: 1.5 }) + rect(3.5, -5, 5, 7, col, { sw: 1.1, rx: 1.5 });
     case 'bucket':
-      return path(`${M(x - 4.5, y - 1)}Q${N(x - 4.5)} ${N(y - 8.5)} ${N(x)} ${N(y - 8.5)}Q${N(x + 4.5)} ${N(y - 8.5)} ${N(x + 4.5)} ${N(y - 1)}Z`, '#d8c48a', { sw: 1.3 }) + path(`${M(x - 8.5, y + 1.5)}Q${N(x)} ${N(y - 3.5)} ${N(x + 8.5)} ${N(y + 1.5)}Q${N(x)} ${N(y - 0.5)} ${N(x - 8.5)} ${N(y + 1.5)}Z`, '#c2ad70', { sw: 1.2 }) + line(`${M(x - 4.3, y - 3)}H${N(x + 4.3)}`, '#8a7440', 1.4);
+      return path('M-4.5 -1Q-4.5 -8.5 0 -8.5Q4.5 -8.5 4.5 -1Z', '#d8c48a', { sw: 1.2 }) + path('M-8.5 1.5Q0 -3.5 8.5 1.5Q0 -0.5 -8.5 1.5Z', '#c2ad70', { sw: 1.1 }) + line('M-4.3 -3H4.3', '#8a7440', 1.4);
     case 'flowers':
-      return path(cpath([[x - 5, y - 3, 3], [x + 5, y - 3, 3]]), PINK, { sw: 1.1 }) + circ(x, y - 6, 3.3, YELLOW, { sw: 1.1 }) + path(cpath([[x - 5, y - 3, 1], [x + 5, y - 3, 1], [x, y - 6, 1.1]]), '#ff8a3a', { ns: 1 }) + path(`${M(x - 2, y + 0.5)}Q${N(x)} ${N(y - 2)} ${N(x + 2)} ${N(y + 0.5)}Z`, GREEN, { sw: 1 });
+      return path(cpath([[-5, -3, 3], [5, -3, 3]]), PINK, { sw: 1 }) + circ(0, -6, 3.3, YELLOW, { sw: 1 }) + path(cpath([[-5, -3, 1], [5, -3, 1], [0, -6, 1.1]]), '#ff8a3a', { ns: 1 }) + path('M-2 0.5Q0 -2 2 0.5Z', GREEN, { sw: 0.9 });
     case 'hardhat':
-      return path(`${M(x - 6, y)}Q${N(x - 6)} ${N(y - 9)} ${N(x)} ${N(y - 9)}Q${N(x + 6)} ${N(y - 9)} ${N(x + 6)} ${N(y)}Z`, '#ffcc2e', { sw: 1.3 }) + rect(x - 8.5, y - 1, 17, 2.8, '#ffd84a', { sw: 1.2, rx: 1.2 }) + line(`${M(x, y - 8.5)}V${N(y - 1.5)}`, '#e09d14', 1.6);
+      return path('M-6 0Q-6 -9 0 -9Q6 -9 6 0Z', '#ffcc2e', { sw: 1.2 }) + rect(-8.5, -1, 17, 2.8, '#ffd84a', { sw: 1.1, rx: 1.2 }) + line('M0 -8.5V-1.5', '#e09d14', 1.6);
     case 'bandana':
-      return path(`${M(x - 6.5, y - 5)}Q${N(x)} ${N(y - 9.5)} ${N(x + 6.5)} ${N(y - 5)}L${N(x)} ${N(y + 2)}Z`, col, { sw: 1.3 }) + path(cpath([[x - 2, y - 4.5, 0.9], [x + 2.4, y - 5, 0.9], [x, y - 1.6, 0.9]]), WHITE, { ns: 1 }) + path(`${M(x + 6, y - 5)}l4 -2l-1 3l2 2z`, col, { sw: 1 });
+      return path('M-6.5 -5Q0 -9.5 6.5 -5L0 2Z', col, { sw: 1.2 }) + path(cpath([[-2, -4.5, 0.9], [2.4, -5, 0.9], [0, -1.6, 0.9]]), WHITE, { ns: 1 }) + path('M6 -5l4 -2l-1 3l2 2z', col, { sw: 1 });
     default:
-      // a plain arrow with a ball
-      return circ(x, y - 4, 2.6, GOLD, { sw: 1.2 });
+      return circ(0, -4, 2.8, GOLD, { sw: 1.1 });
   }
 }
 
-/** The roof weathervane: a pole, the N-S arrow and the owner's hat. Base at (x, y). */
+/** The roof weathervane: a pole, the arrow and the owner's hat, big enough to read. Base at (x, y). */
 function weathervane(x, y, hat, col) {
-  let s = stick(`${M(x, y)}V${N(y - 12)}`, '#5a5f6e', 1.2, 1.8);
-  s += line(`${M(x - 7, y - 8)}H${N(x + 6)}`, O, 1.4) + path(`${M(x + 8, y - 8)}L${N(x + 4)} ${N(y - 10.5)}V${N(y - 5.5)}Z`, '#5a5f6e', { sw: 1 }) + path(`${M(x - 7, y - 8)}l-2.5 -2.5h3l1.5 2.5l-1.5 2.5h-3z`, '#5a5f6e', { sw: 1 });
-  return s + hatVane(hat, x, y - 12, col);
+  let s = stick(`${M(x, y)}V${N(y - 13)}`, '#5a5f6e', 1.3, 1.8);
+  s += line(`${M(x - 9, y - 8)}H${N(x + 8)}`, O, 1.5) + path(`${M(x + 10.5, y - 8)}L${N(x + 5.5)} ${N(y - 11)}V${N(y - 5)}Z`, '#5a5f6e', { sw: 1 }) + path(`${M(x - 9, y - 8)}l-3 -3h3.5l2 3l-2 3h-3.5z`, '#5a5f6e', { sw: 1 });
+  return s + g(hatVane(hat, col), { tf: `translate(${N(x)} ${N(y - 13)}) scale(1.45)` });
 }
 
 /** Mascot ears (bear 0, bunny 1, duck 2) standing on a roof at two screen points. */
 function ears(kind, a, b) {
   if (kind === 1) {
-    return [a, b].map(([x, y], i) => g(ell(x, y - 7, 3.2, 8, '#f5f0e6', { sw: 1.4 }) + ell(x, y - 7, 1.4, 5, '#ffb3c8', { ns: 1 }), { tf: `rotate(${i ? 12 : -12} ${N(x)} ${N(y)})` })).join('');
+    return [a, b].map(([x, y], i) => g(ell(0, -9.5, 4.2, 10.5, '#f5f0e6', { sw: 1.5 }) + ell(0, -9.5, 1.9, 6.5, '#ffb3c8', { ns: 1 }), { tf: `translate(${N(x)} ${N(y)}) rotate(${i ? 14 : -14})` })).join('');
   }
   if (kind === 2) {
     const [x, y] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    return path(`${M(x - 3, y)}Q${N(x - 6)} ${N(y - 9)} ${N(x - 1)} ${N(y - 12)}Q${N(x - 2)} ${N(y - 6)} ${N(x + 1)} ${N(y - 3)}Q${N(x + 2)} ${N(y - 10)} ${N(x + 7)} ${N(y - 10)}Q${N(x + 3)} ${N(y - 5)} ${N(x + 3)} ${N(y)}Z`, '#ffd43b', { sw: 1.3 });
+    return g(path('M-3 0Q-6 -9 -1 -12Q-2 -6 1 -3Q2 -10 7 -10Q3 -5 3 0Z', '#ffd43b', { sw: 1.2 }), { tf: `translate(${N(x)} ${N(y)}) scale(1.4)` });
   }
-  return [a, b].map(([x, y]) => circ(x, y - 4, 4.6, '#b07444', { sw: 1.4 }) + circ(x, y - 4, 2.2, '#e2ad82', { ns: 1 })).join('');
+  return [a, b].map(([x, y]) => circ(x, y - 5.5, 6.2, '#b07444', { sw: 1.5 }) + circ(x, y - 5.5, 3, '#e2ad82', { ns: 1 })).join('');
 }
 
-/** A class prop leaning against a wall, base at (x, y). Tiny (about 14 px tall). */
-function propLean(name, x, y, col) {
+/** A class prop leaning against a wall, base at (x, y), about 20 px tall. */
+function propLean(name, x, y, col, k = 1.35) {
   let s;
   switch (name) {
     case 'bat':
@@ -518,19 +583,22 @@ function propLean(name, x, y, col) {
     default:
       return '';
   }
-  return g(s, { tf: `translate(${N(x)} ${N(y)}) rotate(${['medkit', 'defib', 'trap', 'bomb', 'spray'].includes(name) ? 0 : -16})` });
+  void col;
+  const upright = ['medkit', 'defib', 'trap', 'bomb', 'spray'].includes(name);
+  return g(s, { tf: `translate(${N(x)} ${N(y)}) rotate(${upright ? 0 : -16}) scale(${k})` });
 }
 
 // --- Town name ---------------------------------------------------------------------------------
 
-/** The name shown on signs: uppercase, at most 10 characters. */
+/** The name shown on signs: uppercase, at most 10 characters (whole words, else 9 and an ellipsis). */
 function townLabel(town, fallback = 'LAST STOP') {
   const s = String(town || '').trim().replace(/\s+/g, ' ').toUpperCase();
   if (!s) return fallback;
   if (s.length <= 10) return s;
   const words = s.split(' ');
   while (words.length > 1 && words.join(' ').length > 10) words.pop();
-  return words.join(' ').slice(0, 10).trim();
+  const j = words.join(' ');
+  return j.length <= 10 ? j : `${j.slice(0, 9)}…`;
 }
 const paint = (color) => (isHex(color) ? color : RED);
 /** Pennant colours: the town colour first, then cheerful neighbours. */
@@ -538,173 +606,268 @@ const pennantCols = (color) => [color, WHITE, YELLOW, BLUE === color ? GREEN : B
 /** A gold trim edge along screen path d (level 7). */
 const goldTrim = (d) => line(d, O, 4.4) + line(d, GOLD, 2.4) + line(d, '#fff3b0', 0.8, { op: 0.9 });
 
-/** Shorter markup: inherited outline colour, short hex, no leading zeros, tighter path data. */
+/** Path data in its shortest form: each segment absolute or relative, whichever is shorter. */
+const ARGS = { m: 2, l: 2, h: 1, v: 1, c: 6, s: 4, q: 4, t: 2, a: 7, z: 0 };
+const fmt = (n) => {
+  let s = String(Math.round(n * 100) / 100);
+  if (s === '-0') s = '0';
+  return s.replace(/^(-?)0\./, '$1.');
+};
+function join(nums) {
+  let out = '';
+  for (const n of nums) {
+    const t = fmt(n);
+    if (!out || t[0] === '-' || (t[0] === '.' && /\.\d*$/.test(out.split(/[ -]/).pop()))) out += t;
+    else out += ' ' + t;
+  }
+  return out;
+}
+function minPath(d) {
+  const toks = d.match(/[a-zA-Z]|-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/g);
+  if (!toks) return d;
+  let i = 0;
+  let cx = 0;
+  let cy = 0;
+  let sx = 0;
+  let sy = 0;
+  let out = '';
+  let last = '';
+  let cmd = '';
+  let first = true;
+  while (i < toks.length) {
+    if (/[a-zA-Z]/.test(toks[i])) cmd = toks[i++];
+    else if (cmd === 'M') cmd = 'L';
+    else if (cmd === 'm') cmd = 'l';
+    const lc = cmd.toLowerCase();
+    const rel = cmd !== cmd.toUpperCase();
+    const n = ARGS[lc];
+    if (n === undefined) return d;
+    if (lc === 'z') {
+      out += 'z';
+      last = 'z';
+      cx = sx;
+      cy = sy;
+      continue;
+    }
+    const a = toks.slice(i, i + n).map(Number);
+    if (a.length < n || a.some((x) => Number.isNaN(x))) return d;
+    i += n;
+    // Absolute and relative forms of this segment.
+    let abs;
+    let rl;
+    let nx;
+    let ny;
+    if (lc === 'h') {
+      nx = rel ? cx + a[0] : a[0];
+      ny = cy;
+      abs = [nx];
+      rl = [nx - cx];
+    } else if (lc === 'v') {
+      nx = cx;
+      ny = rel ? cy + a[0] : a[0];
+      abs = [ny];
+      rl = [ny - cy];
+    } else if (lc === 'a') {
+      nx = rel ? cx + a[5] : a[5];
+      ny = rel ? cy + a[6] : a[6];
+      abs = [a[0], a[1], a[2], a[3], a[4], nx, ny];
+      rl = [a[0], a[1], a[2], a[3], a[4], nx - cx, ny - cy];
+    } else {
+      const pts = [];
+      for (let k = 0; k < n; k += 2) pts.push([rel ? cx + a[k] : a[k], rel ? cy + a[k + 1] : a[k + 1]]);
+      abs = pts.flat();
+      rl = pts.flatMap(([x, y]) => [x - cx, y - cy]);
+      [nx, ny] = pts[pts.length - 1];
+    }
+    const U = lc.toUpperCase();
+    // A flag pair in arcs must stay as separate tokens: write them with spaces.
+    const ser = (c, nums) => (lc === 'a' ? `${c}${nums.map(fmt).join(' ')}` : c + join(nums));
+    let A = ser(U, abs);
+    let R = ser(lc, rl);
+    if (first) R = A; // the first moveto is always absolute
+    // Drop a repeated command letter (implicit repeat), when it is safe.
+    const strip = (str, c) => (last === c && c !== 'm' && c !== 'M' && lc !== 'a' ? (/^-/.test(str.slice(1)) ? str.slice(1) : ' ' + str.slice(1)) : str);
+    A = strip(A, U);
+    R = strip(R, lc);
+    const useA = A.length <= R.length;
+    out += useA ? A : R;
+    last = useA ? U : lc;
+    if (lc === 'm') {
+      sx = nx;
+      sy = ny;
+      // after a moveto, an implicit repeat would mean lineto: never strip the next letter
+      last = '';
+    }
+    cx = nx;
+    cy = ny;
+    first = false;
+  }
+  return out;
+}
+
+/** Shorter markup: inherited outline colour, short hex, shortest path data, no float noise. */
 function mini(s) {
   return s
+    .replace(/-?\d+\.\d{3,}/g, (m) => String(Math.round(Number(m) * 100) / 100))
     .replace(/ stroke="#2a1b12"/g, '')
     .replace(/ fill="none"/g, '')
     .replace(/#([0-9a-f])\1([0-9a-f])\2([0-9a-f])\3(?=")/gi, '#$1$2$3')
-    .replace(/ d="([^"]*)"/g, (m, d) => ` d="${d.replace(/ -/g, '-').replace(/([^\d.])0\./g, '$1.')}"`)
+    .replace(/ d="([^"]*)"/g, (m, d) => ` d="${minPath(d)}"`)
     .replace(/="0\./g, '=".')
     .replace(/ 0\.(\d)/g, ' .$1');
 }
 
+/** The root group's inherited presentation (outline, joins, the sign font). */
+const ROOT = `fill="none" stroke="${O}" stroke-width="${SW0}" stroke-linejoin="round" stroke-linecap="round" font-family="system-ui,sans-serif" font-weight="900" text-anchor="middle"`;
 function svgWrap(W, H, inner, cls) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" overflow="visible" class="${cls}"><g fill="none" stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">${mini(inner)}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" overflow="visible" class="${cls}"><g ${ROOT}>${mini(inner)}</g></svg>`;
 }
 
 // --- Buildings ---------------------------------------------------------------------------------
 
-const BH = { bigtop: 182, crate: 120, vault: 122, striker: 164, gallery: 152, tent: 134, garage: 154 };
+const BH = { bigtop: 200, crate: 120, vault: 122, striker: 164, gallery: 152, tent: 124, garage: 154 };
 
-/** The Gas Station (3×3): shop at the back, a canopy over the pumps front-left, forecourt front-right. */
+/**
+ * The Gas Station (3×3): the shop along the back (its door on the right side), a canopy over
+ * the pumps front-left, the bus bay front-right (the parked bus hides neither pumps nor door).
+ * Roof campers stand in a row on the shop roof in front of the sign (ANCHORS.bigtop.roof).
+ */
+const GS = { u0: 0.15, v0: 0.15, u1: 2.55, v1: 1.2, zH: 50, cz: 44, sv: 0.3, campV: 0.95, campU: [0.5, 1.1, 1.7, 2.3] };
 function gasStation(level, color, town, nflags) {
   const st = STAGES[level];
   const F = frame(3, 3, BH.bigtop);
   const name = st === 1 ? 'LAST STOP' : townLabel(town);
-  let s = '';
-  // Forecourt.
-  s += face(F, [[0.06, 0.06], [2.94, 0.06], [2.94, 2.94], [0.06, 2.94]], st === 1 ? '#b0aa9a' : CONC, { sw: 1.3 });
-  if (st === 1) s += line(`${M(...F.p(1.9, 1.8))}l9 5l-3 4l8 4M${xy(F, 2.5, 2.6)}l-8 3l2 4`, O, 1, { op: 0.45 }) + tufts([F.p(2.85, 1.6), F.p(1.7, 2.85), F.p(2.9, 2.3)], OLIVE);
-  else s += onT(F, 1.7, 1.65, 0, line('M4 6H34M4 20H34M4 6V34M14 30H34', '#ffffff', 2, { op: 0.8 }));
-  // The shop.
-  const u0 = 0.15;
-  const v0 = 0.15;
-  const u1 = 2.85;
-  const v1 = 1.4;
-  const zH = 40;
+  const { u0, v0, u1, v1, zH, cz, sv } = GS;
   const LW = (u1 - u0) * 32;
   const RW = (v1 - v0) * 32;
-  let lf = '';
-  let rf = '';
+  const lit = st === 3;
+  let s = '';
+  // Forecourt, cracks or paint, and the bus bay (front-right).
+  s += face(F, [[0.06, 0.06], [2.94, 0.06], [2.94, 2.94], [0.06, 2.94]], st === 1 ? '#ddd5c2' : CONC, { sw: 1.3 });
+  if (st === 1) s += line(`${M(...F.p(1.7, 1.5))}l9 5l-3 4l8 4M${xy(F, 2.6, 1.5)}l-8 3l2 4`, O, 1, { op: 0.35 }) + onT(F, 1.6, 1.4, 0, ell(10, 8, 8, 5, '#5a5248', { ns: 1, op: 0.25 }));
+  s += onT(F, 1.95, 1.95, 0, st === 1 ? line('M3 3H29V29H3Z', '#ffffff', 1.8, { dash: '4 3', op: 0.9 }) : line('M3 3H29V29H3Z', LEMON, 2.4) + txt(16, 20, 'BUS', 10, LEMON));
+  // The shop.
+  let lf;
+  let rf;
   if (st === 1) {
-    lf += hlines(LW, zH, 6.6, O, 0.28) + rect(3, 6, 22, 15, STEEL, { sw: 1.1 }) + boarded(52, 10, 26, 18);
-    lf += rect(35, 14, 13, 26, '#b98a5a', { sw: 1.3 }) + line('M36 15L47 39M47 15L36 39', WOOD_D, 1.6);
-    rf += hlines(RW, zH, 6.6, O, 0.28) + boarded(12, 11, 17, 14) + rect(30, 26, 8, 10, TARP, { sw: 1 });
+    lf = plankWall(LW, zH, candyCols(color)) + boarded(4, 14, 16, 16) + boarded(38, 13, 34, 20) + star(29, 22, 5, WHITE, { sw: 1 });
+    rf = plankWall(RW, zH, [BUBBLE, BUBBLE, SKY, LEMON, LEMON, TEAL]) + door(4, 21, 12, zH - 21, color) + line(`M5.5 23L14.5 ${zH - 2}`, WOOD_D, 1.2) + boarded(20, 14, 11, 13);
   } else {
-    const lit = st === 3;
-    lf += rect(0, 0, LW, 7, color, { ns: 1 }) + line(`M0 7.5H${N(LW)}`, O, 1.2) + line(`M0 3.5H${N(LW)}`, '#ffffff', 1.2, { op: 0.55 });
-    lf += win(6, 13, 20, 16, { lit }) + win(52, 12, 28, 19, { lit });
-    lf += door(35, 13, 13, 27, color, { glass: true, lit });
-    if (lit) lf += line('M55 15H77V28H55Z', PINK, 1.1);
-    rf += rect(0, 0, RW, 7, color, { ns: 1 }) + line(`M0 7.5H${N(RW)}`, O, 1.2) + line(`M0 3.5H${N(RW)}`, '#ffffff', 1.2, { op: 0.55 }) + win(12, 13, 17, 15, { lit });
+    const band = (w) => rect(0, 0, w, 8, color, { ns: 1 }) + line(`M0 8.5H${N(w)}`, O, 1.2) + line(`M0 4H${N(w)}`, '#ffffff', 1.2, { op: 0.55 });
+    lf = band(LW) + win(4, 15, 16, 16, { lit }) + win(38, 14, 34, 20, { lit });
+    if (lit) lf += line('M42 18H68V30H42Z', PINK, 1.2) + txt(55, 27.5, 'OPEN', 7.5, PINK);
+    rf = band(RW) + door(4, 20, 12, zH - 20, color, { glass: true, lit }) + win(20, 15, 11, 13, { lit });
   }
-  const roofC = st === 1 ? '#a39c90' : '#ebe4d6';
-  let tf = rect(3, 3, LW - 6, RW - 6, dk(roofC, 0.1), { sw: 1 });
-  if (st === 1) tf += path('M10 6L34 4L38 22L12 26Z', TARP, { sw: 1.2 }) + line('M10 6L38 22M34 4L12 26', '#2d5f86', 0.9);
+  const roofC = st === 1 ? '#c9c2b2' : '#ebe4d6';
+  let tf = '';
+  if (st === 1) tf = path('M8 6L40 3L44 22L12 27Z', ORANGE, { sw: 1.2 }) + line('M14 5.5L17 26M24 4.5L27 25M34 3.5L37 23.5', WHITE, 2, { op: 0.8 });
+  else tf = rect(6, 6, 9, 9, '#cfc8ba', { sw: 1.1 });
   s += shadowBox(F, u0, v0, u1, v1, 0.18);
-  s += box(F, u0, v0, u1, v1, 0, zH, st === 1 ? PLANK : CREAM, { lf, rf, top: roofC, tf });
-  // Pennants along the roof's front edge.
-  s += pennants(F.p(0.2, 1.4, zH), F.p(2.8, 1.4, zH), level, pennantCols(color), 4);
-  // Flag pole on the back-right corner: one flag per zone.
+  s += box(F, u0, v0, u1, v1, 0, zH, st === 1 ? WOOD : CREAM, { lf, rf, top: roofC, tf });
+  if (st > 1 && level < 7) s += stick(`M${xy(F, u0, v1, zH)}L${xy(F, u1, v1, zH)}L${xy(F, u1, v0, zH)}`, color, 2.2, 2.2);
+  // The sign on posts along the roof's back edge (high enough to clear the roof campers).
+  const SW = 2.2 * 32;
+  const sh = 22;
+  const sz = zH + 12;
+  s += stick([0.55, 2.05].map((u) => `M${xy(F, u, sv, zH)}V${N(F.p(u, sv, sz + 4)[1])}`).join(''), st === 1 ? WOOD_D : STEEL_D, 2.4, 2);
+  let b = '';
+  if (st === 1) {
+    // A plank sign, each plank a different candy colour, the letters painted white.
+    const pc = [color, LEMON, TEAL];
+    b += path(`M0 0H${N(SW * 0.36)}V8H0Z`, pc[0], { sw: 1.3 }) + path(`M${N(SW * 0.36)} -1H${N(SW * 0.7)}V8H${N(SW * 0.36)}Z`, pc[1], { sw: 1.3 }) + path(`M${N(SW * 0.7)} 0.5H${N(SW)}V8H${N(SW * 0.7)}Z`, pc[2], { sw: 1.3 });
+    b += path(`M1 8H${N(SW - 2)}V${sh}H1Z`, BUBBLE, { sw: 1.3 }) + path(cpath([[4, 4, 0.9], [SW - 4, 4, 0.9], [4, 15, 0.9], [SW - 5, 15, 0.9]]), '#5b4636', { ns: 1 });
+    b = g(b + fitText(2, 1, SW - 4, sh - 2, name, '#ffffff', { ol: O, olw: 2.4 }), { tf: `rotate(-2.5 ${N(SW / 2)} 10)` });
+  } else if (st === 2) {
+    b += rect(0, 0, SW, sh, color, { sw: 1.8, rx: 2 }) + rect(2.5, 2.5, SW - 5, sh - 5, 'none', { stroke: '#ffffff', sw: 1, op: 0.85 });
+    b += fitText(4, 1, SW - 8, sh - 2, name, '#ffffff', { ol: O, olw: 2.4 });
+    b += bulbs(Array.from({ length: 9 }, (_, i) => [5 + i * ((SW - 10) / 8), -3]), true, 1.7);
+  } else {
+    b += rect(-3, -3, SW + 6, sh + 6, color, { ns: 1, op: 0.3 }) + rect(0, 0, SW, sh, NIGHT, { sw: 1.8, rx: 3 });
+    b += rect(2.5, 2.5, SW - 5, sh - 5, 'none', { stroke: color, sw: 2.6, op: 0.45 }) + rect(2.5, 2.5, SW - 5, sh - 5, 'none', { stroke: lt(color, 0.55), sw: 1.1 });
+    b += fitText(4, 1, SW - 8, sh - 2, name, '#ffffff', { ol: color, olw: 3 });
+    b += bulbs(Array.from({ length: 9 }, (_, i) => [5 + i * ((SW - 10) / 8), -3]), true, 1.7);
+  }
+  s += onL(F, 0.22, sv, sz + sh, b);
+  if (level >= 7) {
+    const [x, y] = F.p(0.22 + 1.1, sv, sz + sh);
+    s += star(x, y - 9, 7.5, GOLD, { sw: 1.4 });
+  }
+  // The flag pole on the back-right corner: one flag per zone.
   {
-    const [x, y] = F.p(2.7, 0.3, zH);
+    const [x, y] = F.p(2.42, 0.32, zH);
     const n = Math.max(1, Math.min(6, nflags | 0 || 1));
-    s += stick(`${M(x, y)}V${N(y - 48 - n * 2)}`, '#e8e2d6', 1.5, 2) + circ(x, y - 49 - n * 2, 2, GOLD, { sw: 1 });
+    const top = y - 56 - n * 2;
+    s += stick(`${M(x, y)}V${N(top)}`, '#e8e2d6', 1.6, 2) + circ(x, top - 1, 2.2, GOLD, { sw: 1 });
     for (let i = 0; i < n; i++) {
-      const fy = y - 47 - n * 2 + i * 8;
-      s += path(`${M(x, fy)}L${N(x - 13)} ${N(fy + 3)}L${N(x)} ${N(fy + 7)}Z`, i === 0 ? color : CONFETTI[(i + 2) % 6], { sw: 1.2 });
+      const fy = top + 2 + i * 8;
+      s += path(`${M(x, fy)}L${N(x + 14)} ${N(fy + 3)}L${N(x)} ${N(fy + 7)}Z`, i === 0 ? color : CONFETTI[(i + 2) % 6], { sw: 1.2 });
     }
   }
-  // Roof barrels (a little roof garden) from Fixed up on.
-  if (st >= 2) {
-    for (const [u, v, c] of [[0.5, 1.15, BLUE === color ? RED : BLUE], [2.5, 1.1, GREEN === color ? ORANGE : GREEN]]) {
-      const [x, y] = F.p(u, v, zH);
-      s += drum(x, y, c, 8, 5) + path(cpath([[x - 3, y - 10, 3.4], [x + 2, y - 11.5, 3.6], [x + 4, y - 9, 2.6]]), GRASS, { sw: 1.1 }) + path(cpath([[x - 2, y - 12, 1.2], [x + 3, y - 13, 1.2]]), PINK, { ns: 1 });
-    }
+  // Pennants along the shop's front roof edge.
+  s += pennants(F.p(0.22, v1, zH), F.p(u1 - 0.06, v1, zH), level, pennantCols(color), 3);
+  // Patched: tyres and a drum, candy-painted, by the shop's right corner.
+  if (st === 1) s += tyres(...F.p(2.78, 1.45), 3, 7) + line(`${M(...F.p(2.78, 1.45, 8))}h-5`, WHITE, 1.4) + drum(...F.p(2.86, 1.95), TEAL, 12, 5.5);
+  else {
+    const [ax, ay] = F.p(2.82, 1.55);
+    if (st === 2) s += stick(`${M(ax, ay)}V${N(ay - 14)}`, STEEL_D, 2, 1.8) + rect(ax - 4.5, ay - 24, 9, 11, RED, { sw: 1.3, rx: 2 }) + circ(ax, ay - 19.5, 2.4, WHITE, { sw: 0.9 });
+    s += tyres(...F.p(2.85, 1.95), 2, 6.5);
   }
-  // The sign on the roof's back edge.
-  {
-    const sv = 0.32;
-    const su0 = 0.3;
-    const SW = 2.4 * 32;
-    const sh = 20;
-    const sz = 47;
-    s += stick([0.7, 2.3].map((u) => {
-      const [x, y] = F.p(u, sv, zH);
-      return `${M(x, y)}V${N(y - 9)}`;
-    }).join(''), st === 1 ? WOOD_D : STEEL_D, 2.2, 2);
-    let b = '';
-    if (st === 1) {
-      b += g(rect(0, 0, SW, 10.5, WOOD, { sw: 1.4 }) + rect(1.5, 10, SW - 4, 10, '#b07a46', { sw: 1.4 }) + path(cpath([[4, 5, 0.9], [SW - 4, 5, 0.9], [5, 15, 0.9], [SW - 6, 15, 0.9]]), '#5b4636', { ns: 1 }) + fitText(2, 1, SW - 4, sh - 2, name, '#fff1d6', { ol: '#6b4423', olw: 1.6 }), { tf: `rotate(-2.5 ${SW / 2} 10)` });
-    } else if (st === 2) {
-      b += rect(0, 0, SW, sh, color, { sw: 1.8, rx: 2 }) + rect(2.5, 2.5, SW - 5, sh - 5, 'none', { stroke: '#ffffff', sw: 1, op: 0.85 });
-      b += fitText(4, 1, SW - 8, sh - 2, name, '#ffffff', { ol: O, olw: 2.2 });
-      b += bulbs(Array.from({ length: 9 }, (_, i) => [5 + i * ((SW - 10) / 8), -3]), true, 1.7);
-    } else {
-      b += rect(-2, -2, SW + 4, sh + 4, color, { ns: 1, op: 0.3 }) + rect(0, 0, SW, sh, NIGHT, { sw: 1.8, rx: 3 });
-      b += rect(2.5, 2.5, SW - 5, sh - 5, 'none', { stroke: color, sw: 2.6, op: 0.45 }) + rect(2.5, 2.5, SW - 5, sh - 5, 'none', { stroke: lt(color, 0.55), sw: 1.1 });
-      b += fitText(4, 1, SW - 8, sh - 2, name, '#ffffff', { ol: color, olw: 3 });
-      b += bulbs(Array.from({ length: 9 }, (_, i) => [5 + i * ((SW - 10) / 8), -3]), true, 1.7);
-    }
-    s += onL(F, su0, sv, sz + sh, b);
-    if (level >= 7) {
-      const [x, y] = F.p(su0 + 1.2, sv, sz + sh);
-      s += star(x, y - 8, 7, GOLD, { sw: 1.4 });
-    }
-  }
-  // Canopy over the pumps: back posts, island, pumps, front posts, the slab.
-  const cz = 40;
+  // The canopy: back posts, the pump island and pumps, front posts, the slab.
   const postC = st === 1 ? WOOD_D : WHITE;
-  const post = (...uv) => stick(uv.map(([u, v]) => {
-    const [x, y] = F.p(u, v, 0);
-    return `${M(x, y)}V${N(y - cz)}`;
-  }).join(''), postC, 3.4, 2.2);
-  s += post([0.42, 1.9], [1.33, 1.9]);
-  s += box(F, 0.45, 2.06, 1.32, 2.44, 0, 3, st === 1 ? '#b8b1a2' : '#e7e1d3', { sw: 1.4 });
-  const pumpC = st === 1 ? '#a8513f' : color;
-  const pump = (u, v) => {
-    let p = box(F, u, v, u + 0.26, v + 0.22, 3, 17, pumpC, { lf: rect(1.3, 2.5, 5.8, 6.5, st === 1 ? '#c9c2b0' : '#eaf7ff', { sw: 0.9 }) + rect(2, 12, 4.4, 2.6, O, { ns: 1, op: 0.35 }), top: lt(pumpC, 0.35) });
-    const [hx, hy] = F.p(u + 0.26, v + 0.1, 12);
+  const post = (...uv) => stick(uv.map(([u, v]) => `M${xy(F, u, v)}V${N(F.p(u, v, cz)[1])}`).join(''), postC, 3.4, 2.2);
+  s += post([0.3, 1.65], [1.35, 1.65]);
+  s += box(F, 0.3, 2.02, 1.22, 2.32, 0, 3, st === 1 ? '#e6dcc6' : '#e7e1d3', { sw: 1.4 });
+  const pump = (u, v, c) => {
+    let p = box(F, u, v, u + 0.26, v + 0.22, 3, 18, c, { lf: rect(1.3, 2.5, 5.8, 6.5, '#eaf7ff', { sw: 0.9 }) + rect(2, 12.5, 4.4, 2.6, O, { ns: 1, op: 0.35 }), top: lt(c, 0.35) });
+    const [hx, hy] = F.p(u + 0.26, v + 0.1, 13);
     p += line(`${M(hx, hy)}q6 3 3 10q-2 3 -6 3`, O, 1.8);
-    const [gx, gy] = F.p(u + 0.13, v + 0.11, 20);
-    p += circ(gx, gy - 2.5, 3.3, st === 1 ? '#d9cba6' : st === 3 ? '#fff4b8' : WHITE, { sw: 1.2 });
-    if (st === 3) p += circ(gx, gy - 2.5, 6, '#ffe27a', { ns: 1, op: 0.35 });
+    const [gx, gy] = F.p(u + 0.13, v + 0.11, 21);
+    p += circ(gx, gy - 2.5, 3.4, lit ? '#fff4b8' : WHITE, { sw: 1.2 });
+    if (NITE) p += circ(gx, gy - 2.5, 6.5, '#ffe27a', { ns: 1, op: 0.35 });
     return p;
   };
-  if (st === 1) {
-    const [x, y] = F.p(0.66, 2.24, 3);
-    s += ell(x, y, 5, 2.4, '#7a5a48', { sw: 1.2 }) + pump(0.98, 2.12);
-  } else s += pump(0.52, 2.12) + pump(0.98, 2.12);
-  s += post([0.42, 2.7], [1.33, 2.7]);
+  if (st === 1) s += drum(...F.p(0.55, 2.17, 3), BUBBLE, 11, 5) + pump(0.83, 2.07, color) + star(...F.p(0.96, 2.29, 14), 3, WHITE, { sw: 0.8 });
+  else s += pump(0.4, 2.07, color) + pump(0.83, 2.07, color);
+  s += post([0.3, 2.7], [1.35, 2.7]);
   {
     const fw = 1.25 * 32;
-    const fr = 1.1 * 32;
+    const fr = 1.25 * 32;
     let clf;
     let crf;
-    if (st === 1) {
-      clf = rect(0, 0, fw, 6, '#9a948a', { ns: 1 }) + vlines(fw, 6, 3, O, 0.25) + rect(18, 0, 9, 6, '#a0643a', { ns: 1, op: 0.8 });
-      crf = vlines(fr, 6, 3, O, 0.25);
-    } else {
-      clf = rect(0, 0, fw, 6, color, { ns: 1 }) + line(`M0 3H${N(fw)}`, '#ffffff', 1.6);
-      crf = rect(0, 0, fr, 6, color, { ns: 1 }) + line(`M0 3H${N(fr)}`, '#ffffff', 1.6);
-    }
     let ctf = '';
-    if (st === 1) ctf = circ(14, 10, 3, '#5a5248', { sw: 1 }) + path('M22 18L34 14L38 28L24 32Z', TARP, { sw: 1 });
-    s += box(F, 0.25, 1.75, 1.5, 2.85, cz, 6, st === 1 ? '#9a948a' : color, { lf: clf, rf: crf, top: st === 1 ? '#b3ad9f' : WHITE, tf: ctf, r: st === 1 ? '#7f7a70' : undefined });
-    if (st === 3) s += bulbs([0.15, 0.4, 0.65, 0.9, 1.15].map((t) => F.p(0.25 + t, 2.85, cz - 2)).concat([0.15, 0.45, 0.75].map((t) => F.p(1.5, 2.85 - t, cz - 2))), true, 1.6);
+    if (st === 1) {
+      // A striped tarp stretched over the posts.
+      clf = path(stripesD(fw, 6, 5), WHITE, { ns: 1 });
+      crf = path(stripesD(fr, 6, 5), WHITE, { ns: 1 });
+      ctf = path(stripesD(fw, fr, 5), WHITE, { ns: 1 }) + line('M4 6L36 34', O, 0.8, { op: 0.25 });
+    } else {
+      clf = line(`M0 3H${N(fw)}`, '#ffffff', 1.6);
+      crf = line(`M0 3H${N(fr)}`, '#ffffff', 1.6);
+    }
+    s += box(F, 0.2, 1.55, 1.45, 2.8, cz, 6, color, { lf: clf, rf: crf, top: st === 1 ? color : WHITE, tf: ctf });
   }
-  // Proud: a lookout on the canopy roof, string lights to the shop.
+  // On the canopy roof: a barrel garden (Fixed up), the lookout and a planter (Proud).
+  const cTop = cz + 6;
+  const planter = (u, v, c) => {
+    const [x, y] = F.p(u, v, cTop);
+    return drum(x, y, c, 8, 5) + path(cpath([[x - 3, y - 10, 3.4], [x + 2, y - 11.5, 3.6], [x + 4, y - 9, 2.6]]), GRASS, { sw: 1.1 }) + path(cpath([[x - 2, y - 12, 1.3], [x + 3, y - 13, 1.3]]), PINK, { ns: 1 });
+  };
+  if (st === 2) s += planter(0.45, 1.8, BLUE === color ? RED : BLUE) + planter(1.25, 2.55, GREEN === color ? ORANGE : GREEN);
   if (st === 3) {
-    const lz = cz + 6;
+    const lz = cTop;
     const lp = [[0.45, 2.0], [1.3, 2.0], [0.45, 2.65], [1.3, 2.65]];
-    const rail = (pts) => line(pts.map(([u, v], i) => (i ? 'L' : 'M') + xy(F, u, v, lz + 9)).join(''), O, 2.6) + line(pts.map(([u, v], i) => (i ? 'L' : 'M') + xy(F, u, v, lz + 9)).join(''), WOOD_L, 1.2);
-    s += rail([[0.3, 2.8], [0.3, 1.8], [1.45, 1.8]]);
+    const rail = (pts) => line(pts.map(([u, v], i) => (i ? 'L' : 'M') + xy(F, u, v, lz + 9)).join(''), O, 2.2);
+    s += rail([[0.3, 2.75], [0.3, 1.85], [1.4, 1.85]]);
     s += stick(lp.map(([u, v]) => `M${xy(F, u, v, lz)}V${N(F.p(u, v, lz + 24)[1])}`).join(''), WOOD, 2, 1.8);
-    s += rail([[0.3, 2.8], [1.45, 2.8], [1.45, 1.8]]);
+    s += rail([[0.3, 2.75], [1.4, 2.75], [1.4, 1.85]]);
     s += roofHip(F, 0.45, 2.0, 1.3, 2.65, lz + 24, 14, color, { ov: 0.12 });
     const [fx, fy] = F.p(0.875, 2.325, lz + 38);
     s += flag(fx, fy + 1, 14, YELLOW, 1, true);
-    s += lights(F.p(1.5, 2.85, cz + 6), F.p(2.85, 1.4, zH), 7, 7);
+    s += lights(F.p(1.45, 2.8, cTop), F.p(u1, v1, zH), 7, 7);
   }
-  // Patched clutter.
-  if (st === 1) {
-    s += tyres(...F.p(2.45, 1.75), 3, 7) + drum(...F.p(2.75, 2.25), '#a0643a', 12, 5.5);
-  } else {
-    s += tyres(...F.p(2.6, 1.7), 2, 6.5);
-  }
-  if (level >= 7) s += goldTrim(`M${xy(F, u0, v1, zH)}L${xy(F, u1, v1, zH)}L${xy(F, u1, v0, zH)}M${xy(F, 0.25, 2.85, cz + 6)}L${xy(F, 1.5, 2.85, cz + 6)}L${xy(F, 1.5, 1.75, cz + 6)}`);
-  return { svg: svgWrap(F.W, F.H, s, `ls-bld ls-bigtop ls-st${st}`), artH: F.H, bodyH: 70 };
+  if (NITE) s += face(F, [[0.3, 1.7], [1.35, 1.7], [1.35, 2.7], [0.3, 2.7]], LIT, { ns: 1, op: 0.22 });
+  if (level >= 7) s += goldTrim(`M${xy(F, u0, v1, zH)}L${xy(F, u1, v1, zH)}L${xy(F, u1, v0, zH)}M${xy(F, 0.2, 2.8, cTop)}L${xy(F, 1.45, 2.8, cTop)}L${xy(F, 1.45, 1.55, cTop)}`);
+  return { svg: svgWrap(F.W, F.H, s, `ls-bld ls-bigtop ls-st${st}`), artH: F.H, bodyH: 80 };
 }
 
 /** The Drop Pad (2×2): pallets with a chalk X → a painted H and windsock → a light ring and beacon. */
@@ -716,14 +879,15 @@ function dropPad(level, color) {
   if (st === 1) {
     // Back corner junk: a rag flag on a stick and two crates.
     const [sx, sy] = F.p(0.12, 0.12);
-    s += stick(`${M(sx, sy)}V${N(sy - 40)}`, WOOD_D, 2, 1.8) + path(`${M(sx, sy - 40)}q8 -2 14 2q-4 4 0 8q-7 -3 -14 -1z`, '#e9e1cf', { sw: 1.3 });
-    const pal = (a, b, c, d) => box(F, a, c, b, d, 0, pz, WOOD_L, { lf: rect(1, 1.5, 3, 2.5, '#5b3f28', { ns: 1 }) + rect(10.5, 1.5, 3, 2.5, '#5b3f28', { ns: 1 }) + rect(20, 1.5, 3, 2.5, '#5b3f28', { ns: 1 }), top: '#e9bf86', tf: vlines((b - a) * 32, (d - c) * 32, 5, WOOD_D, 0.5), sw: 1.6 });
-    s += pal(0.2, 0.97, 0.2, 0.97) + pal(1.03, 1.8, 0.2, 0.97) + pal(0.2, 0.97, 1.03, 1.8) + pal(1.03, 1.8, 1.03, 1.8);
+    s += stick(`${M(sx, sy)}V${N(sy - 40)}`, WOOD_D, 2, 1.8) + path(`${M(sx, sy - 40)}q8 -2 14 2q-4 4 0 8q-7 -3 -14 -1z`, color, { sw: 1.3 }) + path(`${M(sx + 5, sy - 40.6)}q3 0 4 1v8q-2 -1 -4 -1z`, WHITE, { ns: 1 });
+    // Pallets, two of them candy-painted; the spray-painted X runs along the tile axes so it
+    // reads as an X on screen (not a + sparkle).
+    const pal = (a, b, c, d, col) => box(F, a, c, b, d, 0, pz, col, { lf: path('M1 1.5h3v2.5h-3zM10.5 1.5h3v2.5h-3zM20 1.5h3v2.5h-3z', '#5b3f28', { ns: 1, op: 0.7 }), top: lt(col, 0.25), tf: vlines((b - a) * 32, (d - c) * 32, 5, dk(col, 0.3), 0.5), sw: 1.6 });
+    s += pal(0.2, 0.97, 0.2, 0.97, WOOD_L) + pal(1.03, 1.8, 0.2, 0.97, TEAL) + pal(0.2, 0.97, 1.03, 1.8, BUBBLE) + pal(1.03, 1.8, 1.03, 1.8, WOOD_L);
+    s += onT(F, 0.2, 0.2, pz, line('M6 25.6H45.2M25.6 6V45.2', '#ffffff', 9, { op: 0.9 }) + line('M6 25.6H45.2M25.6 6V45.2', color, 6));
     // Two spare crates on the back pallet.
-    s += box(F, 0.24, 0.24, 0.56, 0.56, pz, 11, WOOD_L, { lf: line('M2 2L8 9M8 2L2 9', WOOD_D, 1.2), rf: line('M2 2L8 9M8 2L2 9', WOOD_D, 1.2), sw: 1.6 });
-    s += box(F, 0.3, 0.3, 0.52, 0.52, pz + 11, 8, '#d9a46a', { sw: 1.5 });
-    // Chalk X over the pallets.
-    s += onT(F, 0.25, 0.25, pz, line('M4 4L44 44M44 4L4 44', '#ffffff', 4, { op: 0.9 }) + line('M6 3L45 41M42 5L5 42', '#ffffff', 1.4, { op: 0.6 }));
+    s += box(F, 0.24, 0.24, 0.56, 0.56, pz, 11, LEMON, { lf: line('M2 2L8 9M8 2L2 9', WOOD_D, 1.2), rf: line('M2 2L8 9M8 2L2 9', WOOD_D, 1.2), sw: 1.6 });
+    s += box(F, 0.3, 0.3, 0.52, 0.52, pz + 11, 8, SKY, { sw: 1.5 });
     s += cone(...F.p(1.88, 0.2)) + cone(...F.p(0.2, 1.88));
     s += pennants(F.p(0.12, 0.12, 36), F.p(1.86, 0.22, 13), level, pennantCols(color), 3);
   } else {
@@ -790,13 +954,16 @@ function bankVault(level, color) {
     const u1 = 1.7;
     const v1 = 1.35;
     const LW = (u1 - u0) * 32;
-    const lf = line('M4 6l5 7l-2 6M38 4l-4 8l3 4', O, 1, { op: 0.4 }) + vaultDoor(LW / 2, 17, 12, 1) + line(`M${N(LW / 2 - 15)} 12L${N(LW / 2 + 15)} 22`, '#6b6a66', 2, { dash: '2 1.5' }) + rect(LW / 2 + 4, 16, 6, 6, GOLD, { sw: 1, rx: 1 });
-    const rf = line('M6 6l4 8l-3 6M24 3l3 9', O, 1, { op: 0.4 }) + boarded(10, 9, 14, 12);
+    const RW = (v1 - v0) * 32;
+    // A salvaged vault, its concrete painted teal with a town-colour band and hand-painted stars.
+    const band = (w) => rect(0, 0, w, 5, color, { ns: 1 }) + line(`M0 5.5H${N(w)}`, O, 1);
+    const lf = band(LW) + line('M4 9l5 7l-2 6M40 8l-4 8l3 4', O, 1, { op: 0.3 }) + star(6, 26, 3.2, LEMON, { sw: 0.8 }) + star(LW - 6, 12, 3.2, WHITE, { sw: 0.8 }) + vaultDoor(LW / 2, 18, 12, 1) + line(`M${N(LW / 2 - 15)} 13L${N(LW / 2 + 15)} 23`, '#6b6a66', 2, { dash: '2 1.5' }) + rect(LW / 2 + 4, 17, 6, 6, GOLD, { sw: 1, rx: 1 });
+    const rf = band(RW) + boarded(10, 10, 14, 12) + star(5, 26, 2.8, BUBBLE, { sw: 0.8 });
     s += shadowBox(F, u0, v0, u1, v1);
-    s += box(F, u0, v0, u1, v1, 0, 32, '#b6b1a2', { lf, rf, top: '#c9c4b6', tf: path('M4 4L36 2L40 18L30 30L6 26Z', TARP, { sw: 1.2 }) + line('M4 4L40 18M36 2L6 26', '#2d5f86', 0.9) });
+    s += box(F, u0, v0, u1, v1, 0, 32, TEAL, { lf, rf, top: lt(TEAL, 0.35), tf: path('M4 4L36 2L40 18L30 30L6 26Z', color, { sw: 1.2 }) + line('M12 3.4L16 27.4M24 2.7L28 28.6M33 2.1L36 24', WHITE, 2.2, { op: 0.85 }) });
     // Rubble on top.
     const [rx, ry] = F.p(0.55, 0.5, 32);
-    s += path(`${M(rx - 6, ry)}l3 -5l4 2l3 -4l5 3l1 4z`, '#9a958a', { sw: 1.2 });
+    s += drum(rx, ry, BUBBLE, 8, 4.5) + path(cpath([[rx - 2.5, ry - 10, 3], [rx + 2, ry - 11, 3.2]]), GRASS, { sw: 1 }) + circ(rx, ry - 12.5, 1.3, YELLOW, { ns: 1 });
     // Sandbag walls flanking the door (two rows, back to front).
     const bags = [];
     for (let row = 0; row < 2; row++) {
@@ -806,7 +973,7 @@ function bankVault(level, color) {
     }
     s += sandbags(bags);
     s += pennants(F.p(1.7, 1.35, 32), F.p(1.7, 0.3, 32), level, pennantCols(color), 3);
-    s += tufts([F.p(0.25, 1.85), F.p(1.85, 0.6)], OLIVE);
+    s += tufts([F.p(0.25, 1.85), F.p(1.85, 0.6)], GRASS_D);
   } else {
     const u0 = 0.22;
     const v0 = 0.25;
@@ -878,13 +1045,13 @@ function battingCage(level, color) {
   const a = 0.2;
   const b = 1.8;
   const zH = 42;
-  const postC = st === 1 ? '#a9764a' : cls;
-  const netC = st === 1 ? '#8f8e86' : '#3d3540';
+  const postC = st === 1 ? LEMON : cls;
+  const netC = st === 1 ? '#6f6e68' : '#3d3540';
   let s = '';
   // Floor.
-  s += face(F, [[a, a], [b, a], [b, b], [a, b]], st === 1 ? '#c9a46a' : '#5fb54a', { sw: 1.4 });
+  s += face(F, [[a, a], [b, a], [b, b], [a, b]], st === 1 ? '#e6c07e' : '#5fb54a', { sw: 1.4 });
   if (st >= 2) s += onT(F, a, a, 0, line('M4 12H48M4 24H48M4 36H48', '#4ea63c', 3, { op: 0.6 }));
-  s += onT(F, a, a, 0, circ(13, 13, 9, st === 1 ? '#b88d55' : '#c9955a', { ns: 1 }) + rect(32, 32, 14, 14, 'none', { stroke: '#ffffff', sw: 1.4, op: 0.8 }) + path('M36 36H42V40L39 43L36 40Z', '#ffffff', { sw: 1 }));
+  s += onT(F, a, a, 0, circ(13, 13, 9, st === 1 ? '#d4a462' : '#c9955a', { ns: 1 }) + rect(32, 32, 14, 14, 'none', { stroke: '#ffffff', sw: 1.4, op: 0.8 }) + path('M36 36H42V40L39 43L36 40Z', '#ffffff', { sw: 1 }));
   // Back posts and back nets.
   const postAt = (u, v, h = zH) => {
     const [x, y] = F.p(u, v);
@@ -897,8 +1064,8 @@ function battingCage(level, color) {
   // Inside: the pitcher.
   if (st === 1) {
     const [x, y] = F.p(0.5, 0.5);
-    s += box(F, 0.38, 0.38, 0.66, 0.66, 0, 9, '#4f93c4', { lf: vlines(9, 9, 3, O, 0.4), sw: 1.6 });
-    s += drum(...F.p(0.85, 0.42), '#d9d2c2', 8, 4.5) + path(cpath([[x + 9, y - 13, 1.6], [x + 12, y - 12.5, 1.6]]), WHITE, { sw: 0.8 });
+    s += box(F, 0.38, 0.38, 0.66, 0.66, 0, 9, color, { lf: vlines(9, 9, 3, O, 0.4), sw: 1.6 });
+    s += drum(...F.p(0.85, 0.42), TEAL, 8, 4.5) + path(cpath([[x + 9, y - 13, 1.6], [x + 12, y - 12.5, 1.6]]), WHITE, { sw: 0.8 });
   } else {
     const [x, y] = F.p(0.55, 0.55);
     s += line(`${M(x - 6, y + 2)}L${N(x)} ${N(y - 12)}L${N(x + 6)} ${N(y + 2)}M${N(x)} ${N(y - 12)}V${N(y + 4)}`, O, 1.6);
@@ -914,11 +1081,11 @@ function battingCage(level, color) {
     s += line(`${M(x - 12, y - 6)}l7 3.5M${N(x - 11)} ${N(y - 1)}l6 2`, O, 1, { op: 0.4 }) + circ(x, y, 2.6, WHITE, { sw: 1.1 });
   }
   // Bat and bucket by the plate.
-  s += propLean('bat', ...F.p(b - 0.06, b - 0.1), color);
+  s += propLean('bat', ...F.p(b - 0.06, b - 0.1), color, 1.1);
   s += drum(...F.p(1.45, 1.65), '#5a7fb0', 7, 4) + path(cpath([[F.p(1.45, 1.65)[0] - 1.5, F.p(1.45, 1.65)[1] - 7.5, 1.4], [F.p(1.45, 1.65)[0] + 1.6, F.p(1.45, 1.65)[1] - 8, 1.4]]), WHITE, { sw: 0.7 });
   // Front nets: the right side (u = b), and a band along the top of the left side (v = b).
   s += onR(F, b, b, zH, mesh(51.2, zH, 5, netC, st === 1 ? 0.45 : 0.32));
-  if (st === 1) s += onR(F, b, b, zH, rect(14, 12, 12, 10, '#b88d55', { sw: 1, op: 0.85 }));
+  if (st === 1) s += onR(F, b, b, zH, rect(12, 10, 14, 11, BUBBLE, { sw: 1.1 }) + line('M14 12L24 19', WHITE, 1.2, { op: 0.8 }));
   s += onL(F, a, b, zH, mesh(51.2, 12, 5, netC, st === 1 ? 0.45 : 0.32));
   s += postAt(b, b);
   // Top rails.
@@ -963,15 +1130,16 @@ function tinCanRange(level, color) {
   // The backdrop wall.
   const LW = (u1 - u0) * 32;
   let lf;
+  // The wall's own colour is its lit (left) face; the box shades its right face darker.
+  const wallC = st === 1 ? WOOD : st === 3 ? '#3550a8' : cls;
   if (st === 1) {
-    lf = vlines(LW, wz, 6.4, O, 0.3) + circ(LW / 2, 16, 9, 'none', { stroke: '#e8e2d6', sw: 2.4 }) + circ(LW / 2, 16, 3.6, '#e8e2d6', { ns: 1 }) + rect(4, 30, 10, 8, '#a8a294', { sw: 1 });
+    lf = plankWall(LW, wz, [SKY, SKY, LEMON, LEMON, color, color, TEAL, TEAL], 6.4) + circ(LW / 2, 17, 11, WHITE, { sw: 1.4 }) + circ(LW / 2, 17, 7.5, RED, { ns: 1 }) + circ(LW / 2, 17, 4, WHITE, { ns: 1 }) + circ(LW / 2, 17, 1.8, RED, { ns: 1 });
   } else {
-    const bg = st === 3 ? '#23336b' : cls;
-    lf = rect(0, 0, LW, wz, bg, { ns: 1 }) + hlines(LW, wz, 7, O, 0.15);
+    lf = hlines(LW, wz, 7, O, 0.15);
     const stars = [[8, 9], [44, 7], [26, 5], [12, 34], [40, 32]];
     lf += stars.map(([x, y]) => star(x, y, 3.2, st === 3 ? '#fff4b8' : WHITE, { sw: 0.8 })).join('');
   }
-  s += box(F, u0, 0.2, u1, 0.36, 0, wz, st === 1 ? PLANK : cls, { lf, top: st === 1 ? WOOD_L : lt(cls, 0.3) });
+  s += box(F, u0, 0.2, u1, 0.36, 0, wz, wallC, { lf, top: st === 1 ? WOOD_L : lt(wallC, 0.3) });
   // Stage 3: the bullseye billboard on top of the wall.
   if (st === 3) {
     for (const u of [0.6, 1.4]) {
@@ -990,7 +1158,7 @@ function tinCanRange(level, color) {
       const [x, y] = F.p(u, 0.58);
       s += line(`${M(x - 4, y)}L${N(x)} ${N(y - 15)}L${N(x + 4)} ${N(y)}`, O, 3) + line(`${M(x - 4, y)}L${N(x)} ${N(y - 15)}L${N(x + 4)} ${N(y)}`, WOOD, 1.4);
     }
-    s += box(F, 0.32, 0.52, 1.68, 0.64, 14, 3, WOOD_L, { sw: 1.4 });
+    s += box(F, 0.32, 0.52, 1.68, 0.64, 14, 3, LEMON, { sw: 1.4 });
     for (const [u, cs] of [[0.6, [STEEL, RED, STEEL]], [1.05, [BLUE, STEEL, YELLOW]], [1.45, [STEEL, GREEN, STEEL]]]) s += canPyramid(...F.p(u, 0.58, 17), cs);
   } else {
     s += box(F, 0.3, 0.36, 1.7, 0.48, 14, 3, WOOD_L, { sw: 1.4 });
@@ -1030,13 +1198,13 @@ function tinCanRange(level, color) {
     const bags = [];
     for (let row = 0; row < 3; row++) for (let k = 0; k < (row % 2 ? 4 : 5); k++) bags.push(F.p(0.32 + k * 0.34 + (row % 2) * 0.17, 1.5, 3 + row * 5));
     s += sandbags(bags);
-    s += box(F, 0.3, 1.42, 1.75, 1.58, 15, 2.5, WOOD_L, { sw: 1.4 });
-    s += propLean('slingshot', ...F.p(1.2, 1.5, 17.5), color);
+    s += box(F, 0.3, 1.42, 1.75, 1.58, 15, 2.5, color, { sw: 1.4 });
+    s += propLean('slingshot', ...F.p(1.2, 1.5, 17.5), color, 1.1);
   } else {
     const CW = 1.5 * 32;
     s += box(F, 0.25, 1.35, 1.75, 1.6, 0, 14, cls, { lf: vlines(CW, 14, 6, '#ffffff', 0.9, 0, 3), top: WOOD_L });
     s += box(F, 0.2, 1.32, 1.8, 1.64, 14, 3, WOOD, { top: WOOD_L, sw: 1.6 });
-    s += propLean('blaster', ...F.p(0.9, 1.48, 17), color);
+    s += propLean('blaster', ...F.p(0.9, 1.48, 17), color, 1.1);
     if (st === 3) s += bulbs([0.15, 0.4, 0.65, 0.9, 1.15, 1.4].map((t) => F.p(0.25 + t, 1.6, 6)), true, 1.4);
   }
   // Pennants along the roof line.
@@ -1046,75 +1214,136 @@ function tinCanRange(level, color) {
   return { svg: svgWrap(F.W, F.H, s, `ls-bld ls-gallery ls-st${st}`), artH: F.H, bodyH: st === 1 ? 46 : 56 };
 }
 
-/** The Ice Cream Clinic (2×2, Medics): a toppled giant cone with a tarp → a red cross → lit up. */
+/** Convex hull of screen points (monotone chain). */
+function hull(pts) {
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [];
+  const up = [];
+  for (const q of p) {
+    while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop();
+    lo.push(q);
+  }
+  for (const q of p.reverse()) {
+    while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop();
+    up.push(q);
+  }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+const polyD = (pts, close = true) => pts.map(([x, y], i) => `${i ? 'L' : 'M'}${N(x)} ${N(y)}`).join('') + (close ? 'Z' : '');
+
+/**
+ * The Ice Cream Clinic (2×2, Medics): a giant cone toppled on its side (tip back-left, mouth
+ * right) with its mint scoop still stuck in the mouth. Patched: a striped tarp lean-to on the
+ * cone, the scoop half melted → Fixed up: a door and port-hole cut in the cone, a red cross on
+ * the scoop, a flag → Proud: bulbs along the cone and round the scoop, a glowing cherry.
+ * Decals (door, windows) are drawn in the cone's own surface coordinates, so they wrap.
+ */
+const CLINIC = { R: 22, L: 1.65, C: [1.62, 0.8], n: [0.89, -0.45] };
 function iceCreamClinic(level, color) {
   const st = STAGES[level];
   const F = frame(2, 2, BH.tent);
-  const yc = F.H - 32; // the ground line through the footprint's centre
-  const scoopC = st === 1 ? '#bfe0c9' : '#9fe6b8';
-  const scoopD = st === 1 ? '#93b9a0' : '#5fc78a';
-  const coneC = st === 1 ? '#d4ad73' : '#ebb764';
-  let s = ell(68, yc + 2, 58, 13, O, { ns: 1, op: 0.15 });
-  // The cone, lying with its tip to the right.
-  const A = [56, yc - 44];
-  const B = [56, yc + 1];
-  const T = [124, yc - 4];
-  s += path(`${M(...A)}L${N(T[0])} ${N(T[1])}L${N(B[0])} ${N(B[1])}Z`, coneC, { sw: 2 });
-  s += path(`${M(56, yc - 22)}L${N(T[0])} ${N(T[1])}L${N(B[0])} ${N(B[1])}Z`, dk(coneC, 0.14), { ns: 1 });
+  const { R, L, C, n } = CLINIC;
+  const p = [-n[1], n[0]]; // horizontal, across the axis (toward the viewer's left)
+  const T = [C[0] - n[0] * L, C[1] - n[1] * L];
+  const coneC = st === 1 ? '#f5b85c' : '#f2b65a';
+  const D = Math.PI / 180;
+  // A point on the cone: t from the tip (0) to the mouth (1), th round the axis (0 = toward p, 90° = up).
+  const S = (t, th) => {
+    const r = R * t;
+    const u = T[0] + (C[0] - T[0]) * t + (p[0] * r * Math.cos(th)) / 32;
+    const v = T[1] + (C[1] - T[1]) * t + (p[1] * r * Math.cos(th)) / 32;
+    return F.p(u, v, 2 + (R - 2) * t + r * Math.sin(th));
+  };
+  const seen = (th) => 1.34 * Math.cos(th) + Math.sin(th) > 0.2;
+  // Surface decal: points given as [t, th in degrees].
+  const decal = (pts) => polyD(pts.map(([t, a]) => S(t, a * D)));
+  let s = ell(...F.p(1.05, 1.05), 50, 16, O, { ns: 1, op: 0.13 });
+  const rim = Array.from({ length: 28 }, (_, k) => S(1, (k / 28) * 360 * D));
+  const body = polyD(hull([S(0, 0), ...rim]));
+  s += path(body, coneC, { ns: 1 });
+  const band = (a, b) => polyD([S(0, 0), ...Array.from({ length: 7 }, (_, k) => S(1, (a + ((b - a) * k) / 6) * D))]);
+  s += path(band(58, 118), lt(coneC, 0.35), { ns: 1 }) + path(band(-47, -12), dk(coneC, 0.16), { ns: 1 });
+  // Waffle: two families of lines winding round the cone (visible side only).
   let w = '';
-  for (let k = 1; k <= 5; k++) {
-    const t = k / 6;
-    const p1 = [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t];
-    const q1 = [T[0] + (B[0] - T[0]) * t, T[1] + (B[1] - T[1]) * t];
-    const p2 = [B[0] + (A[0] - B[0]) * t, B[1] + (A[1] - B[1]) * t];
-    const q2 = [T[0] + (A[0] - T[0]) * t, T[1] + (A[1] - T[1]) * t];
-    w += `${M(...p1)}L${N(q1[0])} ${N(q1[1])}${M(...p2)}L${N(q2[0])} ${N(q2[1])}`;
+  for (const dir of [1, -1]) {
+    for (let a0 = -220; a0 <= 260; a0 += 30) {
+      let prev = null;
+      for (let k = 0; k <= 6; k++) {
+        const t = 0.12 + (0.88 * k) / 6;
+        const th = (a0 + dir * 130 * t) * D;
+        const q = seen(th) ? S(t, th) : null;
+        if (q && prev) w += `${M(...prev)}L${N(q[0])} ${N(q[1])}`;
+        prev = q;
+      }
+    }
   }
-  s += line(w, dk(coneC, 0.35), 1.1, { op: 0.75 });
-  s += path(`${M(...A)}L${N(T[0])} ${N(T[1])}L${N(B[0])} ${N(B[1])}Z`, 'none');
-  s += line(`${M(62, yc - 41)}L${N(110)} ${N(yc - 12)}`, '#fff2d0', 1.8, { op: 0.6 });
-  // Clinic bits on the cone.
+  s += line(w, dk(coneC, 0.38), 1.1, { op: 0.7 });
+  s += path(body, 'none', { sw: 2.2 });
+  // The clinic's door and port-hole (Fixed up on), or a striped tarp lean-to (Patched).
   if (st === 1) {
-    // A tarp lean-to on the front, a medkit crate.
-    s += path(`${M(66, yc - 40)}L${N(104)} ${N(yc - 22)}L${N(108)} ${N(yc + 14)}L${N(70)} ${N(yc + 14)}Z`, TARP, { sw: 1.6 });
-    s += path(`${M(76, yc + 14)}L${N(82)} ${N(yc - 6)}L${N(98)} ${N(yc + 2)}L${N(100)} ${N(yc + 14)}Z`, '#1f3b52', { sw: 1.2 });
-    s += line(`${M(70, yc + 14)}V${N(yc - 4)}M${N(108)} ${N(yc + 14)}V${N(yc - 2)}`, WOOD_D, 2);
-    s += line(`${M(84, yc - 31)}L${N(96)} ${N(yc - 25)}`, '#2d5f86', 1);
-    s += propLean('medkit', 92, yc + 16, color);
-    s += g(rect(-7, -5, 14, 10, '#e6dcc6', { sw: 1.2 }) + path('M-1.2 -3.6H1.2V-1.2H3.6V1.2H1.2V3.6H-1.2V1.2H-3.6V-1.2H-1.2Z', RED, { ns: 1 }), { tf: `translate(36 ${N(yc - 50)}) rotate(-8)` });
+    const g0 = (t) => {
+      const c = [T[0] + (C[0] - T[0]) * t, T[1] + (C[1] - T[1]) * t];
+      return F.p(c[0] + p[0] * (R * t / 32 + 0.42), c[1] + p[1] * (R * t / 32 + 0.42), 0);
+    };
+    const a = S(0.22, 75 * D);
+    const b = S(0.66, 75 * D);
+    const tarp = polyD([a, b, g0(0.66), g0(0.22)]);
+    s += path(tarp, color, { ns: 1 });
+    let str = '';
+    for (const f of [0.18, 0.42, 0.66, 0.9]) {
+      const q1 = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+      const g1 = g0(0.22 + 0.44 * f);
+      str += `${M(...q1)}L${N(g1[0])} ${N(g1[1])}`;
+    }
+    s += line(str, WHITE, 3.2, { op: 0.9 }) + path(tarp, 'none', { sw: 1.6 });
+    const [sx, sy] = g0(0.66);
+    s += stick(`${M(sx, sy)}L${N(b[0])} ${N(b[1])}`, WOOD_D, 1.8, 1.6);
+    s += propLean('medkit', ...g0(0.4), color, 1.2);
   } else {
-    s += path(`${M(76, yc - 2)}V${N(yc - 18)}Q${N(76)} ${N(yc - 26)} ${N(83)} ${N(yc - 26)}Q${N(90)} ${N(yc - 26)} ${N(90)} ${N(yc - 18)}V${N(yc - 2)}Z`, GREEN, { sw: 1.6 }) + circ(87, yc - 11, 1.1, GOLD, { sw: 0.6 }) + path(`${M(78.5, yc - 17)}Q${N(78.5)} ${N(yc - 23)} ${N(83)} ${N(yc - 23)}Q${N(87.5)} ${N(yc - 23)} ${N(87.5)} ${N(yc - 17)}Z`, st === 3 ? LIT : GLASS, { sw: 0.9 });
-    s += circ(102, yc - 16, 4, st === 3 ? LIT : GLASS, { sw: 1.3 }) + circ(113, yc - 10, 3, st === 3 ? LIT : GLASS, { sw: 1.2 });
-    // Little striped awning over the door.
-    s += path(`${M(72, yc - 27)}L${N(94)} ${N(yc - 27)}L${N(96)} ${N(yc - 21)}L${N(70)} ${N(yc - 21)}Z`, WHITE, { sw: 1.3 }) + path(`${M(75.5, yc - 27)}h4l1 6h-5.5zM${N(84.5)} ${N(yc - 27)}h4l1.5 6h-5.5z`, GREEN, { ns: 1 });
-    s += rect(68, yc - 1, 30, 3, '#d9c48e', { sw: 1, rx: 1 });
+    s += path(decal([[0.47, -40], [0.66, -40], [0.66, 8], [0.62, 22], [0.565, 27], [0.51, 22], [0.47, 8]]), '#5fd39a', { sw: 1.5 });
+    s += line(decal([[0.565, -40], [0.565, 25]]).replace('Z', ''), '#3a9a68', 1);
+    s += circ(...S(0.62, -8 * D), 1.3, GOLD, { sw: 0.7 });
+    const [wx, wy] = S(0.38, 25 * D);
+    s += circ(wx, wy, 4, WHITE, { sw: 1.3 }) + circ(wx, wy, 2.4, NITE || st === 3 ? LIT : GLASS, { sw: 0.8 });
+    if (st === 3) s += path(decal([[0.44, 30], [0.7, 30], [0.72, 40], [0.42, 40]]), WHITE, { sw: 1.2 }) + line(decal([[0.51, 30], [0.52, 40]]).replace('Z', '') + decal([[0.6, 30], [0.61, 40]]).replace('Z', ''), GREEN, 2.4);
   }
-  // The scoop (sits on the cone's open end).
-  const sc = [[34, yc - 24, 23], [52, yc - 30, 9], [50, yc - 12, 8], [18, yc - 10, 8], [44, yc - 44, 7]];
-  s += path(cpath(sc.map(([x, y, r]) => [x, y, r + 1.1])), O, { ns: 1 });
-  s += path(cpath(sc), scoopD, { ns: 1 });
-  s += path(cpath(sc.map(([x, y, r]) => [x - r * 0.06, y - r * 0.14, r * 0.86])), scoopC, { ns: 1 });
-  s += path(`${M(56, yc - 20)}q3 8 0 14q-3 -6 0 -14z${M(48, yc - 4)}q2 6 -1 9q-2 -4 1 -9z`, scoopC, { sw: 1.2 });
-  s += ell(26, yc - 36, 7, 4, '#ffffff', { ns: 1, op: 0.55 });
-  if (st >= 2) {
-    // Sprinkles and the cross sign.
-    const sp = [[22, yc - 40, 30], [40, yc - 38, -20], [16, yc - 22, 60], [48, yc - 24, 10], [28, yc - 8, -50]];
-    s += sp.map(([x, y, r], i) => rect(x - 1.2, y - 3, 2.4, 6, CONFETTI[i % 6], { ns: 1, rx: 1, tf: `rotate(${r} ${x} ${y})` })).join('');
-    if (st === 3) s += circ(32, yc - 24, 15, '#ff6a5a', { ns: 1, op: 0.3 });
-    s += circ(32, yc - 24, 11, WHITE, { sw: 1.6 }) + path(`M29 ${N(yc - 32)}h6v5h5v6h-5v5h-6v-5h-5v-6h5z`, RED, { sw: st === 3 ? 0 : 0.9 });
-    if (st === 3) s += path(`M29 ${N(yc - 32)}h6v5h5v6h-5v5h-6v-5h-5v-6h5z`, 'none', { stroke: '#ffb0a8', sw: 0.9 });
-    // A flag on the scoop.
-    s += flag(46, yc - 46, 18, color, 1, true);
+  // Pennants along the top of the cone; a flag on top.
+  s += pennants(S(0.2, 92 * D), S(0.66, 92 * D), level, pennantCols(color), 1.5);
+  if (st > 1) {
+    const [fx, fy] = S(0.58, 90 * D);
+    s += flag(fx, fy + 1, 18, color, -1, true);
   }
-  if (st === 3) {
-    // The cherry on top, lit; bulbs along the cone.
-    s += circ(36, yc - 52, 9, '#ff6a5a', { ns: 1, op: 0.3, cls: 'ls-beacon' }) + line(`M36 ${N(yc - 54)}q2 -7 7 -9`, '#3f8a3a', 1.6) + circ(36, yc - 51, 5, RED, { sw: 1.4 }) + circ(34.5, yc - 52.5, 1.4, '#ffffff', { ns: 1 });
-    s += bulbs([0.12, 0.3, 0.48, 0.66, 0.84].map((t) => [A[0] + (T[0] - A[0]) * t, A[1] + (T[1] - A[1]) * t - 1]), true, 1.6);
-    s += bulbs([[12, yc - 30], [16, yc - 42], [26, yc - 49]], true, 1.5);
+  if (st === 3) s += bulbs([0.18, 0.32, 0.46, 0.6].map((t) => S(t, 62 * D)), true, 1.5);
+  // The scoop, still stuck in the mouth (melting while Patched).
+  const [bx, by] = F.p(C[0] + n[0] * 0.24, C[1] + n[1] * 0.24, R);
+  const rb = st === 1 ? 22 : 24;
+  const scoopC = st === 1 ? '#b4efcf' : '#8fe6b4';
+  const yb = by + (st === 1 ? 5 : 0);
+  const ry = st === 1 ? rb * 0.82 : rb;
+  // A puddle and drips on the ground, then the ball: one shade, one highlight.
+  s += ell(bx + 4, by + R + 1, st === 1 ? 24 : 17, st === 1 ? 7 : 5, scoopC, { sw: 1.4 });
+  s += path(`${M(bx - 9, yb + ry - 6)}V${N(by + R - 2)}a3 3 0 0 0 6 0V${N(yb + ry - 4)}ZM${N(bx + 9)} ${N(yb + ry - 8)}V${N(by + R - 4)}a3 3 0 0 0 6 0V${N(yb + ry - 10)}Z`, scoopC, { sw: 1.3 });
+  s += ell(bx, yb, rb, ry, dk(scoopC, 0.14), { ns: 1 }) + ell(bx - rb * 0.1, yb - ry * 0.12, rb * 0.86, ry * 0.86, scoopC, { ns: 1 }) + ell(bx, yb, rb, ry, 'none', { sw: 2 });
+  s += path(`${M(bx - rb * 0.62, yb - ry * 0.5)}Q${N(bx - rb * 0.3)} ${N(yb - ry * 0.86)} ${N(bx + rb * 0.12)} ${N(yb - ry * 0.8)}`, 'none', { stroke: '#ffffff', sw: 3, op: 0.65 });
+  if (st > 1) {
+    const sp = [[bx - 14, yb - 10, 30], [bx + 13, yb - 14, -20], [bx + 16, yb + 2, 60], [bx - 4, yb - 20, 10], [bx - 16, yb + 4, -40]];
+    s += sp.map(([x, y, a], i) => rect(x - 1.2, y - 2.6, 2.4, 5.2, CONFETTI[i], { ns: 1, rx: 1, tf: `rotate(${a} ${N(x)} ${N(y)})` })).join('');
+    if (st === 3) s += circ(bx - 1, yb + 1, 14, '#ff6a5a', { ns: 1, op: 0.3 });
+    s += circ(bx - 1, yb + 1, 10, WHITE, { sw: 1.6 }) + path(`M${N(bx - 3.8)} ${N(yb - 6.4)}h5.6v4.6h4.6v5.6h-4.6v4.6h-5.6v-4.6h-4.6v-5.6h4.6z`, RED, { sw: 1 });
+    if (st === 3) {
+      const r2 = 15;
+      const y2 = yb - rb - 6;
+      s += ell(bx + 2, y2, r2, r2 * 0.92, dk('#ff9ccb', 0.12), { ns: 1 }) + ell(bx + 0.5, y2 - 1.5, r2 * 0.86, r2 * 0.8, '#ff9ccb', { ns: 1 }) + ell(bx + 2, y2, r2, r2 * 0.92, 'none', { sw: 2 }) + path(`${M(bx - 11, y2 + 9)}q4 5 8 1q4 5 9 0q4 4 8 -1`, 'none', { stroke: dk('#ff9ccb', 0.2), sw: 1.4 });
+      const cy = y2 - r2 - 2;
+      s += circ(bx + 3, cy, 10, '#ff6a5a', { ns: 1, op: 0.3, cls: 'ls-beacon' }) + line(`${M(bx + 3, cy - 4)}q2 -6 6 -8`, '#3f8a3a', 1.6) + circ(bx + 3, cy + 1, 5.5, RED, { sw: 1.4 }) + circ(bx + 1.5, cy - 0.5, 1.5, '#ffffff', { ns: 1 });
+    }
   }
-  s += pennants([A[0] + 4, A[1] + 1], [T[0] - 4, T[1] - 1], level, pennantCols(color), 4);
-  if (level >= 7) s += goldTrim(`${M(...A)}L${N(B[0])} ${N(B[1])}`) + star(110, yc - 30, 5, GOLD);
-  return { svg: svgWrap(F.W, F.H, s, `ls-bld ls-tent ls-st${st}`), artH: F.H, bodyH: 48 };
+  if (level >= 7) {
+    const top = Array.from({ length: 5 }, (_, k) => S(0.1 + k * 0.15, 95 * D));
+    s += goldTrim(polyD(top, false)) + star(bx + 18, yb - rb - 2, 5, GOLD);
+  }
+  return { svg: svgWrap(F.W, F.H, s, `ls-bld ls-tent ls-st${st}`), artH: F.H, bodyH: 50 };
 }
 
 /** The Junk Garage (2×2, Tinkers): car on blocks → shed with a crane → wrecking ball and neon wrench. */
@@ -1124,23 +1353,22 @@ function junkGarage(level, color) {
   const cls = CLASSES.tinker.color;
   let s = '';
   if (st === 1) {
-    s += tyres(...F.p(0.3, 0.3), 3, 7) + drum(...F.p(1.65, 0.35), '#a0643a', 12, 5.5);
+    s += tyres(...F.p(0.3, 0.3), 3, 7) + drum(...F.p(1.65, 0.35), BUBBLE, 12, 5.5);
     const [ox, oy] = F.p(1.0, 1.05);
     s += ell(ox, oy, 26, 10, '#3b3530', { ns: 1, op: 0.35 });
     const blk = (u, v) => box(F, u, v, u + 0.14, v + 0.12, 0, 7, '#a8a294', { sw: 1.3 });
     s += blk(0.5, 0.72) + blk(1.38, 0.72) + blk(0.5, 1.22) + blk(1.38, 1.22);
-    const carC = '#6fa3a0';
-    const LWc = 1.2 * 32;
-    const clf = path('M5 12Q5 5 11 5Q17 5 17 12Z', '#2e2a28', { sw: 1 }) + path('M23 12Q23 5 29 5Q35 5 35 12Z', '#2e2a28', { sw: 1 }) + rect(14, 3, 6, 4, '#a0643a', { ns: 1, op: 0.8 }) + line('M20 1V12', O, 0.9, { op: 0.5 });
+    const carC = TEAL;
+    const clf = path('M5 12Q5 5 11 5Q17 5 17 12Z', '#2e2a28', { sw: 1 }) + path('M23 12Q23 5 29 5Q35 5 35 12Z', '#2e2a28', { sw: 1 }) + rect(18, 1, 5, 11, color, { sw: 0.9 }) + line('M20 1V12', O, 0.9, { op: 0.5 });
     const crf = circ(4, 5, 2.4, '#f3edc8', { sw: 1 }) + circ(16.5, 5, 2.4, '#f3edc8', { sw: 1 }) + rect(7.5, 4, 6, 4, STEEL, { sw: 0.8 });
     s += box(F, 0.4, 0.7, 1.6, 1.35, 7, 12, carC, { lf: clf, rf: crf, top: lt(carC, 0.25) });
     s += box(F, 0.62, 0.76, 1.12, 1.3, 19, 11, carC, { lf: rect(2, 1.5, 12, 8, GLASS, { sw: 1 }), rf: rect(2, 1.5, 13.5, 8, GLASS, { sw: 1 }), top: lt(carC, 0.3) });
     // The hood, propped open.
-    s += face(F, [[1.22, 0.72, 19], [1.22, 1.33, 19], [1.3, 1.33, 36], [1.3, 0.72, 36]], lt(carC, 0.1), { sw: 1.4 });
+    s += face(F, [[1.22, 0.72, 19], [1.22, 1.33, 19], [1.3, 1.33, 36], [1.3, 0.72, 36]], LEMON, { sw: 1.4 });
     s += box(F, 1.5, 1.5, 1.82, 1.7, 0, 6, RED, { top: lt(RED, 0.3), sw: 1.4 });
-    s += propLean('wrench', ...F.p(1.66, 1.62, 6), color);
+    s += propLean('wrench', ...F.p(1.66, 1.62, 6), color, 1.1);
     s += pennants(F.p(0.62, 1.3, 30), F.p(1.3, 1.33, 36), level, pennantCols(color), 3);
-    s += tufts([F.p(0.2, 1.8), F.p(1.85, 1.2)], OLIVE);
+    s += tufts([F.p(0.2, 1.8), F.p(1.85, 1.2)], GRASS_D);
   } else {
     const u0 = 0.2;
     const v0 = 0.2;
@@ -1154,7 +1382,7 @@ function junkGarage(level, color) {
     s += shadowBox(F, u0, v0, u1, v1);
     s += box(F, u0, v0, u1, v1, 0, zH, cls, { lf, rf, top: 'none' });
     const gf = st === 3 ? '' : g(path('M-6 0L-1 -5L1 -3L-4 2ZM-2 -4Q-3 -8 1 -9L2 -7L4 -6L5 -8Q8 -6 5 -2Q3 -1 1 -3Z', STEEL, { sw: 1 }), { tf: `translate(${N(LW / 2)} -8) scale(1.2)` });
-    s += roofV(F, u0, v0, u1, v1, zH, 16, st === 3 ? PURPLE : RED, { wall: cls, gf, tex: 'tin' });
+    s += roofV(F, u0, v0, u1, v1, zH, 16, color === cls ? RED : color, { wall: cls, gf, tex: 'tin' });
     // Crane: mast at the back-right, jib out over the yard.
     const [mx, my] = F.p(1.55, 0.42);
     const mt = my - 76;
@@ -1182,7 +1410,7 @@ function junkGarage(level, color) {
       s += g(line(wd, YELLOW, 6, { op: 0.3 }) + line(wd, O, 4.4) + line(wd, YELLOW, 2.4) + line(wd, '#ffffff', 0.8), { tf: `translate(${N(gx)} ${N(gy)})` });
       s += lights([mx, mt + 4], F.p((u0 + u1) / 2, v0 + 0.3, zH + 15), 8, 6);
     }
-    s += propLean('wrench', ...F.p(1.25, 1.75), color);
+    s += propLean('wrench', ...F.p(1.25, 1.75), color, 1.1);
     const rg = roofVGeo(u0, v0, u1, v1, zH, 16);
     s += pennants(F.p(rg.a, rg.q, rg.ze), F.p(rg.um, rg.q, rg.zt), level, pennantCols(color), 3);
     if (level >= 7) s += goldTrim(`M${xy(F, rg.a, rg.q, rg.ze)}L${xy(F, rg.um, rg.q, rg.zt)}L${xy(F, rg.b, rg.q, rg.ze)}`);
@@ -1194,12 +1422,18 @@ function junkGarage(level, color) {
  * A building's art. id: bigtop (Gas Station, 3×3), crate (Drop Pad), vault (Bank Vault),
  * striker (Batting Cage), gallery (Tin Can Range), tent (Ice Cream Clinic), garage (Junk
  * Garage), all 2×2. level 1..7 picks the look stage (STAGES) and the pennant count; Lv 7
- * adds gold trim. color = the town colour (paint, pennants); town = the town name (the Gas
- * Station sign shows it from Fixed up on). Optional flags (Gas Station): zone flags on its pole.
+ * adds gold trim. color = the town colour (paint, pennants, the Patched candy planks); town =
+ * the town name (the Gas Station sign: "LAST STOP" while Patched, the name from Fixed up on,
+ * whole words up to 10 characters, else 9 and an ellipsis). Optional: flags (Gas Station: zone
+ * flags on its pole), night (lit windows and lamps). Returns { svg, artH, bodyH, top }.
  */
-export function buildingArt(id, level = 1, { town = '', color = RED, flags = 1 } = {}) {
+export function buildingArt(id, level = 1, { town = '', color = RED, flags = 1, night = false } = {}) {
   const lv = Math.max(1, Math.min(7, Math.round(Number(level) || 1)));
   const c = paint(color);
+  const r = withNight(night, () => building(id, lv, c, town, flags));
+  return { ...r, top: topOf(`b:${BH[id] ? id : 'x'}:${STAGES[lv]}`, r.artH) };
+}
+function building(id, lv, c, town, flags) {
   switch (id) {
     case 'bigtop':
       return gasStation(lv, c, town, flags);
@@ -1222,23 +1456,22 @@ export function buildingArt(id, level = 1, { town = '', color = RED, flags = 1 }
 
 // --- Homes ------------------------------------------------------------------------------------
 
-const HOME_H = { tent: 104, shack: 118, cabin: 128, cottage: 140, tower: 166, gold: 172 };
-/** The spot in front of each tier's door (tile-local; just outside the 2×2 footprint, where a walker stands). */
-const HOME_DOOR = { tent: [1.0, 2.1], shack: [1.2, 2.1], cabin: [1.05, 2.1], cottage: [1.3, 2.1], tower: [1.4, 2.1], gold: [1.4, 2.1] };
+const HOME_H = { tent: 104, shack: 118, cabin: 128, cottage: 140, tower: 166, gold: 184 };
+/**
+ * Where a walker stands at each tier's door (tile-local, outside the 2×2 footprint). u + v is
+ * at least 3.65, so the engine's walker depth ((fi + fj)·10 + 5) sorts the figure in front of
+ * the home ((i + j + 4)·10); a spot closer to the wall would draw behind it.
+ */
+const HOME_DOOR = { tent: [1.0, 2.66], shack: [1.22, 2.44], cabin: [1.05, 2.61], cottage: [1.3, 2.36], tower: [1.4, 2.26], gold: [1.4, 2.26] };
 
-/** Heart plaques in a row (face-local), centred on cx at y. */
-function heartRow(n, cx, y, k = 1) {
+/** Heart plaques in a row on a little board (face-local), centred on cx at y. */
+function heartRow(n, cx, y, k = 1.1) {
   if (n <= 0) return '';
-  const gap = 6 * k;
+  const gap = 6.4 * k;
   const x0 = cx - ((n - 1) * gap) / 2;
-  let plaque = '';
   let hearts = '';
-  for (let i = 0; i < n; i++) {
-    const x = x0 + i * gap;
-    plaque += `${M(x - 2.6 * k, y - 2.6 * k)}h${N(5.2 * k)}v${N(5.2 * k)}h${N(-5.2 * k)}z`;
-    hearts += heartD(x, y + 0.2 * k, 1.9 * k);
-  }
-  return path(plaque, WHITE, { sw: 0.8 }) + path(hearts, '#ff4f6d', { ns: 1 });
+  for (let i = 0; i < n; i++) hearts += heartD(x0 + i * gap, y + 0.2 * k, 2.3 * k);
+  return rect(x0 - gap / 2 - 0.5, y - 3.6 * k, n * gap + 1, 7.2 * k, WOOD_L, { sw: 0.9, rx: 1 }) + path(hearts, '#ff3d64', { sw: 0.7 });
 }
 
 function homeOwner(person, o) {
@@ -1246,6 +1479,7 @@ function homeOwner(person, o) {
   const C = CLASSES[cls];
   const look = (person && person.look) || {};
   const prop = C.props[look.prop] || C.props[0];
+  const nm = o.name ?? (person && person.first) ?? '';
   return {
     cls,
     col: C.color,
@@ -1257,6 +1491,8 @@ function homeOwner(person, o) {
     hearts: Math.max(0, Math.min(5, Math.round(Number(o.hearts) || 0))),
     golden: o.golden ?? !!(person && person.golden),
     legend: o.legend ?? !!(person && person.rarity === 'legend'),
+    wish: !!o.wish,
+    name: String(nm).toUpperCase().slice(0, 7),
   };
 }
 
@@ -1265,6 +1501,7 @@ function roofTop(W, a, b) {
   if (W.mascot >= 0) return ears(W.mascot, a, b);
   return weathervane(a[0], a[1], W.hat, W.col);
 }
+const box2 = (W, F, u, v) => mailbox(...F.p(u, v), W.golden, W.wish, W.name);
 
 function tentHome(F, W) {
   const c = W.col;
@@ -1284,7 +1521,7 @@ function tentHome(F, W) {
   s += face(F, [[u1 - 0.12, v0, 4.2], [u1, v0, 0], [u1, v1, 0], [u1 - 0.12, v1, 4.2]], dk(c, 0.35), { ns: 1 });
   // The front with its door flaps.
   s += face(F, [[u0, v1, 0], [u1, v1, 0], [um, v1, zt]], c, { sw: 1.4 });
-  s += face(F, [[0.74, v1, 0], [1.26, v1, 0], [um, v1, 22]], '#3b2c24', { sw: 1.1 });
+  s += face(F, [[0.74, v1, 0], [1.26, v1, 0], [um, v1, 22]], NITE ? '#c9902a' : '#3b2c24', { sw: 1.1 });
   s += face(F, [[0.74, v1, 0], [0.84, v1, 0], [um, v1, 22], [0.62, v1, 6]], lt(c, 0.25), { sw: 1 });
   s += face(F, [[1.26, v1, 0], [1.16, v1, 0], [um, v1, 22], [1.38, v1, 6]], lt(c, 0.15), { sw: 1 });
   s += face(F, [[u0, v1 + 0.02, 0], [u1, v1 + 0.02, 0], [u1, v1 + 0.02, 3], [u0, v1 + 0.02, 3]], dk(c, 0.3), { ns: 1 });
@@ -1292,14 +1529,14 @@ function tentHome(F, W) {
   // Pole tip and front guy line.
   const [ax, ay] = F.p(um, v1, zt);
   s += stick(`${M(ax, ay)}V${N(ay - 5)}`, WOOD, 1.6, 1.6) + line(`${M(ax, ay - 2)}L${xy(F, 0.55, 1.9)}`, '#e8e2d6', 1);
-  // Hearts on a little stake sign, the prop, the mailbox.
+  // Hearts on a stake sign, the prop, the mailbox.
   if (W.hearts) {
-    const [hx, hy] = F.p(1.78, 1.62);
-    s += stick(`${M(hx, hy)}V${N(hy - 12)}`, WOOD, 1.6, 1.6) + onL(F, 1.78 - (W.hearts * 6 + 3) / 64, 1.62, 18, rect(0, 0, W.hearts * 6 + 3, 8, WOOD_L, { sw: 1 }) + heartRow(W.hearts, (W.hearts * 6 + 3) / 2, 4, 0.9));
+    const [hx, hy] = F.p(1.8, 1.66);
+    s += stick(`${M(hx, hy)}V${N(hy - 13)}`, WOOD, 1.8, 1.6) + heartRow(W.hearts, hx, hy - 16, 1.05);
   }
-  s += propLean(W.prop, ...F.p(1.5, 1.62), W.col);
-  s += mailbox(...F.p(0.32, 1.82), W.golden);
-  if (W.legend) s += goldTrim(`M${xy(F, u0, v1, 0)}L${xy(F, um, v1, zt)}L${xy(F, u1, v1, 0)}`) + star(ax, ay - 8, 4.5, GOLD);
+  s += propLean(W.prop, ...F.p(1.5, 1.66), W.col);
+  s += box2(W, F, 0.3, 1.82);
+  if (W.legend) s += goldTrim(`M${xy(F, u0, v1, 0)}L${xy(F, um, v1, zt)}L${xy(F, u1, v1, 0)}`) + star(ax, ay - 9, 5, GOLD);
   return { s, bodyH: 32 };
 }
 
@@ -1313,7 +1550,7 @@ function shackHome(F, W) {
   const LW = (u1 - u0) * 32;
   const RW = (v1 - v0) * 32;
   let s = shadowBox(F, u0, v0, u1, v1);
-  const lf = hlines(LW, zLo, 6, O, 0.28) + rect(3, 8, 9, 9, STEEL, { sw: 1 }) + door(19, 7, 11, zLo - 7, '#a8763f') + line(`M20.5 9L28.5 ${zLo - 2}`, WOOD_D, 1.2) + heartRow(W.hearts, 24.5, 3.2, 0.75);
+  const lf = hlines(LW, zLo, 6, O, 0.28) + rect(3, 8, 9, 9, STEEL, { sw: 1 }) + door(19, 9, 11, zLo - 9, '#a8763f') + line(`M20.5 11L28.5 ${zLo - 2}`, WOOD_D, 1.2) + heartRow(W.hearts, LW / 2, 4.2, 0.95);
   const rf = hlines(RW, zLo, 6, O, 0.28) + win(10, 6, 11, 10, { frame: WOOD_L }) + rect(21, 6, 4.5, 10, W.col, { sw: 1 });
   s += box(F, u0, v0, u1, v1, 0, zLo, PLANK, { lf, rf, top: 'none' });
   s += face(F, [[u0, v1, zLo], [u1, v1, zLo], [u0, v1, zHi]], PLANK, { sw: 1.2 });
@@ -1321,9 +1558,9 @@ function shackHome(F, W) {
   // Stovepipe with a puff.
   const [sx, sy] = F.p(0.75, 0.7, 31);
   s += rect(sx - 2.5, sy - 12, 5, 12, STEEL_D, { sw: 1.3 }) + rect(sx - 4, sy - 14, 8, 3, '#5a5f6e', { sw: 1.2 }) + path(cpath([[sx + 3, sy - 19, 2.6], [sx + 7, sy - 23, 3.2]]), '#ffffff', { sw: 1, op: 0.85 });
-  s += roofTop(W, F.p(0.5, 1.1, 34), F.p(0.5, 0.75, 34));
-  s += propLean(W.prop, ...F.p(u0 + 31 / 32 + 0.05, v1 + 0.06), W.col);
-  s += mailbox(...F.p(0.3, 1.82), W.golden);
+  s += roofTop(W, F.p(0.55, 1.15, 34), F.p(0.55, 0.78, 34));
+  s += propLean(W.prop, ...F.p(u0 + 34 / 32 + 0.05, v1 + 0.08), W.col);
+  s += box2(W, F, 0.3, 1.82);
   if (W.legend) s += goldTrim(`M${xy(F, u0 - 0.1, v1 + 0.1, zHi + 1)}L${xy(F, u1 + 0.1, v1 + 0.1, zLo - 1)}L${xy(F, u1 + 0.1, v0 - 0.1, zLo - 1)}`);
   return { s, bodyH: 34 };
 }
@@ -1340,12 +1577,12 @@ function cabinHome(F, W) {
   const LOG = '#b0703c';
   let s = shadowBox(F, u0, v0, u1, v1 + 0.45);
   const logs = (w) => hlines(w, zH, 4.8, '#6b3f1c', 0.75) + path(cpath(Array.from({ length: 5 }, (_, i) => [1.6, 2.4 + i * 4.8, 2])), '#d9a46a', { sw: 0.8 });
-  const lf = logs(LW) + door(16, 6, 12, zH - 6, '#7a4a24', { glass: true }) + heartRow(W.hearts, 22, 2.6, 0.72) + win(31, 7, 9, 9, { frame: WOOD_L });
+  const lf = logs(LW) + door(16, 8, 12, zH - 8, '#7a4a24', { glass: true }) + heartRow(W.hearts, 22, 3.6, 0.85) + win(31, 7, 9, 9, { frame: WOOD_L });
   const rf = logs(RW) + win(10, 6, 12, 10, { frame: WOOD_L });
   s += box(F, u0, v0, u1, v1, 0, zH, LOG, { lf, rf, top: 'none' });
   // Porch deck, prop, posts.
   s += box(F, u0, v1, u1, v1 + 0.48, 0, 4, WOOD_L, { top: '#e9bf86', tf: vlines(LW, 15, 5, WOOD_D, 0.5), sw: 1.6 });
-  s += propLean(W.prop, ...F.p(u0 + 30 / 32, v1 + 0.12, 4), W.col);
+  s += propLean(W.prop, ...F.p(u0 + 31 / 32, v1 + 0.14, 4), W.col);
   for (const u of [u0 + 0.07, u1 - 0.07]) {
     const [x, y] = F.p(u, v1 + 0.42, 4);
     s += stick(`${M(x, y)}V${N(y - zH + 3)}`, WOOD, 2.2, 1.8);
@@ -1355,8 +1592,8 @@ function cabinHome(F, W) {
   // Stone chimney on the visible slope.
   const zc = rg.zt - (rh * (1.38 - rg.um)) / (u1 - rg.um);
   s += box(F, 1.3, 0.42, 1.46, 0.58, zc - 6, 18, '#a8a294', { lf: hlines(5, 18, 4.5, O, 0.3), top: '#6a6460', sw: 1.6 });
-  s += roofTop(W, F.p(rg.um, 0.42, rg.zt), F.p(rg.um, 1.45, rg.zt));
-  s += mailbox(...F.p(0.25, 1.86), W.golden);
+  s += roofTop(W, F.p(rg.um, 0.45, rg.zt), F.p(rg.um, 1.45, rg.zt));
+  s += box2(W, F, 0.25, 1.86);
   if (W.legend) s += goldTrim(`M${xy(F, rg.a, rg.q, rg.ze)}L${xy(F, rg.um, rg.q, rg.zt)}L${xy(F, rg.b, rg.q, rg.ze)}L${xy(F, rg.b, rg.p, rg.ze)}`);
   return { s, bodyH: 46 };
 }
@@ -1376,18 +1613,25 @@ function cottageHome(F, W) {
   const lf = line(`M0 1V${zH}M${N(LW)} 1V${zH}`, timber, 3) + win(4, 7, 13, 12) + box1(4) + door(26, 6, 12, zH - 6, W.col, { arch: true, glass: true });
   const rf = line(`M0 1V${zH}M${N(RW)} 1V${zH}`, timber, 3) + win(6, 7, 10, 11) + rect(2.5, 7, 3.5, 11, W.col, { sw: 0.9 }) + rect(16, 7, 3.5, 11, W.col, { sw: 0.9 }) + win(23, 7, 9, 11);
   s += box(F, u0, v0, u1, v1, 0, zH, CREAM, { lf, rf, top: 'none' });
-  s += roofV(F, u0, v0, u1, v1, zH, rh, W.roof, { wall: CREAM, tex: 'shingle', gf: line(`M3 -2H${N(LW - 3)}`, timber, 2) + heartRow(W.hearts, LW / 2, -7, 0.85) + circ(LW / 2, -16, 3.6, GLASS, { sw: 1.1 }) });
+  s += roofV(F, u0, v0, u1, v1, zH, rh, W.roof, { wall: CREAM, tex: 'shingle', gf: line(`M3 -2H${N(LW - 3)}`, timber, 2) + heartRow(W.hearts, LW / 2, -7.5, 1) + circ(LW / 2, -17, 3.6, GLASS, { sw: 1.1 }) });
   const rg = roofVGeo(u0, v0, u1, v1, zH, rh);
   const zc = rg.zt - (rh * (1.35 - rg.um)) / (u1 - rg.um);
   s += box(F, 1.28, 0.45, 1.44, 0.6, zc - 6, 20, BRICK, { lf: hlines(5, 20, 4, '#7a2e1e', 0.5), top: '#5a3a30', sw: 1.6 });
-  s += roofTop(W, F.p(rg.um, 0.42, rg.zt), F.p(rg.um, 1.4, rg.zt));
+  s += roofTop(W, F.p(rg.um, 0.45, rg.zt), F.p(rg.um, 1.38, rg.zt));
   // Class flag on a pole beside the house.
   const [fx, fy] = F.p(1.86, 0.42);
-  s += flag(fx, fy, 40, W.col, 1);
-  s += propLean(W.prop, ...F.p(u0 + 39.5 / 32, v1 + 0.08), W.col);
-  s += mailbox(...F.p(0.24, 1.84), W.golden);
+  s += flag(fx, fy, 42, W.col, 1);
+  s += propLean(W.prop, ...F.p(u0 + 41 / 32, v1 + 0.1), W.col);
+  s += box2(W, F, 0.24, 1.84);
   if (W.legend) s += goldTrim(`M${xy(F, rg.a, rg.q, rg.ze)}L${xy(F, rg.um, rg.q, rg.zt)}L${xy(F, rg.b, rg.q, rg.ze)}L${xy(F, rg.b, rg.p, rg.ze)}`);
   return { s, bodyH: 56 };
+}
+
+/** An onion dome over a screen ellipse (cx, cy, rx), rising h; one shade and one highlight. */
+function dome(cx, cy, rx, h, c) {
+  const d = `${M(cx - rx, cy)}C${N(cx - rx * 1.15)} ${N(cy - h * 0.55)} ${N(cx - rx * 0.25)} ${N(cy - h * 0.7)} ${N(cx)} ${N(cy - h)}C${N(cx + rx * 0.25)} ${N(cy - h * 0.7)} ${N(cx + rx * 1.15)} ${N(cy - h * 0.55)} ${N(cx + rx)} ${N(cy)}A${N(rx)} ${N(rx / 2)} 0 0 1 ${N(cx - rx)} ${N(cy)}Z`;
+  const sh = `${M(cx + rx * 0.15, cy + rx * 0.5)}C${N(cx + rx * 0.35)} ${N(cy - h * 0.3)} ${N(cx + rx * 0.2)} ${N(cy - h * 0.62)} ${N(cx)} ${N(cy - h)}C${N(cx + rx * 0.25)} ${N(cy - h * 0.7)} ${N(cx + rx * 1.15)} ${N(cy - h * 0.55)} ${N(cx + rx)} ${N(cy)}A${N(rx)} ${N(rx / 2)} 0 0 1 ${N(cx + rx * 0.15)} ${N(cy + rx * 0.5)}Z`;
+  return path(d, c, { ns: 1 }) + path(sh, dk(c, 0.18), { ns: 1 }) + line(`${M(cx - rx * 0.6, cy - h * 0.2)}Q${N(cx - rx * 0.55)} ${N(cy - h * 0.55)} ${N(cx - rx * 0.15)} ${N(cy - h * 0.78)}`, '#fff3b0', 2.4, { op: 0.85 }) + path(d, 'none', { sw: 2 });
 }
 
 function towerHome(F, W, gold) {
@@ -1405,58 +1649,74 @@ function towerHome(F, W, gold) {
   const LW = (u1 - u0) * 32;
   const RW = (v1 - v0) * 32;
   const stone = gold ? WHITE : '#d8cfc0';
-  const roofC = gold ? GOLD : W.roof;
   const trimC = gold ? GOLD : '#8a5a34';
   let s = shadowBox(F, u0, v0, u1, v1);
   const stones = (w) => path(cpath([[6, 20, 2.4], [w - 8, 10, 2.2], [w * 0.5, 23, 2]]), dk(stone, 0.12), { sw: 0.8 });
-  const lf = stones(LW) + win(4, 8, 12, 11, { lit: gold }) + door(29, 6, 12, z1 - 6, W.col, { arch: true, glass: true, lit: gold }) + heartRow(W.hearts, 22, 3, 0.75);
+  const lf = stones(LW) + win(4, 8, 12, 11, { lit: gold }) + door(29, 8, 12, z1 - 8, W.col, { arch: true, glass: true, lit: gold }) + heartRow(W.hearts, 22, 3.4, 0.85);
   const rf = stones(RW) + win(12, 8, 13, 11, { lit: gold });
   s += box(F, u0, v0, u1, v1, 0, z1, stone, { lf, rf, top: gold ? '#fff4c8' : '#e8e0d2' });
   // The terrace rail on the ground floor's roof.
   const rail = `M${xy(F, u0 + 0.04, v1 - 0.04, z1 + 7)}L${xy(F, u1 - 0.04, v1 - 0.04, z1 + 7)}L${xy(F, u1 - 0.04, v0 + 0.04, z1 + 7)}`;
-  // Upper floor.
+  // Upper floor (gold: a banner in the class colour down its front).
   const L2 = (a1 - a0) * 32;
   const R2 = (b1 - b0) * 32;
   const upC = gold ? '#fff6dc' : CREAM;
-  const lf2 = line(`M0 1V${z2 - z1}M${N(L2)} 1V${z2 - z1}`, trimC, 3) + win(6, 6, 10, 12, { lit: gold }) + win(19, 6, 10, 12, { lit: gold }) + (gold ? rect(L2 / 2 - 4.5, 2, 9, 22, W.col, { sw: 1.2 }).replace('/>', '/>') + path(`M${N(L2 / 2 - 4.5)} 24l4.5 -4l4.5 4z`, upC, { ns: 1 }) + star(L2 / 2, 9, 3.2, GOLD, { sw: 0.8 }) : '');
-  const rf2 = line(`M0 1V${z2 - z1}M${N(R2)} 1V${z2 - z1}`, trimC, 3) + circ(R2 / 2, 11, 5, gold ? LIT : GLASS, { sw: 1.3 });
-  s += box(F, a0, b0, a1, b1, z1, z2 - z1, upC, { lf: lf2, rf: rf2, top: 'none' });
+  const lf2 = line(`M0 1V${z2 - z1}M${N(L2)} 1V${z2 - z1}`, trimC, 3) + win(6, 6, 10, 12, { lit: gold }) + win(19, 6, 10, 12, { lit: gold });
+  const rf2 = line(`M0 1V${z2 - z1}M${N(R2)} 1V${z2 - z1}`, trimC, 3) + circ(R2 / 2, 11, 5, gold ? LIT : NITE ? LIT : GLASS, { sw: 1.3 });
+  s += box(F, a0, b0, a1, b1, z1, z2 - z1, upC, { lf: lf2, rf: rf2, top: gold ? '#ffe9a0' : 'none' });
   s += line(rail, O, 2.8) + line(rail, gold ? GOLD : WOOD_L, 1.3);
   for (const [u, v] of [[u0 + 0.04, v1 - 0.04], [(u0 + u1) / 2, v1 - 0.04], [u1 - 0.04, v1 - 0.04], [u1 - 0.04, (v0 + v1) / 2], [u1 - 0.04, v0 + 0.04]]) s += line(`M${xy(F, u, v, z1)}L${xy(F, u, v, z1 + 7)}`, O, 1.4);
-  s += roofHip(F, a0, b0, a1, b1, z2, rh, roofC, { ov: 0.12 });
-  if (gold) s += line(`M${xy(F, a0, b1 + 0.12, z2)}L${xy(F, (a0 + a1) / 2, (b0 + b1) / 2, z2 + rh - 2)}`, '#fff3b0', 2, { op: 0.8 });
-  const [ax, ay] = F.p((a0 + a1) / 2, (b0 + b1) / 2, z2 + rh);
   const um = (a0 + a1) / 2;
   const vm = (b0 + b1) / 2;
-  s += W.mascot >= 0 ? ears(W.mascot, F.p(um - 0.04, vm + 0.2, z2 + rh - 11), F.p(um + 0.2, vm - 0.04, z2 + rh - 11)) : roofTop(W, [ax, ay + 1]);
+  if (gold) {
+    // The golden house: an onion dome and a spire with a star (a silhouette no other tier has).
+    const [cx, cy] = F.p(um, vm, z2);
+    s += dome(cx, cy + 1, 25, 40, GOLD);
+    s += stick(`${M(cx, cy - 39)}V${N(cy - 44)}`, GOLD, 2, 1.8) + circ(cx, cy - 45, 2.6, '#fff3b0', { sw: 1.2 });
+    // Banners in the class colour hanging from the terrace.
+    for (const u of [a0 + 0.12, a1 - 0.12]) {
+      const [bx, by] = F.p(u, v1 + 0.02, z1 + 6);
+      s += path(`${M(bx - 4, by)}L${N(bx + 4)} ${N(by + 4)}V${N(by + 18)}L${N(bx)} ${N(by + 14)}L${N(bx - 4)} ${N(by + 14)}Z`, W.col, { sw: 1.2 }) + circ(bx, by + 6, 1.6, GOLD, { ns: 1 });
+    }
+    s += sparkle(cx - 34, cy - 18, 4) + sparkle(cx + 32, cy - 6, 3.4) + sparkle(cx - 40, cy + 30, 3);
+    if (W.mascot >= 0) s += ears(W.mascot, F.p(um - 0.3, vm + 0.3, z2 + 3), F.p(um + 0.3, vm - 0.3, z2 + 3)) + star(cx, cy - 51, 6, '#fff3b0', { sw: 1.3 });
+    else s += weathervane(cx, cy - 46, W.hat, W.col);
+  } else {
+    s += roofHip(F, a0, b0, a1, b1, z2, rh, W.roof, { ov: 0.12 });
+    const [ax, ay] = F.p(um, vm, z2 + rh);
+    s += W.mascot >= 0 ? ears(W.mascot, F.p(um - 0.04, vm + 0.2, z2 + rh - 11), F.p(um + 0.2, vm - 0.04, z2 + rh - 11)) : roofTop(W, [ax, ay + 1]);
+    if (W.legend) s += star(ax, ay - 2, 5, GOLD);
+  }
   // Class flag on the terrace corner.
   const [fx, fy] = F.p(u1 - 0.1, v1 - 0.1, z1);
-  s += flag(fx, fy, 26, W.col, 1, true);
-  s += propLean(W.prop, ...F.p(u0 + 42 / 32 + 0.05, v1 + 0.07), W.col);
-  s += mailbox(...F.p(0.22, 1.86), W.golden);
-  if (gold) s += sparkle(ax - 22, ay + 6, 4) + sparkle(ax + 24, ay + 16, 3.4) + sparkle(ax - 30, ay + 40, 3);
-  if (W.legend || gold) s += goldTrim(`M${xy(F, a0 - 0.12, b1 + 0.12, z2 - 2)}L${xy(F, a1 + 0.12, b1 + 0.12, z2 - 2)}L${xy(F, a1 + 0.12, b0 - 0.12, z2 - 2)}`) + (W.legend ? star(ax, ay - 2, 4.5, GOLD) : '');
-  return { s, bodyH: 80 };
+  s += flag(fx, fy, 28, W.col, 1, true);
+  s += propLean(W.prop, ...F.p(u0 + 45 / 32 + 0.05, v1 + 0.09), W.col);
+  s += box2(W, F, 0.22, 1.86);
+  if (W.legend || gold) s += goldTrim(`M${xy(F, u0, v1, z1)}L${xy(F, u1, v1, z1)}L${xy(F, u1, v0, z1)}`);
+  return { s, bodyH: gold ? 100 : 80 };
 }
 
 /**
  * A survivor's home (2×2). tier: tent | shack | cabin | cottage | tower | gold (HOME_TIERS).
- * person: a generated survivor (class colour, hat, mascot, prop). o: roof (a colour shared by
- * siblings; default the class colour), hearts (0..5 plaques by the door), golden (golden
- * mailbox; default person.golden), legend (gold trim; default person.rarity === 'legend').
- * Returns { svg, artH, bodyH, door: [u, v] } (door = tile-local spot in front of the door).
+ * person: a generated survivor (class colour, hat, mascot, prop, first name). o: roof (a colour
+ * shared by siblings; default the class colour), hearts (0..5 plaques by the door), golden
+ * (golden mailbox; default person.golden), legend (gold trim; default person.rarity ===
+ * 'legend'), wish (the mailbox flag goes up), name (on the mailbox; default person.first),
+ * night (lit windows). Returns { svg, artH, bodyH, top, door: [u, v] } (door = tile-local spot
+ * in front of the door; top = the art's highest point in its viewBox, for bubbles).
  */
 export function homeArt(person, tier = 'tent', o = {}) {
   const t = HOME_H[tier] ? tier : 'tent';
   const W = homeOwner(person, o || {});
   const F = frame(2, 2, HOME_H[t]);
-  let r;
-  if (t === 'tent') r = tentHome(F, W);
-  else if (t === 'shack') r = shackHome(F, W);
-  else if (t === 'cabin') r = cabinHome(F, W);
-  else if (t === 'cottage') r = cottageHome(F, W);
-  else r = towerHome(F, W, t === 'gold');
-  return { svg: svgWrap(F.W, F.H, r.s, `ls-home ls-${t}${W.legend ? ' ls-legend' : ''}`), artH: F.H, bodyH: r.bodyH, door: HOME_DOOR[t].slice() };
+  const r = withNight(o && o.night, () => {
+    if (t === 'tent') return tentHome(F, W);
+    if (t === 'shack') return shackHome(F, W);
+    if (t === 'cabin') return cabinHome(F, W);
+    if (t === 'cottage') return cottageHome(F, W);
+    return towerHome(F, W, t === 'gold');
+  });
+  return { svg: svgWrap(F.W, F.H, r.s, `ls-home ls-${t}${W.legend ? ' ls-legend' : ''}`), artH: F.H, bodyH: r.bodyH, top: topOf(`h:${t}`, F.H), door: HOME_DOOR[t].slice() };
 }
 
 // --- Landmarks --------------------------------------------------------------------------------
@@ -1491,8 +1751,27 @@ const planksX = (x, y, w, h) => rect(x, y + h * 0.2, w, 3.6, WOOD_L, { sw: 1, tf
 /** Weeds at the given tile-local points. */
 const weeds = (F, pts) => tufts(pts.map(([u, v]) => F.p(u, v)), OLIVE, 1.2);
 
+/** The Water Tower's tank (shared with BOSS_SPOT): centre x, bottom and top y above the ground point, radii. */
+const TANK = { yb: 130, yt: 196, rx: 54, ry: 26 };
+
+/**
+ * Letters painted round a cylinder (a tank): spaced evenly by angle about the front, each
+ * standing upright on the ellipse through (cx, yc) and squeezed by its foreshortening.
+ */
+function arcText(cx, yc, rx, ry, s, fs, fill, ol, span = 1.08) {
+  const n = s.length;
+  const k = Math.min(1, (rx * 2 * span) / n / (0.66 * fs));
+  let out = '';
+  for (let i = 0; i < n; i++) {
+    const a = -span + (2 * span * (i + 0.5)) / n;
+    const x = cx + rx * Math.sin(a);
+    const y = yc - ry * (1 - Math.cos(a));
+    out += `<text transform="translate(${N(x)} ${N(y)}) scale(${Math.round(k * Math.cos(a) * 100) / 100} 1)">${esc(s[i])}</text>`;
+  }
+  return `<g font-size="${N(fs)}" fill="${fill}" stroke="${ol}" stroke-width="2.6" paint-order="stroke">${out}</g>`;
+}
+
 function waterTower(F, r, town, color) {
-  const C = r ? (c) => c : ruinC;
   let s = '';
   const legC = r ? WHITE : '#7d6a52';
   const base = [[0.7, 0.7], [2.3, 0.7], [2.3, 2.3], [0.7, 2.3]];
@@ -1513,38 +1792,39 @@ function waterTower(F, r, town, color) {
   // Ladder up the front.
   const [lx, ly] = F.p(2.05, 2.25);
   let rungs = '';
-  for (let y = ly - 8; y > ly - 118; y -= 9) if (r || (y > ly - 70 || y < ly - 90)) rungs += `M${N(lx - 4)} ${N(y)}H${N(lx + 4)}`;
+  for (let y = ly - 8; y > ly - 118; y -= 9) if (r || y > ly - 70 || y < ly - 90) rungs += `M${N(lx - 4)} ${N(y)}H${N(lx + 4)}`;
   s += line(`${M(lx - 4, ly)}V${N(ly - 122)}M${N(lx + 4)} ${N(ly)}V${N(ly - 122)}${rungs}`, O, 1.8);
   s += stick(leg(2), legC, 4.6);
-  // Tank.
+  // The tank.
   const [cx, gy] = F.p(1.5, 1.5);
-  const yb = gy - 130;
-  const yt = gy - 188;
-  const rx = 46;
-  const ry = 23;
+  const yb = gy - TANK.yb;
+  const yt = gy - TANK.yt;
+  const { rx, ry } = TANK;
   const tank = r ? '#8fd0f5' : '#8e8f6e';
   s += ell(cx, yb + 2, rx + 10, ry + 5, r ? '#d9d3c5' : '#8a8570', { sw: 1.6 });
   s += path(`${M(cx - rx, yt)}V${N(yb)}A${rx} ${ry} 0 0 0 ${N(cx + rx)} ${N(yb)}V${N(yt)}Z`, tank, { sw: 2.2 });
-  s += line(`${M(cx - rx, yt + 20)}A${rx} ${ry} 0 0 0 ${N(cx + rx)} ${N(yt + 20)}M${N(cx - rx)} ${N(yt + 40)}A${rx} ${ry} 0 0 0 ${N(cx + rx)} ${N(yt + 40)}`, dk(tank, 0.35), 1.2, { op: 0.6 });
-  s += path(`${M(cx + 16, yt)}V${N(yb + 21.5)}A${rx} ${ry} 0 0 0 ${N(cx + rx)} ${N(yb)}V${N(yt)}Z`, O, { ns: 1, op: 0.16 });
-  s += line(`${M(cx - 34, yt + 6)}V${N(yb + 12)}`, '#ffffff', 3, { op: r ? 0.55 : 0.25 });
+  s += path(`${M(cx + 18, yt)}V${N(yb + ry * 0.94)}A${rx} ${ry} 0 0 0 ${N(cx + rx)} ${N(yb)}V${N(yt)}Z`, O, { ns: 1, op: 0.14 });
+  s += line(`${M(cx - 40, yt + 30)}V${N(yb + 14)}`, '#ffffff', 3, { op: r ? 0.55 : 0.25 });
+  // The front of the tank shows from the roof's rim (yt + ry) down to the bottom (yb + ry).
+  const yc = (yt + yb) / 2 + ry + 2;
   if (r) {
     const label = town ? townLabel(town) : '';
-    const hy = label ? yt + 37 : yt + 50;
-    s += path(heartD(cx - 3, hy, label ? 13 : 16), '#ff4f6d', { sw: 2 }) + path(heartD(cx - 8, hy - 5, 3.5), '#ffffff', { ns: 1, op: 0.6 });
     if (label) {
-      // A white band round the tank's lower third with the town's name.
-      const ya = gy - 152;
-      const yb2 = gy - 137;
-      s += path(`${M(cx - rx, ya)}A${rx} ${ry} 0 0 0 ${N(cx + rx)} ${N(ya)}V${N(yb2)}A${rx} ${ry} 0 0 1 ${N(cx - rx)} ${N(yb2)}Z`, WHITE, { sw: 1.4 });
-      s += fitText(cx - 36, ya + ry - 2, 72, 15, label, color, { ol: O, olw: 1.8 });
-    }
+      // The town's name, big, on a band in the town colour round the tank; a heart above it.
+      const h = 15;
+      const arc = (y, sweep) => `A${rx} ${ry} 0 0 ${sweep} `;
+      s += path(`${M(cx - rx, yc - h - ry)}${arc(0, 0)}${N(cx + rx)} ${N(yc - h - ry)}V${N(yc + h - ry)}${arc(0, 1)}${N(cx - rx)} ${N(yc + h - ry)}Z`, color, { sw: 1.6 });
+      s += line(`${M(cx - rx, yc - h + 3 - ry)}A${rx} ${ry} 0 0 0 ${N(cx + rx)} ${N(yc - h + 3 - ry)}`, '#ffffff', 1.2, { op: 0.6 });
+      s += arcText(cx, yc + 7.5, rx, ry, label, 21, '#ffffff', O);
+      s += path(heartD(cx, yc - h - 9, 7), '#ff4f6d', { sw: 1.6 }) + path(heartD(cx - 2.5, yc - h - 11.5, 2), '#ffffff', { ns: 1, op: 0.6 });
+    } else s += path(heartD(cx - 3, yc - 4, 17), '#ff4f6d', { sw: 2 }) + path(heartD(cx - 9, yc - 9, 4), '#ffffff', { ns: 1, op: 0.6 });
   } else {
-    s += rect(cx - 30, yt + 24, 14, 10, '#a0643a', { sw: 1.2, tf: `rotate(-8 ${cx - 23} ${yt + 29})` }) + rect(cx + 10, yt + 8, 12, 9, '#9a958a', { sw: 1.2 });
-    s += line(`${M(cx - 8, yt + 21)}V${N(yt + 36)}M${N(cx + 26)} ${N(yt + 41)}V${N(yt + 54)}M${N(cx - 40)} ${N(yt + 41)}V${N(yt + 50)}`, '#6a5a3a', 2.2, { op: 0.6 });
+    s += rect(cx - 34, yt + 30, 14, 10, '#a0643a', { sw: 1.2, tf: `rotate(-8 ${N(cx - 27)} ${N(yt + 35)})` }) + rect(cx + 12, yt + 34, 12, 9, '#9a958a', { sw: 1.2 });
+    s += line(`${M(cx - 8, yt + 30)}V${N(yt + 46)}M${N(cx + 28)} ${N(yt + 48)}V${N(yt + 62)}M${N(cx - 44)} ${N(yt + 44)}V${N(yt + 56)}`, '#6a5a3a', 2.2, { op: 0.6 });
   }
   // Front railing of the catwalk.
-  s += line(`${M(cx - rx - 10, yb - 8)}A${rx + 10} ${ry + 5} 0 0 0 ${N(cx + rx + 10)} ${N(yb - 8)}`, O, 3) + line(`${M(cx - rx - 10, yb - 8)}A${rx + 10} ${ry + 5} 0 0 0 ${N(cx + rx + 10)} ${N(yb - 8)}`, r ? WHITE : '#9a958a', 1.4);
+  const rail = `${M(cx - rx - 10, yb - 8)}A${rx + 10} ${ry + 5} 0 0 0 ${N(cx + rx + 10)} ${N(yb - 8)}`;
+  s += line(rail, O, 3) + line(rail, r ? WHITE : '#9a958a', 1.4);
   let posts = '';
   for (const t of [-0.95, -0.6, -0.2, 0.2, 0.6, 0.95]) {
     const x = cx + t * (rx + 10);
@@ -1554,14 +1834,15 @@ function waterTower(F, r, town, color) {
   s += line(posts, O, 1.6);
   // Roof cone and the hatch on top.
   s += path(`${M(cx - rx - 4, yt)}A${rx + 4} ${ry + 2} 0 0 0 ${N(cx + rx + 4)} ${N(yt)}L${N(cx)} ${N(yt - 28)}Z`, r ? '#e8483f' : '#7f6a52', { sw: 2.2 });
-  s += path(`${M(cx + 8, yt - 23)}L${N(cx + rx + 4)} ${N(yt)}A${rx + 4} ${ry + 2} 0 0 1 ${N(cx + 20)} ${N(yt + 23)}Z`, O, { ns: 1, op: 0.18 });
+  s += path(`${M(cx + 8, yt - 23)}L${N(cx + rx + 4)} ${N(yt)}A${rx + 4} ${ry + 2} 0 0 1 ${N(cx + 22)} ${N(yt + ry + 1)}Z`, O, { ns: 1, op: 0.18 });
   s += ell(cx, yt - 27, 8, 3.5, r ? '#ff7a6a' : '#8f7a5a', { sw: 1.6 });
   if (r) s += flag(cx, yt - 28, 26, color);
   else {
     s += scaffold(F, 0.42, 1.98, 1.02, 2.62, 90, 30);
     s += weeds(F, [[0.62, 0.62], [2.4, 0.8], [0.6, 2.45], [2.42, 2.4], [1.6, 2.8]]) + tiltSign(...F.p(2.6, 2.75), 'WATER', 12);
   }
-  return { s, bodyH: 210 };
+  if (NITE && r) s += path(`${M(cx - 6, yb + ry + 2)}L${N(cx - 40)} ${N(gy - 4)}H${N(cx + 30)}Z`, LIT, { ns: 1, op: 0.18 });
+  return { s, bodyH: 216 };
 }
 
 function driveIn(F, r) {
@@ -1583,7 +1864,7 @@ function driveIn(F, r) {
   const SH = zt - zb;
   let sc = '';
   if (r) {
-    sc += rect(-3, -3, SW + 6, SH + 6, '#fff6c8', { ns: 1, op: 0.35 });
+    if (NITE) sc += rect(-4, -4, SW + 8, SH + 8, '#fff6c8', { ns: 1, op: 0.45 });
     sc += rect(0, 0, SW, SH, '#2f3f86', { sw: 2.4 });
     sc += circ(SW - 14, 14, 7, '#ffe58a', { sw: 1.4 }) + path(cpath([[12, 10, 1.2], [26, 18, 1], [46, 8, 1.2], [36, 26, 0.9]]), '#ffffff', { ns: 1 });
     // A goofy cartoon zombie popping up: the B-movie.
@@ -1622,7 +1903,8 @@ function driveIn(F, r) {
   const blf = r ? rect(0, 0, bLW, 5, RED, { ns: 1 }) + win(4, 9, 14, 9, { lit: true }) + fitText(2, 19, bLW - 4, 7, 'SNACKS', RED) : boarded(4, 9, 14, 10) + planksX(1, 1, 22, 20);
   const brf = r ? rect(0, 0, bRW, 5, RED, { ns: 1 }) + door(8, 8, 10, 18, RED) : boarded(8, 8, 10, 16);
   s += box(F, bu0, bv0, bu1, bv1, 0, 26, bc, { lf: blf, rf: brf, top: r ? '#ece4d2' : '#9a9880' });
-  if (r) {
+  if (r && NITE) {
+    // At dusk the B-movie plays: the projector's beam from the booth to the screen.
     const [px, py] = F.p(bu0 + 0.08, bv0 + 0.3, 20);
     const [qx, qy] = F.p(1.5, sv, (zb + zt) / 2);
     s += path(`${M(px, py)}L${N(qx - 30)} ${N(qy - 28)}L${N(qx + 22)} ${N(qy + 30)}Z`, '#fff6c8', { ns: 1, op: 0.22 });
@@ -1807,7 +2089,9 @@ function wheelLm(F, r) {
     if (!r && (k === 2 || k === 5)) continue;
     const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
     const c = gcols[k % gcols.length];
-    const gon = line('M0 0V6', O, 1.6) + path('M-7 6H7L6 12Q0 18 -6 12Z', c, { sw: 1.5 }) + path('M-8 6Q0 1 8 6Z', r ? WHITE : '#b5b09a', { sw: 1.3 });
+    // A gondola lit per zone (Thrill Hill's wheel, come home).
+    const lit = r && k < LM_ZONES;
+    const gon = (lit ? circ(0, 10, 10, '#ffe27a', { ns: 1, op: 0.45 }) : '') + line('M0 0V6', O, 1.6) + path('M-7 6H7L6 12Q0 18 -6 12Z', c, { sw: 1.5 }) + path('M-8 6Q0 1 8 6Z', r ? WHITE : '#b5b09a', { sw: 1.3 }) + (lit ? circ(0, 9.5, 2, '#fff4b8', { sw: 0.9 }) : '');
     gd += `<g transform="translate(${N(Math.cos(a) * R)} ${N(Math.sin(a) * R)})">${r ? `<g class="ls-gondola" style="transform-origin:0 0">` : '<g>'}<g transform="matrix(1 -0.5 0 1 0 0)">${gon}</g></g></g>`;
   }
   wh += gd;
@@ -1900,7 +2184,10 @@ function lighthouse(F, r) {
   if (r) {
     const lx = cx;
     const ly = Y(zg + 12);
-    s += path(`${M(lx - 8, ly - 3)}L${N(lx - 120)} ${N(ly - 34)}L${N(lx - 120)} ${N(ly + 8)}L${N(lx - 8)} ${N(ly + 3)}Z`, '#fff4b8', { ns: 1, op: 0.42, cls: 'ls-beam', style: `transform-origin:${N(lx)}px ${N(ly)}px;transform-box:view-box` });
+    // The beam: short and soft by day (it stays over the pier), long and bright at dusk.
+    const bl = NITE ? 140 : 62;
+    const bw = NITE ? 22 : 12;
+    s += path(`${M(lx - 8, ly - 3)}L${N(lx - bl)} ${N(ly - 13 - bw)}L${N(lx - bl)} ${N(ly - 13 + bw)}L${N(lx - 8)} ${N(ly + 3)}Z`, '#fff4b8', { ns: 1, op: NITE ? 0.5 : 0.32, cls: 'ls-beam', style: `transform-origin:${N(lx)}px ${N(ly)}px;transform-box:view-box` });
     s += flag(cx, Y(lz1 + 26) - 1, 14, RED, 1, true);
     // Lamp post and lifebuoy on the pier.
     const [px, py] = F.p(1.66, 2.85, 11);
@@ -1918,23 +2205,30 @@ function lighthouse(F, r) {
  * A landmark (3×3, fixed): tower (Water Tower), drivein (Drive-in), radio (Radio Mast),
  * fire (Fire Station), wheel (Fairground Wheel), light (Lighthouse Pier). Ruined (restored
  * false): olive-grey, boarded, scaffolding, weeds and a crooked sign; restored: bright and
- * proud. Optional o: { town, color } paints the town's name on the Water Tower's tank (and
- * its colour on the tank's flag and the name).
+ * proud. Optional o: town and color (the Water Tower paints the town's name big round its
+ * tank on a band in the town colour, with a heart and a flag), zones (the restored wheel lights
+ * that many gondolas, 0..8, default 8), night (lit windows; the Drive-in's projector beam; the
+ * lighthouse's long beam, which by day stays short over the pier). Returns { svg, artH, bodyH, top }.
  */
 export function landmarkArt(id, restored = false, o = {}) {
   const k = LM_H[id] ? id : 'tower';
   const F = frame(3, 3, LM_H[k]);
   const r = !!restored;
-  const color = paint((o && o.color) || RED);
-  let out;
-  if (k === 'tower') out = waterTower(F, r, o && o.town, color);
-  else if (k === 'drivein') out = driveIn(F, r);
-  else if (k === 'radio') out = radioMast(F, r);
-  else if (k === 'fire') out = fireStation(F, r);
-  else if (k === 'wheel') out = wheelLm(F, r);
-  else out = lighthouse(F, r);
-  return { svg: svgWrap(F.W, F.H, out.s, `ls-lm ls-${k} ${r ? 'ls-restored' : 'ls-ruined'}`), artH: F.H, bodyH: out.bodyH };
+  const opt = o || {};
+  const color = paint(opt.color || RED);
+  LM_ZONES = Math.max(0, Math.min(8, Math.round(Number(opt.zones ?? 8) || 0)));
+  const out = withNight(opt.night, () => {
+    if (k === 'tower') return waterTower(F, r, opt.town, color);
+    if (k === 'drivein') return driveIn(F, r);
+    if (k === 'radio') return radioMast(F, r);
+    if (k === 'fire') return fireStation(F, r);
+    if (k === 'wheel') return wheelLm(F, r);
+    return lighthouse(F, r);
+  });
+  return { svg: svgWrap(F.W, F.H, out.s, `ls-lm ls-${k} ${r ? 'ls-restored' : 'ls-ruined'}`), artH: F.H, bodyH: out.bodyH, top: topOf(`l:${k}:${r ? 1 : 0}`, F.H) };
 }
+/** Lit gondolas on the restored wheel (landmarkArt's zones option), for the length of one call. */
+let LM_ZONES = 8;
 
 /** Where each landmark's boss zombie stands (feet), in the landmark's viewBox (ruined art). */
 export const BOSS_SPOT = (() => {
@@ -1946,7 +2240,7 @@ export const BOSS_SPOT = (() => {
   const wh = frame(3, 3, LM_H.wheel).p(1.5, 1.5, 100);
   const lh = frame(3, 3, LM_H.light).p(0.95, 0.72);
   return {
-    tower: { x: Math.round(tw[0]), y: Math.round(tw[1] - 188 - 27) },
+    tower: { x: Math.round(tw[0]), y: Math.round(tw[1] - TANK.yt - 27) },
     drivein: P('drivein', 1.5, 0.46, 118),
     radio: P('radio', 0.95, 2.2, 30),
     fire: P('fire', 1.0, 1.55, 59),
@@ -1999,7 +2293,7 @@ export function bossProp(id) {
     default:
       return '';
   }
-  return `<g fill="none" stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" class="ls-boss-prop">${mini(s)}</g>`;
+  return `<g ${ROOT} class="ls-boss-prop">${mini(s)}</g>`;
 }
 
 // --- Fences ---------------------------------------------------------------------------------
@@ -2018,25 +2312,32 @@ const hash01 = (n) => {
  * (FENCE_TIERS). side: i0 | i1 | j0 | j1. len: tiles. The footprint is a strip one tile deep
  * INSIDE the land: i0/i1 → w 1 × h len, j0/j1 → w len × h 1. The fence stands on the strip's
  * outer edge: i0 its low-i edge (top-left on screen), i1 its high-i edge (bottom-right), j0
- * its low-j edge (top-right), j1 its high-j edge (bottom-left). About 26 px tall (pillars and
- * lamps a little more). Posts stand on both ends, so runs and 1-tile segments butt together.
- * o: color (the town colour, for the tin sheets and flags), seed (varies the junk per segment).
+ * its low-j edge (top-right), j1 its high-j edge (bottom-left). About 24 px tall (brick pillars
+ * a little more). Posts stand on both ends, so runs and short pieces butt together.
+ * o: color (the town colour: tin sheets, flags), seed (varies the junk per piece), start (the
+ * run's first tile along the whole edge) and edge (the edge's length): brick pillars stand on
+ * every second tile of the edge and at its ends, so pieces of one edge keep one rhythm.
  */
 export function fenceArt(tier = 'planks', side = 'j1', len = 1, o = {}) {
   const T = ['planks', 'tin', 'brick', 'lights'].includes(tier) ? tier : 'planks';
   const sd = ['i0', 'i1', 'j0', 'j1'].includes(side) ? side : 'j1';
-  const n = Math.max(1, Math.round(Number(len) || 1));
+  const n = Math.max(1, Math.min(40, Math.round(Number(len) || 1)));
+  const opt = o || {};
   const alongV = sd[0] === 'i';
   const w = alongV ? 1 : n;
   const h = alongV ? n : 1;
   const H = (w + h) * 16 + 44;
   const F = frame(w, h, H);
-  const color = paint(o && o.color);
-  const seed = (o && o.seed) | 0;
+  const color = paint(opt.color);
+  const seed = opt.seed | 0;
+  const start = Math.max(0, opt.start | 0);
+  const edgeLen = Number.isFinite(opt.edge) ? opt.edge : start + n;
   const edge = sd === 'i0' || sd === 'j0' ? 0 : 1;
   // Run-local: t tiles from the left end (on screen); point on the ground.
   const at = (t) => (alongV ? [edge, n - t] : [t, edge]);
   const P = (t, z = 0) => F.p(...at(t), z);
+  // Along-edge position of run point t (alongV runs are drawn from their high-j end).
+  const along = (t) => start + (alongV ? n - t : t);
   const [ox, oy] = P(0);
   const wrap = (inner) => (alongV ? mat(1, -0.5, 0, 1, ox, oy, inner) : mat(1, 0.5, 0, 1, ox, oy, inner));
   const RL = n * 32;
@@ -2045,82 +2346,105 @@ export function fenceArt(tier = 'planks', side = 'j1', len = 1, o = {}) {
   let f = '';
   if (T === 'planks') {
     const cols = [WOOD, PLANK, WOOD_L, '#b07a46'];
+    const d = {};
     for (let k = 0; k < n; k++) {
       const x = k * 32;
       for (let b = 0; b < 3; b++) {
         const r = hash01(seed * 31 + k * 7 + b + (edge ? 101 : 0) + (alongV ? 57 : 0));
         if (r < 0.08 && b === 1) continue;
-        const y = -23 + b * 8;
-        const tilt = (r - 0.5) * 6;
-        f += rect(x + 1, y, 31, 5.5, cols[Math.floor(r * 4) % 4], { sw: 1.1, tf: `rotate(${N(tilt)} ${N(x + 16)} ${N(y + 3)})` });
+        const y = -21 + b * 7;
+        const tilt = (r - 0.5) * 5;
+        const c = cols[Math.floor(r * 4) % 4];
+        f += rect(x + 1, y, 31, 5, c, { sw: 1.1, tf: `rotate(${N(tilt)} ${N(x + 16)} ${N(y + 3)})` });
       }
-      if (hash01(seed * 13 + k + 3) < 0.25) f += rect(x + 9, -21, 12, 10, STEEL, { sw: 1 });
+      if (hash01(seed * 13 + k + 3) < 0.25) d.t = (d.t || '') + `M${x + 9} -19h12v9h-12z`;
     }
-    for (let k = 0; k <= n; k++) f += rect(k * 32 - 2, -27, 4, 27, WOOD_D, { sw: 1.2 });
-    f += path(cpath(Array.from({ length: n + 1 }, (_, k) => [k * 32, -20, 0.8]).concat(Array.from({ length: n + 1 }, (_, k) => [k * 32, -6, 0.8]))), '#5b4636', { ns: 1 });
-    s += wrap(f + (dark ? rect(-2, -27, RL + 4, 27, O, { ns: 1, op: 0.14 }) : ''));
+    if (d.t) f += path(d.t, STEEL, { sw: 1 });
+    let posts = '';
+    for (let k = 0; k <= n; k++) posts += `M${k * 32 - 2} -24h4v24h-4z`;
+    f += path(posts, WOOD_D, { sw: 1.2 });
+    s += wrap(f + (dark ? rect(-2, -24, RL + 4, 24, O, { ns: 1, op: 0.14 }) : ''));
     // Tyres leaning on it here and there.
-    for (let k = 0; k < n; k++) if (hash01(seed * 17 + k * 5 + (alongV ? 9 : 0) + edge) < 0.34) s += tyres(...P(k + 0.5), 2, 6);
+    for (let k = 0; k < n; k++) if (hash01(seed * 17 + k * 5 + (alongV ? 9 : 0) + edge) < 0.3) s += tyres(...P(k + 0.5), 2, 6);
   } else if (T === 'tin') {
+    const d = {};
     for (let k = 0; k < n; k++) {
       const c = [color, dk(color, 0.12), lt(color, 0.12)][Math.floor(hash01(seed * 7 + k * 3 + (alongV ? 5 : 0)) * 3)];
-      f += rect(k * 32 + 0.5, -25, 31, 24, c, { sw: 1.3 });
+      d[c] = (d[c] || '') + `M${k * 32 + 0.5} -22h31v21h-31z`;
     }
-    f += vlines(RL, -1, 3.2, O, 0.28, -24.5);
-    f += line(`M0 -21H${RL}M0 -5H${RL}`, '#ffffff', 1, { op: 0.35 });
-    let rv = [];
-    for (let x = 4; x < RL; x += 8) rv.push([x, -22.5, 0.8], [x, -3.5, 0.8]);
+    for (const c in d) f += path(d[c], c, { sw: 1.3 });
+    f += vlines(RL, -1, 3.2, O, 0.26, -21.5);
+    f += line(`M0 -18.5H${RL}M0 -4.5H${RL}`, '#ffffff', 1, { op: 0.35 });
+    const rv = [];
+    for (let x = 4; x < RL; x += 8) rv.push([x, -19.5, 0.8], [x, -3.5, 0.8]);
     f += path(cpath(rv), '#e8e4dc', { ns: 1 });
-    for (let k = 0; k <= n; k++) f += rect(k * 32 - 1.6, -28, 3.2, 28, '#5a5f6e', { sw: 1.1 });
-    s += wrap(f + (dark ? rect(-2, -28, RL + 4, 28, O, { ns: 1, op: 0.14 }) : ''));
+    let posts = '';
+    for (let k = 0; k <= n; k++) posts += `M${N(k * 32 - 1.6)} -25h3.2v25h-3.2z`;
+    f += path(posts, '#5a5f6e', { sw: 1.1 });
+    s += wrap(f + (dark ? rect(-2, -25, RL + 4, 25, O, { ns: 1, op: 0.14 }) : ''));
   } else {
-    // Brick: a low wall with an iron railing, pillars with lamps; 'lights' adds string lights and flags.
-    f += rect(0, -12, RL, 12, BRICK, { sw: 1.3 }) + bricks(RL, 12, '#7a2e1e', 0.45).replace('<path', `<path transform="translate(0 -12)"`);
-    f += rect(-1, -14.5, RL + 2, 3, '#e6dcc6', { sw: 1.1 });
+    // Brick: a low wall with an iron railing; pillars with lamps on every second tile of the
+    // edge; 'lights' adds string lights and little flags between the pillars.
+    f += rect(0, -10, RL, 10, BRICK, { sw: 1.3 }) + bricks(RL, 10, '#7a2e1e', 0.45).replace('<path', '<path transform="translate(0 -10)"');
+    f += rect(-1, -12.5, RL + 2, 3, '#e6dcc6', { sw: 1.1 });
     let bars = '';
-    for (let x = 4; x < RL; x += 4.5) bars += `M${N(x)} -14.5V-25`;
-    f += line(bars, '#3a3f52', 1.2) + line(`M0 -25H${RL}M0 -20H${RL}`, '#3a3f52', 1.6);
-    s += wrap(f + (dark ? rect(0, -25, RL, 25, O, { ns: 1, op: 0.14 }) : ''));
-    const order = Array.from({ length: n + 1 }, (_, k) => k);
-    if (alongV) order.reverse();
-    const tops = [];
+    for (let x = 4; x < RL; x += 4.5) bars += `M${N(x)} -12.5V-20`;
+    f += line(bars, '#3a3f52', 1.1) + line(`M0 -20H${RL}`, '#3a3f52', 1.6);
+    s += wrap(f + (dark ? rect(0, -20, RL, 20, O, { ns: 1, op: 0.14 }) : ''));
     const lit = T === 'lights';
+    const pk = [];
+    for (let k = 0; k <= n; k++) if (along(k) % 2 === 0 || along(k) === edgeLen || along(k) === 0) pk.push(k);
+    const order = alongV ? pk.slice().reverse() : pk;
+    const ph = 21;
+    const tops = [];
+    let wallL = '';
+    let wallR = '';
+    let caps = '';
+    let lamps = '';
+    let lines2 = '';
     for (const k of order) {
       const [u, v] = at(k);
-      const a0 = u - 0.1;
-      const a1 = u + 0.1;
-      const b0 = v - 0.1;
-      const b1 = v + 0.1;
-      s += face(F, [[a0, b1, 0], [a1, b1, 0], [a1, b1, 28], [a0, b1, 28]], BRICK, { sw: 1.3 }) + face(F, [[a1, b1, 0], [a1, b0, 0], [a1, b0, 28], [a1, b1, 28]], dk(BRICK, 0.22), { sw: 1.3 });
-      s += line(`M${xy(F, a0, b1, 10)}L${xy(F, a1, b1, 10)}L${xy(F, a1, b0, 10)}M${xy(F, a0, b1, 19)}L${xy(F, a1, b1, 19)}L${xy(F, a1, b0, 19)}`, '#7a2e1e', 0.9);
-      s += face(F, [[a0 - 0.03, b0 - 0.03, 31], [a1 + 0.03, b0 - 0.03, 31], [a1 + 0.03, b1 + 0.03, 31], [a1 + 0.03, b1 + 0.03, 27.5], [a0 - 0.03, b1 + 0.03, 27.5], [a0 - 0.03, b1 + 0.03, 31]], '#e6dcc6', { sw: 1.2 });
-      const [lx, ly] = F.p(u, v, 31);
+      const a0 = u - 0.09;
+      const a1 = u + 0.09;
+      const b0 = v - 0.09;
+      const b1 = v + 0.09;
+      wallL += pd(F, [[a0, b1, 0], [a1, b1, 0], [a1, b1, ph], [a0, b1, ph]]);
+      wallR += pd(F, [[a1, b1, 0], [a1, b0, 0], [a1, b0, ph], [a1, b1, ph]]);
+      lines2 += `M${xy(F, a0, b1, 10)}L${xy(F, a1, b1, 10)}L${xy(F, a1, b0, 10)}`;
+      caps += pd(F, [[a0 - 0.03, b0 - 0.03, ph + 3], [a1 + 0.03, b0 - 0.03, ph + 3], [a1 + 0.03, b1 + 0.03, ph + 3], [a1 + 0.03, b1 + 0.03, ph], [a0 - 0.03, b1 + 0.03, ph], [a0 - 0.03, b1 + 0.03, ph + 3]]);
+      const [lx, ly] = F.p(u, v, ph + 3);
       tops.push([k, lx, ly]);
-      s += path(`${M(lx - 3, ly - 1)}V${N(ly - 8)}H${N(lx + 3)}V${N(ly - 1)}Z${M(lx - 4, ly - 8)}L${N(lx)} ${N(ly - 11.5)}L${N(lx + 4)} ${N(ly - 8)}Z`, lit ? '#fff4b8' : '#ffe9a8', { sw: 1.1 });
+      lamps += `${M(lx - 2.6, ly - 1)}V${N(ly - 7)}H${N(lx + 2.6)}V${N(ly - 1)}Z${M(lx - 3.4, ly - 7)}L${N(lx)} ${N(ly - 10)}L${N(lx + 3.4)} ${N(ly - 7)}Z`;
     }
-    if (lit) {
+    // One path per part (pillars stand apart, so drawing them together keeps depth right).
+    s += path(wallL, BRICK, { sw: 1.3 }) + path(wallR, dk(BRICK, 0.22), { sw: 1.3 }) + line(lines2, '#7a2e1e', 0.9) + path(caps, '#e6dcc6', { sw: 1.2 });
+    if (lit || NITE) s += dots(tops.map(([, x, y]) => [x, y - 4.5]), '#ffe27a', 11, { op: 0.32 });
+    s += path(lamps, lit || NITE ? '#fff4b8' : '#ffe9a8', { sw: 1.1 });
+    if (lit && tops.length > 1) {
       tops.sort((a2, b2) => a2[0] - b2[0]);
       let sd2 = '';
       const pts = [];
       const tri = {};
       const cols = [color, YELLOW, WHITE, BLUE === color ? GREEN : BLUE];
-      for (let k = 0; k < n; k++) {
+      for (let k = 0; k + 1 < tops.length; k++) {
         const A = [tops[k][1], tops[k][2] - 4];
         const B = [tops[k + 1][1], tops[k + 1][2] - 4];
-        sd2 += sagD(A, B, 4);
-        pts.push(...sagPts(A, B, 4, 3, 0.2, 0.8));
-        for (const t of [0.35, 0.65]) {
-          const [px, py] = qpt(A, [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2 + 8], B, t);
-          const c = cols[(k * 2 + (t > 0.5 ? 1 : 0) + seed) % cols.length];
-          tri[c] = (tri[c] || '') + `${M(px - 3, py)}L${N(px + 3)} ${N(py)}L${N(px)} ${N(py + 5.5)}Z`;
+        const span = tops[k + 1][0] - tops[k][0];
+        sd2 += sagD(A, B, 3 + span);
+        pts.push(...sagPts(A, B, 3 + span, 2 * span, 0.15, 0.85));
+        for (let q = 0; q < span * 2; q++) {
+          const t = (q + 0.5) / (span * 2);
+          const [px, py] = qpt(A, [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2 + (3 + span) * 2], B, t);
+          const c = cols[(k * 3 + q + seed) % cols.length];
+          tri[c] = (tri[c] || '') + `${M(px - 2.6, py)}L${N(px + 2.6)} ${N(py)}L${N(px)} ${N(py + 5)}Z`;
         }
       }
       s += line(sd2, O, 1.1);
       for (const c in tri) s += path(tri[c], c, { sw: 0.9 });
-      s += dots(tops.map(([, x, y]) => [x, y - 4.5]), '#ffe27a', 13, { op: 0.32 }) + bulbs(pts, true, 1.5);
+      s += bulbs(pts, true, 1.4);
     }
   }
-  return { svg: svgWrap(F.W, F.H, s, `ls-fence ls-${T} ls-${sd}`), artH: F.H, w, h, bodyH: 28 };
+  return { svg: svgWrap(F.W, F.H, s, `ls-fence ls-${T} ls-${sd}`), artH: F.H, w, h, bodyH: 26 };
 }
 
 // --- Animation ------------------------------------------------------------------------------
@@ -2133,9 +2457,34 @@ export const ART_CSS =
   '@keyframes ls-spin{to{transform:rotate(360deg)}}@keyframes ls-blink{50%{opacity:.2}}@keyframes ls-pulse{50%{opacity:.08}}@keyframes ls-swing{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}@keyframes ls-sweep{0%,100%{transform:rotate(-14deg)}50%{transform:rotate(16deg)}}' +
   '.ls-rim{animation:ls-spin 60s linear infinite}.ls-gondola{animation:ls-spin 60s linear infinite reverse}.ls-blink{animation:ls-blink 1.4s steps(1) infinite}.ls-beacon{animation:ls-pulse 1.1s ease-in-out infinite}.ls-swing{animation:ls-swing 2.6s ease-in-out infinite}.ls-ball{animation:ls-swing 3.2s ease-in-out infinite}.ls-beam{animation:ls-sweep 6s ease-in-out infinite}';
 
-/** The same SVG with ART_CSS embedded (only worth it for art that has hooks). */
+const KF = {
+  spin: '@keyframes ls-spin{to{transform:rotate(360deg)}}',
+  blink: '@keyframes ls-blink{50%{opacity:.2}}',
+  pulse: '@keyframes ls-pulse{50%{opacity:.08}}',
+  swing: '@keyframes ls-swing{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}',
+  sweep: '@keyframes ls-sweep{0%,100%{transform:rotate(-14deg)}50%{transform:rotate(16deg)}}',
+};
+const HOOKS = {
+  'ls-rim': ['spin', 'animation:ls-spin 60s linear infinite'],
+  'ls-gondola': ['spin', 'animation:ls-spin 60s linear infinite reverse'],
+  'ls-blink': ['blink', 'animation:ls-blink 1.4s steps(1) infinite'],
+  'ls-beacon': ['pulse', 'animation:ls-pulse 1.1s ease-in-out infinite'],
+  'ls-swing': ['swing', 'animation:ls-swing 2.6s ease-in-out infinite'],
+  'ls-ball': ['swing', 'animation:ls-swing 3.2s ease-in-out infinite'],
+  'ls-beam': ['sweep', 'animation:ls-sweep 6s ease-in-out infinite'],
+};
+
+/**
+ * The same SVG with just the keyframes its hooks use embedded (map objects are <img>s, out of
+ * the page CSS's reach). Art without an animation hook comes back unchanged.
+ */
 export function withAnimation(svg) {
-  return String(svg).replace(/(<svg[^>]*>)/, `$1<style>${ART_CSS}</style>`);
+  const s = String(svg);
+  const used = Object.keys(HOOKS).filter((k) => s.includes(`class="${k}"`));
+  if (!used.length) return s;
+  const kf = [...new Set(used.map((k) => HOOKS[k][0]))].map((k) => KF[k]).join('');
+  const css = kf + used.map((k) => `.${k}{${HOOKS[k][1]}}`).join('');
+  return s.replace(/(<svg[^>]*>)/, `$1<style>${css}</style>`);
 }
 
 // --- Anchors and small extras ------------------------------------------------------------------
@@ -2143,25 +2492,29 @@ export function withAnimation(svg) {
 /**
  * Where things attach. Points named x/y are in the art's viewBox (the object's box, 1 unit =
  * 1 world px at zoom 1). [u, v] spots are tile-local offsets from the object's (i, j), just
- * outside the footprint where walkers can stand (A* keeps them off footprints).
- *   bigtop.roof: four roof-camper spots on the shop roof (tent feet), back to front order
- *   bigtop.bus: [u, v] on the open forecourt beside the pumps, INSIDE the footprint: draw the
- *     parked bus just above the station (z + 1); bigtop.door: the shop door (coins fly into it)
+ * outside the footprint, where a walker stands to use the thing.
+ *   bigtop.roof: four roof-camper spots in a row on the shop roof (tent feet), back to front;
+ *     the sign stands high enough behind them to stay readable
+ *   bigtop.bus: [u, v] on the bus bay, INSIDE the footprint: draw the parked bus just above the
+ *     station (z + 1 or 2); it covers neither the pumps nor the shop door
+ *   bigtop.door: the shop door (on the shop's right side; coins fly into it)
  *   crate.drop: where the Supply Crate sits on the pad (its bottom centre)
- *   <id>.spot: where a walker stands to use a yard or building
+ *   <id>.spot, home.<tier>.spot (= homeArt().door): where a walker stands. Every spot has
+ *     u + v >= w + h - 0.35, so the engine's walker depth ((fi + fj)·10 + 5) puts the figure in
+ *     front of the object ((i + w + j + h)·10). A spot nearer a front wall would draw behind it.
  */
 export const ANCHORS = (() => {
   const G = frame(3, 3, BH.bigtop);
   const D = frame(2, 2, BH.crate);
   const xyOf = ([x, y]) => ({ x: Math.round(x * 2) / 2, y: Math.round(y * 2) / 2 });
   return {
-    bigtop: { roof: [0.8, 1.3, 1.8, 2.3].map((u) => xyOf(G.p(u, 0.95, 40))), bus: [2.2, 2.4], door: xyOf(G.p(1.45, 1.4, 14)), spot: [3.15, 2.0] },
-    crate: { drop: xyOf(D.p(1, 1, 5)), spot: [1.0, 2.15] },
-    vault: { spot: [1.0, 2.15] },
-    striker: { spot: [1.0, 2.15] },
-    gallery: { spot: [1.0, 2.15] },
-    tent: { spot: [2.15, 1.55] },
-    garage: { spot: [0.7, 2.15] },
+    bigtop: { roof: GS.campU.map((u) => xyOf(G.p(u, GS.campV, GS.zH))), bus: [2.7, 2.4], door: xyOf(G.p(GS.u1, GS.v1 - 10 / 32, 20)), spot: [3.65, 2.0] },
+    crate: { drop: xyOf(D.p(1, 1, 5)), spot: [1.3, 2.36] },
+    vault: { spot: [1.0, 2.66] },
+    striker: { spot: [1.2, 2.46] },
+    gallery: { spot: [1.0, 2.66] },
+    tent: { spot: [1.5, 2.16] },
+    garage: { spot: [1.05, 2.61] },
     home: Object.fromEntries(Object.entries(HOME_DOOR).map(([k, v]) => [k, { spot: v.slice() }])),
   };
 })();
@@ -2173,5 +2526,5 @@ export const ANCHORS = (() => {
 export function campTentArt(color = RED) {
   const c = paint(color);
   const s = path('M2 18L14 3L26 18Z', c, { sw: 1.6 }) + path('M14 3L26 18H20L14 7Z', dk(c, 0.18), { ns: 1 }) + path('M10 18L14 9L18 18Z', '#3b2c24', { sw: 1.1 }) + path('M2 18L14 3L26 18Z', 'none', { sw: 1.6 }) + line('M14 3V0.5', WOOD_D, 1.4) + line('M1 18.5H27', O, 1.4);
-  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 20" overflow="visible" class="ls-camp"><g fill="none" stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">${mini(s)}</g></svg>`, w: 28, h: 20 };
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 20" overflow="visible" class="ls-camp"><g ${ROOT}>${mini(s)}</g></svg>`, w: 28, h: 20 };
 }

@@ -59,12 +59,19 @@ export class TownMap {
 
   _build() {
     const v = this.view;
-    const sc = A.scenery();
-    const scEl = document.createElement('div');
-    scEl.className = 'iso-scenery';
-    scEl.style.cssText = `left:${sc.left}px;top:${sc.top}px;width:${sc.width}px;height:${sc.height}px`;
-    scEl.innerHTML = svgImgPlain(sc.svg);
-    v.world.insertBefore(scEl, v.world.firstChild);
+    for (const sc of A.sceneryParts().reverse()) {
+      const scEl = document.createElement('div');
+      scEl.className = 'iso-scenery';
+      scEl.style.cssText = `left:${sc.left}px;top:${sc.top}px;width:${sc.width}px;height:${sc.height}px`;
+      scEl.innerHTML = svgImgPlain(sc.svg);
+      v.world.insertBefore(scEl, v.world.firstChild);
+    }
+    // The evening tint (19:00–06:00 local) sits over the ground and objects, under the pins.
+    this.dusk = document.createElement('div');
+    this.dusk.className = 'iso-dusk';
+    v.world.insertBefore(this.dusk, v.ui);
+    this.night = isNight();
+    this.root.classList.toggle('night', this.night);
     // 25 lot ground images inside the ground layer.
     const b = v.bounds;
     let html = '';
@@ -142,6 +149,12 @@ export class TownMap {
   // --- State → map --------------------------------------------------------------------------------
 
   update(full = false) {
+    const night = this.forceNight ?? isNight();
+    if (night !== this.night) {
+      this.night = night;
+      this.root.classList.toggle('night', night);
+      full = true;
+    }
     if (full) this.cache.clear();
     this._roam();
     this._lots();
@@ -177,7 +190,7 @@ export class TownMap {
         // The wild: a ruin, a ruined landmark (with its boss) or a mystery heap.
         const L = LOTS[key];
         const wid = `wild:${key}`;
-        const wk = owned ? '' : L.kind;
+        const wk = owned ? '' : `${L.kind}|${haze}`;
         if (this.cache.get(wid) === wk) continue;
         this.cache.set(wid, wk);
         if (owned || L.kind === 'S') {
@@ -187,9 +200,9 @@ export class TownMap {
         }
         let art;
         if (L.kind === 'L') art = A.landmark(L.landmark, false);
-        else if (L.kind === '?') art = A.mystery();
-        else art = A.ruin(key);
-        this.view.upsert(wid, { i: a * LOT + 2, j: b * LOT + 2, w: 3, h: 3, html: art.svg, artH: art.artH, cls: `o-wild k-${L.kind}${haze ? ' far' : ''}`, lot: [a, b], img: true, hitH: art.bodyH });
+        else if (L.kind === '?') art = A.mystery(haze);
+        else art = A.ruin(key, haze);
+        this.view.upsert(wid, { i: a * LOT + 2, j: b * LOT + 2, w: 3, h: 3, html: art.svg, artH: art.artH, cls: `o-wild k-${L.kind}`, lot: [a, b], img: true, hitH: art.bodyH });
         if (L.kind === 'L') this._boss(key, L.landmark, a, b);
       }
   }
@@ -229,30 +242,37 @@ export class TownMap {
   _objHtml(o) {
     const m = this.meta;
     const s = m.s;
-    if (o.kind === 'building') return A.building(o.ref, s.buildings[o.ref] || 1, s.town, o.ref === 'bigtop' ? s.zone : 0);
+    const night = this.night;
+    if (o.kind === 'building') return A.building(o.ref, s.buildings[o.ref] || 1, s.town, o.ref === 'bigtop' ? s.zone : 0, night);
     if (o.kind === 'home') {
       const p = m.person(o.ref);
       if (!p) return A.boxArt(2, 2, 20, '#ccc');
       const tier = HOME_TIERS[tierOf(p.level)].id;
       const roof = p.family != null ? TOWN_COLORS[p.family % TOWN_COLORS.length] : undefined;
-      return A.home(p, tier, { roof, hearts: Math.min(5, p.hearts || 0), legend: p.rarity === 'legend' });
+      return A.home(p, tier, { roof, hearts: Math.min(5, p.hearts || 0), legend: p.rarity === 'legend', wish: !!(s.wish && s.wish.id === p.id), night });
     }
-    if (o.kind === 'decor') return A.decor(o.ref);
-    if (o.kind === 'keepsake') return A.keepsake(o.ref);
-    if (o.kind === 'souvenir') return A.souvenir(o.ref);
-    if (o.kind === 'statue') return A.statue();
-    if (o.kind === 'landmark') return A.landmark(o.ref, true, s.town);
+    if (o.kind === 'decor') return A.decor(o.ref, night);
+    if (o.kind === 'keepsake') {
+      const owner = m.person(o.owner);
+      return A.keepsake(o.ref, owner ? owner.first : '', night);
+    }
+    if (o.kind === 'souvenir') return A.souvenir(o.ref, s.best);
+    if (o.kind === 'statue') return A.statue(s.people.filter((p) => p.origin === 'founder').slice(0, 3));
+    if (o.kind === 'landmark') return A.landmark(o.ref, true, s.town, { zones: s.zone, night });
     return A.boxArt(o.size, o.size, 20);
   }
 
   _objKey(o) {
     const m = this.meta;
     const s = m.s;
-    if (o.kind === 'building') return `${o.ref}|${s.buildings[o.ref]}|${s.town.name}|${s.town.color}|${o.ref === 'bigtop' ? s.zone : 0}`;
-    if (o.kind === 'landmark') return `${o.ref}|${s.town.name}|${s.town.color}`;
+    const n = this.night ? 'n' : 'd';
+    if (o.kind === 'building') return `${o.ref}|${s.buildings[o.ref]}|${s.town.name}|${s.town.color}|${o.ref === 'bigtop' ? s.zone : 0}|${n}`;
+    if (o.kind === 'landmark') return `${o.ref}|${s.town.name}|${s.town.color}|${s.zone}|${n}`;
+    if (o.kind === 'souvenir') return `${o.ref}|${o.ref === 'scoreboard' ? s.best : ''}`;
+    if (o.kind === 'decor' || o.kind === 'keepsake') return `${o.ref}|${n}`;
     if (o.kind === 'home') {
       const p = m.person(o.ref);
-      return p ? `${tierOf(p.level)}|${p.hearts}|${p.family}|${p.golden}|${p.level}` : 'x';
+      return p ? `${tierOf(p.level)}|${p.hearts}|${p.family}|${p.golden}|${p.level}|${s.wish && s.wish.id === p.id ? 'w' : ''}|${n}` : 'x';
     }
     return o.ref;
   }
@@ -270,6 +290,9 @@ export class TownMap {
       this.cache.set(id, key);
       const art = this._objHtml(o);
       const el = this.view.upsert(id, { i: o.i, j: o.j, w: o.size, h: o.size, html: art.svg, artH: art.artH, cls: `o-${o.kind}${o.kind === 'building' ? ` b-${o.ref}` : ''}`, oid: o.id, img: true, hitH: art.bodyH });
+      // A front overlay (a hot tub's wall, a hammock's lip) so someone can sit in it.
+      if (art.front) this.view.upsert(`of${o.id}`, { i: o.i, j: o.j, w: o.size, h: o.size, html: art.front.svg, artH: art.front.artH, cls: 'o-front', z: art.front.z ?? 2, img: true, noTap: true });
+      else this.view.remove(`of${o.id}`);
       if (was && was.split('|')[0] !== key.split('|')[0]) {
         el.classList.remove('pop');
         void el.offsetWidth;
@@ -277,6 +300,10 @@ export class TownMap {
       }
     }
     for (const id of [...this.view.objects.keys()]) {
+      if (id.startsWith('of')) {
+        if (!seen.has(`o${id.slice(2)}`)) this.view.remove(id);
+        continue;
+      }
       if (id.startsWith('o') && !seen.has(id) && !(this.lifted && id === `o${this.lifted.o.id}`)) {
         this.view.remove(id);
         this.cache.delete(id);
@@ -307,7 +334,7 @@ export class TownMap {
       if (this.cache.get(id)) continue;
       this.cache.set(id, 1);
       const art = A.junk(k.v);
-      this.view.upsert(id, { i: k.i, j: k.j, w: 1, h: 1, html: art.svg, artH: art.artH, cls: 'o-junk', z: 2, img: true, hitH: 34 });
+      this.view.upsert(id, { i: k.i, j: k.j, w: 1, h: 1, html: art.svg, artH: art.artH, cls: 'o-junk', z: 2, img: true, hitH: art.bodyH ?? 30 });
     }
     for (const id of [...this.view.objects.keys()])
       if (id.startsWith('j') && !seen.has(id)) {
@@ -337,7 +364,7 @@ export class TownMap {
       const back = e.side === 'i0' || e.side === 'j0';
       const pieces = back ? [[0, LOT]] : [[0, 2], [2, 2], [4, 2], [6, 1]];
       for (const [off, len] of pieces) {
-        const f = A.fence(tier, e.side, len, color, e.a * 7 + e.b * 3 + off);
+        const f = A.fence(tier, e.side, len, color, e.a * 7 + e.b * 3 + off, off, LOT);
         if (!f) continue;
         let i;
         let j;
@@ -842,7 +869,7 @@ export class TownMap {
   _render(w, html = false) {
     const p = this.meta.person(w.id);
     if (!p) return;
-    const opts = { w: FIG.w, h: FIG.h, flip: w.face < 0 };
+    const opts = { w: FIG.w, h: FIG.h, flip: w.face < 0, z: w.seat ? w.seat.z : null, lift: w.seat ? w.seat.lift : 0 };
     if (html) {
       const tags = `${w.gift ? `<button class="wgift" type="button">${icon('gift')}</button>` : ''}${this.meta.isReady(p) ? `<i class="wready">${icon('up')}</i>` : ''}`;
       opts.html = `<div class="wfig v-${p.vibe}${w.squad ? ' squad' : ''} p-${w.pose}">${svgImgPlain(figureSvg(p, { pose: w.pose }))}</div><span class="wname">${esc(displayName(p))}</span>${tags}`;
@@ -859,9 +886,25 @@ export class TownMap {
   }
 
   /** A free tile in front of a footprint (where you'd stand to use it). */
-  _door(o) {
+  _door(o, { seat = false } = {}) {
     if (!o) return null;
     const m = this.meta;
+    // The art's own spot just in front of the door (fractional), when it's walkable.
+    const art = this._objHtml(o);
+    const d = art.door || (o.kind === 'building' && A.ANCHORS[o.ref] && A.ANCHORS[o.ref].spot) || (o.kind === 'home' && art.door) || null;
+    if (d) {
+      const ei = o.i + d[0];
+      const ej = o.j + d[1];
+      const ti = Math.floor(ei);
+      const tj = Math.floor(ej);
+      if (this._walkable(ti, tj)) {
+        const out = { i: ti, j: tj, exact: { i: ei, j: ej } };
+        // Pieces you use from on top (a bench, the hot tub, a trampoline): hop on.
+        const sp = art.spot;
+        if (seat && sp && sp.over) out.seat = { i: o.i + sp.u, j: o.j + sp.v, lift: sp.z || 0, oid: o.id, at: `${o.i},${o.j}`, act: sp.act };
+        return out;
+      }
+    }
     const n = o.size;
     const cand = [];
     for (let k = 0; k < n; k++) cand.push([o.i + n, o.j + k], [o.i + k, o.j + n]);
@@ -884,8 +927,26 @@ export class TownMap {
     const cost = (i, j) => (m.pathAt(i, j) ? 1 : 3);
     const p = findPath(MAP, MAP, blocked, si, sj, to.i, to.j, 2500, cost);
     if (!p) return false;
+    this._unseat(w);
     w.path = p.map(([i, j]) => ({ i: i + 0.5, j: j + 0.5 }));
+    if (to.exact) w.path.push({ i: to.exact.i, j: to.exact.j });
+    if (to.seat) w.path.push({ i: to.seat.i, j: to.seat.j, seat: to.seat });
     return true;
+  }
+
+  /** Sit (or stand) on a piece: drawn just over it, lifted by the seat height. */
+  _seat(w, seat) {
+    const rec = this.view.objects.get(`o${seat.oid}`);
+    if (!rec) return;
+    w.seat = { ...seat, z: rec.zi + 1 };
+    const pose = { sit: 'sleep', nap: 'sleep', soak: 'sleep', bounce: 'cheer', perform: 'cheer', dance: 'cheer', slide: 'cheer', climb: 'wave', salute: 'wave', ride: 'wave', pose: 'wave' }[seat.act];
+    if (pose) w.then = pose;
+  }
+
+  _unseat(w) {
+    if (!w.seat) return;
+    w.seat = null;
+    this.view.walker(w.id, w.fi, w.fj, { z: null, lift: 0 });
   }
 
   _pickGoal(w) {
@@ -914,7 +975,7 @@ export class TownMap {
       if (items.length) {
         const it = items[Math.floor(Math.random() * items.length)];
         const pose = { sleepy: 'sleep', sunny: 'idle', showoff: 'cheer', jumpy: 'wave' }[p.vibe] || 'idle';
-        return { to: this._door(it), then: pose };
+        return { to: this._door(it, { seat: true }), then: pose };
       }
     }
     if (r < 0.85 && homeO) {
@@ -1191,6 +1252,7 @@ export class TownMap {
           w.fi = t.i;
           w.fj = t.j;
           w.path.shift();
+          if (t.seat) this._seat(w, t.seat);
         } else {
           w.fi += (di / d) * sp;
           w.fj += (dj / d) * sp;
@@ -1213,6 +1275,14 @@ export class TownMap {
           this._render(w);
         }
         continue;
+      }
+      // The piece someone sits on was moved or boxed: hop off.
+      if (w.seat) {
+        const o = this.meta.object(w.seat.oid);
+        if (!o || `${o.i},${o.j}` !== w.seat.at) {
+          this._unseat(w);
+          w.wait = 0;
+        }
       }
       w.wait -= sec;
       if (w.wait <= 0) {

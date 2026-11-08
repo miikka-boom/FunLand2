@@ -131,7 +131,7 @@ export class BuildDrawer {
     // Kits (souvenirs, the statue) and the box first.
     s.kits.forEach((k, i) => {
       if (k.kind === 'building') return;
-      const art = k.kind === 'souvenir' ? A.souvenir(k.ref) : A.statue();
+      const art = k.kind === 'souvenir' ? A.souvenir(k.ref, m.s.best) : A.statue(m.s.people.filter((p) => p.origin === 'founder').slice(0, 3));
       out += `<button type="button" class="card kit" data-pick="kit" data-i="${i}">${thumb(art)}<b>${k.kind === 'statue' ? "Founders' Statue" : 'Souvenir'}</b><em class="new">Place it!</em></button>`;
     });
     const shown = new Set();
@@ -140,7 +140,7 @@ export class BuildDrawer {
       if (shown.has(key)) return;
       shown.add(key);
       const set = x.kind === 'decor' ? DECOR[x.ref].set : null;
-      const art = x.kind === 'decor' ? A.decor(x.ref) : x.kind === 'keepsake' ? A.keepsake(x.ref) : x.kind === 'souvenir' ? A.souvenir(x.ref) : A.statue();
+      const art = x.kind === 'decor' ? A.decor(x.ref) : x.kind === 'keepsake' ? A.keepsake(x.ref, (m.person(x.owner) || {}).first || '') : x.kind === 'souvenir' ? A.souvenir(x.ref, m.s.best) : A.statue(m.s.people.filter((p) => p.origin === 'founder').slice(0, 3));
       const owner = x.owner ? m.person(x.owner) : null;
       const label = x.kind === 'decor' ? DECOR[x.ref].name : x.kind === 'keepsake' ? `${owner ? `${name(owner)}'s ` : ''}${KEEPSAKES[x.ref].name}` : x.kind === 'souvenir' ? 'Souvenir' : "Founders' Statue";
       const n = x.owner ? 1 : counts[`${x.kind}:${x.ref}`] || 1;

@@ -4435,10 +4435,7 @@ body.drawer-open #map {
   position: absolute;
 }
 
-/* Far wild lots read a little paler than the lots next to your land. */
-.lotg.haze {
-  opacity: 0.86;
-}
+
 
 .iso-marks {
   overflow: visible;
@@ -4574,10 +4571,6 @@ body.drawer-open #map {
     transform: translateY(14px);
     opacity: 0;
   }
-}
-
-.iso-obj.o-wild.far {
-  opacity: 0.8;
 }
 
 .iso-obj.o-junk {
@@ -6220,4 +6213,32 @@ body.drawer-open .undo {
   pointer-events: none;
   -webkit-user-drag: none;
   user-select: none;
+}
+
+/* Evening (19:00–06:00 local): one translucent navy tint over the town, under the pins. */
+.iso-dusk {
+  position: absolute;
+  left: -3000px;
+  top: -1500px;
+  width: 6000px;
+  height: 4000px;
+  z-index: 3;
+  pointer-events: none;
+  background: rgba(24, 30, 78, 0.34);
+  display: none;
+}
+
+#map.night .iso-dusk {
+  display: block;
+  animation: duskin 1.2s ease both;
+}
+
+@keyframes duskin {
+  from {
+    opacity: 0;
+  }
+}
+
+#map .iso-ui {
+  z-index: 4;
 }

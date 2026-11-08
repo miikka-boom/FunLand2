@@ -623,7 +623,7 @@ function drawerPick(k, d) {
   if (k === 'unbox') {
     const item = m.s.box[Number(d.i)];
     if (!item) return;
-    const art = item.kind === 'decor' ? A.decor(item.ref) : item.kind === 'keepsake' ? A.keepsake(item.ref) : item.kind === 'souvenir' ? A.souvenir(item.ref) : A.statue();
+    const art = item.kind === 'decor' ? A.decor(item.ref) : item.kind === 'keepsake' ? A.keepsake(item.ref, (meta.person(item.owner) || {}).first || '') : item.kind === 'souvenir' ? A.souvenir(item.ref, meta.s.best) : A.statue(founders());
     return placeNew({ kind: 'unbox', index: Number(d.i), item, size: m.sizeOf(item), art, set: item.kind === 'decor' ? DECOR[item.ref].set : null });
   }
   if (k === 'kit') {
@@ -667,8 +667,13 @@ function showHomeFromDrawer(id) {
 
 function kitArt(kit) {
   if (kit.kind === 'building') return A.building(kit.ref, 1, meta.s.town);
-  if (kit.kind === 'souvenir') return A.souvenir(kit.ref);
-  return A.statue();
+  if (kit.kind === 'souvenir') return A.souvenir(kit.ref, meta.s.best);
+  return A.statue(founders());
+}
+
+/** The three founders (for their golden statue). */
+function founders() {
+  return meta.s.people.filter((p) => p.origin === 'founder').slice(0, 3);
 }
 
 /** A free spot in the open wish's range (when placing a piece of the wished set). */
