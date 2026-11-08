@@ -76,6 +76,45 @@ export function tilesOf(i, j, w = 1, h = 1) {
   return out;
 }
 
+/** Point in a convex polygon (any winding): [[x, y], ...]. */
+export function inPoly(poly, x, y) {
+  let sign = 0;
+  for (let k = 0; k < poly.length; k++) {
+    const [x1, y1] = poly[k];
+    const [x2, y2] = poly[(k + 1) % poly.length];
+    const c = (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);
+    if (c === 0) continue;
+    const sg = c > 0 ? 1 : -1;
+    if (!sign) sign = sg;
+    else if (sg !== sign) return false;
+  }
+  return true;
+}
+
+/**
+ * The hit shape of a standing object: its footprint diamond extruded upward
+ * by `body` world px (a hexagon). True if the world point is inside.
+ */
+export function inHexagon(i, j, w, h, body, wx, wy) {
+  const T = tileToWorld(i, j);
+  const R = tileToWorld(i + w, j);
+  const B = tileToWorld(i + w, j + h);
+  const L = tileToWorld(i, j + h);
+  if (wx < L.x || wx > R.x || wy > B.y || wy < T.y - body) return false;
+  return inPoly(
+    [
+      [L.x, L.y],
+      [L.x, L.y - body],
+      [T.x, T.y - body],
+      [R.x, R.y - body],
+      [R.x, R.y],
+      [B.x, B.y],
+    ],
+    wx,
+    wy,
+  );
+}
+
 /**
  * A camera over the world: screen = (world - (x, y)) * zoom + viewport centre.
  * Bounds keep the map on screen; zoom is clamped.

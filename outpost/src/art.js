@@ -60,20 +60,31 @@ const memo = (key, fn) => {
 
 export const hasArt = { town: !!T, ground: !!G, decor: !!D, icons: !!I };
 
-export function building(id, level, town) {
+/** Town art with its animations embedded (map objects are images, out of the page CSS's reach). */
+const anim = (art) => (art && T && T.withAnimation ? { ...art, svg: T.withAnimation(art.svg) } : art);
+
+/** The anchors town-art exposes (bus spot, roof campers, door and walker spots). */
+export const ANCHORS = (T && T.ANCHORS) || {};
+
+export function building(id, level, town, flags = 0) {
   const n = BUILDINGS[id].size;
-  return memo(`b|${id}|${level}|${town.name}|${town.color}`, () => (T && T.buildingArt ? T.buildingArt(id, level, { town: town.name, color: town.color }) : null)) || boxArt(n, n, 40 + n * 10, '#e9c46a', BUILDINGS[id].name.split(' ')[0]);
+  return memo(`b|${id}|${level}|${town.name}|${town.color}|${flags}`, () => (T && T.buildingArt ? anim(T.buildingArt(id, level, { town: town.name, color: town.color, flags })) : null)) || boxArt(n, n, 40 + n * 10, '#e9c46a', BUILDINGS[id].name.split(' ')[0]);
 }
 
 export function home(person, tier, { roof, hearts = 0, legend = false } = {}) {
-  const key = `h|${person.id}|${tier}|${roof}|${hearts}|${legend}|${person.golden}`;
-  return memo(key, () => (T && T.homeArt ? T.homeArt(person, tier, { roof, hearts, golden: !!person.golden, legend }) : null)) || boxArt(2, 2, 30 + tierHeight(tier), CLASSES[person.cls].color);
+  const key = `h|${person.id}|${tier}|${roof}|${hearts}|${legend}|${person.golden}|${person.level}`;
+  return memo(key, () => (T && T.homeArt ? anim(T.homeArt(person, tier, { roof, hearts, golden: !!person.golden, legend })) : null)) || boxArt(2, 2, 30 + tierHeight(tier), CLASSES[person.cls].color);
+}
+
+export function campTent(color) {
+  return memo(`ct|${color}`, () => (T && T.campTentArt ? T.campTentArt(color) : '')) || '';
 }
 
 const tierHeight = (tier) => ({ tent: 0, shack: 8, cabin: 14, cottage: 18, tower: 34, gold: 34 })[tier] || 0;
 
-export function landmark(id, restored) {
-  return memo(`l|${id}|${restored}`, () => (T && T.landmarkArt ? T.landmarkArt(id, restored) : null)) || boxArt(3, 3, 90, restored ? '#ffd36b' : '#8f8a6a', id);
+export function landmark(id, restored, town = null) {
+  const t = restored && town ? town : null;
+  return memo(`l|${id}|${restored}|${t ? `${t.name}|${t.color}` : ''}`, () => (T && T.landmarkArt ? anim(T.landmarkArt(id, restored, t ? { town: t.name, color: t.color } : {})) : null)) || boxArt(3, 3, 90, restored ? '#ffd36b' : '#8f8a6a', id);
 }
 
 export function bossSpot(id) {
@@ -84,9 +95,9 @@ export function bossProp(id) {
   return memo(`bp|${id}`, () => (T && T.bossProp ? T.bossProp(id) : '')) || '';
 }
 
-export function fence(tier, side, len) {
+export function fence(tier, side, len, color = null, seed = 0) {
   const t = FENCE_TIERS[tier] || FENCE_TIERS[0];
-  return memo(`f|${t}|${side}|${len}`, () => (T && T.fenceArt ? T.fenceArt(t, side, len) : null));
+  return memo(`f|${t}|${side}|${len}|${color}|${seed}`, () => (T && T.fenceArt ? anim(T.fenceArt(t, side, len, { color, seed })) : null));
 }
 
 export function decor(kind) {
@@ -117,7 +128,10 @@ export function ruin(key) {
   return memo(`r|${key}`, () => (G && G.ruinArt ? G.ruinArt(arche, { name: shortName(L ? L.name : '') }) : null)) || boxArt(3, 3, 46, '#8f8a6a', shortName(L ? L.name : ''));
 }
 
-const shortName = (n) => n.toUpperCase().replace(/^THE /, '').split(' ').slice(-1)[0].slice(0, 9);
+const shortName = (n) => {
+  const u = n.toUpperCase().replace(/^THE /, '');
+  return u.length <= 14 ? u : u.split(' ').slice(-1)[0].slice(0, 12);
+};
 
 export function mystery() {
   return memo('mystery', () => (G && G.mysteryArt ? G.mysteryArt() : null)) || boxArt(3, 3, 40, '#5aa0d8', '?');

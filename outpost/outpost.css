@@ -4397,7 +4397,7 @@ code {
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: #7fae5a;
+  background: #93ba67;
   touch-action: none;
   transition: transform 0.25s ease;
 }
@@ -4433,6 +4433,11 @@ body.drawer-open #map {
 
 .lotg {
   position: absolute;
+}
+
+/* Far wild lots read a little paler than the lots next to your land. */
+.lotg.haze {
+  opacity: 0.86;
 }
 
 .iso-marks {
@@ -6177,4 +6182,42 @@ body.drawer-open #map {
   .dr-head .tab b {
     display: none;
   }
+}
+
+body.drawer-open .undo {
+  bottom: calc(166px + var(--sb));
+}
+
+/* Zoomed out: tags shrink to their icon and price. */
+#map[data-zoom='far'] .tag .tt b {
+  display: none;
+}
+
+#map[data-zoom='far'] .tag {
+  padding-right: 7px;
+}
+
+.lot-wrap {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.lot-wrap .bs-art {
+  width: 200px;
+  flex: none;
+}
+
+.lot-wrap .lot-sheet {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Map objects are cached images of their SVG (taps use the hit hexagon). */
+.iso-obj > .iso-img {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
 }

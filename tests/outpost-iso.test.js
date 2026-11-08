@@ -62,3 +62,18 @@ test('A*: around a wall, never through blocked tiles or their corners; null when
   const goalBlocked = findPath(12, 12, blocked, 0, 0, 5, 3);
   assert.deepEqual(goalBlocked.at(-1), [5, 3], 'a blocked goal can still be reached (walk up to a building)');
 });
+
+test('hit hexagons: a tall object is tappable above its footprint, not beside it', async () => {
+  const { inHexagon, inPoly, tileToWorld: tw } = await import('../outpost/src/iso.js');
+  assert.ok(inPoly([[0, 0], [10, 0], [10, 10], [0, 10]], 5, 5));
+  assert.ok(!inPoly([[0, 0], [10, 0], [10, 10], [0, 10]], 15, 5));
+  // A 2×2 building at (4, 4) with 80 px of body.
+  const c = tw(5, 5); // footprint centre
+  assert.ok(inHexagon(4, 4, 2, 2, 80, c.x, c.y), 'its footprint');
+  assert.ok(inHexagon(4, 4, 2, 2, 80, c.x, c.y - 90), 'its walls and roof');
+  assert.ok(!inHexagon(4, 4, 2, 2, 80, c.x, c.y - 200), 'not the sky above it');
+  const right = tw(6, 4); // the right corner
+  assert.ok(!inHexagon(4, 4, 2, 2, 80, right.x + 5, right.y), 'not beside it');
+  const bottom = tw(6, 6);
+  assert.ok(!inHexagon(4, 4, 2, 2, 80, bottom.x, bottom.y + 4), 'not in front of it');
+});

@@ -45,6 +45,7 @@ export class BuildDrawer {
   open(tab = null) {
     if (tab) this.tab = tab;
     this.isOpen = true;
+    this.root.classList.remove('away');
     this.root.classList.add('open');
     document.body.classList.add('drawer-open');
     this.render();
@@ -52,7 +53,7 @@ export class BuildDrawer {
 
   close() {
     this.isOpen = false;
-    this.root.classList.remove('open');
+    this.root.classList.remove('open', 'away');
     document.body.classList.remove('drawer-open');
   }
 

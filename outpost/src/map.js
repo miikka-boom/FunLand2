@@ -5,7 +5,7 @@
 // It also runs placing, lifting and path painting. Rules live in town.js; this
 // file only shows them and reports taps.
 
-import { IsoView } from './isoview.js';
+import { IsoView, svgImg } from './isoview.js';
 import { footBox, tileToWorld, diamondPoints } from './iso.js';
 import { findPath } from './path.js';
 import { MAP, LOT, LOTS_ACROSS, LOTS, LOT_KINDS, LANDMARKS, BUILDINGS, DECOR, KEEPSAKES, HOME_TIERS, CLASSES, SETS, TOWN_COLORS, ROOF_TENTS, PARK_WALKERS, WISH } from './config.js';
@@ -63,7 +63,7 @@ export class TownMap {
     const scEl = document.createElement('div');
     scEl.className = 'iso-scenery';
     scEl.style.cssText = `left:${sc.left}px;top:${sc.top}px;width:${sc.width}px;height:${sc.height}px`;
-    scEl.innerHTML = sc.svg;
+    scEl.innerHTML = svgImgPlain(sc.svg);
     v.world.insertBefore(scEl, v.world.firstChild);
     // 25 lot ground images inside the ground layer.
     const b = v.bounds;
@@ -74,8 +74,9 @@ export class TownMap {
         html += `<div class="lotg" data-lot="${lotKey(la, lb)}" style="left:${box.left - b.left}px;top:${box.top - b.top}px;width:${box.width}px;height:${box.height}px"></div>`;
       }
     v.groundEl.innerHTML = html;
+    // Open on Last Stop with its four neighbours' tags in view.
     const st = this.meta.station();
-    v.focus(st.i + 2.5, st.j + 3.5, { zoom: 1, ms: 0 });
+    v.focus(st.i + 3.5, st.j + 3.5, { zoom: 0.85, ms: 0 });
     this.update(true);
   }
 
@@ -169,7 +170,7 @@ export class TownMap {
         if (this.cache.get(`g:${key}`) !== gk) {
           this.cache.set(`g:${key}`, gk);
           const el = this.view.groundEl.querySelector(`[data-lot="${key}"]`);
-          el.innerHTML = A.lotGround(a, b, { owned, haze, pathAt: (i, j) => (m.ownsTile(i, j) ? m.pathAt(i, j) : null), key });
+          el.innerHTML = svgImgPlain(A.lotGround(a, b, { owned, haze, pathAt: (i, j) => (m.ownsTile(i, j) ? m.pathAt(i, j) : null), key }));
           el.classList.toggle('owned', owned);
           el.classList.toggle('haze', haze);
         }
@@ -188,7 +189,7 @@ export class TownMap {
         if (L.kind === 'L') art = A.landmark(L.landmark, false);
         else if (L.kind === '?') art = A.mystery();
         else art = A.ruin(key);
-        this.view.upsert(wid, { i: a * LOT + 2, j: b * LOT + 2, w: 3, h: 3, html: art.svg, artH: art.artH, cls: `o-wild k-${L.kind}${haze ? ' far' : ''}`, lot: [a, b] });
+        this.view.upsert(wid, { i: a * LOT + 2, j: b * LOT + 2, w: 3, h: 3, html: art.svg, artH: art.artH, cls: `o-wild k-${L.kind}${haze ? ' far' : ''}`, lot: [a, b], img: true, hitH: art.bodyH });
         if (L.kind === 'L') this._boss(key, L.landmark, a, b);
       }
   }
@@ -228,7 +229,7 @@ export class TownMap {
   _objHtml(o) {
     const m = this.meta;
     const s = m.s;
-    if (o.kind === 'building') return A.building(o.ref, s.buildings[o.ref] || 1, s.town);
+    if (o.kind === 'building') return A.building(o.ref, s.buildings[o.ref] || 1, s.town, o.ref === 'bigtop' ? s.zone : 0);
     if (o.kind === 'home') {
       const p = m.person(o.ref);
       if (!p) return A.boxArt(2, 2, 20, '#ccc');
@@ -240,17 +241,18 @@ export class TownMap {
     if (o.kind === 'keepsake') return A.keepsake(o.ref);
     if (o.kind === 'souvenir') return A.souvenir(o.ref);
     if (o.kind === 'statue') return A.statue();
-    if (o.kind === 'landmark') return A.landmark(o.ref, true);
+    if (o.kind === 'landmark') return A.landmark(o.ref, true, s.town);
     return A.boxArt(o.size, o.size, 20);
   }
 
   _objKey(o) {
     const m = this.meta;
     const s = m.s;
-    if (o.kind === 'building') return `${o.ref}|${s.buildings[o.ref]}|${s.town.name}|${s.town.color}`;
+    if (o.kind === 'building') return `${o.ref}|${s.buildings[o.ref]}|${s.town.name}|${s.town.color}|${o.ref === 'bigtop' ? s.zone : 0}`;
+    if (o.kind === 'landmark') return `${o.ref}|${s.town.name}|${s.town.color}`;
     if (o.kind === 'home') {
       const p = m.person(o.ref);
-      return p ? `${tierOf(p.level)}|${p.hearts}|${p.family}|${p.golden}` : 'x';
+      return p ? `${tierOf(p.level)}|${p.hearts}|${p.family}|${p.golden}|${p.level}` : 'x';
     }
     return o.ref;
   }
@@ -267,7 +269,7 @@ export class TownMap {
       const was = this.cache.get(id);
       this.cache.set(id, key);
       const art = this._objHtml(o);
-      const el = this.view.upsert(id, { i: o.i, j: o.j, w: o.size, h: o.size, html: art.svg, artH: art.artH, cls: `o-${o.kind}${o.kind === 'building' ? ` b-${o.ref}` : ''}`, oid: o.id });
+      const el = this.view.upsert(id, { i: o.i, j: o.j, w: o.size, h: o.size, html: art.svg, artH: art.artH, cls: `o-${o.kind}${o.kind === 'building' ? ` b-${o.ref}` : ''}`, oid: o.id, img: true, hitH: art.bodyH });
       if (was && was.split('|')[0] !== key.split('|')[0]) {
         el.classList.remove('pop');
         void el.offsetWidth;
@@ -305,7 +307,7 @@ export class TownMap {
       if (this.cache.get(id)) continue;
       this.cache.set(id, 1);
       const art = A.junk(k.v);
-      this.view.upsert(id, { i: k.i, j: k.j, w: 1, h: 1, html: art.svg, artH: art.artH, cls: 'o-junk', z: 2 });
+      this.view.upsert(id, { i: k.i, j: k.j, w: 1, h: 1, html: art.svg, artH: art.artH, cls: 'o-junk', z: 2, img: true, hitH: 34 });
     }
     for (const id of [...this.view.objects.keys()])
       if (id.startsWith('j') && !seen.has(id)) {
@@ -323,7 +325,8 @@ export class TownMap {
     const m = this.meta;
     const tier = m.fenceTier();
     const edges = m.fenceEdges();
-    const key = `${tier}|${edges.map((e) => `${e.a}${e.b}${e.side}`).join(',')}`;
+    const color = m.s.town.color;
+    const key = `${tier}|${color}|${edges.map((e) => `${e.a}${e.b}${e.side}`).join(',')}`;
     if (this.cache.get('fence') === key) return;
     const before = this.cache.get('fence');
     this.cache.set('fence', key);
@@ -334,7 +337,7 @@ export class TownMap {
       const back = e.side === 'i0' || e.side === 'j0';
       const pieces = back ? [[0, LOT]] : [[0, 2], [2, 2], [4, 2], [6, 1]];
       for (const [off, len] of pieces) {
-        const f = A.fence(tier, e.side, len);
+        const f = A.fence(tier, e.side, len, color, e.a * 7 + e.b * 3 + off);
         if (!f) continue;
         let i;
         let j;
@@ -353,7 +356,7 @@ export class TownMap {
         }
         // Back edges sit under everything on the lot; front pieces over what stands behind them.
         const z = back ? -((i + w + j + h) * 10) + (I + J) * 10 - 4 : 8;
-        this.view.upsert(`f:${e.a},${e.b},${e.side},${off}`, { i, j, w, h, html: f.svg, artH: f.artH, cls: `o-fence${before ? ' hop' : ''}`, z, noTap: true });
+        this.view.upsert(`f:${e.a},${e.b},${e.side},${off}`, { i, j, w, h, html: f.svg, artH: f.artH, cls: `o-fence${before ? ' hop' : ''}`, z, noTap: true, img: true });
       }
     }
   }
@@ -384,7 +387,7 @@ export class TownMap {
           const html =
             `<button class="tag k-${KIND_ICON[L.kind]}${lock ? ' locked' : ''}${can.ok ? ' can' : ''}${hot ? ' hot' : ''}" type="button" data-ui="lot" data-lot="${key}">` +
             `<span class="ti">${A.townIcon(KIND_ICON[L.kind])}</span><span class="tt"><b>${esc(L.name)}</b>${lock ? `<em>${icon('lock')}Zone ${can.zone || '·'}</em>` : `<em class="pr${m.s.coins < price ? ' short' : ''}">${icon('coin')}${price}</em>`}</span>${hot ? `<i class="arrow">${icon('up')}</i>` : ''}</button>`;
-          v.pin(`t:${key}`, c.x, c.y - 60, html, 'pin-tag');
+          v.pin(`t:${key}`, c.x, c.y - 34, html, 'pin-tag');
           live.add(`t:${key}`);
         } else {
           v.pin(`n:${key}`, c.x, c.y - 50, `<span class="lname far">${esc(L.name)}</span>`, 'pin-name');
@@ -496,7 +499,7 @@ export class TownMap {
     const at = opts.at || m.freeSpot(opts.size, { near: { i: c.i, j: c.j }, avoidJunk: false }) || { i: Math.round(c.i - opts.size / 2), j: Math.round(c.j - opts.size / 2) };
     this.placing = { ...opts, i: at.i, j: at.j };
     this._showPlace();
-    if (!this.view.onScreen(at.i + opts.size / 2, at.j + opts.size / 2, 90)) this.glide(at.i + opts.size / 2, at.j + opts.size / 2, { ms: 400 });
+    if (!this.view.onScreen(at.i + opts.size / 2, at.j + opts.size / 2, 110)) this.glide(at.i + opts.size / 2, at.j + opts.size / 2, { ms: 400 });
   }
 
   _valid(i, j, size, ignore = null) {
@@ -842,7 +845,7 @@ export class TownMap {
     const opts = { w: FIG.w, h: FIG.h, flip: w.face < 0 };
     if (html) {
       const tags = `${w.gift ? `<button class="wgift" type="button">${icon('gift')}</button>` : ''}${this.meta.isReady(p) ? `<i class="wready">${icon('up')}</i>` : ''}`;
-      opts.html = `<div class="wfig v-${p.vibe}${w.squad ? ' squad' : ''} p-${w.pose}">${figureSvg(p, { pose: w.pose })}</div><span class="wname">${esc(displayName(p))}</span>${tags}`;
+      opts.html = `<div class="wfig v-${p.vibe}${w.squad ? ' squad' : ''} p-${w.pose}">${svgImgPlain(figureSvg(p, { pose: w.pose }))}</div><span class="wname">${esc(displayName(p))}</span>${tags}`;
     }
     const el = this.view.walker(w.id, w.fi, w.fj, opts);
     el.classList.toggle('walking', !!w.path.length);
@@ -989,16 +992,19 @@ export class TownMap {
     const st = this.meta.station();
     if (!st) return;
     const key = `${st.i},${st.j},${this.busAway ? 1 : 0}`;
+    if (this.cache.get('bus') !== key && !this.busAway) this.view.removeWalker('bus');
     if (this.cache.get('bus') === key) return;
     this.cache.set('bus', key);
     if (this.busAway) {
       this.view.removeWalker('bus');
       return;
     }
-    const fi = st.i + st.size + 0.05;
-    const fj = st.j + st.size - 0.3;
+    // The bus parks at the pumps (inside the station's footprint), drawn just over it.
+    const [bu, bv] = (A.ANCHORS.bigtop && A.ANCHORS.bigtop.bus) || [st.size + 0.05, st.size - 0.3];
+    const fi = st.i + bu;
+    const fj = st.j + bv;
     this.busAt = { i: fi, j: fj };
-    this.view.walker('bus', fi, fj, { html: `<div class="busfig">${busSvg()}</div>`, w: 66, h: 38 });
+    this.view.walker('bus', fi, fj, { html: `<div class="busfig">${svgImgPlain(busSvg())}</div>`, w: 66, h: 38, z: (st.i + st.size + st.j + st.size) * 10 + 2 });
   }
 
   /** The bus drives off (a raid) and comes back. */
@@ -1048,8 +1054,8 @@ export class TownMap {
     for (const e of this.meta.fenceEdges()) {
       const I = e.a * LOT;
       const J = e.b * LOT;
-      if (e.side === 'i1' && e.a < LOTS_ACROSS - 1) out.push({ i0: I + LOT + 0.9, j0: J + 0.6, i1: I + LOT + 0.9, j1: J + LOT - 0.6 });
-      if (e.side === 'j1' && e.b < LOTS_ACROSS - 1) out.push({ i0: I + 0.6, j0: J + LOT + 0.9, i1: I + LOT - 0.6, j1: J + LOT + 0.9 });
+      if (e.side === 'i1' && e.a < LOTS_ACROSS - 1) out.push({ i0: I + LOT + 1.6, j0: J + 0.6, i1: I + LOT + 1.6, j1: J + LOT - 0.6 });
+      if (e.side === 'j1' && e.b < LOTS_ACROSS - 1) out.push({ i0: I + 0.6, j0: J + LOT + 1.6, i1: I + LOT - 0.6, j1: J + LOT + 1.6 });
     }
     return out;
   }
@@ -1069,7 +1075,7 @@ export class TownMap {
     z.fj = fj;
     const [bw, bh] = ZBOX[z.kind];
     const opts = { w: bw * ZS, h: bh * ZS, flip: z.v < 0 };
-    if (html) opts.html = `<div class="zfig${z.down > 0 ? ' down' : ''}">${zombieSvg(z.kind, { variant: z.variant, ko: z.down > 0 })}</div>`;
+    if (html) opts.html = `<div class="zfig${z.down > 0 ? ' down' : ''}">${svgImgPlain(zombieSvg(z.kind, { variant: z.variant, ko: z.down > 0 }))}</div>`;
     this.view.walker(z.id, fi, fj, opts);
   }
 
@@ -1256,6 +1262,21 @@ export class TownMap {
 }
 
 const k0 = (n) => Math.floor(n / 2);
+
+/** A flat image of an SVG (ground, scenery): no padding, fills its box. */
+const plainCache = new Map();
+function svgImgPlain(svg) {
+  let url = plainCache.get(svg);
+  if (!url) {
+    let src = svg;
+    if (!/xmlns=/.test(src.slice(0, 300))) src = src.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+    url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(src)}`;
+    plainCache.set(svg, url);
+    if (plainCache.size > 400) plainCache.delete(plainCache.keys().next().value);
+  }
+  return `<img src="${url}" alt="" draggable="false" style="display:block;width:100%;height:100%;overflow:visible">`;
+}
+void svgImg;
 
 /** Evening (19:00–06:00 local): sleepy people go home. */
 export function isNight(d = new Date()) {

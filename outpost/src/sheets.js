@@ -208,11 +208,13 @@ export function lotCard(meta, a, b) {
   else btn = `<button class="btn" type="button" disabled>CLEAR ${coins(info.price, 'short')}</button>`;
   const knocks = L.kind === 'L' ? '' : `<div class="note">The prize knocks three times: each knock has a ${Math.round((LOT_GLOW + m.glowExtra()) * 100)}% Glow-Up chance.</div>`;
   void MYSTERY;
+  const art = L.kind === 'L' ? A.landmark(L.landmark, false) : L.kind === '?' ? A.mystery() : A.ruin(info.key);
   return (
+    `<div class="lot-wrap"><div class="bs-art iso">${art.svg}</div>` +
     `<div class="lot-sheet"><div class="kicker">${A.townIcon(({ R: 'rescue', C: 'cache', D: 'set', L: 'landmark', '?': 'mystery' })[L.kind])}${esc(kind.name)}</div><h2>${esc(L.name)}</h2>` +
     `<p class="teaser">“${esc(L.teaser)}”</p>` +
     `<div class="prize">${PRIZE_LINES[L.kind](m, a, b, L)}</div>${knocks}` +
-    `<div class="btns">${btn}</div><div class="note">Land ${m.lotCount()}/${m.landCap()}. Every cleared lot leaves junk piles to pop.</div></div>`
+    `<div class="btns">${btn}</div><div class="note">Land ${m.lotCount()}/${m.landCap()}. Every cleared lot leaves junk piles to pop.</div></div></div>`
   );
 }
 

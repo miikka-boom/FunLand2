@@ -273,7 +273,7 @@ function act(a, d, el) {
       return;
     case 'home': {
       const st = meta.station();
-      map.glide(st.i + 1.5, st.j + 3, { zoom: Math.max(0.9, map.view.cam.zoom) });
+      map.glide(st.i + 3.5, st.j + 3.5, { zoom: Math.max(0.85, map.view.cam.zoom) });
       return;
     }
     case 'undo':
@@ -671,6 +671,24 @@ function kitArt(kit) {
   return A.statue();
 }
 
+/** A free spot in the open wish's range (when placing a piece of the wished set). */
+function wishSpot(set, size) {
+  const w = meta.s.wish;
+  if (!w || !w.set || w.set !== set) return null;
+  const h = meta.homeOf(w.id);
+  if (!h) return null;
+  // Nearest first, and in front of the home (where it shows) before behind it.
+  let best = null;
+  for (let i = h.i - 2 - size + 1; i <= h.i + h.size + 1; i++)
+    for (let j = h.j - 2 - size + 1; j <= h.j + h.size + 1; j++) {
+      const g = Math.max(0, i - (h.i + h.size), h.i - (i + size), j - (h.j + h.size), h.j - (j + size));
+      if (g > 2 || !meta.canPlaceAt(i, j, size).ok || meta.pathAt(i, j)) continue;
+      const score = g * 10 - (i + j - h.i - h.j);
+      if (!best || score < best.score) best = { i, j, score };
+    }
+  return best;
+}
+
 /** Place something new: the drawer and HUD slide away, the ghost appears near the centre. */
 function placeNew(spec) {
   drawer.hide(true);
@@ -680,7 +698,7 @@ function placeNew(spec) {
     size: spec.size,
     art: spec.art,
     set: spec.set || null,
-    at: spec.at || null,
+    at: spec.at || wishSpot(spec.set, spec.size),
     noCancel: spec.noCancel,
     onOk: (i, j) => {
       let r;
@@ -701,7 +719,10 @@ function placeNew(spec) {
       refresh();
       return r;
     },
-    onCancel: () => afterPlaceUi(),
+    onCancel: () => {
+      if (spec.snooze) ui.kitSnooze = meta.s.kits.length;
+      afterPlaceUi();
+    },
   });
 }
 
@@ -782,12 +803,15 @@ function boxObject(o) {
 
 /** The waiting kit: a green ghost near the station; ✓ places it. */
 function showKit(kit) {
-  if (busy || map.placing || modals.isOpen) return;
+  if (busy || map.placing || modals.isOpen || drawer.isOpen || crew.isOpen || $('title-card')) return;
+  if (ui.kitSnooze === meta.s.kits.length) return; // ✕ put it off: it waits in BUILD
+  if (meta.s.raids === 0) return; // the first raid comes first
   const size = meta.sizeOf(kit);
   const st = meta.station();
   const at = meta.freeSpot(size, { near: { i: st.i + 1, j: st.j + 1 }, avoidPaths: true }) || meta.freeSpot(size, {});
   if (!at) return;
-  placeNew({ kind: 'kit', index: 0, size, art: kitArt(kit), at });
+  placeNew({ kind: 'kit', index: 0, size, art: kitArt(kit), at, snooze: true });
+  if (meta.once(`cap.kit.${kit.kind}`)) toasts.show(`${A.townIcon('build')}${kit.kind === 'building' ? `The <b>${esc(BUILDINGS[kit.ref].name)}</b> flew in!` : kit.kind === 'statue' ? "Founders' Day! The statue flew in." : 'A souvenir flew in!'} Drag it where you like, then ✓.`, 'gift', 3600);
 }
 
 // --- Lots -----------------------------------------------------------------------------------------------
@@ -993,7 +1017,7 @@ async function wishTap() {
   if (!w) return;
   const p = meta.person(w.id);
   const h = meta.homeOf(w.id);
-  if (h) await map.glide(h.i + 1, h.j + 1, { ms: 450, dy: 60 });
+  if (h) await map.glide(h.i + 1, h.j + 1, { ms: 450, zoom: Math.max(0.9, map.view.cam.zoom) });
   if (w.set) {
     toasts.show(`${icon('heart')}<b>${name(p)}</b> would love something <b>${esc(SETS[w.set].name)}</b> within 2 tiles of home.`, 'gift', 3400);
     openDrawer('decor');
@@ -1295,6 +1319,17 @@ function showHint() {
       const dot = meta.s.people[0];
       label = `<b>${name(dot)}:</b> Zombies at the fence! Let's bonk some.`;
     } else if (meta.s.raids === 1) label = 'Three waves, a crown for each one you clear.';
+  }
+  // A map target hidden under the HUD or off-screen: bring it into view first.
+  const t = stepTile(step);
+  if (el && t && map.root.contains(el)) {
+    const r = el.getBoundingClientRect();
+    const safe = r.top > 54 && r.bottom < innerHeight - 84 && r.left > 8 && r.right < innerWidth - 8;
+    if (!safe) {
+      map.glide(t.i, t.j, { ms: 500 });
+      hud.idle = (hud.hintDelay || 1400) - 700; // point once it's there
+      return;
+    }
   }
   if (el) hud.pointAt(el, label, true);
 }

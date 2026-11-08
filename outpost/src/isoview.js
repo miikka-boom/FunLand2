@@ -4,7 +4,7 @@
 // ghost with a green/red footprint. Gestures: one finger pans, two fingers
 // pinch-zoom, a tap selects, and dragging the ghost moves it. The wheel zooms.
 
-import { TW, TH, Camera, footBox, footBottom, depth, diamondPoints, mapBounds, tileAt, tileToWorld, worldToTile } from './iso.js';
+import { TW, TH, Camera, footBox, footBottom, depth, diamondPoints, mapBounds, tileAt, tileToWorld, worldToTile, inHexagon, inPoly } from './iso.js';
 
 const TAP_MOVE = 8; // px a finger may wander and still be a tap
 const TAP_MS = 350;
@@ -221,7 +221,8 @@ export class IsoView {
     Object.assign(rec, o);
     const { el } = rec;
     if (o.html !== undefined && o.html !== rec.shown) {
-      el.innerHTML = o.html;
+      // img: the SVG becomes a cached image (cheap to draw; taps use the hit hexagon).
+      el.innerHTML = o.img ? svgImg(o.html) : o.html;
       rec.shown = o.html;
     }
     el.className = `iso-obj ${rec.cls || ''}`;
@@ -259,7 +260,7 @@ export class IsoView {
   }
 
   /** Walkers: small figures at fractional tile positions (feet on the point). */
-  walker(id, fi, fj, { html, w = 30, h = 48, flip = false } = {}) {
+  walker(id, fi, fj, { html, w = 30, h = 48, flip = false, z: zFixed = null } = {}) {
     let rec = this.walkers.get(id);
     if (!rec) {
       const el = document.createElement('div');
@@ -276,9 +277,11 @@ export class IsoView {
     const p = tileToWorld(fi, fj);
     const z = Math.round((fi + fj) * 10 + 5);
     rec.el.style.transform = `translate3d(${(p.x - rec.w / 2).toFixed(1)}px, ${(p.y - rec.h).toFixed(1)}px, 0)${flip ? ' scaleX(-1)' : ''}`;
-    if (rec.z !== z) {
-      rec.z = z;
-      rec.el.style.zIndex = String(z);
+    if (zFixed != null) rec.zFixed = zFixed;
+    const zz = rec.zFixed != null ? rec.zFixed : z;
+    if (rec.z !== zz) {
+      rec.z = zz;
+      rec.el.style.zIndex = String(zz);
     }
     rec.el.style.width = `${rec.w}px`;
     rec.el.style.height = `${rec.h}px`;
@@ -407,7 +410,10 @@ export class IsoView {
           if (this.gesture !== g || g.moved || this.pointers.size !== 1) return;
           const t = this._tileAt(g.start);
           let id = target ? target.dataset.oid || null : null;
-          if (!id) id = this._objectOnTile(t.i, t.j);
+          if (!id) {
+            const w = this.cam.screenToWorld(g.start.x, g.start.y);
+            id = this._hitObject(w.x, w.y) || this._objectOnTile(t.i, t.j);
+          }
           if (this.cb.onLongPress && this.cb.onLongPress({ id, i: t.i, j: t.j })) {
             g.kind = 'lift';
             g.moved = true;
@@ -421,6 +427,24 @@ export class IsoView {
       const [a, b] = [...this.pointers.values()];
       this.gesture = { kind: 'pinch', dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
     }
+  }
+
+  /**
+   * The object under a world point: its footprint diamond extruded upward by
+   * its body height (a hexagon), highest depth first. Used for image objects.
+   */
+  _hitObject(wx, wy) {
+    let best = null;
+    for (const [oid, rec] of this.objects) {
+      if (oid === '__ghost' || rec.noTap) continue;
+      const w = rec.w || 1;
+      const h = rec.h || 1;
+      const body = rec.hitH ?? Math.max(0, (rec.artH || 0) * 0.85 - (w + h) * (TH / 2));
+      if (!inHexagon(rec.i, rec.j, w, h, body, wx, wy)) continue;
+      const d = depth(rec.i, rec.j, w, h) * 10 + (rec.z || 0);
+      if (!best || d > best.d) best = { oid, d };
+    }
+    return best ? best.oid : null;
   }
 
   _objectOnTile(i, j) {
@@ -541,7 +565,10 @@ export class IsoView {
     this.lastTap = { t: now, x: p.x, y: p.y };
     let id = null;
     if (g.target) id = g.target.dataset.oid || (g.target.dataset.wid ? `w:${g.target.dataset.wid}` : null);
-    if (!id) id = this._objectOnTile(t.i, t.j);
+    if (!id) {
+      const w = this.cam.screenToWorld(p.x, p.y);
+      id = this._hitObject(w.x, w.y) || this._objectOnTile(t.i, t.j);
+    }
     if (lt && now - lt.t < DOUBLE_MS && Math.hypot(p.x - lt.x, p.y - lt.y) < 30 && !g.target) {
       this.lastTap = null;
       const to = this.cam.zoom < 1.15 ? 1.4 : 0.9;
@@ -571,4 +598,25 @@ export class IsoView {
   }
 }
 
-export { TW, TH };
+const PAD = 16; // world px of room around the viewBox for small overhangs (flags, smoke)
+const imgCache = new Map();
+
+/** An <img> of an SVG string, padded so overhangs past the viewBox still show. */
+export function svgImg(svg) {
+  let url = imgCache.get(svg);
+  if (!url) {
+    let src = svg;
+    const m = /viewBox="\s*([-\d.]+)[ ,]+([-\d.]+)[ ,]+([-\d.]+)[ ,]+([-\d.]+)\s*"/.exec(src);
+    if (m) {
+      const [x, y, w, h] = m.slice(1).map(Number);
+      src = src.replace(m[0], `viewBox="${x - PAD} ${y - PAD} ${w + 2 * PAD} ${h + 2 * PAD}" width="${w + 2 * PAD}" height="${h + 2 * PAD}"`);
+    }
+    if (!/xmlns=/.test(src.slice(0, 300))) src = src.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+    url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(src)}`;
+    imgCache.set(svg, url);
+    if (imgCache.size > 600) imgCache.delete(imgCache.keys().next().value);
+  }
+  return `<img class="iso-img" src="${url}" alt="" draggable="false" decoding="async" style="left:-${PAD}px;top:-${PAD}px;width:calc(100% + ${2 * PAD}px);height:calc(100% + ${2 * PAD}px)">`;
+}
+
+export { inPoly, TW, TH };
