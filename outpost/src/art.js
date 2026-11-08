@@ -91,8 +91,15 @@ export function bossSpot(id) {
   return (T && T.BOSS_SPOT && T.BOSS_SPOT[id]) || null;
 }
 
+/** The boss's costume prop as an SVG in the 40 × 56 walker-zombie space. */
 export function bossProp(id) {
-  return memo(`bp|${id}`, () => (T && T.bossProp ? T.bossProp(id) : '')) || '';
+  return (
+    memo(`bp|${id}`, () => {
+      const g = T && T.bossProp ? T.bossProp(id) : '';
+      if (!g) return '';
+      return g.trim().startsWith('<svg') ? g : `<svg viewBox="0 0 40 56" overflow="visible" xmlns="http://www.w3.org/2000/svg">${g}</svg>`;
+    }) || ''
+  );
 }
 
 export function fence(tier, side, len, color = null, seed = 0) {
