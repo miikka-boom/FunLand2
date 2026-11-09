@@ -7,6 +7,7 @@ build step and no dependencies.
 |---|---|---|
 | 0: HORDE | [`/`](index.html) | Twin-stick touch controls for top-down zombie horde survival |
 | 1: WOBBLE WAR | [`battle/`](battle/) | A real-time card battler with funny, satisfying 2D physics units and a fair free-to-play meta game |
+| Thrill Hill | [`thrill/`](thrill) | A Clash-Royale-inspired metagame: two static chests, a theme-park base, randomly generated survivors, a squad of three, three-crown raids |
 | Hope Street | [`hope/`](hope) | A metagame with base building and randomly generated people: take them in, pick a crew of four for each run |
 | Road to Evac | [`evac/`](evac) | A metagame for a co-op zombie survivor game (simulated runs) |
 | Safehouse | [`safehouse/`](safehouse) | Another metagame: meta-progression for a co-op zombie mobile game |
@@ -501,6 +502,33 @@ and no dependencies.
     The chip shows your best time (or furthest run) today. **New map** turns
     it off. The run timer says "daily" while it's on.
 
+## Thrill Hill: a metagame prototype
+
+[`thrill/`](thrill) is a separate page and a fresh take: it shares no systems
+with the earlier metagame prototypes and isn't connected to the action game. A
+**simulated PLAY button** stands in for a raid.
+
+- A sunny theme park on a hill above a zombie town is your base. Randomly
+  generated survivors (names, jobs, quirks, looks, a rare mascot head) live in
+  it and wander about. Everyone a chest brings moves in.
+- **Two static chests, no slots**: a Supply Crate every 2 hours and a Ticket
+  Vault every 8 hours, both ready on the first visit. Knock three times: each
+  knock may **Glow-Up** the chest to Silver, Gold or Rainbow. Then coins,
+  Badges flying onto the squad's faces, and newcomer cards that flip with
+  drama to match their rarity.
+- **Badges** fill each survivor's own bar; READY plus coins levels them up.
+  Rides make their class stronger, the Big Top makes raids pay more, chest
+  levels make chests better. Every upgrade is instant.
+- Pick a **squad of three**. Four classes counter four zombie threats. A raid
+  is three waves, a **crown** for each one cleared; crowns pay Skulls and
+  coins, and Skulls open six zones with gate gifts and milestones.
+- The testing drawer (gear, top right) has time warp, forced chest grades and
+  rarities, raid outcomes, cheats and live sliders. `npm run thrill:balance`
+  simulates a week of play.
+
+Open `/thrill/` (on Pages: `https://miikka-boom.github.io/FunLand2/thrill/`).
+The design, numbers and pacing are in [docs/THRILL-HILL.md](docs/THRILL-HILL.md).
+
 ## Hope Street: a metagame prototype
 
 [`hope/`](hope) is a separate page built around **base building** and
@@ -585,8 +613,8 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
 
 - **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` (HORDE) once
   this is on the default branch (the Pages workflow only deploys from there).
-  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/hope/`
-  (Hope Street), `/evac/` (Road to Evac), `/safehouse/` (the Safehouse) and
+  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/thrill/`
+  (Thrill Hill), `/hope/` (Hope Street), `/evac/` (Road to Evac), `/safehouse/` (the Safehouse) and
   `/camp/` (the v1 camp).
 - **Locally:** `npm start` (or `python3 -m http.server 8080`), then open
   `http://localhost:8080`. To try it on a phone, open
@@ -613,11 +641,12 @@ src/render/                renderer, lighting (night + LOS), HUD, loot, world-fe
 src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
+thrill/                    Thrill Hill metagame prototype (separate page; map in docs/THRILL-HILL.md)
 hope/                      Hope Street metagame prototype (separate page; map in docs/HOPE-STREET.md)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, Ben's traces + memory, playtest reports + daily seed, the four metagames, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, Ben's traces + memory, playtest reports + daily seed, the five metagames, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.
