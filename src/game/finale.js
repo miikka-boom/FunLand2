@@ -30,7 +30,6 @@ export function initFinale(game, map) {
     dur: 60,
     hold: 0,
     prompted: false,
-    seenPier: false,
     waves: 0,
     nextWave: 0,
     f: 0,
@@ -59,12 +58,7 @@ export function updateFinale(game, F, dt) {
   if (F.flareT >= 0) F.flareT += dt;
 
   if (F.state === 'idle') {
-    // Call-outs: on the pier, then near the end.
-    const onPier = p.x > F.pier.x && p.y > F.pier.y - 40 && p.y < F.pier.y + F.pier.h + 40;
-    if (!F.seenPier && p.alive && onPier) {
-      F.seenPier = true;
-      game.announce('PIER 9', '#cfe3ff', 1.8);
-    }
+    // The objective, once you're nearly there (the pier itself is painted PIER 9).
     if (!F.prompted && p.alive && Math.hypot(F.flare.x - p.x, F.flare.y - p.y) < FERRY.prompt) {
       F.prompted = true;
       game.announce('THE LAST FERRY STOPS HERE', '#ffd27a', 2.4);

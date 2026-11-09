@@ -3,19 +3,16 @@
 //  - his bed: walk up to it and it counts as found (this device remembers);
 //    a can by the bed is still steaming; somewhere out of sight, someone
 //    whistles a few notes (once a run, while you're near but can't see it)
-//  - the papers by the bed (his map of this place, a drawing of the squad):
-//    stand by one and it shows, large, at the top of the screen
 //  - the glimpse: once a run, two little eyes in your flashlight, off the
 //    walk. Hold the beam on them and they blink and are gone; the spot has
 //    fresh scratches in it. Walk up without a light and they're just gone.
+//    (Nothing here shows text: what he leaves is drawn in the world.)
 //  - memory (this device only): deaths, wins and beds found, so a line or two
 //    on later runs knows what you did. Nothing ever says how he knows.
 
 import { lightAt } from './terror.js';
-import { BEN_CAPTIONS } from '../world/ben-content.js';
 
 const MEM_KEY = 'funland2.p0.ben.v1';
-const PAPER_R = 58;
 
 export function loadBenMemory() {
   try {
@@ -43,12 +40,10 @@ export function initBen(game, map, mem) {
   }
   game.ben = {
     nest: B.nest,
-    papers: B.papers,
     glimpse: B.glimpse ? { x: B.glimpse.x, y: B.glimpse.y, state: 'wait', litT: 0, t: 0, lit: 0 } : null,
     whistled: false,
     nestFound: false,
     steamT: 0,
-    paper: { item: null, a: 0 },
     ended: false,
     mem,
   };
@@ -64,7 +59,6 @@ export function updateBen(game, dt) {
   if (!G) return;
   const p = game.player;
   const W = game.world;
-
   if (G.nest) {
     const n = G.nest;
     const d = Math.hypot(p.x - n.x, p.y - n.y);
@@ -90,28 +84,6 @@ export function updateBen(game, dt) {
       }
     }
   }
-
-  // The papers: the nearest one in reach (with a clear line to it) fades in.
-  const cap = G.paper;
-  let best = null;
-  let bd = PAPER_R * PAPER_R;
-  if (p.alive && !game.won && !game.lost) {
-    for (const q of G.papers) {
-      const d2 = (q.x - p.x) ** 2 + (q.y - p.y) ** 2;
-      if (d2 < bd && W.segmentClear(p.x, p.y, q.x, q.y)) {
-        bd = d2;
-        best = q;
-      }
-    }
-  }
-  if (best && best !== cap.item) {
-    if (cap.a > 0.05) cap.a = Math.max(0, cap.a - dt * 7);
-    else {
-      cap.item = best;
-      cap.a = 0;
-    }
-  } else if (best) cap.a = Math.min(1, cap.a + dt * 4);
-  else cap.a = Math.max(0, cap.a - dt * 4);
 
   updateGlimpse(game, G, dt);
 
@@ -174,5 +146,4 @@ function vanish(game, g) {
   const p = game.player;
   const look = Math.atan2(g.y - p.y, g.x - p.x); // looking away from you, the way it went
   game.world.map.decor.push({ type: 'beneyes', x: g.x, y: g.y, look, s: 0.9, fresh: true });
-  game.world.map.readables.push({ x: g.x, y: g.y, rx: g.x, ry: g.y, label: 'SCRATCHED', text: BEN_CAPTIONS.eyesFresh, ben: true });
 }

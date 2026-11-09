@@ -1,14 +1,16 @@
 // Ben's traces (We Left Ben): someone the squad left behind keeps leaving signs.
-// A placement pass like lore-gen: visual only (decor, readables, one candle
-// glow, one medkit), seeded from the map, run last so it keeps clear of the
-// finds, features and graffiti. Words live in ben-content.js; the run-time
-// side (his bed, the whistle, the glimpse, the papers) is game/ben.js.
+// A placement pass like lore-gen: visual only (decor, one candle glow, one
+// medkit), seeded from the map, run last so it keeps clear of the finds,
+// features and graffiti. There is no inspect text: everything is drawn in the
+// world, so every player sees the same signs. Words live in ben-content.js;
+// the run-time side (his bed, the whistle, the glimpse) is game/ben.js.
 //
 //  - the first room: "day 3. you left." under the squad's last line, and a
 //    stuffed rabbit with sewn-on eyes
 //  - his bed, off the route: a cardboard fort, a candle still burning, the
-//    same rabbit, a nights-slept tally, a hand-drawn map of this level (with
-//    one place nobody has found) and a drawing of the squad, plus one more
+//    same rabbit, a nights-slept tally, and in chalk on the ground beside it,
+//    his map of this level (with one place nobody has found) and a drawing of
+//    the squad, plus one more
 //  - two little eyes scratched near vents, boarded rooms and the secret, and
 //    a few leading to his bed; the pupils look at what they're about
 //  - "ben was here" where nobody could reach: roofs, shelf tops, the top of
@@ -23,8 +25,8 @@
 import { World, FlowField, NAV_CELL } from './world.js';
 import { mulberry32, shuffle, pointInRect, rectsOverlap, clamp } from '../util.js';
 import { analyse, detour } from './scavenge-gen.js';
-import { BEN_WAS_HERE, BEN_START, SQUAD_ON_BEN, BEN_NOTES, BEN_NEST, BEN_KNOWS, BEN_CAPTIONS } from './ben-content.js';
-import { SPRAY, MARKER } from './lore-content.js';
+import { BEN_WAS_HERE, BEN_START, SQUAD_ON_BEN, BEN_NOTES, BEN_NEST, BEN_KNOWS, BEN_NOISE, TINKERER_ON_BEN } from './ben-content.js';
+import { SPRAY, MARKER, whiteboardLen } from './lore-content.js';
 
 const INF = 0x3fffffff;
 const U = NAV_CELL / 10; // flow-field units -> world units
@@ -49,10 +51,9 @@ export function addBen(map, seed, opts = {}) {
   const T = TUNE[theme];
   const mem = opts.memory || {};
   const level = opts.level || theme;
-  map.readables = map.readables || [];
   map.glows = map.glows || [];
   map.benRoof = [];
-  const B = (map.ben = { theme, nest: null, branch: null, glimpse: null, papers: [], eyes: [], sketch: null, morse: null, knows: null, nestLine: null });
+  const B = (map.ben = { theme, nest: null, branch: null, glimpse: null, chalk: [], eyes: [], sketch: null, morse: null, knows: null, nestLine: null });
 
   // Same analysis as the lore pass (reused if it just ran on this exact map).
   const cache = map._flavor && map._flavor.n === map.obstacles.length ? map._flavor : null;
@@ -80,12 +81,10 @@ export function addBen(map, seed, opts = {}) {
   const inSafe = (x, y, pad = 30) => pointInRect(x, y, map.startRoom.outer, pad) || pointInRect(x, y, map.endRoom.outer, pad);
   const inSealed = (x, y) => (map.sealed || []).some((s) => pointInRect(x, y, s.interior, 16));
   const lampNear = (x, y, k = 0.9) => map.lamps.some((l) => Math.hypot(l.x - x, l.y - y) < (l.r || 165) * k);
-  const read = (x, y, label, text, rx = x, ry = y) => map.readables.push({ x, y, rx, ry, label, text, ben: true });
   const crayon = (x, y, text, size = 11, a = 0) => map.decor.push({ type: 'bentext', x, y, text, size, a });
-  const eyes = (x, y, look, s = 1, caption = BEN_CAPTIONS.eyes[Math.min(B.eyes.length, BEN_CAPTIONS.eyes.length - 1)]) => {
+  const eyes = (x, y, look, s = 1) => {
     map.decor.push({ type: 'beneyes', x, y, look, s });
     B.eyes.push({ x, y, look });
-    if (caption) read(x, y, 'SCRATCHED', caption);
     busy.push({ x, y, r: 40 });
   };
   /** A line of text this wide fits on open ground here. */
@@ -123,7 +122,6 @@ export function addBen(map, seed, opts = {}) {
         if (Math.hypot(map.start.x - x, map.start.y - p.y) < 22) continue;
         boxes.push(box);
         crayon(x, p.y, text, size, (rnd() - 0.5) * 0.08);
-        read(x, p.y, BEN_CAPTIONS.label, text);
         return true;
       }
       return false;
@@ -145,7 +143,6 @@ export function addBen(map, seed, opts = {}) {
           const y = dy + ny * out + nx * side;
           if (!fits(x, y, w, 6) || !clearOf(x, y, w / 2)) continue;
           crayon(x, y, knows, 10, (rnd() - 0.5) * 0.08);
-          read(x, y, BEN_CAPTIONS.label, knows);
           busy.push({ x, y, r: w / 2 + 20 });
           B.knows = knows;
           break;
@@ -168,7 +165,6 @@ export function addBen(map, seed, opts = {}) {
     const rb = spotsR[0];
     if (rb) {
       map.decor.push({ type: 'rabbit', x: rb.x, y: rb.y, a: r(-0.6, 0.6) });
-      read(rb.x, rb.y, BEN_CAPTIONS.rabbit.label, BEN_CAPTIONS.rabbit.text);
       boxes.push({ x: rb.x - 8, y: rb.y - 19, w: 16, h: 30 });
     }
   }
@@ -212,18 +208,18 @@ export function addBen(map, seed, opts = {}) {
       const oy = Math.sin(a);
       const at = (along, side) => ({ x: x + ox * along - oy * side, y: y + oy * along + ox * side });
       map.decor.push({ type: 'benfort', x, y, a, slept: 17 + Math.floor(rnd() * 19) });
-      read(x, y, BEN_NEST.fort.label, BEN_NEST.fort.text);
       const rab = at(-12, 8); // sitting on the bed
       map.decor.push({ type: 'rabbit', x: rab.x, y: rab.y, a: a + 0.5, nest: true });
-      read(rab.x, rab.y, BEN_CAPTIONS.rabbitNest.label, BEN_CAPTIONS.rabbitNest.text);
       const lt = at(34, -32);
       crayon(lt.x, lt.y, BEN_NEST.light, 9, (rnd() - 0.5) * 0.1);
-      read(lt.x, lt.y, BEN_CAPTIONS.label, BEN_NEST.light);
-      const pm = at(46, -17);
-      const pd = at(46, 17);
-      map.decor.push({ type: 'benpaper', kind: 'map', x: pm.x, y: pm.y, a: a + r(-0.4, 0.4) });
-      map.decor.push({ type: 'benpaper', kind: 'drawing', x: pd.x, y: pd.y, a: a + r(-0.4, 0.4) });
-      B.papers.push({ kind: 'map', x: pm.x, y: pm.y }, { kind: 'drawing', x: pd.x, y: pd.y });
+      // In chalk on the ground nearby: his map of this place, and the squad (plus one more).
+      for (const [kind, cw, chh] of [['map', 190, 124], ['drawing', 210, 100]]) {
+        const spot = chalkSpot(world, map, busy, B.chalk, x, y, cw, chh, rnd);
+        if (!spot) continue;
+        const d = { type: 'benchalk', kind, theme, x: spot.x, y: spot.y, w: spot.w, h: spot.h, a: spot.a };
+        map.decor.push(d);
+        B.chalk.push({ ...d, box: spot.box, ref: d });
+      }
       // Been here before? He noticed.
       const seen = (mem.nests && mem.nests[level]) || 0;
       if (seen) {
@@ -231,7 +227,6 @@ export function addBen(map, seed, opts = {}) {
         const lp = at(76, 0);
         if (world.isFree(lp.x, lp.y, 8)) {
           crayon(lp.x, lp.y, line, 9, (rnd() - 0.5) * 0.08);
-          read(lp.x, lp.y, BEN_CAPTIONS.label, line);
           B.nestLine = line;
         }
       }
@@ -314,7 +309,6 @@ export function addBen(map, seed, opts = {}) {
         if (room.sleepers.some((s) => Math.hypot(s.x - x, s.y - y) < 30)) continue;
         if (!world.isFree(x - 40, y, 6) || !world.isFree(x + 40, y, 6)) continue;
         crayon(x, y, BEN_WAS_HERE.sealed, 11, (rnd() - 0.5) * 0.12);
-        read(x, y, BEN_CAPTIONS.label, `${BEN_WAS_HERE.sealed}. (The boards were nailed from the outside.)`);
         break;
       }
     }
@@ -350,9 +344,7 @@ export function addBen(map, seed, opts = {}) {
         if (pts.length >= 7) {
           trail = true;
           map.decor.push({ type: 'vent', x: vx, y: vy, a: Math.atan2(f.ny, f.nx), open: true });
-          read(vx + f.nx * 16, vy + f.ny * 16, BEN_CAPTIONS.vent.label, BEN_CAPTIONS.vent.text);
           map.decor.push({ type: 'footprints', x: pts[4][0], y: pts[4][1], pts });
-          read(pts[5][0], pts[5][1], BEN_CAPTIONS.footprints.label, BEN_CAPTIONS.footprints.text);
           busy.push({ x: vx + f.nx * 100, y: vy + f.ny * 100, r: 120 });
           vents++;
           continue;
@@ -415,7 +407,6 @@ export function addBen(map, seed, opts = {}) {
       const y = north ? p.y - 70 : p.y + p.h + 70;
       if (!map.piers.some((q) => pointInRect(x, y, q, 30))) {
         map.decor.push({ type: 'raft', x, y, text: BEN_WAS_HERE.buoy });
-        read(x, y, 'ON A RAFT, OUT ON THE WATER', BEN_WAS_HERE.buoy, x, north ? p.y + 14 : p.y + p.h - 14);
       }
     }
   }
@@ -451,12 +442,11 @@ export function addBen(map, seed, opts = {}) {
         const ex = cx + Math.cos(ang) * reach; // just short of the noise, on this side
         const ey = cy + Math.sin(ang) * reach;
         if (!world.segmentClear(sx, sy, ex, ey, world.moveBlockers)) continue;
-        const w = BEN_CAPTIONS.noise.length * 11 * 0.56;
+        const w = BEN_NOISE.length * 11 * 0.56;
         if (!fits(sx, sy - 22, w, 6)) continue;
         const toward = Math.atan2(cy - sy, cx - sx);
         for (const f of [0.28, 0.52, 0.76]) map.decor.push({ type: 'benarrow', x: sx + (ex - sx) * f, y: sy + (ey - sy) * f, a: toward + (rnd() - 0.5) * 0.12 });
-        crayon(sx, sy - 22, BEN_CAPTIONS.noise, 11, (rnd() - 0.5) * 0.1);
-        read(sx, sy - 22, BEN_CAPTIONS.label, `${BEN_CAPTIONS.noise}. (The arrows point at the noise.)`);
+        crayon(sx, sy - 22, BEN_NOISE, 11, (rnd() - 0.5) * 0.1);
         busy.push({ x: (sx + ex) / 2, y: (sy + ey) / 2, r: 170 });
         done = true;
       }
@@ -466,10 +456,9 @@ export function addBen(map, seed, opts = {}) {
       const P = map.finale.pier;
       const sy = P.y + P.h * 0.32;
       const sx = P.x + 250;
-      if (fits(sx, sy - 22, BEN_CAPTIONS.noise.length * 11 * 0.56, 6)) {
+      if (fits(sx, sy - 22, BEN_NOISE.length * 11 * 0.56, 6)) {
         for (const k of [0, 1, 2]) map.decor.push({ type: 'benarrow', x: sx + 50 + k * 60, y: sy, a: (rnd() - 0.5) * 0.1 });
-        crayon(sx, sy - 22, BEN_CAPTIONS.noise, 11, (rnd() - 0.5) * 0.1);
-        read(sx, sy - 22, BEN_CAPTIONS.label, `${BEN_CAPTIONS.noise}. (The arrows point down Pier 9.)`);
+        crayon(sx, sy - 22, BEN_NOISE, 11, (rnd() - 0.5) * 0.1);
       }
     }
   }
@@ -487,12 +476,10 @@ export function addBen(map, seed, opts = {}) {
         if (!clearOf(q.x, q.y, w / 2) || !fits(q.x, q.y, w) || !fits(q.x, q.y + size * 0.5 + 12, 70, 6)) continue;
         const color = theme === 'interior' ? MARKER[k % MARKER.length] : SPRAY[(k * 2 + 1) % SPRAY.length];
         map.decor.push({ type: 'graffiti', x: q.x, y: q.y, text: L.text, color, size, a: (rnd() - 0.5) * 0.12, drip: theme !== 'interior' && rnd() < 0.4, marker: theme === 'interior' });
-        read(q.x, q.y, theme === 'interior' ? 'SCRAWLED' : 'GRAFFITI', L.text);
         if (L.reply) {
           const ry = q.y + size * 0.5 + 12;
           const rx = q.x + r(-w * 0.18, w * 0.18);
           crayon(rx, ry, L.reply, 10, (rnd() - 0.5) * 0.08);
-          read(rx, ry + 4, BEN_CAPTIONS.reply, L.reply);
         }
         placed.push(q);
         busy.push({ x: q.x, y: q.y, r: w / 2 + 40 });
@@ -503,13 +490,17 @@ export function addBen(map, seed, opts = {}) {
 
   // --- One page of what happened (early on the run) ---------------------------------------------------
   {
-    const note = BEN_NOTES[theme];
+    const lines = BEN_NOTES[theme];
+    const size = theme === 'interior' ? 12 : 14;
+    const inks = { odile: '#efe9d6', mags: MARKER[1], teo: MARKER[2], lou: '#f2c94c' };
+    const w = Math.max(...lines.map((l) => l.text.length)) * size * 0.62;
     for (const q of cells) {
-      if (q.prog < 0.08 || q.prog > 0.5 || q.det < 100 || q.det > 700 || q.enc < 6) continue;
-      if (!clearOf(q.x, q.y, 20) || !world.isFree(q.x, q.y, 14)) continue;
-      map.decor.push({ type: 'note', x: q.x, y: q.y, a: r(-0.3, 0.3) });
-      read(q.x, q.y, note.label, note.text);
-      busy.push({ x: q.x, y: q.y, r: 60 });
+      if (q.prog < 0.08 || q.prog > 0.5 || q.det < 60 || q.det > 700 || q.enc < 5) continue;
+      if (!clearOf(q.x, q.y, w / 2 + 10) || !lines.every((_, k) => fits(q.x, q.y + k * (size + 8), w))) continue;
+      map.decor.push({ type: 'note', x: q.x - w / 2 - 14, y: q.y, a: r(-0.3, 0.3) });
+      lines.forEach((l, k) => map.decor.push({ type: 'graffiti', x: q.x, y: q.y + k * (size + 8), text: l.text, color: inks[l.who] || '#efe9d6', size, a: (rnd() - 0.5) * 0.06, drip: false, marker: true }));
+      busy.push({ x: q.x, y: q.y, r: w / 2 + 40 });
+      B.note = { x: q.x, y: q.y };
       break;
     }
   }
@@ -538,22 +529,26 @@ export function addBen(map, seed, opts = {}) {
     const gear = map.decor.find((d) => d.type === 'doodle' && d.art === 'gear' && Math.hypot(d.x - den.x, d.y - den.y) < 90);
     if (gear) {
       map.decor.push({ type: 'beneyes', x: gear.x + 22 * (gear.s || 1), y: gear.y - 2, look: Math.PI, s: 0.6 });
-      read(gear.x + 22, gear.y, 'SCRATCHED', 'The gear-and-eye mark. Someone added a second eye, in orange.');
     }
-    for (let t = 0; t < 20; t++) {
-      const ang = rnd() * Math.PI * 2;
-      const x = den.x + Math.cos(ang) * r(70, 110);
-      const y = den.y + Math.sin(ang) * r(70, 110);
-      if (!world.isFree(x, y, 8) || map.decor.some((d) => d.type === 'note' && Math.hypot(d.x - x, d.y - y) < 30)) continue;
-      map.decor.push({ type: 'note', x, y, a: r(-0.4, 0.4) });
-      read(x, y, 'NOTE', BEN_CAPTIONS.tinkerer);
+    const tw = TINKERER_ON_BEN.length * 11 * 0.62;
+    const around = textBoxes(map.decor, { x: den.x - 320, y: den.y - 320, w: 640, h: 640 });
+    for (let t = 0; t < 48; t++) {
+      const ang = (t / 16) * Math.PI * 2;
+      const dist = 120 + Math.floor(t / 16) * 40;
+      const x = den.x + Math.cos(ang) * dist;
+      const y = den.y + Math.sin(ang) * dist;
+      const box = { x: x - tw / 2, y: y - 7, w: tw, h: 14 };
+      if (!fits(x, y, tw, 6) || around.some((b) => rectsOverlap(b, box, 4))) continue;
+      map.decor.push({ type: 'graffiti', x, y, text: TINKERER_ON_BEN, color: '#ece9df', size: 11, a: (rnd() - 0.5) * 0.08, drip: false, marker: true });
       break;
     }
   }
-  const roll = map.decor.find((d) => d.type === 'whiteboard' && /ROLL CALL/.test(d.text || ''));
+  // One more name at the end of the roll call, in orange.
+  const roll = map.decor.find((d) => d.type === 'whiteboard' && d.rollcall);
   if (roll) {
-    crayon(roll.x + (roll.horiz === false ? 30 : 0), roll.y + (roll.horiz === false ? 0 : 22), 'ben ✓', 9, -0.08);
-    read(roll.x, roll.y + 22, BEN_CAPTIONS.label, BEN_CAPTIONS.rollcall);
+    const len = whiteboardLen(roll.text);
+    if (roll.horiz) crayon(roll.x + len / 2 + 22, roll.y, 'ben ✓', 11, -0.06);
+    else crayon(roll.x, roll.y + len / 2 + 22, 'ben ✓', 11, Math.PI / 2);
   }
 
   // --- The way out: eyes inside the last room, looking back the way you came ------------------------------
@@ -598,7 +593,61 @@ export function addBen(map, seed, opts = {}) {
     // The one place nobody has found: off the edge of this map.
     away: theme === 'docks' ? { x: map.w * 1.05, y: map.h * 0.32, kind: 'island' } : theme === 'interior' ? { x: map.w * 0.5, y: map.h * 1.06, kind: 'stairs' } : { x: -map.w * 0.04, y: map.h * 0.08, kind: 'house' },
   };
+  for (const c of B.chalk) if (c.kind === 'map') c.ref.sketch = B.sketch;
+  B.chalk = B.chalk.map(({ kind, x, y, w, h, a }) => ({ kind, x, y, w, h, a }));
   return map;
+}
+
+/**
+ * Open ground near his bed for a chalk drawing (w x h, either way round, a bit smaller if it must):
+ * every point of it walkable, and clear of other writing and of the other drawing.
+ */
+function chalkSpot(world, map, busy, taken, nx, ny, w, h, rnd) {
+  const inSafe = (x, y) => pointInRect(x, y, map.startRoom.outer, 20) || pointInRect(x, y, map.endRoom.outer, 20);
+  for (const k of [1, 0.84, 0.7, 0.6]) {
+    for (const turn of [false, true]) {
+      const ww = (turn ? h : w) * k;
+      const hh = (turn ? w : h) * k;
+      const start = rnd() * Math.PI * 2;
+      for (let dist = 90; dist <= 560; dist += 45) {
+        for (let s = 0; s < 20; s++) {
+          const ang = start + (s / 20) * Math.PI * 2;
+          const cx = nx + Math.cos(ang) * dist;
+          const cy = ny + Math.sin(ang) * dist;
+          const rect = { x: cx - ww / 2, y: cy - hh / 2, w: ww, h: hh };
+          if (rect.x < 20 || rect.y < 20 || rect.x + ww > map.w - 20 || rect.y + hh > map.h - 20) continue;
+          if (pointInRect(nx, ny, rect, 52)) continue; // not over the fort
+          if (taken.some((t) => rectsOverlap(t.box, rect, 12))) continue;
+          // Sample the whole footprint, edges included.
+          const steps = (a0, len) => {
+            const out = [a0 + 3, a0 + len - 3];
+            for (let v = a0 + 14; v < a0 + len - 3; v += 14) out.push(v);
+            return out;
+          };
+          const ys = steps(rect.y, hh);
+          let ok = true;
+          for (const gx of steps(rect.x, ww)) {
+            for (const gy of ys) {
+              if (!world.isFree(gx, gy, 3) || inSafe(gx, gy)) {
+                ok = false;
+                break;
+              }
+            }
+            if (!ok) break;
+          }
+          if (!ok) continue;
+          if (busy.some((b) => {
+            const dx = Math.max(Math.abs(b.x - cx) - ww / 2, 0);
+            const dy = Math.max(Math.abs(b.y - cy) - hh / 2, 0);
+            return Math.hypot(dx, dy) < b.r * 0.55;
+          })) continue;
+          // Drawn for someone standing on the walkable side: turned drawings read along their long side.
+          return { x: cx, y: cy, w: turn ? hh : ww, h: turn ? ww : hh, a: turn ? Math.PI / 2 : 0, box: rect };
+        }
+      }
+    }
+  }
+  return null;
 }
 
 // --- Helpers ----------------------------------------------------------------------------------------

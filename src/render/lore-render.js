@@ -5,7 +5,7 @@
 
 import { TAU, pointInRect } from '../util.js';
 import { rrect, circle, hash01 } from './draw-utils.js';
-import { POSTERS } from '../world/lore-content.js';
+import { POSTERS, whiteboardLen } from '../world/lore-content.js';
 
 const SPRAY_FONT = 'Impact, "Arial Black", "Helvetica Neue", system-ui, sans-serif';
 const MARKER_FONT = '"Marker Felt", "Chalkboard SE", "Comic Sans MS", "Segoe Print", system-ui, sans-serif';
@@ -176,27 +176,23 @@ export function drawLoreDecor(ctx, d) {
       for (let k = 0; k < 5; k++) ctx.fillRect(d.x - 18 + k * 9 + hash01(k + d.x) * 4, d.y + 10 + hash01(k * 2 + d.y) * 6, 4, 3);
       return true;
     case 'whiteboard': {
-      const w = d.horiz ? 70 : 10;
-      const h = d.horiz ? 10 : 70;
+      // The words are on the board, big enough to read from above.
+      ctx.font = `700 10px ${MARKER_FONT}`;
+      const len = Math.max(70, whiteboardLen(d.text));
+      const w = d.horiz ? len : 15;
+      const h = d.horiz ? 15 : len;
       ctx.fillStyle = '#9aa0a6';
       ctx.fillRect(d.x - w / 2 - 1, d.y - h / 2 - 1, w + 2, h + 2);
       ctx.fillStyle = '#f4f4f0';
       ctx.fillRect(d.x - w / 2, d.y - h / 2, w, h);
-      ctx.strokeStyle = 'rgba(30,60,160,0.75)';
-      ctx.lineWidth = 0.9;
-      ctx.beginPath();
-      for (let k = 0; k < 4; k++) {
-        if (d.horiz) {
-          const x0 = d.x - w / 2 + 4 + k * 16;
-          ctx.moveTo(x0, d.y - 2);
-          ctx.lineTo(x0 + 10 * hash01(k + d.x), d.y + 2 - hash01(k * 3) * 3);
-        } else {
-          const y0 = d.y - h / 2 + 4 + k * 16;
-          ctx.moveTo(d.x - 2, y0);
-          ctx.lineTo(d.x + 2, y0 + 10 * hash01(k + d.y));
-        }
-      }
-      ctx.stroke();
+      ctx.save();
+      ctx.translate(d.x, d.y);
+      if (!d.horiz) ctx.rotate(Math.PI / 2);
+      ctx.fillStyle = 'rgba(30,60,160,0.9)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(d.text || '', 0, 0.5);
+      ctx.restore();
       return true;
     }
     default:

@@ -378,18 +378,21 @@ and no dependencies.
   - **Rooftop messages** you see from above: SOS, HELP, 4 ALIVE, PIER 9 →.
   - **Survivor dens**, hidden off the route and lit by candles: bedding, a
     stove, cans, a radio, the Tinkerer's gear-and-eye mark, scribbled advice,
-    a joke wall, and a journal page (Odile's diary in the streets, office and
-    lab notes in the building).
+    a joke wall, and a journal page with its line written out on the floor
+    beside it (Odile's diary in the streets, office notes in the building,
+    the harbour log on the docks).
   - **Little scenes**: a bus stop piled with suitcases, a lemonade stand, a
-    car that says HONK IF ALIVE (DON'T), a last stand, a fridge note about a
-    stolen yogurt, a reception desk still "now serving: nobody".
+    car that says HONK IF ALIVE (DON'T), a wedding car (JUST MARRIED / STILL
+    TOGETHER), a last stand, "MY YOGURT. I KNOW. — DEB" in front of a fridge,
+    "NOW SERVING: NOBODY" by a ticket machine, office whiteboards.
   - **On the docks**: harbour graffiti ("NO FLARE, NO FERRY", "DROWSERS
     CAN'T SWIM. PROBABLY.", "GARY STILL OWES ME A BOAT"), the harbour
     master's log in a den (the HALVARD STAR keeps coming while anyone on
     Pier 9 has a flare), a ferry queue, a fish stall, and painted lines along
     the pier ("NO RUNNING ON THE GANGWAY" … "(RUN.)").
-  - Walk up to anything with words on it and its text shows at the bottom of
-    the screen.
+  - **No inspect text:** everything is drawn in the world, big enough to read
+    from above when your light is on it. There is no caption box and nothing
+    to press, so every player sees the same things.
 - **Ben's traces** (on by default; **Ben's traces (the one we left behind)**
   under **World**). Visual only, with a few sounds; nothing ever explains him:
   - **The first room:** under the squad's "DAY 1 HERE. DAY 2 LEAVING." someone
@@ -399,14 +402,14 @@ and no dependencies.
     sleeping bag, a blanket folded into a perfect square, a candle still
     burning, a can still steaming, a tally of nights slept (nobody sleeps any
     more), the same rabbit (it got there first), and a medkit by the way in.
-    Get close and someone whistles a few notes nearby, out of sight. Two
-    papers lie at the entrance; stand by one to see it:
+    Get close and someone whistles a few notes nearby, out of sight. On open
+    ground nearby, two big chalk drawings:
     - **his map of this level**: where "you left", the way out, his bed, his
       dotted routes, a pair of eyes and an X on the secret stash, and one
-      more place drawn off the edge of the paper (a house, stairs going down,
+      more place drawn off the edge of the map (a house, stairs going down,
       an island) with a question mark.
-    - **a drawing**: "my squad", five holding hands (ODILE, TEO, MAGS, LOU,
-      YOU) and Biscuit, and one more figure in orange, standing apart.
+    - **"my squad"**: five holding hands (ODILE, TEO, MAGS, LOU, YOU) and
+      Biscuit, and one more figure in orange, standing apart.
   - **Two little eyes** (the logo's googly eyes, scratched in): by the
     secret, along the way to his bed, outside boarded rooms, beside vents,
     inside the last safe room looking back out. The pupils always look at
@@ -605,8 +608,8 @@ src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
 src/world/                 seeded city + building + docks (Pier 9) generators, Ben's traces (ben-content: every line; ben-gen: placement), world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
-src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), Ben at run time (ben.js: his bed, the glimpse, the papers, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects, game state
-src/render/                renderer, lighting (night + LOS), HUD (incl. reading captions), loot, world-feature, graffiti/poster docks (water, containers, cranes, ferry) and Ben (ben-render: crayon, eyes, his bed, the papers) drawing
+src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), Ben at run time (ben.js: his bed, the glimpse, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects, game state
+src/render/                renderer, lighting (night + LOS), HUD, loot, world-feature, graffiti/poster, docks (water, containers, cranes, ferry) and Ben (ben-render: crayon, eyes, his bed, the chalk drawings) drawing
 src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)

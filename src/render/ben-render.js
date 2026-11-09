@@ -6,7 +6,7 @@
 // look at something. The eyes glow faintly in the dark.
 
 import { TAU, pointInRect } from '../util.js';
-import { circle, hash01, FONT } from './draw-utils.js';
+import { circle, hash01 } from './draw-utils.js';
 import { BEN_COLOR, SQUAD_DRAWING } from '../world/ben-content.js';
 
 const CRAYON = '"Chalkboard SE", "Comic Sans MS", "Segoe Print", "Bradley Hand", "Marker Felt", cursive';
@@ -67,44 +67,16 @@ export function drawBenDecor(ctx, d, t) {
     case 'rabbit':
       drawRabbit(ctx, d);
       return true;
-    case 'benpaper': {
+    case 'benchalk':
+      // His map of this place / the squad drawing, in chalk on the ground.
       ctx.save();
       ctx.translate(d.x, d.y);
-      ctx.rotate(d.a || 0);
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
-      ctx.fillRect(-6, -4, 14, 11);
-      ctx.fillStyle = '#f1ead8';
-      ctx.fillRect(-7, -5.5, 14, 11);
-      ctx.lineWidth = 0.8;
-      if (d.kind === 'map') {
-        ctx.strokeStyle = 'rgba(70,80,95,0.7)';
-        ctx.strokeRect(-5, -3.5, 5, 4);
-        ctx.strokeRect(1, -3.5, 4, 6);
-        ctx.strokeStyle = BEN_COLOR;
-        ctx.setLineDash([1.2, 1.2]);
-        ctx.beginPath();
-        ctx.moveTo(-4, 3.5);
-        ctx.lineTo(4, -1);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      } else {
-        ctx.strokeStyle = 'rgba(60,70,120,0.8)';
-        ctx.beginPath();
-        for (let k = 0; k < 4; k++) {
-          const fx = -5 + k * 2.4;
-          ctx.moveTo(fx, -2);
-          ctx.lineTo(fx, 2.5);
-        }
-        ctx.stroke();
-        ctx.strokeStyle = BEN_COLOR;
-        ctx.beginPath();
-        ctx.moveTo(5, -1.5);
-        ctx.lineTo(5, 2.5);
-        ctx.stroke();
-      }
+      if (d.a) ctx.rotate(d.a);
+      ctx.translate(-d.w / 2, -d.h / 2);
+      if (d.kind === 'map') drawMapSketch(ctx, d.sketch, d.theme, d.w, d.h);
+      else drawSquad(ctx, d.w, d.h);
       ctx.restore();
       return true;
-    }
     case 'vent':
       drawVent(ctx, d);
       return true;
@@ -435,48 +407,13 @@ export function drawBenRoof(ctx, game, vr) {
   }
 }
 
-// --- The papers by his bed, large (HUD) -------------------------------------------------------------------
+// --- His chalk drawings (on the ground by his bed) ------------------------------------------------------
 
-export function drawBenPaper(ctx, game, L) {
-  const G = game.ben;
-  if (!G || !G.paper.item || G.paper.a < 0.02) return;
-  const it = G.paper.item;
-  const B = game.world.map.ben;
-  const W = Math.min(260, L.w * 0.34);
-  const H = Math.round(W * 0.68);
-  const x = L.safe.l + 14;
-  const y = L.safe.t + 62;
-  ctx.save();
-  ctx.globalAlpha = G.paper.a;
-  ctx.translate(x + W / 2, y + H / 2);
-  ctx.rotate(it.kind === 'map' ? -0.025 : 0.02);
-  ctx.translate(-W / 2, -H / 2);
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  ctx.fillRect(5, 6, W, H);
-  ctx.fillStyle = '#efe7d3';
-  ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = 'rgba(120,100,70,0.16)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(W * 0.5, 0);
-  ctx.lineTo(W * 0.5 + 3, H);
-  ctx.moveTo(0, H * 0.48);
-  ctx.lineTo(W, H * 0.5);
-  ctx.stroke();
-  if (it.kind === 'map') drawMapSketch(ctx, B.sketch, B.theme, W, H);
-  else drawSquad(ctx, W, H);
-  ctx.restore();
-  ctx.globalAlpha = G.paper.a;
-  ctx.font = `800 9px ${FONT}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = 'rgba(255,210,122,0.9)';
-  ctx.fillText(it.kind === 'map' ? 'A HAND-DRAWN MAP' : 'A DRAWING, TAPED TO THE BOX', x + W / 2, y + H + 13);
-  ctx.globalAlpha = 1;
-}
+const CHALK = 'rgba(232,228,214,0.78)';
+const CHALK_DIM = 'rgba(232,228,214,0.45)';
 
 function wobblyRect(ctx, x, y, w, h, seed) {
-  const j = (k) => (hash01(seed * 7.13 + k * 3.7) - 0.5) * 2.2;
+  const j = (k) => (hash01(seed * 7.13 + k * 3.7) - 0.5) * 2.4;
   ctx.moveTo(x + j(1), y + j(2));
   ctx.lineTo(x + w + j(3), y + j(4));
   ctx.lineTo(x + w + j(5), y + h + j(6));
@@ -492,10 +429,10 @@ function kidLabel(ctx, text, x, y, size, color) {
   ctx.fillText(text, x, y);
 }
 
-/** His map of this place: pencil blocks, his marks in orange, and one place off the edge. */
+/** His map of this place: chalk blocks, his marks in orange, and one place off the edge. */
 function drawMapSketch(ctx, sk, theme, W, H) {
   if (!sk) return;
-  const pad = 16;
+  const pad = 12;
   const bx0 = Math.min(0, sk.away.x);
   const bx1 = Math.max(sk.w, sk.away.x);
   const by0 = Math.min(0, sk.away.y);
@@ -505,30 +442,32 @@ function drawMapSketch(ctx, sk, theme, W, H) {
   const oy = pad + ((H - pad * 2) - (by1 - by0) * s) / 2 - by0 * s;
   const X = (v) => ox + v * s;
   const Y = (v) => oy + v * s;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   if (sk.quay !== null && sk.quay !== undefined) {
-    // The water, and its wobbly edge.
-    ctx.fillStyle = 'rgba(90,140,190,0.18)';
-    ctx.fillRect(X(sk.quay), Y(0), W - X(sk.quay), Y(sk.h) - Y(0));
-    ctx.strokeStyle = 'rgba(80,120,170,0.5)';
+    // Wavy lines for the water.
+    ctx.strokeStyle = 'rgba(150,195,235,0.55)';
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
-    for (let k = 0; k < 6; k++) {
-      const wy = Y(sk.h * (0.1 + k * 0.15));
-      const wx = X(sk.quay) + 14 + (k % 2) * 10;
+    for (let k = 0; k < 5; k++) {
+      const wy = Y(sk.h * (0.12 + k * 0.18));
+      const wx = X(sk.quay) + 8 + (k % 2) * 8;
       ctx.moveTo(wx, wy);
       ctx.quadraticCurveTo(wx + 4, wy - 3, wx + 8, wy);
       ctx.quadraticCurveTo(wx + 12, wy + 3, wx + 16, wy);
     }
     ctx.stroke();
   }
-  ctx.strokeStyle = 'rgba(70,80,95,0.55)';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = CHALK_DIM;
+  ctx.lineWidth = 1.3;
   ctx.beginPath();
   sk.rects.forEach((q, i) => wobblyRect(ctx, X(q[0]) + 1, Y(q[1]) + 1, q[2] * s - 2, q[3] * s - 2, i + 1));
   ctx.stroke();
   // His ways round: dotted orange from his bed to every pair of eyes.
   if (sk.nest) {
-    ctx.strokeStyle = 'rgba(255,138,30,0.75)';
-    ctx.setLineDash([2, 2.5]);
+    ctx.strokeStyle = 'rgba(255,138,30,0.85)';
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([3, 3]);
     ctx.beginPath();
     for (const e of [...sk.eyes, ...(sk.secret ? [sk.secret] : [])]) {
       ctx.moveTo(X(sk.nest.x), Y(sk.nest.y));
@@ -537,123 +476,121 @@ function drawMapSketch(ctx, sk, theme, W, H) {
     ctx.stroke();
     ctx.setLineDash([]);
   }
-  const pencil = 'rgba(55,60,70,0.85)';
-  // Where you started (and left).
+  // Where you started (and left): three little figures.
   const sx = X(sk.start.x);
   const sy = Y(sk.start.y);
-  ctx.strokeStyle = pencil;
+  ctx.strokeStyle = CHALK;
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
   for (let k = 0; k < 3; k++) {
-    const fx = sx - 6 + k * 6;
-    ctx.moveTo(fx, sy - 6);
-    ctx.lineTo(fx, sy + 1);
-    ctx.moveTo(fx + 2.2, sy - 8.5);
-    ctx.arc(fx, sy - 8.5, 2.2, 0, TAU);
+    const fx = sx - 7 + k * 7;
+    ctx.moveTo(fx, sy - 7);
+    ctx.lineTo(fx, sy + 2);
+    ctx.moveTo(fx + 2.6, sy - 10);
+    ctx.arc(fx, sy - 10, 2.6, 0, TAU);
   }
   ctx.stroke();
-  kidLabel(ctx, 'you left', sx, sy + 9, 8, pencil);
+  kidLabel(ctx, 'you left', sx, sy + 12, 11, CHALK);
   // The way out.
   const gx = X(sk.goal.x);
   const gy = Y(sk.goal.y);
   ctx.beginPath();
   if (theme === 'docks') {
-    ctx.moveTo(gx - 9, gy - 2);
-    ctx.lineTo(gx + 9, gy - 2);
-    ctx.lineTo(gx + 6, gy + 3);
-    ctx.lineTo(gx - 6, gy + 3);
+    ctx.moveTo(gx - 10, gy - 2);
+    ctx.lineTo(gx + 10, gy - 2);
+    ctx.lineTo(gx + 7, gy + 4);
+    ctx.lineTo(gx - 7, gy + 4);
     ctx.closePath();
     ctx.moveTo(gx, gy - 2);
-    ctx.lineTo(gx, gy - 9);
-    ctx.lineTo(gx + 5, gy - 5);
-  } else ctx.rect(gx - 5, gy - 7, 10, 12);
+    ctx.lineTo(gx, gy - 11);
+    ctx.lineTo(gx + 6, gy - 6);
+  } else ctx.rect(gx - 6, gy - 8, 12, 14);
   ctx.stroke();
-  kidLabel(ctx, theme === 'docks' ? 'boat' : theme === 'interior' ? 'exit' : 'safe?', gx, gy + 12, 8, pencil);
+  kidLabel(ctx, theme === 'docks' ? 'boat' : theme === 'interior' ? 'exit' : 'safe?', gx, gy + 14, 11, CHALK);
   // His bed.
   if (sk.nest) {
     const nx = X(sk.nest.x);
     const ny = Y(sk.nest.y);
     ctx.strokeStyle = BEN_COLOR;
-    ctx.lineWidth = 1.3;
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
-    ctx.rect(nx - 6, ny - 3, 12, 6);
-    ctx.moveTo(nx - 6, ny - 3);
-    ctx.lineTo(nx - 6, ny - 7);
+    ctx.rect(nx - 7, ny - 3.5, 14, 7);
+    ctx.moveTo(nx - 7, ny - 3.5);
+    ctx.lineTo(nx - 7, ny - 8);
     ctx.stroke();
-    kidLabel(ctx, 'bed', nx, ny + 10, 8, BEN_COLOR);
+    kidLabel(ctx, 'bed', nx, ny + 12, 11, BEN_COLOR);
   }
   // Something you missed.
   if (sk.secret) {
     const ex = X(sk.secret.x);
     const ey = Y(sk.secret.y);
-    drawEyes(ctx, ex, ey - 5, Math.PI / 2, 0.55);
+    drawEyes(ctx, ex, ey - 6, Math.PI / 2, 0.7);
     ctx.strokeStyle = BEN_COLOR;
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
-    ctx.moveTo(ex - 3, ey + 1);
-    ctx.lineTo(ex + 3, ey + 7);
-    ctx.moveTo(ex + 3, ey + 1);
-    ctx.lineTo(ex - 3, ey + 7);
+    ctx.moveTo(ex - 3.5, ey + 1);
+    ctx.lineTo(ex + 3.5, ey + 8);
+    ctx.moveTo(ex + 3.5, ey + 1);
+    ctx.lineTo(ex - 3.5, ey + 8);
     ctx.stroke();
   }
   // And off the edge of this map, the place nobody's found.
   const ax = X(sk.away.x);
   const ay = Y(sk.away.y);
   ctx.strokeStyle = BEN_COLOR;
-  ctx.fillStyle = BEN_COLOR;
-  ctx.lineWidth = 1.3;
+  ctx.lineWidth = 1.8;
   ctx.beginPath();
   if (sk.away.kind === 'island') {
-    ctx.ellipse(ax, ay + 4, 11, 5, 0, 0, TAU);
+    ctx.ellipse(ax, ay + 4, 12, 5.5, 0, 0, TAU);
     ctx.moveTo(ax + 2, ay + 1);
-    ctx.lineTo(ax + 2, ay - 10);
-    ctx.lineTo(ax + 5, ay - 10);
-    ctx.lineTo(ax + 5, ay + 1);
+    ctx.lineTo(ax + 2, ay - 11);
+    ctx.lineTo(ax + 5.5, ay - 11);
+    ctx.lineTo(ax + 5.5, ay + 1);
   } else if (sk.away.kind === 'stairs') {
-    ctx.moveTo(ax - 10, ay - 6);
+    ctx.moveTo(ax - 11, ay - 7);
     for (let k = 0; k < 4; k++) {
-      ctx.lineTo(ax - 10 + (k + 1) * 5, ay - 6 + k * 3);
-      ctx.lineTo(ax - 10 + (k + 1) * 5, ay - 3 + k * 3);
+      ctx.lineTo(ax - 11 + (k + 1) * 5.5, ay - 7 + k * 3.5);
+      ctx.lineTo(ax - 11 + (k + 1) * 5.5, ay - 3.5 + k * 3.5);
     }
   } else {
-    ctx.moveTo(ax - 6, ay + 5);
-    ctx.lineTo(ax - 6, ay - 2);
-    ctx.lineTo(ax, ay - 8);
-    ctx.lineTo(ax + 6, ay - 2);
-    ctx.lineTo(ax + 6, ay + 5);
+    ctx.moveTo(ax - 7, ay + 6);
+    ctx.lineTo(ax - 7, ay - 2);
+    ctx.lineTo(ax, ay - 9);
+    ctx.lineTo(ax + 7, ay - 2);
+    ctx.lineTo(ax + 7, ay + 6);
     ctx.closePath();
   }
   ctx.stroke();
-  kidLabel(ctx, '?', ax + 13, ay - 8, 12, BEN_COLOR);
+  kidLabel(ctx, '?', ax + 15, ay - 9, 16, BEN_COLOR);
 }
 
-/** "my squad": five holding hands and a dog, and one more standing apart. */
+/** "my squad": five holding hands and a dog, and one more standing apart (chalk). */
 function drawSquad(ctx, W, H) {
-  const ground = H * 0.78;
+  const ground = H * 0.74;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   // Sun, grass.
-  ctx.strokeStyle = '#e8b830';
-  ctx.fillStyle = 'rgba(240,200,60,0.55)';
-  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = 'rgba(245,205,80,0.85)';
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  circle(ctx, 22, 20, 9);
-  ctx.fill();
-  ctx.beginPath();
+  circle(ctx, 18, 16, 8);
   for (let k = 0; k < 8; k++) {
     const a = (k / 8) * TAU;
-    ctx.moveTo(22 + Math.cos(a) * 12, 20 + Math.sin(a) * 12);
-    ctx.lineTo(22 + Math.cos(a) * 16, 20 + Math.sin(a) * 16);
+    ctx.moveTo(18 + Math.cos(a) * 11, 16 + Math.sin(a) * 11);
+    ctx.lineTo(18 + Math.cos(a) * 15, 16 + Math.sin(a) * 15);
   }
   ctx.stroke();
-  ctx.strokeStyle = '#5aa04a';
+  ctx.strokeStyle = 'rgba(120,200,110,0.75)';
   ctx.beginPath();
-  ctx.moveTo(6, ground + 2);
-  for (let x = 6; x < W - 6; x += 12) ctx.quadraticCurveTo(x + 3, ground - 2, x + 6, ground + 2);
+  ctx.moveTo(4, ground + 2);
+  for (let x = 4; x < W - 6; x += 12) ctx.quadraticCurveTo(x + 3, ground - 2, x + 6, ground + 2);
   ctx.stroke();
-  kidLabel(ctx, 'my squad', W * 0.42, 16, 12, 'rgba(60,60,80,0.85)');
-  const cols = ['#d04a6a', '#3d7fd0', '#8a54c8', '#3d9a54', '#d07a2a'];
+  kidLabel(ctx, 'my squad', W * 0.42, 13, 16, CHALK);
+  const cols = ['rgba(255,140,170,0.9)', 'rgba(140,190,255,0.9)', 'rgba(200,160,255,0.9)', 'rgba(140,230,150,0.9)', 'rgba(255,200,120,0.9)'];
   const fig = (x, color, head, label, apart = false) => {
     const top = ground - (apart ? 34 : 38);
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1.8;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     circle(ctx, x, top, head);
     ctx.moveTo(x, top + head);
@@ -662,18 +599,18 @@ function drawSquad(ctx, W, H) {
     ctx.moveTo(x, ground - 14);
     ctx.lineTo(x + 6, ground);
     ctx.stroke();
-    if (label) kidLabel(ctx, label, x, ground + 10, 7.5, 'rgba(60,60,80,0.85)');
+    if (label) kidLabel(ctx, label, x, ground + 12, 10.5, CHALK);
     return top;
   };
   const n = SQUAD_DRAWING.names.length;
-  const x0 = W * 0.11;
-  const step = W * 0.105;
-  ctx.lineCap = 'round';
+  const x0 = W * 0.09;
+  const step = W * 0.112;
   for (let k = 0; k < n; k++) {
     const x = x0 + k * step;
-    const top = fig(x, cols[k % cols.length], 5.5, SQUAD_DRAWING.names[k]);
+    const c = cols[k % cols.length];
+    const top = fig(x, c, 5.5, SQUAD_DRAWING.names[k]);
     // Smiles, and hands held.
-    ctx.strokeStyle = cols[k % cols.length];
+    ctx.strokeStyle = c;
     ctx.beginPath();
     ctx.arc(x, top + 0.5, 2.6, 0.2, Math.PI - 0.2);
     ctx.moveTo(x, top + 12);
@@ -683,8 +620,8 @@ function drawSquad(ctx, W, H) {
     ctx.stroke();
   }
   // The dog.
-  const dx = x0 + n * step - 2;
-  ctx.strokeStyle = '#7a5a3a';
+  const dx = x0 + n * step;
+  ctx.strokeStyle = 'rgba(215,175,130,0.9)';
   ctx.beginPath();
   ctx.ellipse(dx, ground - 7, 7, 4, 0, 0, TAU);
   ctx.moveTo(dx + 6, ground - 9);
@@ -696,9 +633,9 @@ function drawSquad(ctx, W, H) {
   ctx.moveTo(dx + 4, ground - 4);
   ctx.lineTo(dx + 4, ground);
   ctx.stroke();
-  kidLabel(ctx, SQUAD_DRAWING.dog, dx, ground + 10, 7, 'rgba(60,60,80,0.85)');
+  kidLabel(ctx, SQUAD_DRAWING.dog, dx + 2, ground + 12, 9.5, CHALK);
   // One more, over there. No name. Arms down.
-  const bx = W * 0.88;
+  const bx = W * 0.9;
   const top = fig(bx, BEN_COLOR, 4.8, null, true);
   ctx.strokeStyle = BEN_COLOR;
   ctx.beginPath();

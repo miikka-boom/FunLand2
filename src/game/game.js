@@ -15,7 +15,7 @@ import { Director } from './director.js';
 import { Ally, updateAlly, hurtAlly, allySpotNear } from './ally.js';
 import { Effects } from './effects.js';
 import { initLoot, spawnSleepers, updateLoot } from './loot.js';
-import { initWorldEvents, updateWorldEvents, spawnNest, openBreach, takeAmmo, updateCaption } from './world-events.js';
+import { initWorldEvents, updateWorldEvents, spawnNest, openBreach, takeAmmo } from './world-events.js';
 import { addLore } from '../world/lore-gen.js';
 import { addBen } from '../world/ben-gen.js';
 import { loadBenMemory, initBen, updateBen } from './ben.js';
@@ -104,7 +104,6 @@ export class Game {
     };
     this.terrorSeen = false;
     this.boards = map.obstacles.filter((o) => o.boards); // boarded rooms + the breach
-    this.caption = { item: null, a: 0 };
     initLoot(this, map);
     initWorldEvents(this, map);
     initBen(this, map, this.benMemory);
@@ -285,7 +284,6 @@ export class Game {
 
     updateLoot(this, dt);
     updateWorldEvents(this, dt);
-    updateCaption(this, dt);
     updateBen(this, dt);
 
     // Pickups.

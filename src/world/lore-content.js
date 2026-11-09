@@ -157,41 +157,39 @@ export const POSTERS = {
   gary: { head: 'EMPLOYEE OF THE MONTH', sub: 'Gary. Again.', bg: '#c9a227', fg: '#1b1b1b', icon: 'face', building: true },
 };
 
-/** Journal pages left in dens (each map reads a few). Odile's diary, office notes, the Tinkerer. */
+/** Lines from the journal pages left in dens, written out on the floor beside them: Odile's diary, office notes, the harbour log, the Tinkerer. */
 export const NOTES = {
+  // Short enough to write out on the floor of a den, legible from above.
   city: [
-    'Day 3. The radio says stay inside. It says it every hour. I\'ve started answering back. — Odile',
-    'Day 6. The neighbors stopped knocking. I still check the peephole. — Odile',
-    'Day 9. Found a dog. Or he found me. Tag says BISCUIT. He snores. Lucky him. — Odile',
-    'Day 12. They walk all night. Nobody is tired anymore. Except me. — Odile',
-    'Day 15. Met Teo and Mags. They argue like it\'s a job. It\'s nice, actually. — Odile',
-    'Day 18. Lou says he\'s killed fifty. Lou has one bullet. I believe half of what Lou says. — Odile',
-    'Day 21. Somebody leaves drawings in the alleys. A gear with an eye. Arrows. Advice. Who ARE you? — Odile',
-    'Day 24. Followed the gear-and-eye marks. A bed, a stove, a note: TAKE WHAT YOU NEED. LEAVE A JOKE. I left one. — Odile',
-    'Day 27. Harbor Radio switched to music. Same song, all day. Biscuit howls along. — Odile',
-    'Day 30. We go for Pier 9 tomorrow. If the boats are real, see you there. If not, see you there anyway. — Odile',
+    'DAY 3. RADIO SAYS STAY IN. — O.',
+    'DAY 6. NOBODY KNOCKS NOW. — O.',
+    'DAY 9. FOUND A DOG. HE SNORES. — O.',
+    'DAY 12. NOBODY IS TIRED BUT ME. — O.',
+    'DAY 15. TEO & MAGS ARGUE. NICE. — O.',
+    'DAY 18. LOU HAS ONE BULLET. — O.',
+    'DAY 21. WHO DRAWS THE GEARS? — O.',
+    'DAY 27. BISCUIT HOWLS AT THE RADIO — O.',
+    'DAY 30. PIER 9 TOMORROW. — O.',
   ],
   building: [
-    'Trial log, day 4: group B has not slept in 72 hours. They seem calm. Too calm.',
-    'Memo: due to "events", the 4th floor is closed. Please do not feed the 4th floor.',
-    'Sticky note: Gary, if you\'re reading this, the printer is still jammed. Also, run.',
-    'Ward C night shift: visiting hours suspended. Patients have started visiting each other.',
-    'Whoever keeps writing on the whiteboards: thank you, honestly. — Facilities',
-    'Slumbra batch 7 recall notice: do not take. Do not sell. Do not sleep near anyone who took it.',
+    'GROUP B: 72H NO SLEEP. TOO CALM.',
+    'DO NOT FEED THE 4TH FLOOR',
+    'GARY: PRINTER JAMMED. ALSO, RUN.',
+    'VISITING HOURS SUSPENDED',
+    'SLUMBRA BATCH 7: DO NOT TAKE',
   ],
   docks: [
-    'HARBOUR LOG, NIGHT 2: Ferries running every hour. The queue is polite. People keep yawning. Nobody is sleeping.',
-    'HARBOUR LOG, NIGHT 5: Only the HALVARD STAR still comes. Captain Ines says she\'ll keep coming while anyone on Pier 9 has a flare.',
-    'HARBOUR LOG, NIGHT 7: Down to the night crossing. Flare gun is in the post at the end of 9. Fire it and she turns around.',
-    'HARBOUR LOG, NIGHT 9: The crowd saw the flare too. Tell whoever reads this: fire it, then hold. She needs a minute to come alongside.',
-    'Shift note: whoever keeps parking the reach stacker across lane C — the drowsers can\'t climb it either. Keep doing it.',
+    'NIGHT 5: ONLY THE HALVARD STAR COMES',
+    'FLARE GUN: END OF PIER 9',
+    'FIRE IT, THEN HOLD. SHE NEEDS A MINUTE.',
+    'KEEP THE STACKER ACROSS LANE C',
   ],
   tinkerer: [
     'TAKE WHAT YOU NEED. LEAVE A JOKE. — T.',
-    'THEY HEAR THE GUN, NOT THE BOOT. SHOVE MORE. — T.',
-    'THE BIG ONES GET BORED. THE SMALL ONES DON\'T. — T.',
-    'IF YOU FOUND THIS, YOU LOOK AROUND. GOOD. KEEP LOOKING. — T.',
-    'CARS WITH THE RED LIGHT ARE BELLS. DON\'T RING THE BELL. — T.',
+    'THEY HEAR GUNS, NOT BOOTS. — T.',
+    'BIG ONES GET BORED. — T.',
+    'YOU LOOK AROUND. GOOD. — T.',
+    'RED LIGHT CARS ARE BELLS. — T.',
   ],
 };
 
@@ -226,10 +224,10 @@ export const VIGNETTES = {
     { id: 'lemonade', text: 'FRESH FISH · CASH ONLY · NO REFUNDS' },
   ],
   building: [
-    { id: 'fridge', text: 'WHOEVER ATE MY YOGURT: I KNOW. — DEB' },
-    { id: 'whiteboard', text: 'Q4 GOALS: 1. SYNERGY  2. SURVIVE' },
-    { id: 'reception', text: 'PLEASE TAKE A NUMBER · NOW SERVING: NOBODY' },
-    { id: 'whiteboard', text: 'ROLL CALL: ODILE ✓ TEO ✓ MAGS ✓ LOU (LATE)' },
+    { id: 'fridge', text: 'MY YOGURT. I KNOW. — DEB' },
+    { id: 'whiteboard', text: 'Q4: SYNERGY. SURVIVE.' },
+    { id: 'reception', text: 'NOW SERVING: NOBODY' },
+    { id: 'rollcall', text: 'ODILE ✓ TEO ✓ MAGS ✓ LOU ?' },
   ],
 };
 
@@ -237,3 +235,6 @@ export const VIGNETTES = {
 export const SPRAY = ['#e5484d', '#ece9df', '#f2c94c', '#4fc3d9', '#ef6fb0', '#7fd65a', '#f2994a'];
 /** Marker colours (indoors). */
 export const MARKER = ['#1d1d1d', '#2a4fa0', '#b3261e', '#2e7d32'];
+
+/** A whiteboard is as long as its words need (10 px marker); placement and drawing share this. */
+export const whiteboardLen = (text) => (text ? text.length * 10 * 0.6 + 14 : 70);

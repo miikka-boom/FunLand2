@@ -7,7 +7,8 @@
 // always look at something.
 //
 // Nothing here explains who Ben is, how he got where he got, or whose side
-// he's on. Keep it that way: every line should raise a question.
+// he's on. Keep it that way: every line should raise a question. Everything is
+// drawn in the world (no inspect text), so every player sees the same signs.
 
 /** Ben's crayon. */
 export const BEN_COLOR = '#ff8a1e';
@@ -37,27 +38,19 @@ export const SQUAD_ON_BEN = [
   { text: 'THE BLINKING LAMP SPELLS SOMETHING — O.', reply: null },
 ];
 
-/** One squad page per level: a piece of what happened, never the whole thing. */
+/** One squad page per level, written out on the floor beside it: a piece of what happened, never the whole thing. */
 export const BEN_NOTES = {
-  city: {
-    label: 'JOURNAL PAGE',
-    text: 'Day 2. Ben said he heard something in the vents and went to look. We counted to a hundred. Lou said we had to go. We left Ben. — Odile',
-  },
-  interior: {
-    label: 'NOTE',
-    text: "MAGS: whistling in the ducts again. TEO: it's the pipes. MAGS: pipes don't know that song.",
-  },
-  docks: {
-    label: 'NOTE',
-    text: 'Saw someone up on crane 3 last night. Waved. It waved back. Not telling the others. — Lou',
-  },
+  city: [{ text: 'DAY 2. WE LEFT BEN. — O.', who: 'odile' }],
+  interior: [
+    { text: 'WHISTLING IN THE DUCTS — MAGS', who: 'mags' },
+    { text: "IT'S THE PIPES — TEO", who: 'teo' },
+  ],
+  docks: [{ text: 'SOMEONE WAVED FROM CRANE 3 — LOU', who: 'lou' }],
 };
 
 /** His bed. */
 export const BEN_NEST = {
-  fort: { label: 'A BED', text: 'Cardboard walls. A blanket folded into a perfect square. Still warm.' },
   light: 'i left the light on.',
-  tally: 'nights slept',
   // Lines that only turn up after you've been here before (cross-run memory).
   again: 'you found my bed again.',
   rabbit: "ok. you can stay. don't touch the rabbit.",
@@ -69,25 +62,11 @@ export const BEN_KNOWS = {
   died: (n) => `you died ${n} times. i counted.`,
 };
 
-/** Captions (what you read when you walk up). */
-export const BEN_CAPTIONS = {
-  eyes: [
-    "Two little eyes, scratched in. They're looking at something.",
-    'The eyes again.',
-    'Fresh scratches. The eyes look that way.',
-    'Two more eyes. Still looking.',
-  ],
-  eyesFresh: 'Two little eyes, scratched just now. The dust is still settling.',
-  rabbit: { label: 'A STUFFED RABBIT', text: 'One ear chewed. Someone sewed new eyes on it.' },
-  rabbitNest: { label: 'A STUFFED RABBIT', text: 'Same chewed ear. Same new eyes.' },
-  vent: { label: 'A VENT', text: 'The grate is off. Its screws are lined up on the floor in a neat little row.' },
-  footprints: { label: 'FOOTPRINTS', text: 'Small shoes. They walk up to the wall and stop.' },
-  noise: "don't follow the noise",
-  rollcall: 'Under the roll call, in orange crayon: ben ✓',
-  tinkerer: 'SOMEONE KEEPS ADDING AN EYE TO MY MARK. NOT FUNNY. — T.',
-  label: 'IN ORANGE CRAYON',
-  reply: 'UNDERNEATH, IN ORANGE',
-};
+/** Beside arrows that point straight at the noise. */
+export const BEN_NOISE = "don't follow the noise";
 
-/** The drawing on his wall: the squad holding hands, and one more. */
+/** The Tinkerer, next to their mark (which has a second eye now). */
+export const TINKERER_ON_BEN = 'STOP ADDING EYES TO MY MARK — T.';
+
+/** His chalk drawing by his bed: the squad holding hands, and one more. */
 export const SQUAD_DRAWING = { names: ['ODILE', 'TEO', 'MAGS', 'LOU', 'YOU'], dog: 'BISCUIT' };

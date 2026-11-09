@@ -40,7 +40,7 @@ for (const [name, gen] of LEVELS) {
   test(`${name}: Ben's traces are seeded and purely visual`, () => {
     const a = build(gen, 1337);
     const b = build(gen, 1337);
-    assert.equal(JSON.stringify([a.decor, a.readables, a.benRoof, a.ben]), JSON.stringify([b.decor, b.readables, b.benRoof, b.ben]));
+    assert.equal(JSON.stringify([a.decor, a.benRoof, a.ben]), JSON.stringify([b.decor, b.benRoof, b.ben]));
     for (const seed of SEEDS) {
       const map = gen(seed);
       addScavenging(map, seed, {});
@@ -62,7 +62,7 @@ for (const [name, gen] of LEVELS) {
         assert.ok(of(map, 'rabbit').some((d) => pointInRect(d.x, d.y, I)), `${tag}: the rabbit in the first room`);
         assert.ok(B.nest, `${tag}: his bed`);
         assert.equal(of(map, 'benfort').length, 1);
-        assert.equal(B.papers.length, 2);
+        assert.ok(of(map, 'benchalk').some((d) => d.kind === 'map' && d.sketch), `${tag}: his map, in chalk by his bed`);
         assert.ok(of(map, 'rabbit').some((d) => d.nest), `${tag}: the rabbit again, in his bed`);
         assert.ok(map.glows.some((g) => g.ben), `${tag}: his candle`);
         assert.ok(B.eyes.length >= 4, `${tag}: eyes (${B.eyes.length})`);
@@ -70,7 +70,8 @@ for (const [name, gen] of LEVELS) {
         assert.ok(map.benRoof.length + of(map, 'raft').length >= 1, `${tag}: "ben was here" somewhere nobody could reach`);
         assert.ok(map.lamps.some((l) => l.morse), `${tag}: the blinking lamp`);
         assert.ok(B.glimpse, `${tag}: a place to catch him looking`);
-        assert.ok(map.readables.some((r) => r.text === BEN_NOTES[name].text), `${tag}: the squad's page`);
+        for (const l of BEN_NOTES[name]) assert.ok(of(map, 'graffiti').some((g) => g.text === l.text), `${tag}: the squad's page, written out: ${l.text}`);
+        assert.equal(map.readables, undefined, `${tag}: no inspect text`);
         // Nothing of his in the water, nothing in the walls.
         const W = new World(map);
         for (const d of map.decor.filter((q) => ['bentext', 'beneyes', 'benfort', 'rabbit', 'benpaper', 'benarrow'].includes(q.type))) {
@@ -192,4 +193,32 @@ test("settings: Ben's traces on by default, a World switch, in the presets", () 
   assert.ok(WORLD_KEYS.includes('ben'), 'switching it restarts the run');
   assert.equal(WORLD_PRESETS.find((p) => p.name === 'Bare map').values.ben, false);
   assert.equal(WORLD_PRESETS.find((p) => p.name === 'Everything').values.ben, true);
+});
+
+test('no inspect text anywhere: no caption box, no paper overlay, the drawings are in chalk on the ground', async () => {
+  const fs = await import('node:fs');
+  const hud = fs.readFileSync(new URL('../src/render/hud.js', import.meta.url), 'utf8');
+  assert.ok(!/drawCaption|drawBenPaper/.test(hud), 'the HUD shows no object text');
+  const events = fs.readFileSync(new URL('../src/game/world-events.js', import.meta.url), 'utf8');
+  assert.ok(!/updateCaption|l\.label/.test(events), 'no caption, no landmark name call-outs');
+  for (const [name, gen] of LEVELS) {
+    let both = 0;
+    for (const seed of SEEDS) {
+      const map = build(gen, seed);
+      const kinds = new Set(of(map, 'benchalk').map((d) => d.kind));
+      if (kinds.has('map') && kinds.has('drawing')) both++;
+      for (const d of of(map, 'benchalk')) {
+        // Every bit of a chalk drawing is on open ground.
+        const W = new World(map);
+        const c = Math.cos(d.a || 0);
+        const s = Math.sin(d.a || 0);
+        for (const [fx, fy] of [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9], [0.5, 0.5]]) {
+          const lx = (fx - 0.5) * d.w;
+          const ly = (fy - 0.5) * d.h;
+          assert.ok(W.isFree(d.x + c * lx - s * ly, d.y + s * lx + c * ly, 2), `${name} ${seed}: chalk ${d.kind} over something`);
+        }
+      }
+    }
+    assert.ok(both >= SEEDS.length - 1, `${name}: his map and the squad drawing on most maps (${both}/${SEEDS.length})`);
+  }
 });

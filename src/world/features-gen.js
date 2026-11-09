@@ -463,6 +463,7 @@ function placeChosenWalls(map, rnd, holdout, interior, C, lines, cfg) {
   map.breach = { boards: r2.breach, x: face(w2, 0), y: b2.cy, near, front: { x: nx + near * 34, y: b2.cy }, far: { x: fx2 + far * 34, y: b2.cy } };
   const toGate = Math.sign(g2.cy - b2.cy) || 1;
   spray(map, nx + near * 52, b2.cy, 'DANGER', '#e0473a', null, 1.1);
+  spray(map, nx + near * 52, b2.cy - toGate * 26, 'SHORT WAY (LOUD)', '#ffb37a', null, 0.6);
   spray(map, nx + near * 52, b2.cy + toGate * ((b2.y1 - b2.y0) / 2 + 70), 'GATE', '#e8e8e0', toGate > 0 ? Math.PI / 2 : -Math.PI / 2, 0.9);
   // No light near it.
   for (const l of map.lamps) if (Math.hypot(l.x - nx, l.y - b2.cy) < (interior ? 520 : 650)) l.broken = true;

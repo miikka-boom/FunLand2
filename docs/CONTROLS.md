@@ -265,13 +265,13 @@ stays reachable, or the piece isn't placed.
     waits right behind it. On the streets there are alarm cars just past it.
     Nearby lamps are dead.
   - "DANGER" is sprayed in front of it and "GATE" with an arrow points along
-    the wall to the checkpoint. The first time you see it: "A BREACH: THE
-    SHORT WAY".
+    the wall to the checkpoint. It's sprayed "DANGER" and "SHORT WAY (LOUD)",
+    with "GATE" and an arrow pointing the long way round.
   - Once it's broken, the safe-room arrow and the zombies' pathing both use
     the short way.
   - With the holdout on as well, the first wall's gate is the holdout gate
     (unavoidable). The breach saves the walk after it.
-- **Landmarks** (each called out the first time you get close):
+- **Landmarks** (no call-outs: you recognise them by sight):
   - **Gas station** (streets, on the way): a lit canopy over four pumps. Shoot
     a pump (a couple of rifle bullets): the whole station explodes. The blast
     (320 u) kills commons close in, hurts specials, throws you (up to 60
@@ -339,7 +339,7 @@ The **Playtest** group in the panel.
 ## Ben's traces
 
 On by default (**Ben's traces (the one we left behind)** under **World**).
-Visual only (decor, captions, one candle glow, one medkit by his bed) plus a
+Visual only (decor, one candle glow, one medkit by his bed; no inspect text) plus a
 whistle and a scuff of footsteps; seeded, placed after everything else so it
 keeps clear of finds, features and graffiti. Every word is in
 `src/world/ben-content.js`; placement in `src/world/ben-gen.js`; run time in
@@ -353,8 +353,9 @@ keeps clear of finds, features and graffiti. Every word is in
   the building, 600 at the docks), enclosed, dark if possible, at least
   1100 u from the start and away from the secret. Found = within 80 u (saved
   on the device). Out of sight within 700 u: the whistle, once a run. Within
-  480 u: steam off the can. The two papers show as an overlay at the upper
-  left within 58 u (with a clear line to them).
+  480 u: steam off the can. His map of the level (190 × 124 u) and the squad
+  drawing (210 × 100 u) are chalked on open ground within ~500 u of the bed
+  (turned, or a bit smaller, to fit).
 - **Eyes:** 1 by the secret (within 80–140 u, looking at it), up to 3 every
   ~260 u from the walk to his bed, 1 outside each boarded room, 1 by the
   second vent, 1 inside the end safe room by the door.
@@ -413,12 +414,15 @@ What a map gets:
 - **Dens** (1–2 on the streets, 1 indoors) in a dead end or back room off the
   route, lit by candles you can spot from a distance: bedding, a stove, cans,
   a radio, the gear-and-eye mark, scribbled advice, two jokes on the "joke
-  wall", and a journal page or note.
+  wall", and a journal page whose line is written out on the floor next to
+  the camp (on two or three lines, or along an alley, if space is tight).
 - **Scenes** (2–3): bus stop, lemonade stand, last stand, HONK IF ALIVE car,
   wedding car (streets); fridge note, whiteboards, reception desk (building).
-- **Reading:** walk within ~95 u of anything with words on it (with a clear
-  line of sight) and its text shows in a box at the bottom of the screen,
-  between the sticks.
+- **No inspect text:** there is no caption box and no action to read
+  anything. Every word is drawn in the world at a size you can read from
+  above (graffiti 11–23 u, notes 11–14 u), so all players see the same
+  things. The only on-screen texts are objectives (the holdout gate, the
+  flare and the ferry), pickups and specials.
 
 ## Camera
 
@@ -491,7 +495,8 @@ What a map gets:
   jump around? Keep the debug read-out on and note the fps on your phone.
 - **World flavor:** do people stop to read? Which lines get a laugh, and which
   tips actually teach something (alarm cars, deadstops)? Does anyone go
-  looking for the candle-lit dens? Is the reading box at the bottom in the way?
+  looking for the candle-lit dens? Is the writing on the ground big enough to
+  read on a phone, with the flashlight on it?
 - **Holdout gate** (World → Holdout): is it clear where to stand? Is 30 s with
   the default waves tense or a slog? Try 20 s and 45 s.
 - **Two routes:** do you understand the choice when you first see the breach?
