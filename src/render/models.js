@@ -22,7 +22,7 @@ import { buildDecorProps } from './decor3d.js';
 const pts = new Float64Array(16);
 const samp = new Float32Array(12);
 
-function strHash(s) {
+export function strHash(s) {
   let h = 7;
   for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
   return h >>> 0;
@@ -39,7 +39,7 @@ export const veil = (k) => DARKS[clamp(Math.round((1 - k) * 32), 0, 32)];
  * middle and toward its four corners, averaged, so something half round a
  * corner is half lit instead of blinking in and out.
  */
-function propLight(R, o) {
+export function propLight(R, o) {
   const L = R.L;
   const cx = o.x + o.w / 2;
   const cy = o.y + o.h / 2;
@@ -50,7 +50,7 @@ function propLight(R, o) {
 }
 
 /** A box in one colour at brightness b. */
-function pbox(R, x0, y0, x1, y1, z0, z1, color, b) {
+export function pbox(R, x0, y0, x1, y1, z0, z1, color, b) {
   box(R.ctx, R.v, x0, y0, x1, y1, z0, z1, tone(color, b), tone(color, b * R.fX), tone(color, b * R.fY));
 }
 
@@ -59,7 +59,7 @@ function pbox(R, x0, y0, x1, y1, z0, z1, color, b) {
  * along (nx, ny): the light just in front of it, sampled along its length
  * (a flat tone when it is even, a gradient across the screen when it isn't).
  */
-function wallFill(R, color, k, xa, ya, xb, yb, nx, ny) {
+export function wallFill(R, color, k, xa, ya, xb, yb, nx, ny) {
   const L = R.L;
   const len = Math.abs(xb - xa) + Math.abs(yb - ya);
   const ox = nx * 4;
@@ -87,7 +87,7 @@ function wallFill(R, color, k, xa, ya, xb, yb, nx, ny) {
 }
 
 /** The two visible walls of a structure, lit along their length (the top is the caller's). */
-function litWalls(R, x0, y0, x1, y1, z0, z1, color) {
+export function litWalls(R, x0, y0, x1, y1, z0, z1, color) {
   const { ctx, v } = R;
   if (v.flat) return;
   const xf = v.faceX < 0 ? x0 : x1;
@@ -104,7 +104,7 @@ function litWalls(R, x0, y0, x1, y1, z0, z1, color) {
   }
 }
 
-function topFill(R, x0, y0, x1, y1, z, style) {
+export function topFill(R, x0, y0, x1, y1, z, style) {
   const { ctx, v } = R;
   ctx.fillStyle = style;
   ctx.beginPath();
@@ -117,7 +117,7 @@ function topFill(R, x0, y0, x1, y1, z, style) {
  * fn(ctx, len) draws in wall space, x from 0 to len along the wall reading
  * left to right, y = -height. Returns false if that wall is edge-on.
  */
-function onFaceY(R, x0, y0, x1, y1, fn) {
+export function onFaceY(R, x0, y0, x1, y1, fn) {
   const v = R.v;
   if (!v.faceY || v.flat) return false;
   const y = v.faceY > 0 ? y1 : y0;
@@ -129,7 +129,7 @@ function onFaceY(R, x0, y0, x1, y1, fn) {
 }
 
 /** The same for the visible wall along y. */
-function onFaceX(R, x0, y0, x1, y1, fn) {
+export function onFaceX(R, x0, y0, x1, y1, fn) {
   const v = R.v;
   if (!v.faceX || v.flat) return false;
   const x = v.faceX < 0 ? x0 : x1;
@@ -145,7 +145,7 @@ function onFaceX(R, x0, y0, x1, y1, fn) {
 const FACADES = ['#77604f', '#62656b', '#7b735f', '#664f47', '#686d5d', '#7c766d', '#5c6672', '#716253'];
 const WAREHOUSE = ['#5e6468', '#6a6258', '#566068', '#6b5a4c'];
 
-function buildingModel(o, map) {
+export function buildingModel(o, map) {
   const hc = strHash(o.color || '#444');
   const own = hash01((o.seed || 1) % 977); // the same for every piece of a carved-up building
   const kiosk = o.booth || Math.max(o.w, o.h) < 110;
@@ -164,7 +164,7 @@ function buildingModel(o, map) {
   return { h, draw: drawBuilding, data };
 }
 
-function windows(ctx, len, h, floors, seed, lit, t) {
+export function windows(ctx, len, h, floors, seed, lit, t) {
   // Rows of windows along a wall `len` long; a rare one still has a light on.
   const ww = 13;
   const wh = 17;
@@ -196,7 +196,7 @@ function windows(ctx, len, h, floors, seed, lit, t) {
   }
 }
 
-function drawBuilding(R, o, rec) {
+export function drawBuilding(R, o, rec) {
   const { ctx, v } = R;
   const d = rec.data;
   const x0 = o.x;
@@ -283,7 +283,7 @@ function drawBuilding(R, o, rec) {
 }
 
 /** A low pitched roof with its ridge along the long side (warehouses). */
-function gableRoof(R, o, H, rise, k) {
+export function gableRoof(R, o, H, rise, k) {
   const { ctx, v } = R;
   const x0 = o.x;
   const y0 = o.y;
@@ -367,7 +367,7 @@ function gableRoof(R, o, H, rise, k) {
 // --- Posters on walls --------------------------------------------------------------------------
 
 /** Posters that scene prep hung on this obstacle's visible walls (lore-gen places them on the ground beside it). */
-function wallPosters(R, o, rec) {
+export function wallPosters(R, o, rec) {
   if (!rec.posters) return;
   const { ctx, v } = R;
   for (const q of rec.posters) {
@@ -750,7 +750,7 @@ function drawContainerModel(R, o, rec) {
 
 // --- Vehicles ----------------------------------------------------------------------------------
 
-function drawCarModel(R, o, rec) {
+export function drawCarModel(R, o, rec) {
   const { ctx, v } = R;
   const b = propLight(R, o);
   if (b < 0.032) return;
@@ -1536,11 +1536,34 @@ const MODELS = {
 /** How high the gantry cranes carry their girders. */
 export const CRANE_H = 230;
 
+/**
+ * A map type's own models (theme-models.js): kind -> (o, map) => ({ h, draw, ... }),
+ * added to the table (or put in front of what is there: see modelOf).
+ */
+export function registerModels(table) {
+  Object.assign(MODELS, table);
+}
+/** The model registered for a kind, to wrap it (a house is a building with another look). */
+export const modelOf = (kind) => MODELS[kind];
+const PROP_MAKERS = [];
+/** A map type's own props (drawn, not obstacles): fn(scene, view, out) pushes them. */
+export function registerProps(fn) {
+  PROP_MAKERS.push(fn);
+}
+const LAMP_STYLES = {};
+/** A lamp with l.style gets its post from here: style -> (lamp) => ({ r, h, draw, gx, gy, gz, glow }). */
+export function registerLamp(style, fn) {
+  LAMP_STYLES[style] = fn;
+}
+
 function drawUnknown(R, o) {
   const b = propLight(R, o);
   if (b < 0.032) return;
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 24, o.color || '#55585c', b);
 }
+
+/** Whether a kind has a model of its own (anything else is drawn as a plain low box). */
+export const hasModel = (kind) => kind in MODELS;
 
 export function modelFor(o, map) {
   const f = MODELS[o.kind];
@@ -1655,6 +1678,10 @@ export function buildProps(scene, view) {
   const out = [];
   const interior = map.theme === 'interior';
   for (const l of map.lamps) {
+    if (l.style && LAMP_STYLES[l.style]) {
+      out.push({ x: l.x, y: l.y, gx: l.x, gy: l.y, gz: 60, glow: 20, lamp: l, ...LAMP_STYLES[l.style](l) });
+      continue;
+    }
     if (l.interior) {
       out.push({ x: l.x, y: l.y, r: 10, h: 62, lamp: l, draw: drawStripLight, over: true, gx: l.x, gy: l.y, gz: 62, glow: 26 });
       continue;
@@ -1719,6 +1746,7 @@ export function buildProps(scene, view) {
     });
   }
   for (const q of buildDecorProps(scene, view)) out.push(q);
+  for (const fn of PROP_MAKERS) fn(scene, view, out);
   attachArt(scene, view);
   return out;
 }

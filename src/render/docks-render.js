@@ -487,7 +487,7 @@ const hull = new Float64Array(14);
 const DECK = 34;
 
 /**
- * The HALVARD STAR: bow west, superstructure aft, lit windows, a wake while
+ * The LIBERTY BELLE: bow west, superstructure aft, lit windows, a wake while
  * moving, the gangway once she's alongside. She lies beyond the pier, so she
  * is drawn before everything that stands on it.
  */
@@ -553,7 +553,7 @@ export function drawFerry(R, game, vr) {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = 'rgba(240,240,232,0.9)';
-    ctx.fillText('HALVARD STAR', v.runsRight(1, 0) ? 16 : w - 150 - 150, -(deck - 16));
+    ctx.fillText('LIBERTY BELLE', v.runsRight(1, 0) ? 16 : w - 150 - 150, -(deck - 16));
     R.reset();
     ctx.strokeStyle = 'rgba(235,235,225,0.5)';
     ctx.lineWidth = 1.2;

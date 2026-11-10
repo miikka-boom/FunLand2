@@ -50,7 +50,8 @@ globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null)
 
 const { Game } = await import('../src/game/game.js');
 const { Renderer } = await import('../src/render/renderer.js');
-const { DEFAULTS } = await import('../src/settings.js');
+const { DEFAULTS, LEVEL_IDS, levelKey, forLevel } = await import('../src/settings.js');
+const { hasModel } = await import('../src/render/models.js');
 const { computeLayout } = await import('../src/layout.js');
 const { Hunter, Tank } = await import('../src/game/specials.js');
 const { NightTerror } = await import('../src/game/terror.js');
@@ -61,8 +62,14 @@ const audio = new Proxy({ listener: { x: 0, y: 0 } }, { get: (o, k) => (k in o ?
 const W = 844;
 const H = 390;
 
+/**
+ * A game + renderer on a mock canvas. `cam` in the overrides is the camera of
+ * the level being set up (the camera is kept per map type: cameraTilt@city...).
+ */
 function setup(over = {}) {
-  const settings = { ...DEFAULTS, playtestPrompt: false, godMode: true, ...over };
+  const { cam, ...rest } = over;
+  const settings = { ...DEFAULTS, playtestPrompt: false, godMode: true, ...rest };
+  for (const [k, v] of Object.entries(cam || {})) settings[levelKey(k, settings.level)] = v;
   const game = new Game(settings, audio, () => {});
   game.setViewport(W, H);
   const canvas = mockCanvas(W * 2, H * 2);
@@ -100,6 +107,11 @@ function teleport(game, x, y) {
   }
 }
 
+/** Set a camera setting of the level being played. */
+const setCam = (settings, key, value) => {
+  settings[levelKey(key, settings.level)] = value;
+};
+
 // The three views of the world.
 const CAMERAS = {
   iso: { camera: 'iso', cameraAligned: false },
@@ -107,11 +119,17 @@ const CAMERAS = {
   top: { camera: 'top' },
 };
 
+// What makes two obstacles of a kind look different (each look gets a stop on the tour).
+const LOOKS = ['truck', 'tall', 'ware', 'pipe', 'indoor', 'house', 'garage', 'shed', 'mall', 'school', 'trailer', 'workshop', 'chapel', 'steeple', 'bus', 'icecream', 'hearse', 'hulk', 'tow', 'cube', 'dead', 'willow', 'war', 'pillar', 'fresh', 'boarded', 'twin', 'vert', 'fire', 'alarm'];
+const lookOf = (o) => o.kind + LOOKS.filter((k) => o[k]).map((k) => '/' + k).join('') + (o.style ? '/' + o.style : '');
+// How many different looks a map has at the very least.
+const MIN_LOOKS = { city: 12, interior: 12, docks: 9, graveyard: 22, suburbia: 20, junkyard: 18 };
+
 for (const camera of Object.keys(CAMERAS)) {
-  for (const level of ['city', 'interior', 'docks']) {
+  for (const level of LEVEL_IDS) {
     test(`${level}, ${camera} camera: the run draws from start to goal with everything switched on`, () => {
       bad = null;
-      const { game, renderer, step, frame } = setup({ level, ...CAMERAS[camera], los: true, holdout: true, routes: true, landmarks: true, ally: true, nightTerror: true });
+      const { game, renderer, step, frame } = setup({ level, cam: CAMERAS[camera], los: true, holdout: true, routes: true, landmarks: true, ally: true, nightTerror: true });
       assert.equal(game.view.flat, camera === 'top');
       assert.equal(game.view.yaw === 0, camera !== 'iso');
       const map = game.world.map;
@@ -161,10 +179,23 @@ for (const camera of Object.keys(CAMERAS)) {
       const seen = new Set();
       const stops = [];
       for (const o of map.obstacles) {
-        const key = o.kind + (o.truck ? '/truck' : '') + (o.tall ? '/tall' : '') + (o.ware ? '/ware' : '') + (o.pipe ? '/pipe' : '') + (o.indoor ? '/indoor' : '');
+        const key = lookOf(o);
         if (o.kind === 'border' || seen.has(key)) continue;
         seen.add(key);
         stops.push({ x: o.x + o.w / 2, y: o.y + o.h + 30 });
+      }
+      // ...and one of everything that lies or stands on the ground for show.
+      const shown = new Set();
+      for (const d of map.decor) {
+        if (shown.has(d.type)) continue;
+        shown.add(d.type);
+        stops.push(d);
+      }
+      for (const l of map.lamps) {
+        const key = 'lamp/' + (l.style || (l.tower ? 'tower' : 'post'));
+        if (shown.has(key)) continue;
+        shown.add(key);
+        stops.push(l);
       }
       for (const s of map.stashes || []) stops.push(s);
       for (const l of map.landmarks || []) stops.push(l);
@@ -177,7 +208,7 @@ for (const camera of Object.keys(CAMERAS)) {
         teleport(game, s.x, s.y);
         step(1, frame({ x: 0, y: 0 }, { x: 420, y: 100 }));
       }
-      assert.ok(seen.size >= (level === 'docks' ? 9 : 12), `saw ${seen.size} kinds of obstacle`);
+      assert.ok(seen.size >= MIN_LOOKS[level], `saw ${seen.size} kinds of obstacle`);
       // Day, and line of sight off.
       game.settings.night = false;
       game.settings.los = false;
@@ -185,7 +216,10 @@ for (const camera of Object.keys(CAMERAS)) {
       assert.equal(bad, null, `drawn with a bad number: ${bad}`);
       assert.ok(calls.fill > 200 && calls.stroke > 20, 'something was drawn');
       // Every static got a rank and a model, and the painter's list was sorted.
-      for (const o of renderer.scene.statics) assert.ok(o._r3 && o._r3.h > 0 && typeof o._r3.draw === 'function' && o._r3.rank >= 0, o.kind);
+      for (const o of renderer.scene.statics) {
+        assert.ok(o._r3 && o._r3.h > 0 && typeof o._r3.draw === 'function' && o._r3.rank >= 0, o.kind);
+        assert.ok(hasModel(o.kind), `${o.kind} has no model of its own (it would be drawn as a plain box)`);
+      }
       const list = renderer.list;
       for (let i = 1; i < list.length; i++) assert.ok(list[i - 1].k <= list[i].k);
     });
@@ -195,7 +229,7 @@ for (const camera of Object.keys(CAMERAS)) {
 test('Pier 9 finale: the flare, the ferry coming in, the gangway (every camera)', () => {
   for (const camera of Object.keys(CAMERAS)) {
     bad = null;
-    const { game, step, frame } = setup({ level: 'docks', ...CAMERAS[camera], ferryTime: 30 });
+    const { game, step, frame } = setup({ level: 'docks', cam: CAMERAS[camera], ferryTime: 30 });
     const F = game.events.finale;
     teleport(game, F.use.x, F.use.y);
     step(80); // stand at the post: the flare goes up
@@ -214,43 +248,43 @@ test('Pier 9 finale: the flare, the ferry coming in, the gangway (every camera)'
 
 test('the camera can be changed mid-run: tilt, aligned with the streets, straight down, and back', () => {
   bad = null;
-  const { game, renderer, settings, step } = setup({ level: 'city', cameraAligned: false, cameraTilt: 35 });
+  const { game, renderer, settings, step } = setup({ level: 'city', cam: { cameraAligned: false, cameraTilt: 35 } });
   step(2);
   assert.ok(Math.abs(game.view.yaw - Math.PI / 4) < 1e-9, 'isometric: turned 45°');
   const ranks = renderer.scene.statics.map((o) => o._r3.rank);
   for (const tilt of [25, 35, 50, 70]) {
-    settings.cameraTilt = tilt;
+    setCam(settings, 'cameraTilt', tilt);
     step(2);
     assert.equal(game.view.flat, false);
   }
   assert.deepEqual(renderer.scene.statics.map((o) => o._r3.rank), ranks, 'tilting does not reorder the scene');
   // Streets along the screen: no turn, its own tilt, still 3D.
-  settings.cameraAligned = true;
+  setCam(settings, 'cameraAligned', true);
   step(2);
   assert.equal(game.view.yaw, 0);
   assert.equal(game.view.flat, false);
-  assert.ok(Math.abs(game.view.pitch - (settings.cameraAlignedTilt * Math.PI) / 180) < 1e-9, 'the aligned view has its own tilt');
+  assert.ok(Math.abs(game.view.pitch - (forLevel(settings, 'cameraAlignedTilt') * Math.PI) / 180) < 1e-9, 'the aligned view has its own tilt');
   assert.equal(game.view.faceX, 0, 'walls that run up the screen are edge-on');
   assert.equal(game.view.faceY, 1, 'south walls face the camera');
   for (const tilt of [30, 55, 75]) {
-    settings.cameraAlignedTilt = tilt;
+    setCam(settings, 'cameraAlignedTilt', tilt);
     step(2);
     assert.equal(game.view.flat, false);
   }
-  settings.camera = 'top';
+  setCam(settings, 'camera', 'top');
   step(2);
   assert.equal(game.view.flat, true, 'straight down wins over the toggle');
   assert.equal(game.view.yaw, 0);
-  settings.camera = 'iso';
-  settings.cameraAligned = false;
-  settings.cameraTilt = 35;
+  setCam(settings, 'camera', 'iso');
+  setCam(settings, 'cameraAligned', false);
+  setCam(settings, 'cameraTilt', 35);
   step(2);
   assert.deepEqual(renderer.scene.statics.map((o) => o._r3.rank), ranks, 'back to the same order');
   assert.equal(bad, null, `drawn with a bad number: ${bad}`);
 });
 
 test('aligned camera: sticks are map directions, and the mouse still aims at gun height', () => {
-  const { game, step, frame } = setup({ level: 'city', cameraAligned: true, wanderers: 0, specials: false });
+  const { game, step, frame } = setup({ level: 'city', cam: { cameraAligned: true }, wanderers: 0, specials: false });
   const v = game.view;
   for (const [sx, sy, wx, wy] of [[1, 0, 1, 0], [0, -1, 0, -1], [-1, 0, -1, 0], [0, 1, 0, 1]]) {
     const d = v.dirToWorld(sx, sy);
@@ -291,6 +325,34 @@ test('out of the box: streets along the screen from a steep angle, everything in
   assert.equal(bad, null, `drawn with a bad number: ${bad}`);
 });
 
+test('every map type has a camera of its own: the Building is seen from the corner and from high up, the rest along the streets', () => {
+  for (const level of LEVEL_IDS) {
+    const { game, settings, step } = setup({ level, wanderers: 0 });
+    step(1);
+    const v = game.view;
+    assert.equal(v.flat, false, level);
+    if (level === 'interior') {
+      assert.ok(Math.abs(v.yaw - Math.PI / 4) < 1e-9, 'Building: the isometric 45° turn');
+      assert.ok(Math.abs(v.pitch - (70 * Math.PI) / 180) < 1e-9, 'Building: as high as the isometric camera goes');
+    } else {
+      assert.equal(v.yaw, 0, `${level}: streets along the screen`);
+      assert.ok(Math.abs(v.pitch - (75 * Math.PI) / 180) < 1e-9, `${level}: 75° above the horizon`);
+    }
+    // Changing another map's camera changes nothing here; changing this one's does.
+    const other = level === 'city' ? 'docks' : 'city';
+    settings[levelKey('camera', other)] = 'top';
+    settings[levelKey('viewSize', other)] = 700;
+    step(1);
+    assert.equal(game.view.flat, false, `${level}: not moved by ${other}'s camera`);
+    assert.equal(game.viewSize, 470);
+    setCam(settings, 'viewSize', 620);
+    setCam(settings, 'camera', 'top');
+    step(1);
+    assert.equal(game.view.flat, true);
+    assert.equal(game.viewSize, 620);
+  }
+});
+
 test('boarded doorways the camera cannot look into are marked in plan, where the door is', () => {
   // A boarded room behind a tall wall: the wall goes on over the door (a lintel).
   const marked = (over) => {
@@ -314,15 +376,15 @@ test('boarded doorways the camera cannot look into are marked in plan, where the
     return { game, renderer, step, lintels, seen };
   };
   // Isometric: every doorway shows on a wall that faces the camera (or its inside does).
-  const iso = marked({ cameraAligned: false });
+  const iso = marked({ cam: { cameraAligned: false } });
   assert.equal(iso.seen.size, 0);
   // Aligned with the streets: doors in walls that run up the screen are edge-on.
-  const al = marked({ cameraAligned: true });
+  const al = marked({ cam: { cameraAligned: true } });
   const upright = al.lintels.filter((q) => q.boards.vertical);
   assert.ok(upright.length > 0, 'this map has a boarded door in a wall that runs north-south');
   assert.deepEqual([...al.seen].sort((a, b) => a.x - b.x), upright.sort((a, b) => a.x - b.x));
   // Straight down: all of them (the wall over the door would cover the planks).
-  const top = marked({ camera: 'top' });
+  const top = marked({ cam: { camera: 'top' } });
   assert.equal(top.seen.size, top.lintels.length);
 
   // Break in, then turn the camera: what is over the door is still there, the mark stays (now an open doorway).
@@ -335,10 +397,10 @@ test('boarded doorways the camera cannot look into are marked in plan, where the
   teleport(game, q.x - 70, q.y);
   step(2);
   assert.ok(seen.has(q), 'the open doorway keeps its mark');
-  game.settings.cameraAligned = false;
+  setCam(game.settings, 'cameraAligned', false);
   step(2);
   assert.ok(renderer.scene.props.some((r) => r.boards === o), 'the lintel survives the scene being rebuilt for the new angle');
-  game.settings.cameraAligned = true;
+  setCam(game.settings, 'cameraAligned', true);
   step(2);
   assert.ok(renderer.scene.props.some((r) => r.boards === o));
   assert.equal(bad, null, `drawn with a bad number: ${bad}`);

@@ -4,7 +4,7 @@
 // Pure helpers (report building, text, daily seed, storage) are exported for
 // tests; ReportCard is the DOM card shown over the end screen.
 
-import { diffFromDefaults } from './settings.js';
+import { diffFromDefaults, LEVEL_NAMES } from './settings.js';
 
 const HISTORY_KEY = 'funland2.p0.reports.v1';
 const DAILY_KEY = 'funland2.p0.daily.v1';
@@ -15,7 +15,7 @@ export const RATINGS = [
   { key: 'difficulty', label: 'Difficulty', options: [['easy', 'Too easy'], ['right', 'About right'], ['hard', 'Too hard']] },
   { key: 'controls', label: 'Controls', options: [['bad', 'Fought me'], ['ok', 'OK'], ['great', 'Felt great']] },
 ];
-export const LEVEL_NAMES = { city: 'Streets', interior: 'Building', docks: 'Pier 9' };
+export { LEVEL_NAMES };
 
 // --- Daily map ------------------------------------------------------------------------------
 

@@ -31,6 +31,8 @@ import { drawCanopies, drawFeatureDecor, drawFeaturesBright } from './features-r
 import { drawLoreDecor, drawPosters, roofText, drawLoreBright } from './lore-render.js';
 import { drawDocksGround, drawDocksDecor, drawCranes, drawFerry, drawDocksBright } from './docks-render.js';
 import { drawBenDecor, drawBenBright, drawBenLoose, benText, drawFort } from './ben-render.js';
+import { THEMES, drawThemeDecor } from './theme-render.js';
+import './theme-models.js'; // registers the graveyard / suburbia / junkyard models
 
 const GROUND = {
   street: '#24272b',
@@ -230,6 +232,9 @@ export class Renderer {
     drawBenLoose(ctx, game, vr);
     this.drawCorpses(ctx, game, vr);
     this.drawGroundParticles(ctx, game, vr);
+    // Ground mist (the graveyard): under the night, so it only shows where there is light.
+    const theme = THEMES[game.world.map.theme];
+    if (theme && theme.mist) theme.mist(ctx, game, vr);
 
     // Who and what stands where (needs the lights: things out of sight are left out).
     this.gather(game, vrTall, dt);
@@ -278,12 +283,15 @@ export class Renderer {
   drawGround(ctx, game, vr) {
     const map = game.world.map;
     const interior = map.theme === 'interior';
-    ctx.fillStyle = interior ? '#2b2c2f' : GROUND.street;
+    // The graveyard, suburbia and the junkyard paint their own ground (theme-render.js).
+    const theme = THEMES[map.theme];
+    ctx.fillStyle = interior ? '#2b2c2f' : theme ? theme.base : GROUND.street;
     ctx.fillRect(Math.max(0, vr.x), Math.max(0, vr.y), Math.min(map.w, vr.x + vr.w) - Math.max(0, vr.x), Math.min(map.h, vr.y + vr.h) - Math.max(0, vr.y));
     if (interior) this.drawInteriorFloors(ctx, map, vr);
     if (map.theme === 'docks') drawDocksGround(ctx, game, vr);
+    if (theme) theme.ground(ctx, game, vr, game.view);
 
-    for (const b of interior ? [] : map.blocks) {
+    for (const b of interior || theme ? [] : map.blocks) {
       if (!rectsOverlap(b, vr)) continue;
       ctx.fillStyle = GROUND.sidewalk;
       ctx.fillRect(b.x, b.y, b.w, b.h);
@@ -311,7 +319,7 @@ export class Renderer {
 
     // Curbs: the pavement stands a step above the road on the sides that face the camera.
     const view = game.view;
-    if (!interior && !view.flat) {
+    if (!interior && !theme && !view.flat) {
       const drop = 3.2 * view.cot;
       const dx = view.gx * drop;
       const dy = view.gy * drop;
@@ -459,7 +467,7 @@ export class Renderer {
           drawChalk(ctx, d);
           break;
         default:
-          if (!drawLoreDecor(ctx, d) && !drawBenDecor(ctx, d, game.time) && !drawDocksDecor(ctx, d, game.time, game.view)) drawFeatureDecor(ctx, d);
+          if (!drawLoreDecor(ctx, d) && !drawBenDecor(ctx, d, game.time) && !drawDocksDecor(ctx, d, game.time, game.view) && !drawThemeDecor(ctx, d, game.time)) drawFeatureDecor(ctx, d);
           break;
       }
     }

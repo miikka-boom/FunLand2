@@ -165,11 +165,29 @@ html.is-ios .ios-only {
 
 /* --- Level picker ---------------------------------------------------------- */
 
+/* Six map types: two rows of three (one row of six on short screens, below). */
 .levels {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(128px, 1fr));
   justify-content: center;
   gap: 8px;
   margin: 0 0 12px;
+}
+
+@media (max-width: 460px) {
+  .levels {
+    grid-template-columns: repeat(2, minmax(110px, 1fr));
+  }
+}
+
+/* Not much height (a 960 x 540 embed): the six names in one row, no second line. */
+@media (max-height: 640px) and (min-width: 700px) {
+  .levels {
+    grid-template-columns: repeat(6, auto);
+  }
+  .levels .level span {
+    display: none;
+  }
 }
 
 .level {
@@ -179,8 +197,7 @@ html.is-ios .ios-only {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 7px 14px;
-  min-width: 128px;
+  padding: 6px 12px;
   cursor: pointer;
   touch-action: manipulation;
   text-align: center;
@@ -715,11 +732,16 @@ html.is-ios .ios-only {
     padding: 9px 24px;
   }
   .levels {
+    grid-template-columns: repeat(6, auto);
+    gap: 6px;
     margin-bottom: 8px;
   }
   .level {
-    padding: 5px 12px;
-    min-width: 104px;
+    padding: 5px 9px;
+  }
+  .level b {
+    font-size: 12px;
+    letter-spacing: 0.04em;
   }
   .level span {
     display: none;

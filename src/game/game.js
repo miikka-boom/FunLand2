@@ -3,10 +3,13 @@
 import { generateCity } from '../world/map-gen.js';
 import { generateBuilding } from '../world/building-gen.js';
 import { generateDocks } from '../world/docks-gen.js';
+import { generateGraveyard } from '../world/graveyard-gen.js';
+import { generateSuburbia } from '../world/suburbia-gen.js';
+import { generateJunkyard } from '../world/junkyard-gen.js';
 import { finaleOpen } from './finale.js';
 import { addScavenging } from '../world/scavenge-gen.js';
 import { addWorldFeatures } from '../world/features-gen.js';
-import { worldSignature } from '../settings.js';
+import { worldSignature, forLevel } from '../settings.js';
 import { World, SpatialHash, FlowField } from '../world/world.js';
 import { Player, updatePlayer, shove, startReload, swapWeapon } from './player.js';
 import { updateZombies, resolveCrowd, alertZombie, ZHASH_CELL } from './zombies.js';
@@ -31,6 +34,16 @@ const ISO_ZOOM = 0.42;
 const CAMERA_LIFT = 18;
 const kickTmp = { x: 0, y: 0 };
 
+/** The map generators, by level id (settings.js: LEVELS). */
+export const GENERATORS = {
+  city: generateCity,
+  interior: generateBuilding,
+  docks: generateDocks,
+  graveyard: generateGraveyard,
+  suburbia: generateSuburbia,
+  junkyard: generateJunkyard,
+};
+
 export class Game {
   constructor(settings, audio, haptics) {
     this.settings = settings;
@@ -52,7 +65,7 @@ export class Game {
     if (this.dailyKey) seed = dailySeed(this.dailyKey);
     this.seed = seed;
     this.runSerial = (this.runSerial || 0) + 1;
-    const gen = this.level === 'interior' ? generateBuilding : this.level === 'docks' ? generateDocks : generateCity;
+    const gen = GENERATORS[this.level] || generateCity;
     let map = gen(seed);
     let world = new World(map);
     // Paranoia: if the goal were ever unreachable, step the seed.
@@ -67,8 +80,10 @@ export class Game {
     const S = this.settings;
     this.worldSig = worldSignature(S);
     const base = map.obstacles.slice();
-    // (Pier 9 has its own finale instead of the holdout gate / routes / landmarks.)
-    if (map.theme !== 'docks' && (S.holdout || S.routes || S.landmarks)) addWorldFeatures(map, map.seed, { holdout: S.holdout, routes: S.routes, landmarks: S.landmarks });
+    // The holdout gate, the two routes and the landmarks are built for the streets and the building
+    // (Pier 9 has its own finale; the graveyard, suburbia and the junkyard don't have them yet).
+    const featured = !map.theme || map.theme === 'interior';
+    if (featured && (S.holdout || S.routes || S.landmarks)) addWorldFeatures(map, map.seed, { holdout: S.holdout, routes: S.routes, landmarks: S.landmarks });
     if (S.stashes || S.boardedRooms || S.secret) addScavenging(map, map.seed, { stashes: S.stashes, rooms: S.boardedRooms, secret: S.secret });
     if (S.lore) addLore(map, map.seed); // graffiti, posters, dens: visual only
     this.benMemory = loadBenMemory();
@@ -247,14 +262,18 @@ export class Game {
   syncView() {
     const S = this.settings;
     const v = this.view;
-    // Three views of the same world: isometric (turned 45°), aligned (streets
-    // along the screen, its own steeper tilt) and straight down.
-    const top = S.camera === 'top';
-    const aligned = !top && S.cameraAligned;
-    const pitch = top ? Math.PI / 2 : aligned ? S.cameraAlignedTilt * DEG : S.cameraTilt === 35 ? ISO_PITCH : S.cameraTilt * DEG;
+    // Each map type has its own camera (settings.js: forLevel). Three views of
+    // the same world: isometric (turned 45°), aligned (streets along the
+    // screen, its own steeper tilt) and straight down.
+    const L = this.level || S.level;
+    const top = forLevel(S, 'camera', L) === 'top';
+    const aligned = !top && forLevel(S, 'cameraAligned', L);
+    const tilt = forLevel(S, 'cameraTilt', L);
+    const pitch = top ? Math.PI / 2 : aligned ? forLevel(S, 'cameraAlignedTilt', L) * DEG : tilt === 35 ? ISO_PITCH : tilt * DEG;
     v.setAngles(top || aligned ? 0 : ISO_YAW, pitch);
     const { w, h } = this.viewport;
-    v.setViewport(w, h, (Math.min(w, h) / S.viewSize) * (1 + ISO_ZOOM * (1 - v.sp)));
+    this.viewSize = forLevel(S, 'viewSize', L);
+    v.setViewport(w, h, (Math.min(w, h) / this.viewSize) * (1 + ISO_ZOOM * (1 - v.sp)));
     const c = this.camera;
     if (c) v.lookAt(c.x, c.y, c.shakeX, c.shakeY, v.flat ? 0 : CAMERA_LIFT);
   }
@@ -373,7 +392,7 @@ export class Game {
     const p = this.player;
     const c = this.camera;
     const v = this.view;
-    const viewWorld = S.viewSize;
+    const viewWorld = this.viewSize;
     // Lead toward the aim (strongest while firing), lightly toward travel otherwise.
     // The lead is the same distance on screen whichever way you face, so on
     // the foreshortened axis it reaches further over the ground.

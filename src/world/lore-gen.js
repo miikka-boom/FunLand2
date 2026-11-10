@@ -9,8 +9,12 @@ import { World } from './world.js';
 import { mulberry32, shuffle, pointInRect, rectsOverlap } from '../util.js';
 import { analyse, detour } from './scavenge-gen.js';
 import {
-  CITY_GRAFFITI, BUILDING_GRAFFITI, DOCKS_GRAFFITI, ROOF_MESSAGES, SAFE_ROOM, POSTERS, NOTES, DEN_SCRIBBLES, DEN_JOKES, VIGNETTES, SPRAY, MARKER,
+  CITY_GRAFFITI, BUILDING_GRAFFITI, DOCKS_GRAFFITI, SUBURBIA_GRAFFITI, GRAVEYARD_GRAFFITI, JUNKYARD_GRAFFITI,
+  ROOF_MESSAGES, SAFE_ROOM, POSTERS, NOTES, DEN_SCRIBBLES, DEN_JOKES, VIGNETTES, SPRAY, MARKER,
 } from './lore-content.js';
+
+/** A map type's own lines (they go first; the rest of the ground is filled from town). */
+const THEME_GRAFFITI = { docks: DOCKS_GRAFFITI, suburbia: SUBURBIA_GRAFFITI, graveyard: GRAVEYARD_GRAFFITI, junkyard: JUNKYARD_GRAFFITI };
 
 const INF = 0x3fffffff;
 const DOODLES = ['smiley', 'deadsmiley', 'drowser', 'crown', 'ttt', 'runner', 'cat', 'sun', 'gear'];
@@ -20,7 +24,6 @@ export function addLore(map, seed) {
   const r = (a, b) => a + rnd() * (b - a);
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
   const interior = map.theme === 'interior';
-  const docks = map.theme === 'docks';
   map.posters = [];
   map.roofArt = [];
   map.glows = map.glows || [];
@@ -67,8 +70,9 @@ export function addLore(map, seed) {
   else safeRoomWall(map, map.endRoom, SAFE_ROOM.end, rnd, interior, false);
 
   // --- Ground graffiti -------------------------------------------------------------------
-  // The docks: harbour lines first, then a few from town.
-  const lines = docks ? [...shuffle(DOCKS_GRAFFITI.slice(), rnd), ...shuffle(CITY_GRAFFITI.slice(), rnd)] : shuffle((interior ? BUILDING_GRAFFITI : CITY_GRAFFITI).slice(), rnd);
+  // The docks, the suburbs, the cemetery, the yard: their own lines first, then a few from town.
+  const own = THEME_GRAFFITI[map.theme];
+  const lines = own ? [...shuffle(own.slice(), rnd), ...shuffle(CITY_GRAFFITI.slice(), rnd)] : shuffle((interior ? BUILDING_GRAFFITI : CITY_GRAFFITI).slice(), rnd);
   const want = interior ? 15 : 19;
   const placed = [];
   const spacing = interior ? 150 : 190;
@@ -248,7 +252,7 @@ function docksEnd(map, rnd, busy) {
 }
 
 function roofMessages(map, world, A, rnd, goal) {
-  const roofs = map.obstacles.filter((o) => o.kind === 'building' && o.w >= 170 && o.h >= 120 && !o.safe);
+  const roofs = map.obstacles.filter((o) => o.kind === 'building' && o.w >= 170 && o.h >= 120 && !o.safe && !o.pitched);
   const near = [];
   for (const b of roofs) {
     // How close the walk passes by (cells just around the roof).
@@ -350,7 +354,7 @@ function dens(map, world, A, rnd, interior, cells, clearOf, busy) {
       spots.push({ x: q.x, y: q.y });
     }
   }
-  const noteSets = interior ? [NOTES.building, NOTES.tinkerer] : map.theme === 'docks' ? [NOTES.docks, NOTES.tinkerer] : [NOTES.city, NOTES.tinkerer];
+  const noteSets = interior ? [NOTES.building, NOTES.tinkerer] : [NOTES[map.theme] || NOTES.city, NOTES.tinkerer];
   spots.forEach((s, k) => {
     const { x, y } = s;
     // The camp: bedding, candles, a stove, cans, a radio, and the Tinkerer's mark.
@@ -433,7 +437,7 @@ function dens(map, world, A, rnd, interior, cells, clearOf, busy) {
 }
 
 function vignettes(map, world, A, rnd, interior, cells, clearOf, busy) {
-  const list = shuffle((interior ? VIGNETTES.building : map.theme === 'docks' ? VIGNETTES.docks : VIGNETTES.city).slice(), rnd);
+  const list = shuffle((interior ? VIGNETTES.building : VIGNETTES[map.theme] || VIGNETTES.city).slice(), rnd);
   let made = 0;
   const want = interior ? 3 : 3;
   for (const v of list) {

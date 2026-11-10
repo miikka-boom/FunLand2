@@ -46,7 +46,8 @@ export class Scene {
     this.count = world.obstacles.length;
     const st = (this.statics = []);
     for (const o of world.obstacles) {
-      if (o.kind === 'border' || o.kind === 'water') continue;
+      // Borders, water and what lies flat (a pond, a pool: painted with the ground) don't stand up.
+      if (o.kind === 'border' || o.kind === 'water' || o.flat) continue;
       if (!o._r3) {
         const m = modelFor(o, this.map);
         // a: how solid it is drawn (fades when it hides the survivor); stamp: seen this frame.

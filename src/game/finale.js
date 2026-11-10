@@ -78,16 +78,16 @@ export function updateFinale(game, F, dt) {
     if (F.t >= FERRY.answer && !F.said.has('answer')) {
       F.said.add('answer');
       game.audio.ferryHorn(true);
-      game.announce(`HALVARD STAR: WE SEE YOUR FLARE. ${Math.round(F.dur)} SECONDS, PIER 9.`, '#9fd8ff', 3.4, 'small');
+      game.announce(`LIBERTY BELLE: WE SEE YOUR FLARE. ${Math.round(F.dur)} SECONDS, PIER 9.`, '#9fd8ff', 3.4, 'small');
     }
     if (F.t >= F.dur / 2 && F.dur >= 40 && !F.said.has('half')) {
       F.said.add('half');
-      game.announce('HALVARD STAR: HALFWAY THERE. KEEP THAT PIER CLEAR.', '#9fd8ff', 3, 'small');
+      game.announce('LIBERTY BELLE: HALFWAY THERE. KEEP THAT PIER CLEAR.', '#9fd8ff', 3, 'small');
     }
     if (F.t >= F.dur - FERRY.arrive && !F.said.has('arrive')) {
       F.said.add('arrive');
       game.audio.ferryHorn(false);
-      game.announce('HALVARD STAR: COMING ALONGSIDE, NORTH SIDE OF THE PIER.', '#9fd8ff', 3.2, 'small');
+      game.announce('LIBERTY BELLE: COMING ALONGSIDE, NORTH SIDE OF THE PIER.', '#9fd8ff', 3.2, 'small');
     }
     // Waves from land, down the pier.
     if (F.t >= F.nextWave && F.t < F.dur - 4) {
