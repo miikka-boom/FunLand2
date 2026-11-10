@@ -167,7 +167,7 @@ test('the newer unit types: data as in the contract, in UNIT_ORDER, with real we
   for (const id of ['brick', 'pogo']) assert.equal(UNIT_TYPES[id].targets, 'structures');
   assert.equal(UNIT_TYPES.netter.airReach, 130);
   assert.equal(UNIT_TYPES.copter.flying.alt, 100);
-  assert.equal(UNIT_TYPES.pelican.flying.alt, 160);
+  assert.equal(UNIT_TYPES.pelican.flying.alt, 200); // (160 in the first draft: it hit a Guard Tower's roof edge in the near lanes)
   assert.equal(UNIT_TYPES.jelly.spine, 0.15);
   // Liftable (mass <= 1) and heavy (mass >= 3) as section 3.6 has them
   const mass = (id) => UNIT_TYPES[id].mass || 1;

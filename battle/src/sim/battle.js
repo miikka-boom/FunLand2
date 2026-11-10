@@ -39,6 +39,7 @@ export const MAX_LIVE = 32; // live units per side: spawns (never cards) are ski
 const MAX_TOWER_ARROWS = 24;
 const BITE_SPIT = [260, 340]; // px/s (away, up): a lethal Nutcracker bite spits its victim out spinning
 const CAP_LIFE = 7; // seconds a Propeller Pal's cap flutters about before it fades
+const TOSS_ELEV = 1.35; // rad: the steepest a Bomb Juggler lobs (arrows: 0.85)
 
 /** Units that only ever go for towers and buildings (the Brick, the Pogo Bean). */
 const structuresOnly = (type) => type.targets === 'structures' || type.targets === 'towers';
@@ -183,13 +184,18 @@ export class Battle {
     if (v.type.fumble) this.fumble(v);
   }
 
-  /** Release v from whatever holds it, adding (dvx, dvy) px/s to every part. */
+  /**
+   * Release v from whatever holds it, adding (dvx, dvy) px/s to every part.
+   * A Big Jelly cools down after any release, as after a spit (a Sneeze that
+   * frees its catch isn't undone by the next swallow).
+   */
   letGo(v, dvx = 0, dvy = 0) {
     const h = v.heldBy;
     if (!h) return;
     v.held = false;
     v.heldBy = null;
     if (h.holding === v) h.holding = null;
+    if (h.type.engulf) h.engulfCool = Math.max(h.engulfCool, h.type.engulf.cooldown);
     if (dvx || dvy) for (const p of v.parts) p.addVel(dvx, dvy, this.dt);
   }
 
@@ -609,7 +615,8 @@ export class Battle {
       const castle = t.kind === 'castle';
       const top = castle ? -Infinity : -t.h;
       for (const u of this.units) {
-        if (u.team === t.team || u.asleep || u.gone) continue;
+        // (a bean in a Pelican's beak or a Jelly is carried past: its holder's own tower is no wall to it)
+        if (u.team === t.team || u.asleep || u.gone || u.heldBy) continue;
         if (u.hip.x < x0 - 110 || u.hip.x > x1 + 110) continue;
         const side = castle ? t.f : u.hip.x < t.x ? -1 : 1;
         let hit = 0;
@@ -1213,13 +1220,15 @@ export class Battle {
     let elev = u.act.elev;
     let speed = A.maxSpeed;
     let ang = 0;
+    // A bomb toss may go up steeply (at a flier overhead); an arrow keeps to readable lobs
+    const eMax = A.toss ? TOSS_ELEV : 0.85;
     for (let iter = 0; iter < 3; iter++) {
       const dx = tx - bowX;
       const dist = Math.max(8, Math.abs(dx));
       const h = bowY - ty; // target height above the bow
       let e = elev;
       speed = A.maxSpeed;
-      for (let k = 0; k < 12; k++) {
+      for (let k = 0; k < (A.toss ? 24 : 12); k++) {
         const c = Math.cos(e);
         const den = 2 * c * c * (dist * Math.tan(e) - h);
         if (den > 0) {
@@ -1230,8 +1239,9 @@ export class Battle {
           }
         }
         e += 0.06;
-        if (e > 0.85) {
-          e = 0.785;
+        if (e > eMax) {
+          // Out of reach: an arrow flies its 45 degrees; a bomb goes as high as it can over the target
+          e = A.toss ? clamp(Math.atan((A.maxSpeed * A.maxSpeed) / (G * dist)), elev, eMax) : 0.785;
           break;
         }
       }

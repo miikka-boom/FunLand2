@@ -392,7 +392,7 @@ export const UNIT_TYPES = {
     weapon: 'pogo',
     targets: 'structures',
     body: { thigh: 13, shin: 13, upperArm: 10.5, foreArm: 10.5 },
-    hop: { vx: 130, vy: 420, rest: 0.08, wallVy: 330, stickBelow: 26, overAlt: 5, remount: 0.4, stomp: { damage: 20, stun: 0.4, bounce: 1.3 }, bonk: { damage: 20, reach: 26 } },
+    hop: { vx: 130, vy: 420, rest: 0.08, wallVy: 330, stickBelow: 26, overAlt: 20, remount: 0.4, stomp: { damage: 20, stun: 0.4, bounce: 1.3 }, bonk: { damage: 20, reach: 26 } },
     engage: 14,
     reach: 26,
     poses: {
@@ -459,7 +459,7 @@ export const UNIT_TYPES = {
     ranged: true,
     hitsAir: true,
     range: [200, 240], // Archers (230-300) outrange it
-    attack: { toss: true, draw: 0.55, recover: 0.45, cooldown: 0.6, maxSpeed: 560, spread: 0.06 },
+    attack: { toss: true, draw: 0.55, recover: 0.45, cooldown: 0.6, maxSpeed: 700, spread: 0.06 }, // (fast enough to lob up at a Pelican at cruise height)
     bomb: { r: 6, bounce: 0.4, fuse: 0.6, maxAge: 2.5, radius: 65, damage: 60, launch: 380, friendly: 0.2, chain: 0.4, vsGiant: 1.3, vsTower: 0.5 },
     fumble: { onDown: 1, onDeath: 3, every: 4, delay: 0.5, spread: 35 },
     poses: {
@@ -548,7 +548,7 @@ export const UNIT_TYPES = {
     speed: 58,
     mass: 1.0,
     weapon: 'none',
-    follow: { behind: 70, home: 80 }, // walks this far behind the push's lead (or this far in front of home)
+    follow: { behind: 70, home: 80 }, // walks this far behind the push's lead (alone: this far behind its own Guard Tower)
     beat: { every: 0.5, radius: 150, time: 0.6 }, // the effect (+30%) is BEAT below
     poses: {
       rest: { main: [10, 0], off: [8, 2], ang: 0, lean: 0, crouch: 0, wk: 1 },
@@ -574,7 +574,7 @@ export const UNIT_TYPES = {
     weapon: 'none',
     noHat: true,
     body: { thigh: 8, shin: 8, upperArm: 12, foreArm: 12, chestFrac: 0.5 }, // arms are the wings
-    flying: { alt: 160, bob: 6 },
+    flying: { alt: 200, bob: 6 }, // (high enough to clear a Guard Tower in every lane, bob and all)
     engage: 30,
     reach: 120,
     scoop: { sight: 320, maxMass: 1.0, swoop: 0.9, swoopAlt: 25, beak: 24, pinch: 20, carryAlt: 220, carryBack: 140, carryMax: 2.0, dropDamage: 40, dropStun: 0.4, cooldown: 3.5, letGoDamage: 60, letGoStun: 0.5 },

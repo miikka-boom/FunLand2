@@ -192,7 +192,6 @@ test('a building drops in (buildingLand at 0.35 s), decays to nothing over its l
     let goneAt = null;
     const ev = run(b, life + WRECK_T + 0.6, (i) => {
       const now = (i + 1) * DT;
-      for (const e of b.events) void e;
       if (landAt == null && t.landT >= LAND_T) landAt = now;
       if (downAt == null && !t.alive) downAt = now;
       if (goneAt == null && !b.towers.includes(t)) goneAt = now;
@@ -210,6 +209,27 @@ test('a building drops in (buildingLand at 0.35 s), decays to nothing over its l
     assert.equal(t.age > life - 0.1, true);
     assert.deepEqual(b.crowns, { blue: 0, red: 0 });
   }
+});
+
+test('landing: enemy beans standing where a building lands are popped up and put out at its faces, unhurt; its own side and high fliers are left alone', () => {
+  const b = arena(30, false);
+  const t = b.addBuilding('beanPatch', 'blue', 600, 1);
+  t.spawn = null;
+  while (t.landT < LAND_T - DT * 1.5) run(b, DT);
+  const foe = b.addUnit('clubber', 'red', 600, 0.5);
+  const mate = b.addUnit('clubber', 'blue', 590, 0.5);
+  const high = b.addUnit('copter', 'red', 610, 0.5);
+  for (const p of high.parts) p.teleport(0, -100);
+  for (const u of [foe, mate, high]) u.cooldown = 1e9; // (nobody swings)
+  const ev = run(b, DT);
+  assert.equal(ev.filter((e) => e.type === 'buildingLand' && e.tower === t).length, 1);
+  assert.ok(foe.hip.vy(DT) < -150, `foe popped at ${foe.hip.vy(DT).toFixed(0)} px/s`);
+  assert.ok(Math.abs(mate.hip.vy(DT)) < 60, 'its own side stays put');
+  assert.ok(high.hip.vy(DT) > -60, 'a flier up high is not popped');
+  run(b, 1.2);
+  assert.ok(Math.abs(foe.hip.x - t.x) >= t.w / 2, `the foe is still inside at ${foe.hip.x.toFixed(0)}`);
+  assert.equal(foe.hp, foe.maxHp, 'no damage');
+  assert.ok(finite(b));
 });
 
 test('enemy beans can\'t walk through a building, its own side walks past it', () => {
@@ -263,18 +283,32 @@ test('the Brick (structures only) and melee beans go for a building in front of 
 // --- the Boing Box ---------------------------------------------------------------------
 
 test('Boing Box: arms after 1 s, punches a walking Clubber at least 80 px back, then recharges (about 1.9 s a cycle)', () => {
+  const P = BUILDINGS.boingBox.punch;
+  // Arming: a bean standing right in front of it is left alone for the first second
+  const a = arena(9, false);
+  const ab = a.addBuilding('boingBox', 'blue', 520, 1);
+  const st = a.addUnit('clubber', 'red', 520 + ab.w / 2 + 40, 0.5);
+  st.speed = 0;
+  st.cooldown = 1e9;
+  let firstWind = null;
+  run(a, 1.5, (i) => {
+    if (firstWind == null && ab.punch.phase === 'windup') firstWind = (i + 1) * DT;
+  });
+  assert.ok(firstWind != null && Math.abs(firstWind - BUILDINGS.boingBox.arm) < 0.02, `first windup at ${firstWind}`);
+  // A walking Clubber: punched back, and the glove goes through every phase for its time
   const b = arena(9);
   const box = b.addBuilding('boingBox', 'blue', 520, 1);
-  const P = BUILDINGS.boingBox.punch;
   const c = b.addUnit('clubber', 'red', 690, 0.5);
   let before = null;
   let after = -Infinity;
   let outAt = null;
-  const times = [];
+  const phases = [];
   const ev = run(b, 6, (i) => {
-    for (const e of b.events) void e;
-    if (box.punch.phase === 'windup' && before == null) before = c.hip.x;
-    if (box.punch.phase === 'out' && outAt == null) outAt = i;
+    const S = box.punch;
+    if (!phases.length || phases[phases.length - 1][0] !== S.phase) phases.push([S.phase, (i + 1) * DT]);
+    assert.ok(S.ext >= 0 && S.ext <= 1);
+    if (S.phase === 'windup' && before == null) before = c.hip.x;
+    if (S.phase === 'out' && outAt == null) outAt = i;
     if (outAt != null && i - outAt < 0.8 / DT) after = Math.max(after, c.hip.x);
   });
   const wind = ev.filter((e) => e.type === 'punchWindup' && e.tower === box);
@@ -282,17 +316,26 @@ test('Boing Box: arms after 1 s, punches a walking Clubber at least 80 px back, 
   const hits = ev.filter((e) => e.type === 'hit' && e.kind === 'punch' && e.from === box);
   assert.ok(wind.length >= 2 && outs.length >= 2, `${wind.length} windups, ${outs.length} punches`);
   assert.equal(outs[0].dir, 1, 'toward the red bean');
+  assert.equal(box.f, 1, 'it turned to face it');
   assert.ok(hits.length >= 1 && hits[0].unit === c);
   assert.ok(after - before >= 80, `pushed ${(after - before).toFixed(0)} px`);
-  for (const e of b.events) times.push(e);
-  // Damage at its level, through takeHit
-  assert.ok(c.maxHp - c.hp >= P.damage - 1e-9);
-  // The cycle: windup -> out -> hold -> back -> recharge before the next windup
-  const k = ev.indexOf(wind[0]);
-  const k2 = ev.indexOf(wind[1]);
-  assert.ok(k2 > k);
-  assert.ok(box.age > BUILDINGS.boingBox.arm);
-  assert.ok(box.punch.ext >= 0 && box.punch.ext <= 1);
+  assert.ok(c.maxHp - c.hp >= P.damage - 1e-9, 'damage through takeHit');
+  // windup -> out -> hold -> back -> recharge -> idle, each for its time
+  const k = phases.findIndex(([p]) => p === 'windup');
+  const seq = phases.slice(k, k + 6);
+  assert.deepEqual(
+    seq.map(([p]) => p),
+    ['windup', 'out', 'hold', 'back', 'recharge', 'idle'],
+  );
+  const want = [P.windup, P.out, P.hold, P.back, P.recharge];
+  for (let i = 0; i < 5; i++) {
+    const took = seq[i + 1][1] - seq[i][1];
+    assert.ok(Math.abs(took - want[i]) <= DT * 1.01, `${seq[i][0]} took ${took.toFixed(3)} (wants ${want[i]})`);
+  }
+  const cycle = want.reduce((x, y) => x + y, 0);
+  assert.ok(cycle > 1.8 && cycle < 2, `a full cycle is ${cycle} s`);
+  const winds = phases.filter(([p]) => p === 'windup').map(([, t]) => t);
+  assert.ok(winds.length >= 2 && winds[1] - winds[0] >= cycle - DT, `the next windup ${(winds[1] - winds[0]).toFixed(2)} s later`);
 });
 
 test('Boing Box: a second shove within 1.6 s is weak (anti-lock); it ignores fliers and its own side', () => {
@@ -354,8 +397,7 @@ test('Bean Patch: Sprouts pop out of its front from arming on, never more than 3
       assert.equal(u.level, 2);
       assert.equal(u.spawnOf, p.id);
     }
-    // Popped from the front (toward the enemy), up and out
-    const u0 = pops[0].unit;
+    // Popped from the front (toward the enemy)
     assert.ok(Math.abs(pops[0].x - (x + p.w / 3)) < 20, `popped at ${pops[0].x}`);
     assert.ok(finite(b));
   }
@@ -432,7 +474,7 @@ test('Wrecking Crane: it pumps up when an enemy walks in, launches it, loses ene
   assert.ok(finite(b2));
 });
 
-test('Wrecking Crane: a wreck drops its ball as a rolling item; destroyed cranes and patches leave no hazards behind', () => {
+test('Wrecking Crane: a wreck drops its ball as a rolling item that comes to rest on the ground', () => {
   const b = arena(17, false);
   const crane = b.addBuilding('wreckingCrane', 'red', 1000, 1);
   run(b, 1.5);

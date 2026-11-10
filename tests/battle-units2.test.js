@@ -1,8 +1,10 @@
-// The newer units' engine (docs/WOBBLE-WAR-CARDS.md sections 3.2, 3.3, 3.5 and
+// The newer units' engine (docs/WOBBLE-WAR-CARDS.md sections 3.2 to 3.6 and
 // the cards in section 4): statuses (shove, wrap, slip, squash, drop slam), the
 // air layer and the dive (Propeller Pals), the net (Butterfly Netter), the bite
-// (Nutcracker), the toss, bombs and fumbles (Bomb Juggler), Sprouts, and the
-// hooks that make every unit treat buildings as structures.
+// (Nutcracker), the toss, bombs and fumbles (Bomb Juggler), Sprouts, the hooks
+// that make every unit treat buildings as structures, holding (the Pelican's
+// scoop and carry, the Big Jelly), floating in (Brolly Brigade), the follower
+// and its beat (Tummy Drummer) and the hop (Pogo Bean).
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +12,7 @@ import { Battle, DT, canTarget } from '../battle/src/sim/battle.js';
 import { UNIT_TYPES, AIR_MIN, SHOVE, MAX_JBOMBS } from '../battle/src/sim/unit-types.js';
 import { Unit } from '../battle/src/sim/unit.js';
 import { segSeg } from '../battle/src/sim/physics.js';
-import { SPELLS } from '../battle/src/sim/spells.js';
+import { SPELLS, castSpell } from '../battle/src/sim/spells.js';
 import { CARDS } from '../battle/src/sim/cards.js';
 import { Match, MANA_MAX } from '../battle/src/sim/match.js';
 import { WORLD } from '../battle/src/config.js';
@@ -419,6 +421,7 @@ test('bite: the Nutcracker crunches a Brick for x1.6, goes straight through a Sq
   const b = arena(19);
   const g = b.towers.find((t) => t.team === 'red' && t.kind === 'guard');
   const box = b.addBuilding('boingBox', 'red', g.x - 120, 1);
+  box.punch = null; // (only something to bite here: its glove would punch the Nutcracker away)
   const n = b.addUnit('nutcracker', 'blue', g.x - 220, 0.5);
   const ev = run(b, 9).filter((e) => e.type === 'towerHit' && e.from === n);
   assert.ok(ev.length >= 2);
@@ -462,6 +465,25 @@ test('toss: a Bomb Juggler lobs a bomb that bursts within 2.5 s and kills Propel
   });
   assert.equal(most, MAX_JBOMBS);
   assert.ok(far.alive);
+});
+
+test('toss: a Juggler lobs up at fliers at cruise height (a Pelican, Propeller Pals) from anywhere in its range, and the bomb bursts on them', () => {
+  for (const [id, alt] of [['pelican', UNIT_TYPES.pelican.flying.alt], ['copter', UNIT_TYPES.copter.flying.alt]]) {
+    for (const dist of [120, 240]) {
+      const b = arena(69, { towers: false });
+      const f = b.addUnit(id, 'red', 800, 0.5);
+      for (const q of f.parts) q.teleport(0, -alt);
+      f.thinkT = 1e9; // (it just hovers there)
+      const j = dummy(b, 'juggler', 'blue', 800 - dist);
+      j.cooldown = 0;
+      let burst = null;
+      run(b, 3, (i, step) => {
+        for (const e of step) if (e.type === 'explode' && burst == null) burst = e;
+      });
+      assert.ok(burst && burst.y < f.ground - alt * 0.6, `${id} at ${alt}, ${dist} px away: the first bomb went off up there (y ${burst && burst.y.toFixed(0)})`);
+      assert.ok(f.hp < f.maxHp, `${id}: hurt`);
+    }
+  }
 });
 
 test('toss: a jbomb bounces once, rolls, then goes off its fuse after the first touch; it bursts on an enemy body or wall', () => {
@@ -811,6 +833,60 @@ test('Pelican: lets go early on a Sneeze, a stunning hit, letGoDamage in all, or
     if (again == null && ev.some((e) => e.type === 'swoop')) again = k.b.time - t0;
   });
   assert.ok(again == null || again >= S.cooldown - 0.05, `swooped again ${again} s after a knockdown`);
+  // A knockdown once the scoop is already over (climbing back after a miss) leaves its cooldown alone
+  const r = arena(68, { towers: false });
+  const q = pelican(r, 'blue', 650);
+  q.act = { phase: 'recover', t: 0, scoop: true, victim: null, hits: new Set(), done: false, alt0: 0, x0: 0, goal: 0, dmg: 0 };
+  q.scoopT = 1;
+  q.takeHit(r, { damage: 5, dvx: 0, dvy: 0, x: q.chest.x, y: q.chest.y, stun: 1.2, kind: 'club' });
+  assert.ok(q.downT > 0 && !q.act && q.scoopT === 1);
+});
+
+test('Pelican: a real Big Sneeze mid-carry blows it about and it drops its catch (letGo, why sneeze)', () => {
+  const { b, p, v } = scooped(65);
+  b.events.length = 0;
+  castSpell(b, CARDS.bigSneeze, 'red', p.hip.x, 1);
+  const ev = run(b, SPELLS.bigSneeze.inhale + 0.3);
+  assert.ok(ev.some((e) => e.type === 'letGo' && e.unit === p && e.victim === v && e.why === 'sneeze'), 'ACHOO: dropped');
+  assert.ok(!v.held && !p.holding && !ev.some((e) => e.type === 'pelicanDrop'));
+  assert.ok(p.scoopT > UNIT_TYPES.pelican.scoop.cooldown - 0.5, 'and the scoop cools down');
+});
+
+test('Pelican: cruises over a Guard Tower in every lane, swoops on a bean behind one only from above it, and carries its catch home past its own tower', () => {
+  // Over the enemy Guard Tower (roof at -h) in the near, middle and far lane: no part ever touches its walls
+  for (const lane of [0, 0.5, 1]) {
+    const b = arena(66);
+    const g = b.towers.find((t) => t.team === 'red' && t.kind === 'guard');
+    const p = pelican(b, 'blue', g.x - 260, lane);
+    const v = dummy(b, 'archer', 'red', g.x + g.w / 2 + 40, 0.5); // right behind it
+    let low = -Infinity;
+    let swoopX = null;
+    let bonked = false;
+    run(b, 6, (i, step) => {
+      if (swoopX == null && Math.abs(p.hip.x - g.x) < g.w / 2 + 20) for (const q of p.parts) low = Math.max(low, q.y + q.r);
+      for (const e of step) {
+        if (e.type === 'swoop' && e.unit === p && swoopX == null) swoopX = p.hip.x;
+        if (e.type === 'land' && e.unit === p && swoopX == null) bonked = true;
+      }
+    });
+    assert.ok(low < -g.h, `lane ${lane}: lowest part ${low.toFixed(1)} over a roof at ${-g.h}`);
+    assert.ok(!bonked, `lane ${lane}: never bumped into the tower`);
+    assert.ok(swoopX != null && swoopX > g.x, `lane ${lane}: swooped from over the tower (x ${swoopX && swoopX.toFixed(0)}, tower ${g.x})`);
+    assert.ok(v.held || v.dropSlam || !v.alive || v.hp < v.maxHp, `lane ${lane}: and got it`);
+  }
+  // A catch in front of its own Guard Tower is carried home past it: the wall never tugs at it
+  const b = arena(67);
+  const g = b.towers.find((t) => t.team === 'blue' && t.kind === 'guard');
+  const p = pelican(b, 'blue', g.x + 120);
+  const v = dummy(b, 'archer', 'red', g.x + g.w / 2 + 20);
+  let fastest = 0;
+  let drop = null;
+  run(b, 5, (i, step) => {
+    if (v.held) for (const q of v.parts) fastest = Math.max(fastest, Math.hypot(q.vx(DT), q.vy(DT)));
+    if (drop == null && step.some((e) => e.type === 'pelicanDrop' && e.unit === p)) drop = v.hip.x;
+  });
+  assert.ok(drop != null && drop < g.x - g.w / 2, `carried past its tower to ${drop}`);
+  assert.ok(fastest < 1000, `the catch swings at most ${fastest.toFixed(0)} px/s`);
 });
 
 test('Pelican: a scooped Bomb is lit and goes off in the beak; a scooped Juggler fumbles', () => {
@@ -869,6 +945,29 @@ test('Big Jelly: engulfs a Clubber that walks in, digests it for 2.2 s, spits it
   assert.ok(ticks >= 0);
   assert.ok(again == null || again - spit.t >= E.cooldown - 0.05, 'the cooldown');
   assert.ok(finite(b));
+});
+
+test('Big Jelly: a Big Sneeze makes it let go of its catch, and it cools down before it swallows again', () => {
+  const b = arena(70, { towers: false });
+  const j = b.addUnit('jelly', 'blue', 600, 0.5);
+  const c = dummy(b, 'clubber', 'red', 660);
+  const E = UNIT_TYPES.jelly.engulf;
+  run(b, 1.5);
+  assert.ok(c.held && j.holding === c, 'swallowed');
+  castSpell(b, CARDS.bigSneeze, 'red', j.hip.x, 1);
+  let out = null;
+  let again = null;
+  run(b, 4, (i, step) => {
+    for (const e of step) {
+      if (e.type === 'letGo' && e.unit === j && out == null) {
+        out = i * DT;
+        assert.ok(e.why === 'sneeze' && e.victim === c && !c.held && !j.holding);
+      }
+      if (e.type === 'engulf' && e.unit === j && out != null && again == null) again = i * DT;
+    }
+  });
+  assert.ok(out != null, 'ACHOO: out it comes');
+  assert.ok(again == null || again - out >= E.cooldown - 1e-6, `swallowed again ${again == null ? '-' : (again - out).toFixed(2)} s later`);
 });
 
 test('Big Jelly: never engulfs a Bruiser (bumps it away instead) and bumps a tower it stands at', () => {
@@ -1011,7 +1110,7 @@ test('Drummer: a Clubber inside 150 px swings x1.3 faster (and walks x1.3 faster
   assert.ok(Math.abs(r - 1.3) < 0.08, `walked x${r.toFixed(2)}`);
 });
 
-test('Drummer: follows behind the friend furthest forward, never attacks, beats every 0.5 s; alone it waits in front of its own tower', () => {
+test('Drummer: follows behind the friend furthest forward, never attacks, beats every 0.5 s; alone it waits behind its own Guard Tower', () => {
   const b = arena(59);
   const F = UNIT_TYPES.drummer.follow;
   const Bt = UNIT_TYPES.drummer.beat;
@@ -1031,7 +1130,7 @@ test('Drummer: follows behind the friend furthest forward, never attacks, beats 
   const pose = d.idlePose(P);
   d.beats++;
   assert.notEqual(d.idlePose(P), pose, 'the mallets swap on each beat');
-  // Alone: in front of its own Guard Tower (blue faces +x)...
+  // Alone: just behind its own Guard Tower (blue faces +x)...
   for (const o of [a, c]) o.takeHit(b, { damage: 1e4, dvx: 0, dvy: 0, x: o.chest.x, y: o.chest.y, stun: 0, kind: 'test' });
   run(b, 7);
   const g = b.towers.find((t) => t.team === 'blue' && t.kind === 'guard');

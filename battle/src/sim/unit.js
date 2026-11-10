@@ -507,8 +507,10 @@ export class Unit {
 
   /**
    * Pelican, scoop ready: fly at the best liftable enemy (Battle.scoopTarget)
-   * and swoop on it from within `reach` along x. Returns false when there is
-   * nothing to scoop (then it pecks like any diver).
+   * and swoop on it from within `reach` along x. A bean behind an enemy tower
+   * or building is swooped on only once the Pelican is over it (a swoop from
+   * this side would hit the wall). Returns false when there is nothing to
+   * scoop (then it pecks like any diver).
    */
   thinkScoop(b, speed) {
     const v = b.scoopTarget(this);
@@ -518,7 +520,7 @@ export class Unit {
     this.f = dx >= 0 ? 1 : -1;
     this.lookX = v.head.x;
     this.lookY = v.head.y;
-    if (Math.abs(dx) > this.type.reach) {
+    if (Math.abs(dx) > this.type.reach || b.towerBetween(v.team, this.hip.x, v.hip.x)) {
       this.wantVx = this.f * speed;
       this.state = 'move';
       return true;
@@ -1199,6 +1201,7 @@ export class Unit {
   /** A Pelican knocked out of its scoop (a knockdown, a stunning hit): it cools down as after a miss, or a drop if it had a catch. */
   cutScoop() {
     const a = this.act;
+    if (a.phase === 'recover') return; // (already over: its cooldown started when it ended)
     this.endScoop(a, a.phase === 'swoop' ? this.type.scoop.cooldown * 0.5 : this.type.scoop.cooldown);
   }
 
@@ -1705,7 +1708,7 @@ export class Unit {
     }
 
     if (this.floatT > 0 || this.flipFall) this.touchdown(b);
-    if (this.type.hop && !this.stomped && this.alive && this.tip && this.downT <= 0 && this.tip.vy(dt) > 0 && b.phase === 'battle') b.stomp(this);
+    if (this.type.hop && !this.stomped && this.alive && !this.held && this.tip && this.downT <= 0 && this.tip.vy(dt) > 0 && b.phase === 'battle') b.stomp(this);
     if (this.holding) this.keepHold(b);
 
     // Flying -> scream

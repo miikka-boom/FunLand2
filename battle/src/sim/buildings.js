@@ -133,12 +133,17 @@ export function updateBuilding(b, t, dt) {
   if (t.ball) pendulum(b, t, dt, armed);
 }
 
-/** The building hits the ground: enemy beans standing where it lands are popped up (the walls push them out). */
+/**
+ * The building hits the ground: enemy beans standing where it lands are
+ * popped up. It has been a wall since it was placed, so the walls have
+ * already put them out at its faces: every enemy on the ground whose body
+ * touches the footprint (hip within w/2 + R) gets the pop.
+ */
 function land(b, t, dt) {
   t.landT = LAND_T;
   b.emit('buildingLand', t.x, 0, { tower: t, power: clamp(t.def.hp / 500, 0.5, 1.4) });
   for (const u of b.units) {
-    if (u.team === t.team || !u.alive || u.gone || Math.abs(u.hip.x - t.x) >= t.w / 2) continue;
+    if (u.team === t.team || !u.alive || u.gone || u.held || u.air || Math.abs(u.hip.x - t.x) >= t.w / 2 + u.R) continue;
     for (const p of u.parts) p.addVel(0, -LAND_POP, dt);
   }
 }
