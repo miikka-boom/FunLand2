@@ -1,7 +1,8 @@
-// Smoke test for the 3D renderer: every level, both cameras, with the world
-// features on, a horde, the specials, the teammate and the Pier 9 finale all
-// draw against a mock canvas in node (no DOM) without throwing, and nothing
-// is ever drawn at a NaN / infinite coordinate.
+// Smoke test for the 3D renderer: every level, all three cameras (isometric,
+// aligned with the streets, straight down), with the world features on, a
+// horde, the specials, the teammate and the Pier 9 finale all draw against a
+// mock canvas in node (no DOM) without throwing, and nothing is ever drawn at
+// a NaN / infinite coordinate.
 // (node --test runs each file in its own process, so the fake DOM globals stay here.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -99,11 +100,20 @@ function teleport(game, x, y) {
   }
 }
 
-for (const camera of ['iso', 'top']) {
+// The three views of the world.
+const CAMERAS = {
+  iso: { camera: 'iso', cameraAligned: false },
+  aligned: { camera: 'iso', cameraAligned: true },
+  top: { camera: 'top' },
+};
+
+for (const camera of Object.keys(CAMERAS)) {
   for (const level of ['city', 'interior', 'docks']) {
     test(`${level}, ${camera} camera: the run draws from start to goal with everything switched on`, () => {
       bad = null;
-      const { game, renderer, step, frame } = setup({ level, camera, holdout: true, routes: true, landmarks: true, ally: true, nightTerror: true });
+      const { game, renderer, step, frame } = setup({ level, ...CAMERAS[camera], holdout: true, routes: true, landmarks: true, ally: true, nightTerror: true });
+      assert.equal(game.view.flat, camera === 'top');
+      assert.equal(game.view.yaw === 0, camera !== 'iso');
       const map = game.world.map;
       step(3, frame({ x: 0.7, y: -0.7 }, { x: 600, y: 120 }, true));
       // The infected, of every kind, around the survivor.
@@ -182,10 +192,10 @@ for (const camera of ['iso', 'top']) {
   }
 }
 
-test('Pier 9 finale: the flare, the ferry coming in, the gangway (both cameras)', () => {
-  for (const camera of ['iso', 'top']) {
+test('Pier 9 finale: the flare, the ferry coming in, the gangway (every camera)', () => {
+  for (const camera of Object.keys(CAMERAS)) {
     bad = null;
-    const { game, step, frame } = setup({ level: 'docks', camera, ferryTime: 30 });
+    const { game, step, frame } = setup({ level: 'docks', ...CAMERAS[camera], ferryTime: 30 });
     const F = game.events.finale;
     teleport(game, F.use.x, F.use.y);
     step(80); // stand at the post: the flare goes up
@@ -202,7 +212,7 @@ test('Pier 9 finale: the flare, the ferry coming in, the gangway (both cameras)'
   }
 });
 
-test('the camera can be changed mid-run: tilt, and straight down and back', () => {
+test('the camera can be changed mid-run: tilt, aligned with the streets, straight down, and back', () => {
   bad = null;
   const { game, renderer, settings, step } = setup({ level: 'city' });
   step(2);
@@ -213,14 +223,102 @@ test('the camera can be changed mid-run: tilt, and straight down and back', () =
     assert.equal(game.view.flat, false);
   }
   assert.deepEqual(renderer.scene.statics.map((o) => o._r3.rank), ranks, 'tilting does not reorder the scene');
+  // Streets along the screen: no turn, its own tilt, still 3D.
+  settings.cameraAligned = true;
+  step(2);
+  assert.equal(game.view.yaw, 0);
+  assert.equal(game.view.flat, false);
+  assert.ok(Math.abs(game.view.pitch - (settings.cameraAlignedTilt * Math.PI) / 180) < 1e-9, 'the aligned view has its own tilt');
+  assert.equal(game.view.faceX, 0, 'walls that run up the screen are edge-on');
+  assert.equal(game.view.faceY, 1, 'south walls face the camera');
+  for (const tilt of [30, 55, 75]) {
+    settings.cameraAlignedTilt = tilt;
+    step(2);
+    assert.equal(game.view.flat, false);
+  }
   settings.camera = 'top';
   step(2);
-  assert.equal(game.view.flat, true);
+  assert.equal(game.view.flat, true, 'straight down wins over the toggle');
   assert.equal(game.view.yaw, 0);
   settings.camera = 'iso';
+  settings.cameraAligned = false;
   settings.cameraTilt = 35;
   step(2);
   assert.deepEqual(renderer.scene.statics.map((o) => o._r3.rank), ranks, 'back to the same order');
+  assert.equal(bad, null, `drawn with a bad number: ${bad}`);
+});
+
+test('aligned camera: sticks are map directions, and the mouse still aims at gun height', () => {
+  const { game, step, frame } = setup({ level: 'city', cameraAligned: true, wanderers: 0, specials: false });
+  const v = game.view;
+  for (const [sx, sy, wx, wy] of [[1, 0, 1, 0], [0, -1, 0, -1], [-1, 0, -1, 0], [0, 1, 0, 1]]) {
+    const d = v.dirToWorld(sx, sy);
+    assert.ok(Math.abs(d.x - wx) < 1e-9 && Math.abs(d.y - wy) < 1e-9, `stick (${sx}, ${sy}) -> map (${wx}, ${wy})`);
+  }
+  // A street that runs east-west is level on screen; one that runs north-south is upright.
+  const a = v.project(100, 500);
+  const b = v.project(900, 500);
+  const c = v.project(100, 1300);
+  assert.ok(Math.abs(a.y - b.y) < 1e-9 && b.x > a.x);
+  assert.ok(Math.abs(a.x - c.x) < 1e-9 && c.y > a.y);
+  // Aim with the cursor straight right of the survivor's gun: the survivor faces east.
+  step(2);
+  const p = game.player;
+  const gun = v.project(p.x, p.y, 27);
+  step(3, frame({ x: 0, y: 0 }, { x: gun.x + 200, y: gun.y }));
+  assert.ok(Math.abs(Math.atan2(Math.sin(p.fireAngle), Math.cos(p.fireAngle))) < 0.05, `facing ${p.fireAngle}`);
+});
+
+test('boarded doorways the camera cannot look into are marked in plan, where the door is', () => {
+  // A boarded room behind a tall wall: the wall goes on over the door (a lintel).
+  const marked = (over) => {
+    bad = null;
+    const { game, renderer, step } = setup({ level: 'city', wanderers: 0, specials: false, ...over });
+    step(1);
+    const lintels = renderer.scene.props.filter((q) => q.boards);
+    assert.ok(lintels.length > 0, 'the streets have boarded rooms in tall buildings');
+    const seen = new Set();
+    const plans = renderer.R.plans;
+    plans.push = (q) => {
+      seen.add(q);
+      return Array.prototype.push.call(plans, q);
+    };
+    for (const q of lintels) {
+      teleport(game, q.x + (q.boards.vertical ? -70 : 0), q.y + (q.boards.vertical ? 0 : 70));
+      step(2);
+    }
+    assert.equal(plans.length, 0, 'the marks are drawn and the list emptied every frame');
+    assert.equal(bad, null, `drawn with a bad number: ${bad}`);
+    return { game, renderer, step, lintels, seen };
+  };
+  // Isometric: every doorway shows on a wall that faces the camera (or its inside does).
+  const iso = marked({});
+  assert.equal(iso.seen.size, 0);
+  // Aligned with the streets: doors in walls that run up the screen are edge-on.
+  const al = marked({ cameraAligned: true });
+  const upright = al.lintels.filter((q) => q.boards.vertical);
+  assert.ok(upright.length > 0, 'this map has a boarded door in a wall that runs north-south');
+  assert.deepEqual([...al.seen].sort((a, b) => a.x - b.x), upright.sort((a, b) => a.x - b.x));
+  // Straight down: all of them (the wall over the door would cover the planks).
+  const top = marked({ camera: 'top' });
+  assert.equal(top.seen.size, top.lintels.length);
+
+  // Break in, then turn the camera: what is over the door is still there, the mark stays (now an open doorway).
+  const { game, renderer, step, seen } = al;
+  const q = upright[0];
+  const o = q.boards;
+  o.broken = true;
+  game.world.removeObstacle(o);
+  seen.clear();
+  teleport(game, q.x - 70, q.y);
+  step(2);
+  assert.ok(seen.has(q), 'the open doorway keeps its mark');
+  game.settings.cameraAligned = false;
+  step(2);
+  assert.ok(renderer.scene.props.some((r) => r.boards === o), 'the lintel survives the scene being rebuilt for the new angle');
+  game.settings.cameraAligned = true;
+  step(2);
+  assert.ok(renderer.scene.props.some((r) => r.boards === o));
   assert.equal(bad, null, `drawn with a bad number: ${bad}`);
 });
 

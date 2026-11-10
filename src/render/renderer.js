@@ -23,7 +23,7 @@ import { ALLY } from '../game/ally.js';
 import { GUN_Z } from '../game/player.js';
 import { TAU, rectsOverlap, pointInRect, lampLit, clamp } from '../util.js';
 import { Scene, boxHides } from './scene3d.js';
-import { CRANE_H } from './models.js';
+import { CRANE_H, drawDoorPlans } from './models.js';
 import { tone, box, boxShadow, disc, ball, line3 } from './prims.js';
 import { Horde, drawSurvivor, drawLying, drawHunter, drawTank, drawTerror, drawRock, ghostPath, hunterLift, hunterEyes, PLAYER_LOOK, ALLY_LOOK } from './figures.js';
 import { drawFloors, drawChalk, drawLoot, drawStash, drawLootBright } from './loot-render.js';
@@ -124,6 +124,7 @@ export class Renderer {
       lx: 0,
       ly: 1,
       cur: null,
+      plans: [], // doorways to mark in plan this frame (models.js: drawDoorPlans)
       struct(b) {
         return this.amb + (1 - this.amb) * b;
       },
@@ -249,6 +250,7 @@ export class Renderer {
     ctx.lineJoin = 'round';
     drawFerry(R, game, vrTall);
     this.drawStanding(game);
+    drawDoorPlans(R, this.eye);
     drawCanopies(R, game, vrTall);
     for (const p of this.over) p.draw(R, p);
     drawCranes(R, game, vrTall, CRANE_H);

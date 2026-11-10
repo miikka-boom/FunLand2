@@ -27,6 +27,8 @@ export class Scene {
     this.tall = [];
     this.gw = Math.ceil((world.w + 2 * CELL) / CELL);
     this.gh = Math.ceil((world.h + 2 * CELL) / CELL);
+    // Every boarded doorway the map began with: what is over the door stays when the boards go, and when the camera turns.
+    this.boarded = world.obstacles.filter((o) => o.kind === 'boards');
     this.build(view);
   }
 

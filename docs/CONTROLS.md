@@ -51,11 +51,19 @@ The world is 3D and the camera looks at it from the south-west, tilted 35°
 - **What you can't see, you're told:** a wall or building between the camera
   and you fades out; a zombie in your line of sight that the camera can't
   see shows through as a red outline.
+- **Streets along the screen** (a switch, off by default) takes the 45° turn
+  out: the map's axes are the screen's again, so up on the stick is north,
+  as in the top-down view, but the world keeps its height. The camera then
+  looks north, so you see roofs and south-facing walls; walls that run up
+  the screen are seen along their length. It gets its own, steeper tilt:
+  from 35° a wall hides most of a doorway in it.
 
 | Setting | Default | Why |
 |---|---|---|
 | View | **Isometric 3D** | *Top-down* shows the same world from straight above (sticks are then map directions again): the baseline to compare the feel against. |
+| Streets along the screen | off | The 3D view without its 45° turn: streets run left-right and up-down, and sticks are map directions. Costs the west-facing walls: only south faces show. |
 | Isometric tilt | 35° | True isometric. Lower is more cinematic and hides more behind buildings; higher is closer to the old overhead view. |
+| Tilt with streets along the screen | 55° | Steep enough that a doorway in a wall running up the screen stays open to the eye (the wall's top hides 31 u of a 72-86 u doorway; at 35° it would hide 63 u). |
 
 ## Left stick: move
 

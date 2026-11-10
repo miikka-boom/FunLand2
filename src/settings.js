@@ -44,7 +44,9 @@ export const DEFAULTS = Object.freeze({
 
   // --- Camera -------------------------------------------------------------
   camera: 'iso', // 'iso' (3D, isometric angle) | 'top' (the same 3D world seen straight from above)
+  cameraAligned: false, // the 3D view without its 45° turn: streets run along the screen, only south walls face you
   cameraTilt: 35, // degrees above the horizon in the isometric view (35 = true isometric)
+  cameraAlignedTilt: 55, // ...and with the streets along the screen: steeper, so a wall doesn't hide the doorway in it
   viewSize: 470, // world units visible across the short screen axis
   lookAhead: 0.2, // fraction of view size the camera leads toward the aim
   cameraStiffness: 8,
@@ -182,7 +184,9 @@ export const SCHEMA = [
           ['top', 'Top-down – straight from above'],
         ],
       },
+      { key: 'cameraAligned', label: 'Streets along the screen (no 45° turn)', type: 'toggle' },
       { key: 'cameraTilt', label: 'Isometric tilt (35° = true isometric)', type: 'range', min: 25, max: 70, step: 1, fmt: deg },
+      { key: 'cameraAlignedTilt', label: 'Tilt with streets along the screen', type: 'range', min: 30, max: 75, step: 1, fmt: deg },
       { key: 'viewSize', label: 'View size (zoom)', type: 'range', min: 300, max: 800, step: 10, fmt: (v) => `${v}u` },
       { key: 'lookAhead', label: 'Look-ahead', type: 'range', min: 0, max: 0.4, step: 0.01, fmt: pct },
       { key: 'cameraStiffness', label: 'Camera stiffness', type: 'range', min: 2, max: 25, step: 0.5, fmt: (v) => v.toFixed(1) },

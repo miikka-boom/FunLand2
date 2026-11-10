@@ -606,6 +606,50 @@ function drawGate(R, o, rec) {
 
 const WOODS = ['#7a5a36', '#8c6a40', '#6b4e2e', '#94744a'];
 
+/**
+ * How brightly the boards are lit: by the light just in front of the face
+ * that shows, or by the better lit side when the camera sees neither face
+ * (it looks straight down, or along the wall).
+ */
+function boardsLight(R, o) {
+  const v = R.v;
+  const vert = o.vertical;
+  const mx = o.x + o.w / 2;
+  const my = o.y + o.h / 2;
+  const f = v.flat ? 0 : vert ? v.faceX : v.faceY;
+  if (f) return R.struct(R.L.lit(mx + (vert ? f * 12 : 0), my + (vert ? 0 : f * 12)));
+  const d = (vert ? o.w : o.h) / 2 + 10;
+  const a = R.L.lit(mx - (vert ? d : 0), my - (vert ? 0 : d));
+  const c = R.L.lit(mx + (vert ? d : 0), my + (vert ? 0 : d));
+  return R.struct(a > c ? a : c);
+}
+
+/** The planks seen from above: lying across the gap, on the plane at height z. */
+function planksAcross(R, o, z, b) {
+  const { ctx } = R;
+  const vert = o.vertical;
+  const n = Math.max(1, Math.ceil((o.hp / o.maxHp) * 4));
+  const wob = o.hitT > 0 ? Math.sin(R.t * 70) * o.hitT * 6 : 0;
+  R.ground(z);
+  ctx.save();
+  ctx.translate(o.x + o.w / 2 + (vert ? wob : 0), o.y + o.h / 2 + (vert ? 0 : wob));
+  if (vert) ctx.rotate(Math.PI / 2);
+  const len = (vert ? o.h : o.w) + 12;
+  const th = vert ? o.w : o.h;
+  const angles = [-0.16, 0.13, -0.05, 0.2];
+  const offs = [-th * 0.22, th * 0.18, -th * 0.02, th * 0.3];
+  for (let k = 0; k < n; k++) {
+    ctx.save();
+    ctx.translate(0, offs[k]);
+    ctx.rotate(angles[k]);
+    ctx.fillStyle = tone(WOODS[k], b);
+    ctx.fillRect(-len / 2, -2.5, len, 5);
+    ctx.restore();
+  }
+  ctx.restore();
+  R.reset();
+}
+
 /** Planks nailed across a doorway. Fewer planks as they take damage. */
 function drawBoardsModel(R, o, rec) {
   const { ctx, v } = R;
@@ -615,15 +659,12 @@ function drawBoardsModel(R, o, rec) {
   const y1 = o.y + o.h;
   const H = rec.h;
   const vert = o.vertical;
-  const t = R.t;
   const n = Math.max(1, Math.ceil((o.hp / o.maxHp) * 4));
-  const wob = o.hitT > 0 ? Math.sin(t * 70) * o.hitT * 6 : 0;
+  const wob = o.hitT > 0 ? Math.sin(R.t * 70) * o.hitT * 6 : 0;
   // The dark of the doorway.
   if (v.flat) topFill(R, x0, y0, x1, y1, 0, '#0b0a09');
   else box(ctx, v, x0, y0, x1, y1, 0, H, '#131210', '#090807', '#0c0b0a');
-  const mx = (x0 + x1) / 2;
-  const my = (y0 + y1) / 2;
-  const b = R.struct(R.L.lit(mx + (vert ? v.faceX * 12 : 0), my + (vert ? 0 : v.faceY * 12)));
+  const b = boardsLight(R, o);
   const planks = (ctx2, len) => {
     const zs = o.heavy ? [10, 24, 38, 52] : [9, 20, 31, 41];
     const tilt = [-0.1, 0.08, -0.04, 0.12];
@@ -642,27 +683,9 @@ function drawBoardsModel(R, o, rec) {
     }
   };
   const drawn = vert ? onFaceX(R, x0, y0, x1, y1, planks) : onFaceY(R, x0, y0, x1, y1, planks);
-  if (!drawn) {
-    // Seen from straight above (or edge-on): the planks lie across the gap.
-    R.ground(v.flat ? 0 : H);
-    ctx.save();
-    ctx.translate(mx + (vert ? wob : 0), my + (vert ? 0 : wob));
-    if (vert) ctx.rotate(Math.PI / 2);
-    const len = (vert ? o.h : o.w) + 12;
-    const th = vert ? o.w : o.h;
-    const angles = [-0.16, 0.13, -0.05, 0.2];
-    const offs = [-th * 0.22, th * 0.18, -th * 0.02, th * 0.3];
-    for (let k = 0; k < n; k++) {
-      ctx.save();
-      ctx.translate(0, offs[k]);
-      ctx.rotate(angles[k]);
-      ctx.fillStyle = tone(WOODS[k], b);
-      ctx.fillRect(-len / 2, -2.5, len, 5);
-      ctx.restore();
-    }
-    ctx.restore();
-    R.reset();
-  }
+  // Seen from straight above (or edge-on): the planks lie across the gap. Under
+  // a lintel they would be out of sight: the doorway's plan mark shows them.
+  if (!drawn && !rec.lintel) planksAcross(R, o, v.flat ? 0 : H, b);
 }
 
 // --- Shipping containers -----------------------------------------------------------------------
@@ -1681,15 +1704,19 @@ export function buildProps(scene, view) {
     out.push({ x: d.x + d.w / 2, y: d.y + d.h + 2, r: 4, hw: d.w / 2 + 1, hh: 3, h: 50, color: '#8a2a24', draw: drawJamb });
   }
   // Boarded doorways in tall walls: the wall carries on over the door (and stays when the boards go).
-  for (const o of scene.world.obstacles) {
-    if (o.kind !== 'boards') continue;
+  for (const o of scene.boarded) {
     const w = wallAround(o, map);
     if (!w) continue;
     const m = MODELS[w.kind](w, map);
     const door = o._r3 ? o._r3.h : 50;
     if (m.h < door + 6) continue;
     const color = w.kind === 'qwall' ? '#6b6a64' : m.data.wall;
-    out.push({ x: o.x + o.w / 2, y: o.y + o.h / 2, r: Math.max(o.w, o.h) / 2, h: m.h, z0: door, rect: { x: o.x, y: o.y, w: o.w, h: o.h }, color, draw: drawLintel });
+    if (o._r3) o._r3.lintel = true;
+    out.push({
+      x: o.x + o.w / 2, y: o.y + o.h / 2, r: Math.max(o.w, o.h) / 2, h: m.h, z0: door,
+      rect: { x: o.x, y: o.y, w: o.w, h: o.h }, color, draw: drawLintel,
+      boards: o, door: (o.sealed && o.sealed.door) || o,
+    });
   }
   for (const q of buildDecorProps(scene, view)) out.push(q);
   attachArt(scene, view);
@@ -1697,13 +1724,40 @@ export function buildProps(scene, view) {
 }
 
 function drawLintel(R, p) {
-  const { ctx } = R;
+  const { ctx, v } = R;
   const o = p.rect;
   const fade = R.hides(o, p.z0, p.h);
   if (fade) ctx.globalAlpha = 0.22;
   litWalls(R, o.x, o.y, o.x + o.w, o.y + o.h, p.z0, p.h, p.color);
   topFill(R, o.x, o.y, o.x + o.w, o.y + o.h, p.h, tone(p.color, R.roofK * 1.05));
   if (fade) ctx.globalAlpha = 1;
+  // From straight above, or along the wall, the doorway under it is out of
+  // sight: it gets a mark in plan once everything standing is drawn.
+  if (v.flat || !(p.boards.vertical ? v.faceX : v.faceY)) R.plans.push(p);
+}
+
+/**
+ * Doorways the camera can't see into (see drawLintel), as on a floor plan:
+ * the dark of the opening where the door really is on the ground, and the
+ * planks across it while it is still boarded up.
+ */
+export function drawDoorPlans(R, eye) {
+  const list = R.plans;
+  if (!list.length) return;
+  const { ctx } = R;
+  for (const p of list) {
+    const d = p.door;
+    // Someone in the doorway is drawn before the wall that hides them: don't paint them out.
+    const inside = eye && eye.x > d.x - 12 && eye.x < d.x + d.w + 12 && eye.y > d.y - 12 && eye.y < d.y + d.h + 12;
+    ctx.globalAlpha = inside ? 0.3 : 1;
+    R.ground(0);
+    ctx.fillStyle = '#0b0a09';
+    ctx.fillRect(d.x, d.y, d.w, d.h);
+    R.reset();
+    if (!p.boards.broken) planksAcross(R, p.boards, 0, boardsLight(R, p.boards));
+    ctx.globalAlpha = 1;
+  }
+  list.length = 0;
 }
 
 /**

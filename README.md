@@ -304,6 +304,14 @@ and no dependencies.
     and *Top-down* (the same world seen from straight above, for comparing
     how the controls feel), **Isometric tilt** goes from 25° (low, cinematic)
     to 70° (nearly overhead); 35° is true isometric.
+  - **Streets along the screen** (a switch under Camera, off by default)
+    takes the 45° turn out of the 3D view: streets run left-right and
+    up-down, the sticks are map directions, and the camera looks north from
+    a steeper angle (55°, its own slider). The price: only walls that face
+    south show their fronts. A wall that runs up the screen is seen along
+    its length, so a boarded door in one is marked as on a floor plan (the
+    dark of the doorway with the planks across, where the door is on the
+    ground). The top-down view marks them the same way.
 - **Twin virtual sticks**: the left thumb moves and the right thumb aims.
   Push past the dashed fire ring to shoot; tap the aim side to **shove**.
   Sticks are screen directions: push up and you run up the screen, whatever

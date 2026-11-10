@@ -247,8 +247,12 @@ export class Game {
   syncView() {
     const S = this.settings;
     const v = this.view;
+    // Three views of the same world: isometric (turned 45°), aligned (streets
+    // along the screen, its own steeper tilt) and straight down.
     const top = S.camera === 'top';
-    v.setAngles(top ? 0 : ISO_YAW, top ? Math.PI / 2 : S.cameraTilt === 35 ? ISO_PITCH : S.cameraTilt * DEG);
+    const aligned = !top && S.cameraAligned;
+    const pitch = top ? Math.PI / 2 : aligned ? S.cameraAlignedTilt * DEG : S.cameraTilt === 35 ? ISO_PITCH : S.cameraTilt * DEG;
+    v.setAngles(top || aligned ? 0 : ISO_YAW, pitch);
     const { w, h } = this.viewport;
     v.setViewport(w, h, (Math.min(w, h) / S.viewSize) * (1 + ISO_ZOOM * (1 - v.sp)));
     const c = this.camera;
