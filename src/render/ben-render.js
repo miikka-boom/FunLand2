@@ -313,14 +313,19 @@ function drawVent(ctx, d) {
 
 // --- Over the darkness ---------------------------------------------------------------------------------
 
-/** The eyes glow a little in the dark; the candle in his bed; the glimpse. */
-export function drawBenBright(ctx, game, vr) {
+/**
+ * The eyes glow a little in the dark; the candle in his bed; the glimpse.
+ * Called with the plain screen transform (R.ground(z) paints on the ground).
+ */
+export function drawBenBright(R, game, vr) {
   const map = game.world.map;
   if (!map.ben) return;
+  const { ctx, v } = R;
   const t = game.time;
   const p = game.player;
   const W = game.world;
   const night = game.settings.night;
+  R.ground(0);
   if (night) {
     const pulse = 0.14 + 0.06 * Math.sin(t * 1.3);
     for (const d of map.decor) {
@@ -348,7 +353,9 @@ export function drawBenBright(ctx, game, vr) {
     circle(ctx, n.candle.x, n.candle.y - 0.5, 1.4 + fl * 0.8);
     ctx.fill();
   }
+  R.reset();
   // The glimpse: two eyes catching your light, then a blink, then nothing.
+  // They are about as high as a small boy's, and they look at you.
   const g = G && G.glimpse;
   if (g && (g.state === 'wait' || g.state === 'seen') && pointInRect(g.x, g.y, vr, 20)) {
     let a = g.state === 'wait' ? Math.min(1, g.lit * 1.4) : 1;
@@ -356,54 +363,50 @@ export function drawBenBright(ctx, game, vr) {
     if (g.state === 'seen') lid = Math.max(0, 1 - g.t / 0.16);
     if (g.state === 'seen' && g.t > 0.16) a = 0;
     if (a > 0.03 && lid > 0) {
-      const look = Math.atan2(p.y - g.y, p.x - g.x);
+      const look = v.angleToScreen(Math.atan2(p.y - g.y, p.x - g.x));
       ctx.save();
-      ctx.translate(g.x, g.y - 8);
-      ctx.scale(1, lid);
+      ctx.translate(v.px(g.x, g.y), v.py(g.x, g.y, v.flat ? 0 : 26));
+      ctx.scale(Math.max(0.8, v.scale), Math.max(0.8, v.scale) * lid);
       drawEyes(ctx, 0, 0, look, 0.75, a, false);
       ctx.restore();
     }
   }
 }
 
-/** "ben was here" on roofs, shelf tops, container stacks, the quarantine wall and crane 3's boom (above everything). */
-export function drawBenRoof(ctx, game, vr) {
+/**
+ * "ben was here" where nobody could reach: one entry, in world coordinates on
+ * the plane it was written on (a roof, a shelf top, a container, the top of
+ * the quarantine wall). The 3D pass calls it for the obstacle it sits on.
+ */
+export function benText(ctx, e, night, x = e.x, y = e.y, size = e.size, a = e.a || 0) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(a);
+  ctx.font = `700 ${size}px ${CRAYON}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = Math.max(2, size * 0.22);
+  ctx.strokeText(e.text, 0, 0);
+  ctx.fillStyle = BEN_COLOR;
+  ctx.globalAlpha = night ? 0.8 : 0.95;
+  ctx.fillText(e.text, 0, 0);
+  ctx.globalAlpha = 1;
+  if (!e.small) {
+    const w = ctx.measureText(e.text).width;
+    drawEyes(ctx, w / 2 + size * 0.75, 0, 0, size * 0.09, night ? 0.8 : 1);
+  }
+  ctx.restore();
+}
+
+/** Entries that found nothing to sit on (shouldn't happen) are written on the ground where they are. */
+export function drawBenLoose(ctx, game, vr) {
   const map = game.world.map;
   if (!map.benRoof || !map.benRoof.length) return;
-  const night = game.settings.night;
   for (const e of map.benRoof) {
-    let x = e.x;
-    let y = e.y;
-    let size = e.size;
-    let a = e.a || 0;
-    if (e.type === 'boom') {
-      const c = map.cranes && map.cranes[e.crane];
-      if (!c) continue;
-      x = c.x1 + c.boom * 0.55;
-      y = (c.y + c.y1) / 2;
-      size = 12;
-      a = 0;
-    }
-    if (!pointInRect(x, y, vr, 120)) continue;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(a);
-    ctx.font = `700 ${size}px ${CRAYON}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-    ctx.lineWidth = Math.max(2, size * 0.22);
-    ctx.strokeText(e.text, 0, 0);
-    ctx.fillStyle = BEN_COLOR;
-    ctx.globalAlpha = night ? 0.8 : 0.95;
-    ctx.fillText(e.text, 0, 0);
-    ctx.globalAlpha = 1;
-    if (!e.small) {
-      const w = ctx.measureText(e.text).width;
-      drawEyes(ctx, w / 2 + size * 0.75, 0, 0, size * 0.09, night ? 0.8 : 1);
-    }
-    ctx.restore();
+    if (e.type === 'boom' || e._on || !pointInRect(e.x, e.y, vr, 120)) continue;
+    benText(ctx, e, game.settings.night);
   }
 }
 

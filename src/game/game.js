@@ -19,15 +19,27 @@ import { initWorldEvents, updateWorldEvents, spawnNest, openBreach, takeAmmo } f
 import { addLore } from '../world/lore-gen.js';
 import { addBen } from '../world/ben-gen.js';
 import { loadBenMemory, initBen, updateBen } from './ben.js';
-import { dampFactor, pointInRect, rand } from '../util.js';
+import { DEG, dampFactor, pointInRect, rand } from '../util.js';
 import { todayKey, dailySeed } from '../playtest.js';
+import { IsoView, ISO_YAW, ISO_PITCH } from '../iso.js';
+
+// The isometric view shows more ground up and down the screen than the flat
+// one did (it is foreshortened), so it is zoomed in a little to keep the
+// survivor a good size. Scales with the tilt; nothing at straight-down.
+const ISO_ZOOM = 0.42;
+// The camera aims a little above the feet, so the body is what's centred.
+const CAMERA_LIFT = 18;
+const kickTmp = { x: 0, y: 0 };
 
 export class Game {
   constructor(settings, audio, haptics) {
     this.settings = settings;
     this.audio = audio;
     this._haptics = haptics;
-    this.view = { w: 1, h: 1, scale: 1 }; // CSS px viewport + world->CSS scale
+    // The camera: CSS px viewport, world->CSS scale and the 3D projection.
+    this.view = new IsoView();
+    this.viewport = { w: 1, h: 1 };
+    this.syncView();
     this.newRun();
   }
 
@@ -85,6 +97,7 @@ export class Game {
     }
     this.director = new Director(this);
     this.camera = { x: map.start.x, y: map.start.y, lookX: 0, lookY: 0, kickX: 0, kickY: 0, trauma: 0, shakeX: 0, shakeY: 0 };
+    this.syncView();
     this.time = 0;
     this.flowT = 0;
     this.fireT = 0;
@@ -221,24 +234,40 @@ export class Game {
   // --- View helpers ----------------------------------------------------------
 
   setViewport(w, h) {
-    this.view.w = w;
-    this.view.h = h;
-    this.view.scale = Math.min(w, h) / this.settings.viewSize;
+    this.viewport.w = w;
+    this.viewport.h = h;
+    this.syncView();
   }
 
-  worldToScreen(x, y) {
+  /**
+   * Bring the projection up to date with the settings and the camera. Runs
+   * after every update and before every draw, so the tuning panel's camera
+   * controls show at once, even while paused.
+   */
+  syncView() {
+    const S = this.settings;
     const v = this.view;
+    const top = S.camera === 'top';
+    v.setAngles(top ? 0 : ISO_YAW, top ? Math.PI / 2 : S.cameraTilt === 35 ? ISO_PITCH : S.cameraTilt * DEG);
+    const { w, h } = this.viewport;
+    v.setViewport(w, h, (Math.min(w, h) / S.viewSize) * (1 + ISO_ZOOM * (1 - v.sp)));
     const c = this.camera;
-    return { x: (x - c.x - c.shakeX) * v.scale + v.w / 2, y: (y - c.y - c.shakeY) * v.scale + v.h / 2 };
+    if (c) v.lookAt(c.x, c.y, c.shakeX, c.shakeY, v.flat ? 0 : CAMERA_LIFT);
   }
 
-  /** World rect currently on screen, padded. */
+  /** CSS px of a world point (z = height above the ground). */
+  worldToScreen(x, y, z = 0) {
+    return this.view.project(x, y, z);
+  }
+
+  /** World rect that takes in all the ground on screen, padded (coarse: the real view is a slanted box inside it). */
   viewRect(pad = 0) {
-    const v = this.view;
-    const c = this.camera;
-    const hw = v.w / 2 / v.scale + pad;
-    const hh = v.h / 2 / v.scale + pad;
-    return { x: c.x - hw, y: c.y - hh, w: hw * 2, h: hh * 2 };
+    return this.view.groundBounds(pad, 0);
+  }
+
+  /** Is this ground point on screen (padded by `pad` world units)? */
+  onScreen(x, y, pad = 0) {
+    return this.view.onScreen(x, y, pad * this.view.scale);
   }
 
   // --- Frame -------------------------------------------------------------------
@@ -247,7 +276,6 @@ export class Game {
     const S = this.settings;
     const p = this.player;
     this.time += dt;
-    this.view.scale = Math.min(this.view.w, this.view.h) / S.viewSize;
 
     for (const ev of input.events) {
       if (this.won || this.lost) break;
@@ -311,8 +339,8 @@ export class Game {
       const vr = this.viewRect(200);
       for (const f of this.world.map.fires) {
         if (!pointInRect(f.x, f.y, vr)) continue;
-        this.effects.smoke(f.x, f.y - 6, rand(8, 14));
-        if (Math.random() < 0.6) this.effects.ember(f.x, f.y);
+        this.effects.smoke(f.x, f.y, rand(8, 14), 34);
+        if (Math.random() < 0.6) this.effects.ember(f.x, f.y, 26);
       }
     }
 
@@ -340,21 +368,24 @@ export class Game {
     const S = this.settings;
     const p = this.player;
     const c = this.camera;
+    const v = this.view;
     const viewWorld = S.viewSize;
     // Lead toward the aim (strongest while firing), lightly toward travel otherwise.
+    // The lead is the same distance on screen whichever way you face, so on
+    // the foreshortened axis it reaches further over the ground.
     let lx = 0;
     let ly = 0;
+    const lead = (ax, ay, amt) => {
+      const s = v.dirToScreen(ax, ay, kickTmp);
+      const k = amt / Math.max(0.5, Math.hypot(s.x, s.y));
+      lx = ax * k;
+      ly = ay * k;
+    };
     if (p.aimActive || p.aimHoldT > 0) {
-      const amt = S.lookAhead * viewWorld * (p.firing ? 1 : 0.7);
-      lx = Math.cos(p.fireAngle) * amt;
-      ly = Math.sin(p.fireAngle) * amt;
+      lead(Math.cos(p.fireAngle), Math.sin(p.fireAngle), S.lookAhead * viewWorld * (p.firing ? 1 : 0.7));
     } else {
       const sp = Math.hypot(p.vx, p.vy);
-      if (sp > 1) {
-        const amt = S.lookAhead * viewWorld * 0.45 * Math.min(1, sp / S.moveSpeed);
-        lx = (p.vx / sp) * amt;
-        ly = (p.vy / sp) * amt;
-      }
+      if (sp > 1) lead(p.vx / sp, p.vy / sp, S.lookAhead * viewWorld * 0.45 * Math.min(1, sp / S.moveSpeed));
     }
     const kl = dampFactor(3.2, dt);
     c.lookX += (lx - c.lookX) * kl;
@@ -370,8 +401,11 @@ export class Game {
     c.trauma = Math.max(0, c.trauma - dt * 1.7);
     const sh = c.trauma * c.trauma * 14;
     const t = this.time * 38;
-    // kick is stored opposite to the shot, so the camera recoils backwards.
-    c.shakeX = (Math.sin(t * 1.13) + Math.sin(t * 2.71) * 0.5) * sh * 0.66 + c.kickX;
-    c.shakeY = (Math.cos(t * 1.37) + Math.sin(t * 3.07) * 0.5) * sh * 0.66 + c.kickY;
+    // The shake is on the screen; the kick is stored on the ground, opposite
+    // to the shot, so the camera recoils backwards along what you see.
+    const kick = v.dirToScreen(c.kickX, c.kickY, kickTmp);
+    c.shakeX = (Math.sin(t * 1.13) + Math.sin(t * 2.71) * 0.5) * sh * 0.66 + kick.x;
+    c.shakeY = (Math.cos(t * 1.37) + Math.sin(t * 3.07) * 0.5) * sh * 0.66 + kick.y;
+    this.syncView();
   }
 }

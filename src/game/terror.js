@@ -187,7 +187,7 @@ export class NightTerror {
     game.stats.terrors++;
     game.audio.terrorDie(this.x, this.y);
     game.announce('NIGHT TERROR DOWN', '#cfe3ff', 1.4, 'small');
-    for (let i = 0; i < 8; i++) game.effects.smoke(this.x + rand(-10, 10), this.y + rand(-10, 10), rand(10, 18));
+    for (let i = 0; i < 8; i++) game.effects.smoke(this.x + rand(-10, 10), this.y + rand(-10, 10), rand(10, 18), rand(8, 40));
   }
 }
 
@@ -293,7 +293,7 @@ export function updateTerror(game, z, dt) {
   z.burn = L.burn;
   z.ghost = z.lit < TERROR.hitLit;
   if (z.burn > 0.25 && z.mode !== 'flee') z.burnT += dt * z.burn;
-  if (z.burn > 0.3 && Math.random() < dt * 22) game.effects.smoke(z.x + rand(-7, 7), z.y + rand(-7, 7), rand(5, 9));
+  if (z.burn > 0.3 && Math.random() < dt * 22) game.effects.smoke(z.x + rand(-7, 7), z.y + rand(-7, 7), rand(5, 9), rand(20, 44));
 
   const dx = p.x - z.x;
   const dy = p.y - z.y;
