@@ -2,7 +2,7 @@
   "name": "funland2",
   "private": true,
   "version": "0.0.0",
-  "description": "Prototype 0: top-down twin-stick zombie horde survival (mobile web), plus five metagame prototypes: Thrill Hill, Hope Street, Road to Evac, the Safehouse and the survivor camp",
+  "description": "Prototype 0: isometric 3D twin-stick zombie horde survival (mobile web), plus five metagame prototypes: Thrill Hill, Hope Street, Road to Evac, the Safehouse and the survivor camp",
   "type": "module",
   "scripts": {
     "start": "python3 -m http.server 8080",

@@ -145,98 +145,111 @@ export function drawBenDecor(ctx, d, t) {
   }
 }
 
-/** His bed: a cardboard fort (open toward +x in its own frame), a sleeping bag, a folded blanket, a candle jar, the tally. */
-function drawFort(ctx, d) {
+/**
+ * His bed: a cardboard fort (open toward +x in its own frame), a sleeping
+ * bag, a folded blanket, a candle jar, the tally. `part`: 'floor' = what lies
+ * on the ground, 'walls' = the cardboard seen from above (with the tally and
+ * the drawings taped to it; the 3D pass paints this on top of the walls it
+ * builds), undefined = both.
+ */
+export function drawFort(ctx, d, part) {
   ctx.save();
   ctx.translate(d.x, d.y);
   ctx.rotate(d.a || 0);
-  ctx.fillStyle = 'rgba(0,0,0,0.32)';
-  ctx.fillRect(-32, -28, 56, 62);
-  // Floor: sleeping bag (pillow at the back), the square blanket at the foot.
-  ctx.fillStyle = '#4b6a88';
-  ctx.fillRect(-21, -12, 26, 24);
-  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let x = -16; x < 5; x += 5) {
-    ctx.moveTo(x, -12);
-    ctx.lineTo(x, 12);
-  }
-  ctx.stroke();
-  ctx.fillStyle = '#d8d0bd';
-  ctx.fillRect(-21, -9, 7, 18);
-  ctx.fillStyle = '#8a4d3a';
-  ctx.fillRect(6, -7, 11, 11);
-  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-  ctx.strokeRect(6.5, -6.5, 10, 10);
-  ctx.beginPath();
-  ctx.moveTo(6.5, -1.5);
-  ctx.lineTo(16.5, -1.5);
-  ctx.stroke();
-  // Candle in a jar, back corner.
-  ctx.fillStyle = 'rgba(200,230,240,0.35)';
-  ctx.beginPath();
-  circle(ctx, -18, -16, 3.6);
-  ctx.fill();
-  ctx.fillStyle = '#efe6cf';
-  ctx.beginPath();
-  circle(ctx, -18, -16, 2);
-  ctx.fill();
-  // A can by the bed.
-  ctx.fillStyle = '#8f969c';
-  ctx.beginPath();
-  circle(ctx, -6, 16, 3);
-  ctx.fill();
-  ctx.fillStyle = '#5c6268';
-  ctx.beginPath();
-  circle(ctx, -6, 16, 1.8);
-  ctx.fill();
-  // Cardboard walls: back and both sides.
-  const box = (x, y, w, h) => {
-    ctx.fillStyle = '#9c7650';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = 'rgba(60,40,20,0.55)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-    ctx.fillStyle = 'rgba(220,200,160,0.55)';
-    if (w > h) ctx.fillRect(x + w / 2 - 1.5, y, 3, h);
-    else ctx.fillRect(x, y + h / 2 - 1.5, w, 3);
-  };
-  box(-34, -30, 12, 60);
-  box(-34, -30, 52, 11);
-  box(-34, 19, 52, 11);
-  // Nights slept: tally marks down the back wall, in orange.
-  ctx.strokeStyle = BEN_COLOR;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  const n = d.slept || 20;
-  for (let k = 0; k < n; k++) {
-    const g = Math.floor(k / 5);
-    const j = k % 5;
-    const y = -26 + g * 8.5 + (j < 4 ? j * 1.6 : 0);
-    if (y > 26) break;
-    if (j < 4) {
-      ctx.moveTo(-31, y);
-      ctx.lineTo(-25, y);
-    } else {
-      ctx.moveTo(-31.5, -26 + g * 8.5 - 0.8);
-      ctx.lineTo(-24.5, -26 + g * 8.5 + 5.6);
+  if (part !== 'walls') {
+    if (!part) {
+      ctx.fillStyle = 'rgba(0,0,0,0.32)';
+      ctx.fillRect(-32, -28, 56, 62);
     }
-  }
-  ctx.stroke();
-  // Drawings taped to the side walls.
-  for (const [x, y, c] of [[-14, -27.5, '#5f8fd0'], [2, -27.5, '#e05a4a'], [-6, 21.5, '#59a85a']]) {
-    ctx.fillStyle = '#f1ead8';
-    ctx.fillRect(x, y, 9, 6);
-    ctx.strokeStyle = c;
+    // Floor: sleeping bag (pillow at the back), the square blanket at the foot.
+    ctx.fillStyle = '#4b6a88';
+    ctx.fillRect(-21, -12, 26, 24);
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x + 1.5, y + 4);
-    ctx.lineTo(x + 4, y + 1.5);
-    ctx.lineTo(x + 7.5, y + 4.5);
+    for (let x = -16; x < 5; x += 5) {
+      ctx.moveTo(x, -12);
+      ctx.lineTo(x, 12);
+    }
     ctx.stroke();
+    ctx.fillStyle = '#d8d0bd';
+    ctx.fillRect(-21, -9, 7, 18);
+    ctx.fillStyle = '#8a4d3a';
+    ctx.fillRect(6, -7, 11, 11);
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.strokeRect(6.5, -6.5, 10, 10);
+    ctx.beginPath();
+    ctx.moveTo(6.5, -1.5);
+    ctx.lineTo(16.5, -1.5);
+    ctx.stroke();
+    // Candle in a jar, back corner.
+    ctx.fillStyle = 'rgba(200,230,240,0.35)';
+    ctx.beginPath();
+    circle(ctx, -18, -16, 3.6);
+    ctx.fill();
+    ctx.fillStyle = '#efe6cf';
+    ctx.beginPath();
+    circle(ctx, -18, -16, 2);
+    ctx.fill();
+    // A can by the bed.
+    ctx.fillStyle = '#8f969c';
+    ctx.beginPath();
+    circle(ctx, -6, 16, 3);
+    ctx.fill();
+    ctx.fillStyle = '#5c6268';
+    ctx.beginPath();
+    circle(ctx, -6, 16, 1.8);
+    ctx.fill();
+  }
+  if (part !== 'floor') {
+    // Cardboard walls: back and both sides.
+    const box = (x, y, w, h) => {
+      ctx.fillStyle = '#9c7650';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(60,40,20,0.55)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      ctx.fillStyle = 'rgba(220,200,160,0.55)';
+      if (w > h) ctx.fillRect(x + w / 2 - 1.5, y, 3, h);
+      else ctx.fillRect(x, y + h / 2 - 1.5, w, 3);
+    };
+    for (const [x, y, w, h] of FORT_WALLS) box(x, y, w, h);
+    // Nights slept: tally marks down the back wall, in orange.
+    ctx.strokeStyle = BEN_COLOR;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const n = d.slept || 20;
+    for (let k = 0; k < n; k++) {
+      const g = Math.floor(k / 5);
+      const j = k % 5;
+      const y = -26 + g * 8.5 + (j < 4 ? j * 1.6 : 0);
+      if (y > 26) break;
+      if (j < 4) {
+        ctx.moveTo(-31, y);
+        ctx.lineTo(-25, y);
+      } else {
+        ctx.moveTo(-31.5, -26 + g * 8.5 - 0.8);
+        ctx.lineTo(-24.5, -26 + g * 8.5 + 5.6);
+      }
+    }
+    ctx.stroke();
+    // Drawings taped to the side walls.
+    for (const [x, y, c] of [[-14, -27.5, '#5f8fd0'], [2, -27.5, '#e05a4a'], [-6, 21.5, '#59a85a']]) {
+      ctx.fillStyle = '#f1ead8';
+      ctx.fillRect(x, y, 9, 6);
+      ctx.strokeStyle = c;
+      ctx.beginPath();
+      ctx.moveTo(x + 1.5, y + 4);
+      ctx.lineTo(x + 4, y + 1.5);
+      ctx.lineTo(x + 7.5, y + 4.5);
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
+
+/** The fort's cardboard walls in its own frame: [x, y, w, h] (back, then the two sides). */
+export const FORT_WALLS = [[-34, -30, 12, 60], [-34, -30, 52, 11], [-34, 19, 52, 11]];
 
 /** The stuffed rabbit: one ear chewed short, sewn-on googly eyes. */
 function drawRabbit(ctx, d) {

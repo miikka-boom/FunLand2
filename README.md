@@ -5,7 +5,7 @@ build step and no dependencies.
 
 | Prototype | Folder | What it's testing |
 |---|---|---|
-| 0: HORDE | [`/`](index.html) | Twin-stick touch controls for top-down zombie horde survival |
+| 0: HORDE | [`/`](index.html) | Twin-stick touch controls for zombie horde survival, in isometric 3D |
 | 1: WOBBLE WAR | [`battle/`](battle/) | A real-time card battler with funny, satisfying 2D physics units and a fair free-to-play meta game |
 | Thrill Hill | [`thrill/`](thrill) | A Clash-Royale-inspired metagame: two static chests, a theme-park base, randomly generated survivors, a squad of three, three-crown raids |
 | Hope Street | [`hope/`](hope) | A metagame with base building and randomly generated people: take them in, pick a crew of four for each run |
@@ -260,10 +260,11 @@ still wins 94-100%. Every card's win rate sits between about 42% and 61%.
 
 # Prototype 0: "WE LEFT BEN"
 
-A top-down 2D zombie horde survival game for mobile browsers, going for a
+An isometric 3D zombie horde survival game for mobile browsers, going for a
 Left 4 Dead feel. **Prototype 0** is about nailing down the **twin-stick touch
 controls** and how fighting a horde feels in single player. (It was called
-HORDE until it got its name and logo.)
+HORDE until it got its name and logo, and it was flat and seen from straight
+above until it got its third dimension.)
 
 **The premise:** the squad (Odile, Teo, Mags, Lou, Biscuit the dog, and you)
 left the first safe room on day 2. Ben wasn't with them. Since then: signs.
@@ -276,9 +277,38 @@ and no dependencies.
 
 ## What's in it
 
+- **A world in 3D, seen from an isometric angle.** Buildings have facades,
+  windows and parapet roofs, warehouses have pitched roofs, cars have cabins
+  and wheels, the office floor is furnished down to the monitors, containers
+  are stacked two high, the ferry has decks; survivors and the infected are
+  little articulated figures that walk, reach, stagger, crouch and pounce.
+  - It is still one plain 2D canvas, with no build step and no dependencies:
+    the camera is orthographic, so every box is three parallelograms, every
+    limb is a round-capped line and every painted surface (the graffiti, a
+    poster on a wall, the words on a roof) is an affine transform away.
+    [`src/iso.js`](src/iso.js) is the whole camera.
+  - **The way to go is up the screen.** The camera sits to the south-west and
+    looks north-east: on Streets and Pier 9 the goal is up and a little to
+    the right, in the Building the corridors run up to the right. You see the
+    west and south faces of everything.
+  - **Nothing hides you:** whatever stands between the camera and you fades
+    out while you're behind it. A zombie you could see from above but the
+    camera can't (it's round the back of a building, in your line of sight)
+    shows through as a red outline, so the view never costs you information
+    the flat one gave. Your teammate shows through in green.
+  - **Night works in 3D:** the same lights fall on the ground and on
+    whatever stands on it. Walls are lit along their length by your
+    flashlight, bodies by the light at their feet; out of your line of sight
+    they aren't drawn at all, and they fade in as they round a corner.
+  - **Camera** in the tuning panel: **View** switches between *Isometric 3D*
+    and *Top-down* (the same world seen from straight above, for comparing
+    how the controls feel), **Isometric tilt** goes from 25° (low, cinematic)
+    to 70° (nearly overhead); 35° is true isometric.
 - **Twin virtual sticks**: the left thumb moves and the right thumb aims.
-  Push past the dashed fire ring to shoot; tap the aim side to **shove**. The
-  full spec and the reasoning are in [docs/CONTROLS.md](docs/CONTROLS.md).
+  Push past the dashed fire ring to shoot; tap the aim side to **shove**.
+  Sticks are screen directions: push up and you run up the screen, whatever
+  that is on the map. The full spec and the reasoning are in
+  [docs/CONTROLS.md](docs/CONTROLS.md).
 - **Live feel tuning**: the sliders button (top right) pauses the game and
   opens every feel parameter: stick modes and size, dead zones, fire ring, aim
   assist, smoothing, camera, speed, horde size and so on. There are presets
@@ -372,11 +402,13 @@ and no dependencies.
     "SHOVE FIRST. ASK NEVER."). Spray-painted "PIER 9 →" arrows point the way.
   - **The safe rooms** have their own wall of messages: the first thing you
     read when a run starts, and a welcome at the end.
-  - **Posters** on building fronts and corridor walls: the sleep aid that
-    started it all ("Sleep like the dead."), curfew notices, the evacuation
-    promise ("Boats every hour." someone added "(LIE?)"), a missing dog, a
-    cancelled gig, office motivational posters with notes added.
-  - **Rooftop messages** you see from above: SOS, HELP, 4 ALIVE, PIER 9 →.
+  - **Posters** hanging on building fronts and corridor walls (those on a
+    wall that faces away from the camera lie on the ground at its foot): the
+    sleep aid that started it all ("Sleep like the dead."), curfew notices,
+    the evacuation promise ("Boats every hour." someone added "(LIE?)"), a
+    missing dog, a cancelled gig, office motivational posters with notes
+    added.
+  - **Rooftop messages** painted on the roofs: SOS, HELP, 4 ALIVE, PIER 9 →.
   - **Survivor dens**, hidden off the route and lit by candles: bedding, a
     stove, cans, a radio, the Tinkerer's gear-and-eye mark, scribbled advice,
     a joke wall, and a journal page with its line written out on the floor
@@ -392,8 +424,8 @@ and no dependencies.
     Pier 9 has a flare), a ferry queue, a fish stall, and painted lines along
     the pier ("NO RUNNING ON THE GANGWAY" … "(RUN.)").
   - **No inspect text:** everything is drawn in the world, big enough to read
-    from above when your light is on it. There is no caption box and nothing
-    to press, so every player sees the same things.
+    when your light is on it. There is no caption box and nothing to press,
+    so every player sees the same things.
 - **Ben's traces** (on by default; **Ben's traces (the one we left behind)**
   under **World**). Visual only, with a few sounds; nothing ever explains him:
   - **The first room:** under the squad's "DAY 1 HERE. DAY 2 LEAVING." someone
@@ -623,8 +655,9 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
   `file://`.
 - **iPhone:** use Share → Add to Home Screen for true full screen. Android
   goes full screen when you tap Start.
-- **Desktop:** WASD to move, the mouse to aim, click to fire, Space to shove,
-  R to reload, Q to swap, Esc for tuning. A gamepad works too.
+- **Desktop:** WASD to move (screen directions, like the sticks), the mouse
+  to aim, click to fire, Space to shove, R to reload, Q to swap, Esc for
+  tuning. A gamepad works too.
 
 ## Code map
 
@@ -634,10 +667,18 @@ src/main.js                boot, resize/safe areas, pause, frame loop
 src/settings.js            every tunable value + panel schema + presets
 src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
+src/iso.js                 the camera: orthographic projection (yaw + tilt), project / unproject, stick and mouse mapping, and the painter's order for boxes (pure, unit tested)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
 src/world/                 seeded city + building + docks (Pier 9) generators, Ben's traces (ben-content: every line; ben-gen: placement), world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
-src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), Ben at run time (ben.js: his bed, the glimpse, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects, game state
-src/render/                renderer, lighting (night + LOS), HUD, loot, world-feature, graffiti/poster, docks (water, containers, cranes, ferry) and Ben (ben-render: crayon, eyes, his bed, the chalk drawings) drawing
+src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), Ben at run time (ben.js: his bed, the glimpse, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects (particles in 3D), game state + the view
+src/render/renderer.js     the passes: ground -> night overlay -> everything that stands (far to near) -> overhead -> bright -> HUD
+src/render/lighting.js     one list of lights: the ground overlay (night + line of sight) and the sampler that shades what stands on it
+src/render/prims.js        3D shapes on the 2D canvas: boxes, cylinders, prisms, balls, limbs; colour tones
+src/render/scene3d.js      the map prepared for 3D: heights, the painter's order, the grid, where movers slot in, what hides what
+src/render/models.js       a 3D model for every kind of obstacle (buildings, walls, cars, furniture, containers...), lamp posts, door frames; hangs posters and rooftop words on what they belong to
+src/render/decor3d.js      the small things that stand up (chairs, signs, the lemonade stand, Ben's fort and rabbit, boats)
+src/render/figures.js      survivors, the horde (batched), Hunter, Tank, Night Terror
+src/render/*-render.js     what is painted flat (ground, graffiti, posters, chalk, Ben's crayon) and the big set pieces (docks: piers, cranes, the ferry; features: the canopy, fires, fireballs), hud.js
 src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
@@ -646,7 +687,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, Ben's traces + memory, playtest reports + daily seed, the five metagames, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every level in 3D on a mock canvas, settings saves, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, Ben's traces + memory, playtest reports + daily seed, the five metagames, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

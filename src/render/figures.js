@@ -424,7 +424,7 @@ export function drawHunter(R, h, b) {
   else if (h.mode === 'stunned') { hip = 15; chest = 25; fwd = 0; headZ = 32; }
   const ph = h.anim * 12;
   const stride = h.mode === 'stalk' ? Math.sin(ph) * 6 : h.mode === 'leap' ? -9 : 0;
-  const reach = h.mode === 'stalk' || h.mode === 'stunned' ? 0.55 : pin ? 0.9 + Math.sin(t * 30) * 0.35 : 1.35;
+  const reach = h.mode === 'stunned' ? 0.4 : h.mode === 'stalk' ? 0.95 + Math.sin(ph) * 0.3 : pin ? 0.9 + Math.sin(t * 30) * 0.35 : 1.35;
   ctx.lineCap = 'round';
   const legs = () => {
     ctx.strokeStyle = tone('#20242c', b);
@@ -445,14 +445,14 @@ export function drawHunter(R, h, b) {
     ctx.stroke();
   };
   const trunk = () => {
-    ctx.strokeStyle = tone(h.shirt, b * 1.25);
+    ctx.strokeStyle = tone(h.shirt, b * 1.6);
     ctx.lineWidth = 11.5 * s;
     ctx.beginPath();
     limb(ctx, v, X(-3, 0), Y(-3, 0), hip + lift, X(fwd, 0), Y(fwd, 0), chest + lift);
     ctx.stroke();
   };
   const hood = () => {
-    ctx.fillStyle = tone('#232a3a', b * 1.2);
+    ctx.fillStyle = tone('#2c3550', b * 1.25);
     ctx.beginPath();
     ball(ctx, v, X(fwd + 4, 0), Y(fwd + 4, 0), headZ + lift, 6);
     ctx.fill();

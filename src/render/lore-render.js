@@ -692,27 +692,33 @@ export function drawCarScrawl(ctx, o) {
 
 // --- Bright pass: candle flames and the stove in dens ---------------------------------------------
 
-export function drawLoreBright(ctx, game, vr) {
+/** Called with the plain screen transform. */
+export function drawLoreBright(R, game, vr) {
   const map = game.world.map;
   if (!map.dens || !map.dens.length) return;
+  const { ctx, v } = R;
   const t = game.time;
+  const s = Math.max(0.8, v.scale);
   for (const d of map.decor) {
     if (d.type !== 'candle' && d.type !== 'stove') continue;
     if (!pointInRect(d.x, d.y, vr, 20)) continue;
     const fl = 0.6 + 0.4 * Math.sin(t * 13 + d.x * 0.7) * Math.sin(t * 7.3 + d.y);
+    const sx = v.px(d.x, d.y);
     if (d.type === 'candle') {
+      const sy = v.py(d.x, d.y, v.flat ? 0 : 8);
       ctx.fillStyle = `rgba(255,200,110,${0.25 * fl})`;
       ctx.beginPath();
-      circle(ctx, d.x, d.y - 1, 7);
+      ctx.arc(sx, sy, 7 * s, 0, TAU);
       ctx.fill();
       ctx.fillStyle = `rgba(255,236,170,${0.8 + 0.2 * fl})`;
       ctx.beginPath();
-      circle(ctx, d.x, d.y - 1, 1.6 + fl);
+      ctx.arc(sx, sy, (1.6 + fl) * s, 0, TAU);
       ctx.fill();
     } else {
+      const sy = v.py(d.x, d.y, v.flat ? 0 : 6);
       ctx.fillStyle = `rgba(110,170,255,${0.5 + 0.3 * fl})`;
       ctx.beginPath();
-      circle(ctx, d.x, d.y, 3 + fl);
+      ctx.arc(sx, sy, (3 + fl) * s, 0, TAU);
       ctx.fill();
     }
   }

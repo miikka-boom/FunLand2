@@ -62,7 +62,6 @@ export function toneIndex(k) {
   return i < 0 ? 0 : i > MAX ? MAX : i;
 }
 
-export const TONES = MAX + 1;
 
 // --- Boxes (axis-aligned, standing on the ground rect x0..x1, y0..y1, from z0 up to z1) ---------
 

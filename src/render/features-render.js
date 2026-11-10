@@ -5,7 +5,7 @@
 
 import { TAU, pointInRect, rectsOverlap, clamp } from '../util.js';
 import { rrect, circle, hash01, FONT } from './draw-utils.js';
-import { box, tone, ball, disc, line3 } from './prims.js';
+import { boxTop, boxFaceX, boxFaceY, tone, ball, disc, line3 } from './prims.js';
 
 export function stripes(ctx, x, y, w, h, a = 1) {
   // Yellow / black hazard stripes clipped to a rect.
@@ -73,7 +73,21 @@ export function drawCanopies(R, game, vr) {
     }
     ctx.globalAlpha = under ? 0.2 : v.flat ? 0.42 : 0.8;
     const col = game.settings.night ? '#a9a8a2' : '#d9d8d2';
-    box(ctx, v, c.x, c.y, c.x + c.w, c.y + c.h, CANOPY_Z, CANOPY_Z + 8, tone(col, b * 1.1), tone('#b8322a', b * 0.8), tone('#b8322a', b));
+    // Face by face (no outline underneath): it's see-through, and overlapping fills would show.
+    if (!v.flat) {
+      ctx.fillStyle = tone('#b8322a', b * 0.8);
+      ctx.beginPath();
+      boxFaceX(ctx, v, c.x, c.y, c.x + c.w, c.y + c.h, CANOPY_Z, CANOPY_Z + 8);
+      ctx.fill();
+      ctx.fillStyle = tone('#b8322a', b);
+      ctx.beginPath();
+      boxFaceY(ctx, v, c.x, c.y, c.x + c.w, c.y + c.h, CANOPY_Z, CANOPY_Z + 8);
+      ctx.fill();
+    }
+    ctx.fillStyle = tone(col, b * 1.1);
+    ctx.beginPath();
+    boxTop(ctx, v, c.x, c.y, c.x + c.w, c.y + c.h, CANOPY_Z + 8);
+    ctx.fill();
     R.ground(CANOPY_Z + 8);
     ctx.fillStyle = tone('#b8322a', b);
     ctx.fillRect(c.x, c.y, c.w, 8);

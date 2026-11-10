@@ -30,7 +30,7 @@ import { drawFloors, drawChalk, drawLoot, drawStash, drawLootBright } from './lo
 import { drawCanopies, drawFeatureDecor, drawFeaturesBright } from './features-render.js';
 import { drawLoreDecor, drawPosters, roofText, drawLoreBright } from './lore-render.js';
 import { drawDocksGround, drawDocksDecor, drawCranes, drawFerry, drawDocksBright } from './docks-render.js';
-import { drawBenDecor, drawBenBright, drawBenLoose, benText } from './ben-render.js';
+import { drawBenDecor, drawBenBright, drawBenLoose, benText, drawFort } from './ben-render.js';
 
 const GROUND = {
   street: '#24272b',
@@ -196,7 +196,7 @@ export class Renderer {
     R.ly = ly / ll;
     R.fX = 0.58 + 0.36 * Math.max(0, v.faceX * R.lx);
     R.fY = 0.58 + 0.36 * Math.max(0, v.faceY * R.ly);
-    R.amb = S.night ? 0.34 : 0.5;
+    R.amb = S.night ? 0.4 : 0.5;
     R.roofK = S.night ? 0.64 : 1;
     R.alpha = 1;
     this.eye = game.player.alive ? game.player : null;
@@ -260,8 +260,8 @@ export class Renderer {
     drawLootBright(R, game, vr);
     drawFeaturesBright(R, game, vr);
     drawDocksBright(R, game, vr);
+    drawLoreBright(R, game, vr);
     R.ground(0);
-    drawLoreBright(ctx, game, vr);
     this.drawBuffAura(ctx, game);
     R.reset();
     drawBenBright(R, game, vr);
@@ -305,6 +305,36 @@ export class Renderer {
         }
         ctx.stroke();
       }
+    }
+
+    // Curbs: the pavement stands a step above the road on the sides that face the camera.
+    const view = game.view;
+    if (!interior && !view.flat) {
+      const drop = 3.2 * view.cot;
+      const dx = view.gx * drop;
+      const dy = view.gy * drop;
+      ctx.fillStyle = '#1b1d20';
+      ctx.beginPath();
+      for (const b of map.blocks) {
+        if (!rectsOverlap(b, vr, 8)) continue;
+        if (view.faceY) {
+          const y = view.faceY > 0 ? b.y + b.h : b.y;
+          ctx.moveTo(b.x, y);
+          ctx.lineTo(b.x + b.w, y);
+          ctx.lineTo(b.x + b.w + dx, y + dy);
+          ctx.lineTo(b.x + dx, y + dy);
+          ctx.closePath();
+        }
+        if (view.faceX) {
+          const x = view.faceX < 0 ? b.x : b.x + b.w;
+          ctx.moveTo(x, b.y);
+          ctx.lineTo(x, b.y + b.h);
+          ctx.lineTo(x + dx, b.y + b.h + dy);
+          ctx.lineTo(x + dx, b.y + dy);
+          ctx.closePath();
+        }
+      }
+      ctx.fill();
     }
 
     drawFloors(ctx, map, vr);
@@ -361,8 +391,14 @@ export class Renderer {
     }
     ctx.stroke();
 
+    const tilted = !game.view.flat;
     for (const d of map.decor) {
       if (d.x < vr.x - 40 || d.x > vr.x + vr.w + 40 || d.y < vr.y - 40 || d.y > vr.y + vr.h + 40) continue;
+      if (tilted && d._3d) {
+        // It stands up (decor3d.js); only what lies on the floor of Ben's fort is painted here.
+        if (d.type === 'benfort') drawFort(ctx, d, 'floor');
+        continue;
+      }
       switch (d.type) {
         case 'puddle':
           ctx.fillStyle = 'rgba(70,90,110,0.18)';
@@ -670,7 +706,8 @@ export class Renderer {
     scene.cullProps(v, vr, props);
     for (let i = 0; i < props.length; i++) {
       const q = props[i];
-      if (q.lamp && lampLit(q.lamp, game.time)) lamps.push(q);
+      if (q.decor && v.flat) continue; // from straight above the flat drawing is the right one
+      if (q.lamp && game.settings.night && lampLit(q.lamp, game.time)) lamps.push(q);
       if (q.over) {
         over.push(q);
         continue;
@@ -685,12 +722,12 @@ export class Renderer {
       const seen = this._seen(z, z.x, z.y, dt);
       const b = L.sample(z.x, z.y) * (hid + (1 - hid) * seen);
       if (z.type === 'common') {
-        if (b < 0.015) continue;
+        if (b < 0.032) continue;
         this._mover(T_ZOMBIE, z, z.x, z.y, z.r, b);
         if (seen > 0.3) sh.push(z.x, z.y, z.r);
       } else {
         if (z.type === 'hunter' && z.mode === 'pin') continue; // drawn with the survivor it's on
-        if (z.type === 'terror' ? seen < 0.05 : b < 0.015) continue;
+        if (z.type === 'terror' ? seen < 0.05 : b < 0.032) continue;
         this._mover(T_SPECIAL, z, z.x, z.y, z.r, b);
         if (seen > 0.3 && z.type !== 'terror') sh.push(z.x, z.y, z.r * (z.type === 'tank' ? 1.15 : 1));
       }
@@ -705,7 +742,7 @@ export class Renderer {
     if (a && v.onScreen(a.x, a.y, 50, 60)) {
       const seen = this._seen(a, a.x, a.y, dt);
       const b = L.sample(a.x, a.y) * (hid + (1 - hid) * seen);
-      if (b >= 0.015) {
+      if (b >= 0.032) {
         this._mover(T_ALLY, a, a.x, a.y, a.r, b);
         if (seen > 0.3) sh.push(a.x, a.y, a.r);
         if (a.alive && seen > 0.6 && scene.hider(v, a.x, a.y, 24, true)) xray.push(a);
@@ -716,7 +753,7 @@ export class Renderer {
     for (const k of game.pickups) {
       if (k.taken || !v.onScreen(k.x, k.y, 30, 20)) continue;
       const b = L.lit(k.x, k.y);
-      if (b < 0.015) continue;
+      if (b < 0.032) continue;
       this._mover(T_PICKUP, k, k.x, k.y, 10, b);
       sh.push(k.x, k.y, 9);
     }
@@ -724,7 +761,7 @@ export class Renderer {
       for (const s of game.loot.stashes) {
         if (s.tier === 'secret' || !v.onScreen(s.x, s.y, 40, 20)) continue;
         const b = L.lit(s.x, s.y);
-        if (b < 0.015) continue;
+        if (b < 0.032) continue;
         this._mover(T_STASH, s, s.x, s.y, 16, b);
         sh.push(s.x, s.y, 15);
       }

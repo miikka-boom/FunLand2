@@ -11,12 +11,13 @@
 // Structures (sight blockers) are lit along each wall from the light at its
 // foot; props get one brightness for the whole thing.
 
-import { box, boxTop, boxFaceX, boxFaceY, boxHull, cylinder, disc, ball, limb, prism, polygon, turnedRect, tone, line3, quad3 } from './prims.js';
-import { hash01, rrect, circle, FONT } from './draw-utils.js';
+import { box, boxTop, boxFaceY, boxHull, cylinder, disc, ball, limb, prism, turnedRect, tone, line3, quad3 } from './prims.js';
+import { hash01, circle, FONT } from './draw-utils.js';
 import { TAU, lampLit, clamp, pointInRect } from '../util.js';
 import { drawContainerTop, drawWarehouseRidges } from './docks-render.js';
 import { stripes } from './features-render.js';
 import { drawCarScrawl, drawPosterArt } from './lore-render.js';
+import { buildDecorProps } from './decor3d.js';
 
 const pts = new Float64Array(16);
 const samp = new Float32Array(12);
@@ -34,18 +35,18 @@ export const veil = (k) => DARKS[clamp(Math.round((1 - k) * 32), 0, 32)];
 // --- Shared pieces -----------------------------------------------------------------------------
 
 /**
- * How lit a prop is (it is nearly invisible out of sight). Small ones are
- * sampled at their middle; long ones also at both ends, taking the best, so
- * a car doesn't vanish while half of it is in view.
+ * How lit a prop is (it is nearly invisible out of sight): the light at its
+ * middle and toward its four corners, averaged, so something half round a
+ * corner is half lit instead of blinking in and out.
  */
 function propLight(R, o) {
+  const L = R.L;
   const cx = o.x + o.w / 2;
   const cy = o.y + o.h / 2;
-  const b = R.L.lit(cx, cy);
-  if (o.w < 56 && o.h < 56) return b;
-  const ex = o.w >= o.h ? o.w * 0.4 : 0;
-  const ey = o.w >= o.h ? 0 : o.h * 0.4;
-  return Math.max(b, R.L.lit(cx - ex, cy - ey), R.L.lit(cx + ex, cy + ey));
+  if (o.w < 30 && o.h < 30) return L.lit(cx, cy);
+  const ex = o.w * 0.36;
+  const ey = o.h * 0.36;
+  return (L.lit(cx, cy) * 2 + L.lit(cx - ex, cy - ey) + L.lit(cx + ex, cy - ey) + L.lit(cx - ex, cy + ey) + L.lit(cx + ex, cy + ey)) / 6;
 }
 
 /** A box in one colour at brightness b. */
@@ -729,7 +730,7 @@ function drawContainerModel(R, o, rec) {
 function drawCarModel(R, o, rec) {
   const { ctx, v } = R;
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const vert = o.h > o.w;
   const len = vert ? o.h : o.w;
   const front = o.front || 1;
@@ -803,7 +804,7 @@ function drawCarModel(R, o, rec) {
 
 function drawArmyTruck(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx } = R;
   const cabW = 34;
   const front = o.front > 0;
@@ -826,7 +827,7 @@ function drawArmyTruck(R, o) {
 
 function drawForklift(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx, v } = R;
   const flip = o.a ? -1 : 1;
   const cx = o.x + o.w / 2;
@@ -845,7 +846,7 @@ function drawForklift(R, o) {
 
 function drawHeli(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx, v } = R;
   const c = o.color || '#4b5a3a';
   if (o.part === 'body') {
@@ -885,7 +886,7 @@ function drawHeli(R, o) {
 
 function drawCrate(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx } = R;
   if (o.pipe) {
     // A stack of pipes / rebar.
@@ -930,7 +931,7 @@ function drawCrate(R, o) {
 
 function drawDumpster(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const c = o.color || '#2f4f3a';
   const H = 32;
   pbox(R, o.x + 1, o.y + 1, o.x + o.w - 1, o.y + o.h - 1, 0, H - 4, c, b * 0.9);
@@ -948,7 +949,7 @@ function drawDumpster(R, o) {
 function drawFence(R, o) {
   const { ctx, v } = R;
   const b = Math.max(R.L.lit(o.x + o.w / 2, o.y + o.h / 2), 0);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const H = 40;
   const horiz = o.w > o.h;
   const xm = o.x + o.w / 2;
@@ -980,7 +981,7 @@ function drawFence(R, o) {
 
 function drawPlanter(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx, v } = R;
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 15, '#56534d', b);
   topFill(R, o.x + 5, o.y + 5, o.x + o.w - 5, o.y + o.h - 5, 15, tone('#2a2620', b));
@@ -999,7 +1000,7 @@ function drawPlanter(R, o) {
 
 function drawBench(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const horiz = o.w >= o.h;
   const c = '#5a4632';
   if (horiz) {
@@ -1018,7 +1019,7 @@ function drawBench(R, o) {
 function drawTree(R, o) {
   const { ctx, v } = R;
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const cx = o.x + o.w / 2;
   const cy = o.y + o.h / 2;
   const s = o.w / 36;
@@ -1043,7 +1044,7 @@ function drawTree(R, o) {
 
 function drawFountain(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx, v } = R;
   const cx = o.x + o.w / 2;
   const cy = o.y + o.h / 2;
@@ -1059,7 +1060,7 @@ function drawFountain(R, o) {
 
 function drawStatue(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx, v } = R;
   const cx = o.x + o.w / 2;
   const cy = o.y + o.h / 2;
@@ -1084,7 +1085,7 @@ function drawStatue(R, o) {
 
 function drawBarrel(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx, v } = R;
   const cx = o.x + o.w / 2;
   const cy = o.y + o.h / 2;
@@ -1098,7 +1099,7 @@ function drawBarrel(R, o) {
 
 function drawBollard(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx, v } = R;
   const cx = o.x + o.w / 2;
   const cy = o.y + o.h / 2;
@@ -1131,7 +1132,7 @@ function drawFlarePost(R, o) {
 
 function drawDesk(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const c = '#5b4a3a';
   const horiz = o.w >= o.h;
   // Two pedestals, the top, monitors.
@@ -1159,7 +1160,7 @@ function drawDesk(R, o) {
 
 function drawTable(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx, v } = R;
   if (!v.flat) {
     ctx.strokeStyle = tone('#3a3c40', b);
@@ -1176,7 +1177,7 @@ function drawTable(R, o) {
 
 function drawBed(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx } = R;
   const horiz = o.w >= o.h;
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 11, '#6d7376', b);
@@ -1200,14 +1201,14 @@ function drawBed(R, o) {
 
 function drawCounter(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 28, '#4a3d33', b);
   pbox(R, o.x - 1, o.y - 1, o.x + o.w + 1, o.y + o.h + 1, 28, 31, '#6a5a4c', b);
 }
 
 function drawCouch(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const c = '#4a2e2e';
   const horiz = o.w >= o.h;
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 13, c, b);
@@ -1226,7 +1227,7 @@ function drawCouch(R, o) {
 
 function drawPlant(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx, v } = R;
   const cx = o.x + o.w / 2;
   const cy = o.y + o.h / 2;
@@ -1243,7 +1244,7 @@ function drawPlant(R, o) {
 
 function drawCabinet(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const H = 42;
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, H, '#6a6e72', b);
   const drawers = (ctx2, len) => {
@@ -1297,7 +1298,7 @@ const junkOrder = [];
 
 function drawBarricade(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx, v } = R;
   // A jumble of desks, doors and cabinets jammed across the hall.
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 10, '#2e2924', b);
@@ -1366,7 +1367,7 @@ function drawGasCylinder(R, o) {
 
 function drawSandbag(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx } = R;
   const H = 23;
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, H, '#7d7052', b);
@@ -1395,7 +1396,7 @@ function drawSandbag(R, o) {
 
 function drawBarrier(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const { ctx } = R;
   const H = 28;
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, H, '#8c8b85', b);
@@ -1419,7 +1420,7 @@ function drawBarrier(R, o) {
 
 function drawRubble(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   const s = o.seed || 1;
   const sideTone = (nx, ny) => tone('#6f6a63', b * (0.6 + 0.3 * Math.max(0, nx * R.lx + ny * R.ly)));
   pts[0] = o.x + hash01(s) * 8; pts[1] = o.y;
@@ -1435,6 +1436,15 @@ function drawRubble(R, o) {
 
 // --- The table ---------------------------------------------------------------------------------
 
+/** The wall (or quarantine wall) a doorway's boards sit in. */
+function wallAround(o, map) {
+  for (const w of map.obstacles) {
+    if ((w.kind !== 'wall' && w.kind !== 'qwall') || w === o) continue;
+    if (w.x <= o.x + o.w + 1 && w.x + w.w >= o.x - 1 && w.y <= o.y + o.h + 1 && w.y + w.h >= o.y - 1) return w;
+  }
+  return null;
+}
+
 function simple(h, draw, extra) {
   return () => ({ h, draw, ...extra });
 }
@@ -1448,16 +1458,10 @@ const MODELS = {
   qwall: (o) => ({ h: o.indoor ? 48 : 86, draw: drawQwall }),
   gate: (o) => ({ h: o.indoor ? 46 : 72, draw: drawGate, fades: false }),
   boards: (o, map) => {
-    // As tall as the wall the doorway is in.
-    let h = o.breach ? (map.theme === 'interior' ? 48 : 86) : map.theme === 'interior' ? 44 : 60;
-    for (const w of map.obstacles) {
-      if ((w.kind !== 'wall' && w.kind !== 'qwall') || w === o) continue;
-      if (w.x <= o.x + o.w + 1 && w.x + w.w >= o.x - 1 && w.y <= o.y + o.h + 1 && w.y + w.h >= o.y - 1) {
-        h = MODELS[w.kind](w, map).h;
-        break;
-      }
-    }
-    return { h, draw: drawBoardsModel };
+    // A doorway in a wall: the boards are as tall as a door; a tall wall carries on above it (see lintels).
+    const w = wallAround(o, map);
+    const wallH = w ? MODELS[w.kind](w, map).h : map.theme === 'interior' ? 44 : 60;
+    return { h: Math.min(wallH, o.breach ? 62 : 50), draw: drawBoardsModel };
   },
   container: (o) => ({ h: o.tall ? 120 : 60, draw: drawContainerModel }),
   car: (o) => ({ h: o.truck ? 58 : 33, draw: drawCarModel }),
@@ -1511,7 +1515,7 @@ export const CRANE_H = 230;
 
 function drawUnknown(R, o) {
   const b = propLight(R, o);
-  if (b < 0.012) return;
+  if (b < 0.032) return;
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 24, o.color || '#55585c', b);
 }
 
@@ -1676,8 +1680,30 @@ export function buildProps(scene, view) {
     out.push({ x: d.x + d.w / 2, y: d.y - 2, r: 4, hw: d.w / 2 + 1, hh: 3, h: 50, color: '#8a2a24', draw: drawJamb });
     out.push({ x: d.x + d.w / 2, y: d.y + d.h + 2, r: 4, hw: d.w / 2 + 1, hh: 3, h: 50, color: '#8a2a24', draw: drawJamb });
   }
+  // Boarded doorways in tall walls: the wall carries on over the door (and stays when the boards go).
+  for (const o of scene.world.obstacles) {
+    if (o.kind !== 'boards') continue;
+    const w = wallAround(o, map);
+    if (!w) continue;
+    const m = MODELS[w.kind](w, map);
+    const door = o._r3 ? o._r3.h : 50;
+    if (m.h < door + 6) continue;
+    const color = w.kind === 'qwall' ? '#6b6a64' : m.data.wall;
+    out.push({ x: o.x + o.w / 2, y: o.y + o.h / 2, r: Math.max(o.w, o.h) / 2, h: m.h, z0: door, rect: { x: o.x, y: o.y, w: o.w, h: o.h }, color, draw: drawLintel });
+  }
+  for (const q of buildDecorProps(scene, view)) out.push(q);
   attachArt(scene, view);
   return out;
+}
+
+function drawLintel(R, p) {
+  const { ctx } = R;
+  const o = p.rect;
+  const fade = R.hides(o, p.z0, p.h);
+  if (fade) ctx.globalAlpha = 0.22;
+  litWalls(R, o.x, o.y, o.x + o.w, o.y + o.h, p.z0, p.h, p.color);
+  topFill(R, o.x, o.y, o.x + o.w, o.y + o.h, p.h, tone(p.color, R.roofK * 1.05));
+  if (fade) ctx.globalAlpha = 1;
 }
 
 /**
@@ -1730,5 +1756,3 @@ function attachArt(scene, view) {
   }
   void view;
 }
-
-export { rrect, polygon };

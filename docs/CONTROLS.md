@@ -1,10 +1,11 @@
 # Twin-stick touch controls (Prototype 0)
 
-This is the control scheme for the top-down horde game, with the default
-values and the reasons behind them. Every number here can be changed live in
-the in-game tuning panel (sliders button, top right). To lock in a different
-feel, tune it on a phone, press **Copy tuning JSON**, and update the defaults in
-`src/settings.js`.
+This is the control scheme for the horde game (We Left Ben), with the default
+values and the reasons behind them. The game is seen from an isometric angle;
+[what that means for the sticks](#sticks-in-the-isometric-view) is below.
+Every number here can be changed live in the in-game tuning panel (sliders
+button, top right). To lock in a different feel, tune it on a phone, press
+**Copy tuning JSON**, and update the defaults in `src/settings.js`.
 
 ## Layout (landscape)
 
@@ -29,6 +30,32 @@ feel, tune it on a phone, press **Copy tuning JSON**, and update the defaults in
   on release.
 - Faint "ghost" sticks show where thumbs usually rest (and where fixed sticks
   sit). Their labels fade out after about 15 seconds of play.
+
+## Sticks in the isometric view
+
+The world is 3D and the camera looks at it from the south-west, tilted 35°
+(true isometric). The map's own axes run diagonally across the screen, so:
+
+- **A stick is a direction on the screen, not on the map.** Push up and you
+  run up the screen (north-east on the map); push right and you run right.
+  The aim stick works the same way: the laser leaves your gun at the angle
+  your thumb makes on the glass. `src/iso.js` (`dirToWorld`) turns a screen
+  direction into the heading on the ground that looks the same.
+- **Speed is the same over the ground in every direction.** Up and down the
+  screen the ground is foreshortened, so you cover fewer pixels there for the
+  same run speed, and guns reach further in pixels sideways than up. The
+  camera's look-ahead makes up for it: it leads by the same distance on
+  screen whichever way you aim.
+- **The mouse** (desktop) aims at the spot under the cursor at gun height, so
+  the laser runs through the cursor rather than through the ground behind it.
+- **What you can't see, you're told:** a wall or building between the camera
+  and you fades out; a zombie in your line of sight that the camera can't
+  see shows through as a red outline.
+
+| Setting | Default | Why |
+|---|---|---|
+| View | **Isometric 3D** | *Top-down* shows the same world from straight above (sticks are then map directions again): the baseline to compare the feel against. |
+| Isometric tilt | 35° | True isometric. Lower is more cinematic and hides more behind buildings; higher is closer to the old overhead view. |
 
 ## Left stick: move
 
@@ -426,10 +453,14 @@ What a map gets:
 
 ## Camera
 
-- The visible world is **470 units across the short screen axis** on every
-  device, so the field of view feels the same on phones and tablets.
+- The view size is **470 units across the short screen axis** on every
+  device, so the field of view feels the same on phones and tablets. That is
+  exact in the top-down view; the isometric view is drawn about 18% larger
+  (the tilt squeezes the ground up and down the screen, so it still shows
+  more of it that way, and bodies stay readable).
 - Look-ahead is 20% of the view: full while firing, 70% while aiming and 45%
-  while just moving. You see more of where you're shooting.
+  while just moving. You see more of where you're shooting. The lead is the
+  same distance on screen whichever way you aim.
 - Screen shake is trauma-based (trauma² feels right), tuned low for sustained
   SMG fire and punchy for the shotgun. The camera recoils back from each shot.
 
