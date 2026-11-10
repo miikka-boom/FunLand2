@@ -11,6 +11,7 @@
 
 import { WORLD, enemyOf } from '../config.js';
 import { levelMul } from './cards.js';
+import { updateBuilding, wreckBuilding } from './buildings.js';
 
 const G = WORLD.gravity;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -173,7 +174,7 @@ export function damageTower(b, t, dmg, x, y, kind = 'hit', from = null) {
   t.hitT = 0;
   b.emit('towerHit', x, y, { tower: t, damage: dmg, kind, from, power: clamp(dmg / 60, 0.2, 1.5) });
   if (t.hp <= 0) destroyTower(b, t);
-  else if (!t.active) wakeTower(b, t);
+  else if (!t.active && t.kind !== 'building') wakeTower(b, t); // (a building is always awake)
   return dmg;
 }
 
@@ -187,10 +188,23 @@ export function wakeTower(b, t) {
 /**
  * Bring a tower down. The other side gets its crowns (a castle = all 3), the
  * castle behind a fallen Guard Tower wakes up, and a fallen castle takes its
- * side's remaining tower with it. crumble = fall without giving crowns.
+ * side's remaining tower and buildings with it. crumble = fall without giving
+ * crowns. A building never gives crowns and wakes nobody: it emits
+ * buildingDown with its cause ('destroyed', or 'crumbled' when crumble is
+ * set, unless `cause` says otherwise: 'decayed').
  */
-export function destroyTower(b, t, crumble = false) {
+export function destroyTower(b, t, crumble = false, cause = null) {
   if (!t.alive) return;
+  if (t.kind === 'building') {
+    t.alive = false;
+    t.hp = 0;
+    t.downT = 0;
+    t.target = null;
+    for (const a of t.arrows) a.fade = true;
+    wreckBuilding(b, t);
+    b.emit('buildingDown', t.x, -t.h / 2, { tower: t, team: t.team, bid: t.bid, cause: cause || (crumble ? 'crumbled' : 'destroyed') });
+    return;
+  }
   t.alive = false;
   t.hp = 0;
   t.active = false;
@@ -288,14 +302,27 @@ function fireCannon(b, t, u) {
   b.emit('cannonFire', m.x, m.y, { tower: t, target: u });
 }
 
-/** Per step: tower timers, aiming and shooting, cannonballs in flight. */
+/** A fallen building's wreck is cleared away this long after it went down (s). */
+export const WRECK_T = 3;
+
+/**
+ * Per step: tower timers, aiming and shooting, cannonballs in flight.
+ * Buildings never shoot: they do their own work (sim/buildings.js), and their
+ * wrecks are cleared away WRECK_T s after they fall.
+ */
 export function updateTowers(b, dt) {
   const fighting = b.phase === 'battle';
+  let wrecks = false;
   for (const t of b.towers) {
     t.shotT += dt;
     t.hitT += dt;
     if (!t.alive) {
       t.downT += dt;
+      if (t.kind === 'building' && t.downT > WRECK_T) wrecks = true;
+      continue;
+    }
+    if (t.kind === 'building') {
+      updateBuilding(b, t, dt);
       continue;
     }
     const idle = t.f > 0 ? 0.12 : Math.PI - 0.12;
@@ -318,6 +345,12 @@ export function updateTowers(b, dt) {
     let d = want - t.aim;
     d = Math.atan2(Math.sin(d), Math.cos(d));
     t.aim += d * Math.min(1, dt * 10);
+  }
+  if (wrecks) {
+    for (let i = b.towers.length - 1; i >= 0; i--) {
+      const t = b.towers[i];
+      if (t.kind === 'building' && !t.alive && t.downT > WRECK_T) b.towers.splice(i, 1);
+    }
   }
   if (b.shots.length) updateShots(b, dt);
 }

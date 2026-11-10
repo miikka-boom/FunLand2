@@ -1057,6 +1057,7 @@ export class Unit {
       return this.animateFuse(dt, b, a); // a lit fuse burns whatever happens
     }
     if (this.downT > 0 || this.conscious < 0.2) {
+      if (a.scoop) this.cutScoop();
       this.act = null;
       this.bowDraw = 0;
       return P.rest;
@@ -1193,6 +1194,12 @@ export class Unit {
     a.dmg = 0;
     this.f = this.team === 'blue' ? -1 : 1;
     this.mouth = 0;
+  }
+
+  /** A Pelican knocked out of its scoop (a knockdown, a stunning hit): it cools down as after a miss, or a drop if it had a catch. */
+  cutScoop() {
+    const a = this.act;
+    this.endScoop(a, a.phase === 'swoop' ? this.type.scoop.cooldown * 0.5 : this.type.scoop.cooldown);
   }
 
   /** The scoop is over (dropped, missed or shaken loose): climb back up, the scoop cools down. */
@@ -1437,7 +1444,10 @@ export class Unit {
     const lit = this.act && this.act.phase === 'fuse'; // nothing puts out a lit fuse
     if (downStun >= 0.85 || this.conscious < 0.12) {
       this.downT = this.rng.range(0.75, 1.25);
-      if (!lit) this.act = null;
+      if (!lit) {
+        if (this.act && this.act.scoop) this.cutScoop();
+        this.act = null;
+      }
       this.bowDraw = 0;
       this.mouth = 0.8;
       this.mouthKind = 'o';
@@ -1445,6 +1455,7 @@ export class Unit {
       if (this.type.fumble) b.fumble(this); // uh-oh: a juggled bomb lands on its toes
     } else {
       if (stun >= 0.5 && this.act && this.act.phase !== 'recover' && !lit) {
+        if (this.act.scoop) this.cutScoop();
         this.act = null; // interrupted
         this.bowDraw = 0;
         this.cooldown = Math.max(this.cooldown, 0.25);

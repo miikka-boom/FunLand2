@@ -1439,8 +1439,8 @@ export class Battle {
 
   /**
    * The bean a Pelican would scoop: the best liftable enemy within scoop.sight
-   * along x, by |dx| - 80 for the back line (ranged units and the Drummer),
-   * ties by id. Null if there is none.
+   * along x, by |dx| - 80 for the back line (ranged and support: Archers, the
+   * Juggler, the Drummer, the Netter), ties by id. Null if there is none.
    */
   scoopTarget(u) {
     const S = u.type.scoop;
@@ -1450,7 +1450,7 @@ export class Battle {
       if (e.team === u.team || !liftable(e, S.maxMass)) continue;
       const dx = Math.abs(e.hip.x - u.hip.x);
       if (dx > S.sight) continue;
-      const score = dx - (e.type.ranged || e.type.follow ? 80 : 0);
+      const score = dx - (e.type.ranged || e.type.follow || e.type.prefersAir ? 80 : 0);
       if (score < bs || (score === bs && e.id < best.id)) {
         bs = score;
         best = e;
@@ -1493,16 +1493,20 @@ export class Battle {
   }
 
   /**
-   * The Jelly's belly bump: the nearest enemy bean (not high up, not held)
-   * within bump.gap of its surface is knocked away; with none, a structure
-   * face that close takes vsStructure. Returns whether it bumped anything.
+   * The Jelly's belly bump: the nearest other enemy bean (not high up, not
+   * held, and not one it is about to swallow: with nothing inside and the
+   * engulf ready, a liftable bean is left to come in) within bump.gap of its
+   * surface is knocked away; with none, a structure face that close takes
+   * vsStructure. Returns whether it bumped anything.
    */
   jellyBump(u) {
     const B = u.type.bump;
+    const E = u.type.engulf;
+    const hungry = !u.holding && u.engulfCool <= 0;
     let best = null;
     let bd = Infinity;
     for (const e of this.units) {
-      if (e.team === u.team || !e.alive || e.held || e.air) continue;
+      if (e.team === u.team || !e.alive || e.held || e.air || (hungry && liftable(e, E.maxMass))) continue;
       const d = Math.hypot(e.hip.x - u.hip.x, e.hip.y - u.hip.y) - u.R - e.R;
       if (d < B.gap && d < bd) {
         bd = d;
@@ -1808,6 +1812,7 @@ export class Battle {
   grabAt(x, y, filter, slack = 10) {
     const u = this.unitAt(x, y, filter, slack);
     if (!u) return null;
+    if (u.heldBy) this.letGo(u); // (the hand of god takes it out of a beak or a jelly)
     u.asleep = false;
     u.stillT = 0;
     // Grab whichever body part is closest (head = dangling by the head)

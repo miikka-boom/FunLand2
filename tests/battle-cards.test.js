@@ -439,9 +439,14 @@ test('each newer unit type stands, walks to the enemy and fights it (or at least
     const foe = b.addUnit('clubber', 'red', 900, 0.5);
     foe.speed = 0;
     foe.cooldown = 1e9;
+    // A support unit (the Tummy Drummer) never fights: it marches behind a friend that does
+    const lead = UNIT_TYPES[id].follow ? b.addUnit('clubber', 'blue', 640, 0.7) : null;
     const x0 = u.hip.x;
     for (let i = 0; i < 8 / DT; i++) b.step(DT);
     assert.ok(finiteAll(b), `${id}: finite`);
-    assert.ok(u.hip.x > x0 + 40 || foe.hp < foe.maxHp, `${id} went for it (moved ${(u.hip.x - x0).toFixed(1)})`);
+    if (lead) {
+      assert.ok(u.hip.x > x0 + 40 && u.hip.x < lead.hip.x, `${id} marched behind its friend (moved ${(u.hip.x - x0).toFixed(1)})`);
+      assert.ok(u.target === null && foe.hp < foe.maxHp, `${id} never fights; its friend does`);
+    } else assert.ok(u.hip.x > x0 + 40 || foe.hp < foe.maxHp, `${id} went for it (moved ${(u.hip.x - x0).toFixed(1)})`);
   }
 });

@@ -307,6 +307,7 @@ test('archers keep a sensible range and shoot towers in the upper body', () => {
 
 test('a dropped unit falls from the sky, lands on its feet without fall damage, yells and then goes', () => {
   for (const type of UNIT_ORDER) {
+    if (UNIT_TYPES[type].flying) continue; // fliers hover in (the next test)
     const b = arena(18);
     const u = b.addUnit(type, 'blue', 500, 0.5, null, { drop: true });
     const ev = b.events.splice(0);
@@ -325,9 +326,43 @@ test('a dropped unit falls from the sky, lands on its feet without fall damage, 
     assert.ok(ev2.some((e) => e.type === 'land' && e.unit === u), `${type}: no landing thud`);
     assert.equal(u.deployT, 0);
     assert.equal(u.hp, u.maxHp, `${type} took fall damage`);
-    assert.ok(Math.abs(u.ground - u.hip.y - u.standH) < 12, `${type} not standing (${u.ground - u.hip.y} vs ${u.standH})`);
+    // (a Pogo Bean is off hopping by now: it stood when it landed)
+    if (!u.type.hop) assert.ok(Math.abs(u.ground - u.hip.y - u.standH) < 12, `${type} not standing (${u.ground - u.hip.y} vs ${u.standH})`);
     const off = u.type.speed >= 44 ? 15 : 10; // (the Big Jelly, at 36 px/s, is slower than anything else)
-    assert.ok(u.hip.x > x0 + off, `${type} never set off (${u.hip.x - x0})`);
+    // (a Tummy Drummer on its own heads back to wait by its Guard Tower)
+    const went = u.type.follow ? Math.abs(u.hip.x - x0) : u.hip.x - x0;
+    assert.ok(went > off, `${type} never set off (${u.hip.x - x0})`);
+    assert.ok(finite(b));
+  }
+});
+
+test('a dropped flier (Propeller Pals, Pelican) is caught by its lift: it hovers in at its cruise height, no thud, no fall damage, then goes', () => {
+  const fliers = UNIT_ORDER.filter((type) => UNIT_TYPES[type].flying);
+  assert.deepEqual(fliers.slice().sort(), ['copter', 'pelican']);
+  for (const type of fliers) {
+    const b = arena(18);
+    const u = b.addUnit(type, 'blue', 500, 0.5, null, { drop: true });
+    const ev = b.events.splice(0);
+    assert.ok(ev.some((e) => e.type === 'drop' && e.unit === u));
+    assert.ok(u.ground - u.hip.y > 250, 'starts high up');
+    assert.ok(u.deployT > 0.9 && u.deployT <= DEPLOY_T);
+    const x0 = u.hip.x;
+    const cruise = u.type.flying.alt;
+    let low = Infinity;
+    let moved = false;
+    const ev2 = run(b, 2.6, (i) => {
+      low = Math.min(low, u.alt);
+      if (u.deployT > 0.02 && Math.abs(u.wantVx) > 0) moved = true;
+    });
+    assert.ok(!ev2.some((e) => (e.type === 'land' || e.type === 'crash') && e.unit === u), `${type} hit the ground`);
+    assert.ok(low > cruise * 0.3, `${type} sank to ${low.toFixed(0)} px`);
+    assert.ok(!moved, `${type} flew off before its deploy time was up`);
+    assert.equal(u.deployT, 0);
+    assert.equal(u.dropping, false);
+    assert.equal(u.hp, u.maxHp, `${type} took fall damage`);
+    assert.ok(Math.abs(u.alt - cruise) < 25, `${type} cruises at ${u.alt.toFixed(0)} (wants ${cruise})`);
+    assert.ok(u.air, `${type} is high air`);
+    assert.ok(u.hip.x > x0 + 15, `${type} never set off (${u.hip.x - x0})`);
     assert.ok(finite(b));
   }
 });

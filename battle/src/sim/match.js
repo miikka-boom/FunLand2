@@ -10,6 +10,7 @@ import { CARDS, HAND_SIZE, MAX_LEVEL, cardById } from './cards.js';
 import { Battle, DT } from './battle.js';
 import { castSpell } from './spells.js';
 import { destroyTower } from './towers.js';
+import { fitBuilding, MAX_BUILDINGS } from './buildings.js';
 import { Rng } from './rng.js';
 
 // Rules (seconds unless noted). Tunable.
@@ -21,6 +22,8 @@ export const MANA_TIME = 2.8; // seconds per mana...
 export const DOUBLE_MANA_LEFT = 60; // ...twice as fast in the last 60 s of regulation and all of overtime
 export const LANE_SPREAD = 1; // played units get random lanes in [0, LANE_SPREAD]
 export const FORMATION_GAP = 24; // px between beans of a card that has no `spread`
+export const ANYWHERE = [40, 1460]; // where a deploy-anywhere card (Brolly Brigade) may be played...
+export const ANYWHERE_CLEAR = 16; // ...its beans kept this far off every standing tower and building
 
 const TEAMS = ['blue', 'red'];
 const isTeam = (team) => team === 'blue' || team === 'red'; // (not just any key: '__proto__' is "in" every object)
@@ -98,7 +101,19 @@ export class Match {
     return [a, b];
   }
 
-  /** '' if `team` can play hand card i at x, else why not: 'over' | 'card' | 'mana' | 'zone'. */
+  /** [x0, x1] where `team` may place buildings: its own deploy zone, never the pocket. */
+  buildZone(team) {
+    if (!isTeam(team)) return [0, 0];
+    const [a, b] = WORLD.deploy[team];
+    return [a, b];
+  }
+
+  /**
+   * '' if `team` can play hand card i at x, else why not: 'over' | 'card' | 'mana' | 'zone'.
+   * Units drop in your zone, spells go anywhere on the field, deploy-anywhere
+   * units anywhere in ANYWHERE, and a building needs a legal spot near x in
+   * your own deploy zone (fitBuilding: it slides up to BUILD_SNAP px to one).
+   */
   canPlay(team, i, x) {
     if (this.phase === 'over') return 'over';
     const side = isTeam(team) ? this.sides[team] : null;
@@ -107,6 +122,8 @@ export class Match {
     if (side.mana < card.mana) return 'mana';
     if (!Number.isFinite(x)) return 'zone';
     if (card.kind === 'spell') return x >= 0 && x <= WORLD.width ? '' : 'zone';
+    if (card.kind === 'building') return fitBuilding(this.battle, team, card.building, x) == null ? 'zone' : '';
+    if (card.anywhere) return x >= ANYWHERE[0] && x <= ANYWHERE[1] ? '' : 'zone';
     const [z0, z1] = this.zone(team);
     return x >= z0 && x <= z1 ? '' : 'zone';
   }
@@ -126,34 +143,81 @@ export class Match {
     side.next = side.queue[0] ?? null;
     side.played++;
     const level = side.levels[id];
-    this.battle.emit('cardPlayed', x, 0, { team, card: id, level });
+    const at = card.kind === 'building' ? fitBuilding(this.battle, team, card.building, x) : x;
+    this.battle.emit('cardPlayed', at, 0, { team, card: id, level });
     if (card.kind === 'spell') {
       side.spellsPlayed++;
       castSpell(this.battle, card, team, x, level);
-    } else this.deploy(team, card, x, level);
+    } else if (card.kind === 'building') this.build(team, card, at, level);
+    else this.deploy(team, card, x, level);
     return true;
   }
 
-  /** Where a unit card's beans land if played at x (world x each, inside the zone): for ghost previews too. */
+  /**
+   * Where a card lands if played at x, for the play and for ghost previews:
+   * a unit card's beans (world x each: inside the zone, or nudged clear of
+   * structures for a deploy-anywhere card), or [the building's fitted x]
+   * ([] when there is no legal spot). Spells: [].
+   */
   formation(team, cardId, x) {
     const card = cardById(cardId);
-    if (!card || card.kind !== 'unit' || !isTeam(team)) return [];
+    if (!card || !isTeam(team)) return [];
+    if (card.kind === 'building') {
+      const fx = Number.isFinite(x) ? fitBuilding(this.battle, team, card.building, x) : null;
+      return fx == null ? [] : [fx];
+    }
+    if (card.kind !== 'unit') return [];
     const n = card.count || 1;
     const offs = card.spread && card.spread.length >= n ? card.spread : Array.from({ length: n }, (_, k) => (k - (n - 1) / 2) * FORMATION_GAP);
-    const [z0, z1] = this.zone(team);
     const dir = team === 'blue' ? 1 : -1;
+    if (card.anywhere) return Number.isFinite(x) ? offs.slice(0, n).map((o) => this.clearSpot(x + o * dir)) : [];
+    const [z0, z1] = this.zone(team);
     return offs.slice(0, n).map((o) => Math.min(z1, Math.max(z0, x + o * dir)));
   }
 
-  /** Drop a unit card's beans in their formation around x (random lanes). */
+  /**
+   * A deploy-anywhere bean's x: out of every standing tower and building
+   * footprint (to its nearer side, ANYWHERE_CLEAR px off it), out of both
+   * Castles (to the field side), then inside ANYWHERE.
+   */
+  clearSpot(x) {
+    const towers = this.battle.towers;
+    for (const t of towers) {
+      if (!t.alive || t.kind === 'castle') continue;
+      const half = t.w / 2 + ANYWHERE_CLEAR;
+      if (Math.abs(x - t.x) < half) x = x < t.x ? t.x - half : t.x + half;
+    }
+    for (const t of towers) {
+      if (t.kind !== 'castle') continue;
+      const half = t.w / 2 + ANYWHERE_CLEAR;
+      if (Math.abs(x - t.x) < half) x = t.x + t.f * half;
+    }
+    return Math.min(ANYWHERE[1], Math.max(ANYWHERE[0], x));
+  }
+
+  /** Drop a unit card's beans in their formation around x (random lanes); deploy-anywhere ones float in. */
   deploy(team, card, x, level) {
     const units = [];
+    const opts = card.anywhere ? { level, float: true } : { level, drop: true };
     for (const ux of this.formation(team, card.id, x)) {
       const lane = this.rng.next() * LANE_SPREAD;
       const seed = (this.rng.next() * 2 ** 31) | 0;
-      units.push(this.battle.addUnit(card.unit, team, ux, lane, seed, { level, drop: true }));
+      units.push(this.battle.addUnit(card.unit, team, ux, lane, seed, { ...opts }));
     }
     return units;
+  }
+
+  /** Place a building card's building at x (already fitted); above MAX_BUILDINGS standing, the oldest crumbles. */
+  build(team, card, x, level) {
+    const b = this.battle;
+    const mine = b.towers.filter((t) => t.kind === 'building' && t.team === team && t.alive);
+    while (mine.length >= MAX_BUILDINGS) {
+      let old = mine[0];
+      for (const t of mine) if (t.id < old.id) old = t;
+      mine.splice(mine.indexOf(old), 1);
+      destroyTower(b, old, true);
+    }
+    return b.addBuilding(card.building, team, x, level);
   }
 
   /** Give up: the other side wins with three crowns. */
@@ -222,10 +286,10 @@ export class Match {
     }
   }
 
-  /** Health fraction of a side's weakest standing tower (0 if none stand). */
+  /** Health fraction of a side's weakest standing tower (0 if none stand). Buildings don't count. */
   weakest(team) {
     let f = Infinity;
-    for (const t of this.battle.towers) if (t.team === team && t.alive) f = Math.min(f, t.hp / t.maxHp);
+    for (const t of this.battle.towers) if (t.team === team && t.alive && t.kind !== 'building') f = Math.min(f, t.hp / t.maxHp);
     return f === Infinity ? 0 : f;
   }
 
