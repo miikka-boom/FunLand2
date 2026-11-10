@@ -5,6 +5,12 @@
 // Local dev servers (localhost, 127.0.0.1) get no service worker by default, so edits show up
 // on a plain reload. Add ?pwa=1 to the URL (or pass allowLocalhost) to test the PWA locally,
 // and ?pwa=0 anywhere to remove the worker and its caches from this browser.
+//
+// The itch.io build (host.js ITCH) is none of this: it plays inside itch's iframe on an origin
+// shared by many games, with a new path for every upload. There it registers no worker (and
+// touches nobody else's), offers no install, and swVersion() reports the stamped game version.
+
+import { ITCH, BUILD_VERSION } from './host.js';
 
 const SW_URL = new URL('../sw.js', import.meta.url).href;
 const SCOPE = new URL('../', import.meta.url).href;
@@ -46,12 +52,13 @@ const launchedStandalone = safe(standaloneNow) || false;
 
 /** True when running as an installed app (home-screen icon), not in a browser tab. */
 export function isStandalone() {
+  if (ITCH) return false; // (a page in an iframe is never the installed app)
   return launchedStandalone || !!safe(standaloneNow);
 }
 
 /** True when the browser offers its own install prompt (Android / desktop Chrome, Edge...). */
 export function canInstall() {
-  return !!deferredPrompt && !isStandalone();
+  return !ITCH && !!deferredPrompt && !isStandalone();
 }
 
 /** Shows the browser's install prompt. Call it from a tap/click handler.
@@ -76,6 +83,7 @@ export async function promptInstall() {
  *  'ios'        iPhone/iPad: Share button, then "Add to Home Screen" (there is no prompt API),
  *  'none'       not possible from here (or the browser keeps it in its own menu). */
 export function installMethod() {
+  if (ITCH) return 'none'; // played on itch.io: nothing to install (the More screen hides the row)
   if (isStandalone()) return 'installed';
   if (canInstall()) return 'prompt';
   const ios = safe(() => {
@@ -91,7 +99,7 @@ function emitInstall() {
 }
 
 // Listen from the moment the module loads: the browser fires this once, early.
-if (hasWindow) {
+if (hasWindow && !ITCH) {
   safe(() => {
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault(); // no automatic mini-infobar: the game offers install at a calm moment
@@ -123,12 +131,14 @@ export function registerPWA({ onUpdateReady, onInstallChange, allowLocalhost = f
     installListeners.add(onInstallChange);
     if (canInstall()) safe(onInstallChange, true);
   }
-  if (!started) started = start(allowLocalhost).catch(() => null);
+  if (!started) started = ITCH ? Promise.resolve(null) : start(allowLocalhost).catch(() => null);
   return started;
 }
 
-/** The VERSION of the service worker controlling this page, or null (no worker, offline test...). */
+/** The VERSION of the service worker controlling this page, or null (no worker, offline test...).
+ *  The itch build has no worker: there it is the version the build stamped into index.html. */
 export function swVersion(timeoutMs = 1500) {
+  if (ITCH) return Promise.resolve(BUILD_VERSION);
   return new Promise((resolve) => {
     const sw = hasWindow && safe(() => navigator.serviceWorker && navigator.serviceWorker.controller);
     if (!sw || typeof MessageChannel === 'undefined') return resolve(null);

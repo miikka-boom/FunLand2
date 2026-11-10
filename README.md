@@ -31,6 +31,11 @@ and 667×375 phones first); a mouse works too. Held upright, a phone gets a
 layer, buildings and the Legendary rarity are specified in
 [`docs/WOBBLE-WAR-CARDS.md`](docs/WOBBLE-WAR-CARDS.md).
 
+For itch.io, `npm run battle:itch` builds `dist/wobble-war-itch.zip`: the same
+game for an itch "HTML" page, with no service worker, no install offer and no
+link out of the game. Upload settings and where saves live:
+[`docs/ITCH.md`](docs/ITCH.md).
+
 ## How to play
 
 - **The field:** you are blue on the left, a computer player is red on the
@@ -270,6 +275,7 @@ battle/src/input.js              canvas touch / mouse: tap, aim, grab, pan, pinc
 battle/src/audio.js              WebAudio synth: bonks, clanks, squeaky voices, towers, spells, chests, jingles,
                                  and the newer cards' boings, slips, ACHOO, fizz, CLANG, crunch, drum, whirr, squawk...
 battle/src/pwa.js, battle/sw.js  install + offline + updates (bump VERSION in sw.js on every deploy)
+battle/src/host.js               'web' or 'itch' (stamped by the itch build): itch has no worker, install or links out
 
 battle/src/sim/                  the match, pure and seeded (no DOM)
   physics.js                     Verlet particles, constraints, ground, segment tests
@@ -298,6 +304,7 @@ battle/src/ui/                   the menus (plain DOM)
   hub-kit.js                     DOM helper, icons, card tiles, reward views, card stats
   chest-open.js, cards-screen.js, trail-screen.js, shop-screen.js, more-screen.js   the screens
 battle/tools/balance-arena.mjs   the balance tool (below)
+battle/tools/build-itch.mjs      the itch.io zip (npm run battle:itch, docs/ITCH.md)
 ```
 
 The simulation and the meta game have no DOM code and replay identically from

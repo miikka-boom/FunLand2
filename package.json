@@ -12,6 +12,7 @@
     "evac:balance": "node evac/tools/balance-sim.mjs",
     "hope:balance": "node hope/tools/balance-sim.mjs",
     "battle:balance": "node battle/tools/balance-arena.mjs",
-    "battle:perf": "node battle/tools/balance-arena.mjs --only perf"
+    "battle:perf": "node battle/tools/balance-arena.mjs --only perf",
+    "battle:itch": "node battle/tools/build-itch.mjs"
   }
 }

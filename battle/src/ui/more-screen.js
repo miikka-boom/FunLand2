@@ -1,12 +1,14 @@
 // The More tab: Badges (goals with progress and claim buttons), Settings
 // (sound, vibration, shake, install, reset), "How it's fair" and the Sandbox.
 // A side menu on the left (the phone is sideways), the page on the right.
+// The itch.io build (host.js ITCH) has no install row and no link out of the game.
 
 import { h, icon, coin, bean, fmt, clamp, CARDS, ARENAS } from './hub-kit.js';
 import { badgeStatus, claimBadge, claimableBadges } from '../meta/badges.js';
 import { CHESTS } from '../meta/chests.js';
 import { TRAIL } from '../meta/ladder.js';
 import { swVersion } from '../pwa.js';
+import { ITCH } from '../host.js';
 
 const SECTIONS = [
   ['badges', 'badge', 'Badges'],
@@ -124,12 +126,14 @@ export function createMoreScreen(H) {
         { class: 'hb-btn danger' + (ui.resetArmed ? ' armed' : ''), type: 'button', on: { click: H.tap(resetTap) } },
         ui.resetArmed ? 'Tap again to erase all progress' : 'Reset progress',
       ),
-      h('p', { class: 'hb-fine' }, h('a', { href: '../' }, '← FunLand2 Prototype 0: HORDE')),
+      // (on itch.io, '../' would load a broken page into itch's iframe)
+      ITCH ? null : h('p', { class: 'hb-fine' }, h('a', { href: '../' }, '← FunLand2 Prototype 0: HORDE')),
     ];
   }
 
   /** Install: the browser's own prompt where there is one, otherwise how-to text. */
   function installRow() {
+    if (ITCH) return null; // played on itch.io: nothing to install
     const how = H.actions.installMethod ? H.actions.installMethod() : 'none';
     if (how === 'installed') return h('p', { class: 'hb-note' }, '📲 Installed: it plays full screen and offline.');
     if (how === 'prompt')
@@ -214,7 +218,7 @@ export function createMoreScreen(H) {
     renderNav();
     body.innerHTML = '';
     const parts = ui.section === 'settings' ? renderSettings() : ui.section === 'fair' ? renderFair() : ui.section === 'sandbox' ? renderSandbox() : renderBadges();
-    body.append(...parts);
+    body.append(...parts.filter((p) => p != null)); // (append(null) would print "null")
   }
 
   return {

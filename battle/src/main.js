@@ -32,6 +32,7 @@ import { HATS } from './render/hats.js';
 import { createHub } from './ui/hub.js';
 import { demoStyle } from './ui/hub-kit.js';
 import { registerPWA, promptInstall, installMethod } from './pwa.js';
+import { ITCH, staleEntryKey } from './host.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const $ = (id) => document.getElementById(id);
@@ -478,6 +479,32 @@ function disarmBack() {
 function armBack() {
   backWanted = true;
   syncBack();
+}
+/**
+ * itch.io only. Reloading itch's page keeps the history entry the game had pushed (a card or a
+ * match was up) but loads this frame into it fresh, without its state, so the first Back press
+ * on the bare hub would be spent on that dead entry. The frame's own entries (Navigation API)
+ * show it (host.js staleEntryKey): step back to the one under it now. That reloads the frame
+ * once and never leaves itch's page (only this frame's entries count). Pushes wait meanwhile;
+ * if the browser refuses or is slow, play on as before.
+ */
+function leaveStaleEntry() {
+  const key = staleEntryKey(window.navigation, history.state);
+  if (!key) return;
+  const resume = () => {
+    if (!popPending) return;
+    popPending = false;
+    syncBack();
+  };
+  popPending = true;
+  try {
+    const t = window.navigation.traverseTo(key);
+    t.committed.catch(resume);
+    t.finished.catch(() => {});
+    setTimeout(resume, 3000);
+  } catch {
+    resume();
+  }
 }
 window.addEventListener('popstate', () => {
   if (popPending) {
@@ -2022,6 +2049,31 @@ const input = new Input(canvas, {
   },
 });
 
+// The first tap or key press anywhere starts the sound (browsers wait for one inside the page),
+// so a menu, a tab or a chest opening is heard too, not only BATTLE and the sandbox. It also
+// wakes a context the system suspended (iOS). A mouse press counts as such a gesture when it
+// goes down, a touch only when it lifts, hence both.
+// Embedded (itch.io's iframe): a pointerdown that calls preventDefault() (the VS screen, a hand
+// card) stops the browser from moving keyboard focus into the frame, and Space would then scroll
+// the outer page. A click may take the focus, so take it here.
+function wakeAudio() {
+  if (!audio.ctx || audio.ctx.state !== 'running') audio.unlock();
+}
+window.addEventListener(
+  'pointerdown',
+  () => {
+    wakeAudio();
+    try {
+      if (window.parent !== window && !document.hasFocus()) window.focus();
+    } catch {
+      // ignore
+    }
+  },
+  { capture: true, passive: true },
+);
+window.addEventListener('pointerup', wakeAudio, { capture: true, passive: true });
+window.addEventListener('keydown', wakeAudio, { capture: true, passive: true });
+
 window.addEventListener('keydown', (e) => {
   if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
@@ -2931,6 +2983,8 @@ resize();
 // Reloaded (or updated) away from the hub: the page sits on the history entry
 // we pushed; mark it ours so showing the hub consumes it.
 if (history.state && history.state.wobble) backArmed = backWanted = true;
+// itch.io: a reload of itch's page keeps that entry but drops its state (see leaveStaleEntry)
+else if (ITCH) leaveStaleEntry();
 hub.show('battle');
 document.documentElement.classList.add('booted');
 // A slow first load may have put up the "still loading" note (index.html): it's done now
