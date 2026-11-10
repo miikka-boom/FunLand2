@@ -24,7 +24,7 @@
 
 import { TEAMS } from '../config.js';
 import { muzzle as simMuzzle } from '../sim/towers.js';
-import { createBuildingRenderer } from './buildings.js';
+import { createBuildingRenderer, LAND_T } from './buildings.js';
 import {
   Cached,
   CASTLE_BOX,
@@ -1168,6 +1168,13 @@ export function createTowerRenderer(opts = {}) {
     g.fill();
   }
 
+  /** A building's bar waits for its crate to land, then pops in (0..1). */
+  function landedK(tw) {
+    const age = num(tw.age, 99);
+    if (num(tw.landT, age) < LAND_T) return 0;
+    return clamp((age - LAND_T) / 0.15, 0, 1);
+  }
+
   /** Local box of a bar group (badge or clock, crown, bar) in bar units, origin at its anchor. */
   function barBox(tw) {
     if (tw.kind === 'building') return { x0: -(BUILD_BW + 13) / 2 - 4, y0: -12, w: BUILD_BW + 21, h: 22 };
@@ -1190,6 +1197,10 @@ export function createTowerRenderer(opts = {}) {
       if (alpha <= 0) return;
     }
     const building = tw.kind === 'building';
+    if (building) {
+      alpha *= landedK(tw);
+      if (alpha <= 0) return;
+    }
     const BW = castle ? 74 : building ? BUILD_BW : 56;
     const hit = num(tw.hitT, 99) < 0.08;
     const txt = String(Math.max(0, Math.ceil(num(tw.hp, 0))));
@@ -1291,7 +1302,7 @@ export function createTowerRenderer(opts = {}) {
             r.y0 += dy;
             r.y1 += dy;
           }
-          if (tw.alive !== false) placed.push(r);
+          if (tw.alive !== false && (!pass || landedK(tw) > 0)) placed.push(r);
           bar(ctx, tw, u, X, Y, dt);
         }
       }

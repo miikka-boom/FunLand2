@@ -2852,11 +2852,12 @@ function render() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   game.bg.drawFront(ctx, { w: W, h: H, dpr, cam: v, t });
   camera.apply(ctx, dpr);
-  fx.drawFront(ctx);
+  fx.drawFront(ctx, false);
   if (arena) {
     if (unitsGfx.showHp) unitsGfx.drawHpBars(ctx, b, { dpr });
     towersGfx.drawBars(ctx, b, { t, dpr });
   }
+  fx.drawWords(ctx); // (a BOING! or OOF! reads over the HP bars around it)
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 

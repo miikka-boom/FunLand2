@@ -44,7 +44,7 @@ export const ARCHETYPES = {
   bonk: { name: 'Bonk Rush', cards: ['bruiser', 'clubberGang', 'clubbers', 'spikers', 'squire', 'archers', 'arrowRain', 'boulder'] },
   siege: { name: 'Siege', cards: ['brick', 'archers', 'cheeseWheel', 'spikers', 'arrowRain', 'squire', 'bomb', 'boulder'] },
   boom: { name: 'Big Boom', cards: ['megaBomb', 'bombSquad', 'bomb', 'shieldWall', 'archers', 'arrowRain', 'spikers', 'boulder'] },
-  turtle: { name: 'Turtle', cards: ['shieldWall', 'squire', 'archers', 'boulder', 'arrowRain', 'bruiser', 'clubbers', 'cheeseWheel'] },
+  turtle: { name: 'Turtle', cards: ['shieldWall', 'squire', 'archers', 'boulder', 'arrowRain', 'bruiser', 'clubbers', 'nutcracker'] }, // (the Nutcracker from Brick Fortress on)
   swarm: { name: 'Swarm', cards: ['spikers', 'clubbers', 'clubberGang', 'bombSquad', 'archers', 'arrowRain', 'cheeseWheel', 'bomb'] },
   // The newer cards' styles (docs/WOBBLE-WAR-CARDS.md section 7)
   hop: { name: 'Hop Cycle', arena: 1, cards: ['pogoBean', 'sprouts', 'bananaPeels', 'spikers', 'bomb', 'netter', 'archers', 'arrowRain'] },

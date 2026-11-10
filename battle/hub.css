@@ -2096,6 +2096,12 @@
   height: 18px;
 }
 
+.hb-detail-actions small.hb-why {
+  flex: 1 1 96px;
+  min-width: 0;
+  line-height: 1.2;
+}
+
 .hb-indeck {
   display: inline-flex;
   align-items: center;

@@ -202,7 +202,6 @@ export function createCardsScreen(H) {
     main.append(h('div', { class: 'hb-stats' }, ...rows.map((r) => h('div', { class: 'hb-stat' }, h('small', {}, r.label), h('b', {}, String(r.value)), showNext && r.next != null ? h('em', {}, '→ ' + r.next) : null))));
     const acts = h('div', { class: 'hb-detail-actions' });
     if (s.owned && !s.maxed) {
-      const why = reason(s);
       acts.append(
         h(
           'button',
@@ -211,10 +210,13 @@ export function createCardsScreen(H) {
           h('span', { class: 'hb-cost' + (P.gold < s.gold ? ' poor' : '') }, coin(), fmt(s.gold)),
         ),
       );
-      if (why) acts.append(h('small', { class: 'hb-why' }, why));
     }
     if (s.owned && !s.inDeck) acts.append(H.btn('Use', () => (H.closeEntry(d.entry), startSwap(d.id)), 'blue big'));
     else if (s.inDeck) acts.append(h('span', { class: 'hb-indeck' }, icon('check'), 'In your deck'));
+    // (the hint goes after both buttons and wraps beside them: on a short phone a Use
+    // button pushed onto a line of its own falls off the bottom of the sheet)
+    const why = s.owned && !s.maxed ? reason(s) : '';
+    if (why) acts.append(h('small', { class: 'hb-why' }, why));
     if (s.locked) {
       const a = ARENAS[s.arena];
       acts.append(h('p', { class: 'hb-why' }, icon('lock'), `Unlocks in ${a.name} (${arenaLabel(s.arena)}) at ${fmt(a.trophies)} trophies.`));

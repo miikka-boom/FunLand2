@@ -7,6 +7,7 @@
 //   fx.update(dt);      // game seconds (slow-mo scaled, 0 during hit-stop)
 //   fx.drawBack(ctx);   // scuffs, dust, dirt: behind the units
 //   fx.drawFront(ctx);  // bursts, sparks, words, confetti: over the units
+//   fx.drawWords(ctx);  // (or drawFront(ctx, false) and the words later, over the HP bars)
 //
 // Particles live in a fixed pool, so a busy fight makes no garbage. When the
 // pool is full the oldest particle is recycled.
@@ -1840,11 +1841,21 @@ export class Effects {
     ctx.restore();
   }
 
-  drawFront(ctx) {
+  /** words = false leaves the comic words for drawWords() (main.js puts them over the HP bars). */
+  drawFront(ctx, words = true) {
     if (this.live === 0) return;
     this.measure(ctx);
     ctx.save();
-    this.pass(ctx, true, -1);
+    this.pass(ctx, true, -1, words ? -1 : TEXT);
+    ctx.restore();
+  }
+
+  /** The comic words alone, over everything else. */
+  drawWords(ctx) {
+    if (this.live === 0) return;
+    this.measure(ctx);
+    ctx.save();
+    this.pass(ctx, true, TEXT);
     ctx.restore();
   }
 
@@ -1858,13 +1869,13 @@ export class Effects {
     this.base = m;
   }
 
-  /** Draw one layer oldest-first: a single kind, or (-1) all the rest. */
-  pass(ctx, front, only) {
+  /** Draw one layer oldest-first: a single kind, or (-1) all the rest (but skip). */
+  pass(ctx, front, only, skip = -1) {
     const pool = this.pool;
     const n = pool.length;
     for (let k = 0; k < n; k++) {
       const p = pool[(this.head + k) % n];
-      if (!p.alive || p.front !== front) continue;
+      if (!p.alive || p.front !== front || p.kind === skip) continue;
       if (only >= 0 ? p.kind !== only : !front && BACK_OWN.has(p.kind)) continue;
       DRAW[p.kind](ctx, p, this);
     }

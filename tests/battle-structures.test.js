@@ -373,7 +373,7 @@ test('Boing Box: a second shove within 1.6 s is weak (anti-lock); it ignores fli
 
 // --- the Bean Patch ----------------------------------------------------------------------
 
-test('Bean Patch: Sprouts pop out of its front from arming on, never more than 3 alive, 5-7 in its life, at its level', () => {
+test('Bean Patch: Sprouts pop out of its front from arming on, never more than 3 alive, 5-8 in its life, at its level', () => {
   for (const [seed, x] of [[12, 560], [13, 420], [14, 640]]) {
     const b = arena(seed);
     const p = b.addBuilding('beanPatch', 'blue', x, 2);
@@ -388,7 +388,7 @@ test('Bean Patch: Sprouts pop out of its front from arming on, never more than 3
     });
     const pops = ev.filter((e) => e.type === 'sproutPop' && e.tower === p);
     assert.ok(most <= S.max, `${most} alive at once`);
-    assert.ok(pops.length >= 5 && pops.length <= 7, `${pops.length} spawned`);
+    assert.ok(pops.length >= 5 && pops.length <= 8, `${pops.length} spawned`); // (every 3.0 s after balance: 6-7 in the contract at 3.4)
     assert.ok(Math.abs(firstAt - BUILDINGS.beanPatch.arm) < 0.05, `first at ${firstAt}`);
     for (const e of pops) {
       const u = e.unit;

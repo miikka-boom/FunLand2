@@ -372,7 +372,7 @@ export const CARDS = {
     kind: 'unit',
     unit: 'drummer',
     count: 1,
-    mana: 4,
+    mana: 3, // (4 was too much for a bean that only drums: it never hits anything itself)
     rarity: 'epic',
     arena: 4,
     desc: 'BOOM-BOOM! Friends nearby march and swing faster to the beat.',
@@ -395,7 +395,7 @@ export const CARDS = {
     kind: 'unit',
     unit: 'jelly',
     count: 1,
-    mana: 6,
+    mana: 7, // (at 6 it was a must-have: a tank that also eats the defenders)
     rarity: 'legendary',
     arena: 4,
     desc: 'A huge wobbly jelly that swallows small beans whole, then spits them out.',

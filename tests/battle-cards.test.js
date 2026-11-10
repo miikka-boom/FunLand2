@@ -102,10 +102,10 @@ test('every card is well formed: kind, mana, name, a description of at most 80 c
   }
   for (const id of UNIT_ORDER) for (const w of AVOID) assert.ok(!`${UNIT_TYPES[id].name} ${UNIT_TYPES[id].blurb}`.includes(w), `${id} uses "${w}"`);
   for (const [id, d] of Object.entries(BUILDINGS)) for (const w of AVOID) assert.ok(!d.name.includes(w), `${id} uses "${w}"`);
-  // The newer cards' mana: 1 to 6, 3.67 on average
+  // The newer cards' mana: 1 to 7, 3.67 on average (balance: the Big Jelly went to 7, the Tummy Drummer to 3)
   const mana = NEWER.map((id) => CARDS[id].mana);
   assert.equal(Math.min(...mana), 1);
-  assert.equal(Math.max(...mana), 6);
+  assert.equal(Math.max(...mana), 7);
   assert.equal((mana.reduce((a, b) => a + b, 0) / mana.length).toFixed(2), '3.67');
 });
 
@@ -135,7 +135,7 @@ test('every unit, spell and building a card names exists, and casting each spell
   }
   assert.equal(SPELLS.bananaPeels.peels, 5);
   assert.equal(SPELLS.anvil.damage, 310);
-  assert.equal(SPELLS.bubbleWrap.absorb, 70);
+  assert.equal(SPELLS.bubbleWrap.absorb, 85); // (70 in the contract; balance)
   // Every spell entity runs its course and goes away without throwing
   for (let i = 0; i < 12 / DT; i++) b.step(DT);
   assert.equal(b.spells.length, 0);
@@ -147,7 +147,7 @@ test('the newer unit types: data as in the contract, in UNIT_ORDER, with real we
   assert.equal(new Set(UNIT_ORDER).size, UNIT_ORDER.length);
   assert.deepEqual(Object.keys(UNIT_TYPES).sort(), UNIT_ORDER.slice().sort());
   assert.equal(AIR_MIN, 60);
-  assert.deepEqual(BEAT, { tempo: 1.3, move: 1.3 });
+  assert.deepEqual(BEAT, { tempo: 1.5, move: 1.5 }); // (1.3 in the contract; balance)
   assert.deepEqual(WEAPONS.pogo, { len: 34, tipMass: 0.5, tipR: 3, grip: 8, react: 0.2 });
   assert.deepEqual(WEAPONS.net, { len: 50, tipMass: 0.45, tipR: 13, grip: 10, react: 0.4 });
   assert.deepEqual(WEAPONS.brolly, { len: 34, tipMass: 0.35, tipR: 4, grip: 0, react: 0.4 });
@@ -193,7 +193,7 @@ test('buildings: constants, a building is a wooden Tower, and fitBuilding finds 
   assert.equal(crane.def, BUILDINGS.wreckingCrane);
   assert.ok(crane.isTower && crane.building && crane.active && crane.alive);
   assert.deepEqual([crane.id, crane.team, crane.f, crane.w, crane.h, crane.range, crane.age, crane.landT], [77, 'red', -1, 36, 170, 0, 0, 0]);
-  assert.ok(Math.abs(crane.hp - 700 * 1.21) < 1e-9 && crane.maxHp === crane.hp, 'health follows the card level');
+  assert.ok(Math.abs(crane.hp - BUILDINGS.wreckingCrane.hp * 1.21) < 1e-9 && crane.maxHp === crane.hp, 'health follows the card level');
   assert.ok(Math.abs(crane.ball.y - -45) < 1e-9 && crane.ball.x === 1000 - 34, 'the ball hangs at chest height in front of the mast');
   assert.deepEqual(makeBuilding('boingBox', 'blue', 500, 1, 1).punch, { phase: 'idle', t: 0, ext: 0, dir: 1 });
   assert.deepEqual(makeBuilding('beanPatch', 'blue', 500, 1, 2).spawn, { next: 1, kids: [] });

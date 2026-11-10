@@ -52,10 +52,10 @@ export const SPELLS = {
   },
   // The newer five (docs/WOBBLE-WAR-CARDS.md section 4)
   bananaPeels: { peels: 5, toss: 0.4, life: 8, uses: 2, maxSlips: 10, trigger: 9, laneTol: 8, damage: 8, feet: 260, head: 180, hipUp: 160, immune: 1.5, kick: 170, heavyMass: 3, skid: 120, skidWobble: 0.4, minAge: 0.4 },
-  bigSneeze: { inhale: 0.4, damage: 20, push: 420, up: 140, falloff: 0.4, stun: 0.3, air: 1.8 },
-  shakenSoda: { fuse: 1.2, damage: 50, lift: 900, side: 80, stun: 0.6, airLiftOff: 0.6, erupt: 0.6 },
+  bigSneeze: { inhale: 0.4, damage: 32, push: 500, up: 140, falloff: 0.4, stun: 0.3, air: 1.8 },
+  shakenSoda: { fuse: 1.2, damage: 65, lift: 900, side: 80, stun: 0.6, airLiftOff: 0.6, erupt: 0.6 },
   anvil: { fall: 0.9, height: 620, damage: 310, shield: 0.4, stun: 1.2, squash: 1.0, carry: 900, liftOff: 1.2, rest: 2.0 },
-  bubbleWrap: { time: 8, absorb: 70, stunMul: 0.5, bounce: 0.6 },
+  bubbleWrap: { time: 8, absorb: 85, stunMul: 0.5, bounce: 0.6 },
 };
 
 /** Card spell names -> entity kinds. */

@@ -355,7 +355,7 @@ export const UNIT_TYPES = {
     shape: 'bean',
     blurb: 'The propeller cap works. Dive-bonks heads.',
     cost: 40,
-    hp: 60,
+    hp: 50, // (one Arrow Rain still takes all three)
     radius: 10.5,
     bodyLen: 18,
     speed: 78,
@@ -368,7 +368,7 @@ export const UNIT_TYPES = {
     flying: { alt: 100, bob: 8 },
     engage: 40, // hovers ~40 px short of its target (along x)...
     reach: 95, // ...and dives from up to 95 px
-    dash: { kind: 'dive', windup: 0.35, climb: 26, speed: 380, time: 0.5, recover: 0.6, cooldown: 0.7, damage: 22, launch: [150, 120], stun: 0.35 },
+    dash: { kind: 'dive', windup: 0.35, climb: 26, speed: 380, time: 0.5, recover: 0.6, cooldown: 0.7, damage: 20, launch: [150, 120], stun: 0.35 },
     poses: {
       rest: { main: [6, -6], off: [-4, -6], ang: 0, lean: 0.1, crouch: 0, wk: 1 },
       windup: { main: [-6, 6], off: [-8, 6], ang: 0, lean: -0.3, crouch: 0, wk: 1 }, // rears up
@@ -408,7 +408,7 @@ export const UNIT_TYPES = {
     shape: 'bean',
     blurb: 'Nets fliers out of the sky.',
     cost: 90,
-    hp: 230,
+    hp: 250,
     radius: 13.5,
     bodyLen: 24,
     speed: 62,
@@ -425,8 +425,8 @@ export const UNIT_TYPES = {
       hold: 0.05,
       strike: 0.14,
       recover: 0.4,
-      cooldown: 0.5,
-      damage: 30,
+      cooldown: 0.35,
+      damage: 42, // (it has to hold its own on the ground: most fights have no fliers in them)
       knock: 160,
       stun: 0.3,
       shieldPierce: 0.45,
@@ -450,7 +450,7 @@ export const UNIT_TYPES = {
     shape: 'bean',
     blurb: 'Lobs bombs at crowds and fliers. Fumbles.',
     cost: 150,
-    hp: 280,
+    hp: 230,
     radius: 13.5,
     bodyLen: 24,
     speed: 55,
@@ -459,8 +459,9 @@ export const UNIT_TYPES = {
     ranged: true,
     hitsAir: true,
     range: [200, 240], // Archers (230-300) outrange it
-    attack: { toss: true, draw: 0.55, recover: 0.45, cooldown: 0.6, maxSpeed: 700, spread: 0.06 }, // (fast enough to lob up at a Pelican at cruise height)
-    bomb: { r: 6, bounce: 0.4, fuse: 0.6, maxAge: 2.5, radius: 65, damage: 60, launch: 380, friendly: 0.2, chain: 0.4, vsGiant: 1.3, vsTower: 0.5 },
+    // (a slow lob: every bomb that lands on a bean floors it, so the rate of fire is what makes it strong)
+    attack: { toss: true, draw: 0.55, recover: 0.45, cooldown: 2.0, maxSpeed: 700, spread: 0.06 }, // (fast enough to lob up at a Pelican at cruise height)
+    bomb: { r: 6, bounce: 0.4, fuse: 0.6, maxAge: 2.5, radius: 65, damage: 40, launch: 380, friendly: 0.2, chain: 0.4, vsGiant: 1.3, vsTower: 0.5 },
     fumble: { onDown: 1, onDeath: 3, every: 4, delay: 0.5, spread: 35 },
     poses: {
       rest: { main: [6, 10], off: [-4, 10], ang: 0, lean: 0, crouch: 0, wk: 1 }, // hands up, juggling
@@ -489,12 +490,12 @@ export const UNIT_TYPES = {
     reach: 44,
     attack: {
       bite: true,
-      windup: 0.55,
+      windup: 0.45,
       hold: 0.12,
       strike: 0.12,
       recover: 0.5,
       cooldown: 0.6,
-      damage: 110,
+      damage: 120,
       vsHeavy: 1.6,
       heavyMass: 2,
       vsTower: 0.5,
@@ -542,14 +543,14 @@ export const UNIT_TYPES = {
     shape: 'bean',
     blurb: 'Keeps the beat. Everyone nearby speeds up.',
     cost: 100,
-    hp: 240,
+    hp: 280,
     radius: 15,
     bodyLen: 26,
     speed: 58,
     mass: 1.0,
     weapon: 'none',
     follow: { behind: 70, home: 80 }, // walks this far behind the push's lead (alone: this far behind its own Guard Tower)
-    beat: { every: 0.5, radius: 150, time: 0.6 }, // the effect (+30%) is BEAT below
+    beat: { every: 0.5, radius: 150, time: 0.6 }, // the effect (+50%) is BEAT below
     poses: {
       rest: { main: [10, 0], off: [8, 2], ang: 0, lean: 0, crouch: 0, wk: 1 },
       beatA: { main: [12, 8], off: [8, -2], ang: 0, lean: 0.05, crouch: 1, wk: 1 }, // left mallet up
@@ -594,7 +595,7 @@ export const UNIT_TYPES = {
     shape: 'jelly',
     blurb: 'Swallows beans, spits them out. Wobbles.',
     cost: 260,
-    hp: 900,
+    hp: 750,
     radius: 28,
     bodyLen: 34,
     speed: 36,
@@ -607,8 +608,8 @@ export const UNIT_TYPES = {
     body: { thigh: 14, shin: 14, upperArm: 9, foreArm: 9, standFrac: 0.9, chestFrac: 0.5 },
     engage: 24,
     reach: 30,
-    engulf: { gap: 20, maxMass: 1.0, hold: 2.2, dps: 30, tick: 0.25, spit: [320, 380], spitStun: 1.0, cooldown: 1.5 },
-    bump: { gap: 22, every: 1.2, damage: 30, knock: 300, stun: 0.5, vsStructure: 40 },
+    engulf: { gap: 20, maxMass: 1.0, hold: 1.6, dps: 30, tick: 0.25, spit: [320, 380], spitStun: 1.0, cooldown: 1.5 },
+    bump: { gap: 22, every: 1.6, damage: 30, knock: 300, stun: 0.5, vsStructure: 40 }, // (every 1.2 s knocked a Nutcracker out of every bite)
     poses: {
       rest: { main: [12, -10], off: [-12, -10], ang: 0, lean: 0, crouch: 0, wk: 1 },
       bump: { main: [16, -12], off: [-8, -12], ang: 0, lean: 0.35, crouch: -3, wk: 1 },
@@ -623,7 +624,7 @@ export const UNIT_ORDER = ['clubber', 'squire', 'archer', 'spiker', 'bomb', 'bri
 export const AIR_MIN = 60;
 
 /** The Tummy Drummer's beat: attack tempo and walking speed while beatT > 0 (never stacks). */
-export const BEAT = { tempo: 1.3, move: 1.3 };
+export const BEAT = { tempo: 1.5, move: 1.5 };
 
 /**
  * Shoves (Big Sneeze, Boing Box, Wrecking Crane, Jelly spit): one that lands

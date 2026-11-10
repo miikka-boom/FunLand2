@@ -418,8 +418,8 @@ test('card details: the newer kinds say what they are and every stat is a real v
   assert.equal(cardKindLine(CARDS.propellerPals), 'Unit card · flies');
   assert.equal(cardKindLine(CARDS.pelican), 'Unit card · flies');
   assert.equal(cardKindLine(CARDS.brollyBrigade), 'Unit card · lands anywhere');
-  assert.equal(cardKindLine(CARDS.boingBox), 'Building · lasts 25 s');
-  assert.equal(cardKindLine(CARDS.wreckingCrane), 'Building · lasts 28 s');
+  assert.equal(cardKindLine(CARDS.boingBox), 'Building · lasts 28 s');
+  assert.equal(cardKindLine(CARDS.wreckingCrane), 'Building · lasts 32 s');
   assert.equal(cardKindLine(CARDS.anvil), 'Spell · cast anywhere');
   assert.equal(cardKindLine(CARDS.clubbers), 'Unit card · 2 beans');
   const targets = (id) => cardStats(id, 1).find((r) => r.label === 'Targets').value;
@@ -430,13 +430,13 @@ test('card details: the newer kinds say what they are and every stat is a real v
   for (const id of ['clubbers', 'propellerPals', 'pelican', 'bigJelly', 'boingBox', 'boulder']) assert.equal(targets(id), 'Ground', id);
   assert.equal(targets('bubbleWrap'), 'Your own beans');
   const row = (id, label) => cardStats(id, 1).find((r) => r.label === label);
-  assert.equal(row('boingBox', 'Lifetime').value, '25 s');
+  assert.equal(row('boingBox', 'Lifetime').value, '28 s');
   assert.equal(row('beanPatch', 'Lifetime').value, '24 s');
   assert.ok(/Sprout/.test(row('beanPatch', 'Spawns').value));
   assert.ok(/flies/.test(row('propellerPals', 'Speed').value));
   assert.ok(/anywhere/.test(row('brollyBrigade', 'Units').value));
-  assert.equal(row('bombJuggler', 'Bomb damage').value, 60);
-  assert.equal(row('wreckingCrane', 'Health').next, Math.round(700 * 1.1));
+  assert.equal(row('bombJuggler', 'Bomb damage').value, 40);
+  assert.equal(row('wreckingCrane', 'Health').next, Math.round(850 * 1.1));
   for (const id of CARD_ORDER) {
     for (const lv of [1, 5, MAX_LEVEL]) {
       const rows = cardStats(id, lv);

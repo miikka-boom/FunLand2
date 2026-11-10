@@ -41,13 +41,13 @@ const BALL_ITEM = { mass: 3, bounce: 0.2, friction: 0.03, life: 6 }; // the ball
 export const BUILDINGS = {
   boingBox: {
     name: 'Boing Box',
-    hp: 320,
+    hp: 380,
     w: 46,
     h: 46,
-    life: 25,
+    life: 28,
     arm: 1.0,
     // A boxing glove on a spring: reach (px from the face), band (px around the glove's height)
-    punch: { reach: 90, band: 34, windup: 0.2, out: 0.08, hold: 0.06, back: 0.5, recharge: 1.0, damage: 40, launch: [380, 300], stun: 0.6, flip: 150, maxHits: 2 },
+    punch: { reach: 90, band: 34, windup: 0.2, out: 0.08, hold: 0.06, back: 0.5, recharge: 1.0, damage: 50, launch: [380, 300], stun: 0.6, flip: 150, maxHits: 2 },
   },
   beanPatch: {
     name: 'Bean Patch',
@@ -57,17 +57,17 @@ export const BUILDINGS = {
     life: 24,
     arm: 1.0,
     // A Sprout pops out every `every` s while fewer than `max` of its own are alive
-    spawn: { unit: 'sprout', every: 3.4, max: 3, vx: [120, 200], vy: [300, 380], deployT: 0.6 },
+    spawn: { unit: 'sprout', every: 3.0, max: 3, vx: [120, 200], vy: [300, 380], deployT: 0.6 },
   },
   wreckingCrane: {
     name: 'Wrecking Crane',
-    hp: 700,
+    hp: 850,
     w: 36,
     h: 170,
-    life: 28,
+    life: 32,
     arm: 1.0,
     // A 1-DOF pendulum hanging from the jib: pumped while enemies are near, it golf-swings them away
-    pendulum: { pivotUp: 170, pivotFwd: 34, L: 125, r: 20, sense: 190, pump: 9, maxAng: 1.2, damp: 0.4, minHit: 260, damage: 60, vRef: 430, dmgRange: [0.6, 1.25], up: 320, carry: 1.1, stun: 1.0, hitLoss: 0.75 },
+    pendulum: { pivotUp: 170, pivotFwd: 34, L: 125, r: 20, sense: 190, pump: 9, maxAng: 1.2, damp: 0.4, minHit: 260, damage: 75, vRef: 430, dmgRange: [0.6, 1.25], up: 320, carry: 1.1, stun: 1.0, hitLoss: 0.85 },
   },
 };
 

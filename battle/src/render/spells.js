@@ -1602,6 +1602,37 @@ function peelIcons(ctx, x, R, ok, t) {
 }
 
 /**
+ * The Anvil's aim: its circle is small at phone zoom, so a see-through anvil
+ * hangs over it with a dashed drop line running down to the ring.
+ */
+function anvilMark(ctx, x, ok, t) {
+  const y = GROUND - 150 - Math.sin(t * 3) * 4;
+  ctx.save();
+  ctx.globalAlpha = ok ? 0.8 : 0.45;
+  ctx.strokeStyle = ok ? '#ffffff' : NO;
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([8, 8]);
+  ctx.lineDashOffset = -t * 30;
+  ctx.beginPath();
+  ctx.moveTo(x, y + 22);
+  ctx.lineTo(x, GROUND - 8);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = ok ? 0.6 : 0.3;
+  drawAnvilShape(ctx, x, y, 1.1, 1);
+  ctx.restore();
+}
+
+/** Shaken Soda's aim: the see-through bottle that will stand in the middle. */
+function sodaMark(ctx, x, ok, t) {
+  ctx.save();
+  ctx.globalAlpha = ok ? 0.6 : 0.3;
+  drawSodaBottle(ctx, x, GROUND - 1, 0.9, 0.35, t, true);
+  ctx.restore();
+}
+
+/**
  * See-through beans showing where a unit card will land: the card's formation
  * (mirrored for red, like Match.deploy), each bean settled once and cached.
  * Spell cards draw the spell circle instead.
@@ -1651,6 +1682,8 @@ export class DeployGhosts {
     if (card.kind === 'spell') {
       drawSpellAim(ctx, x, card.radius, team, ok, t);
       if (card.spell === 'bananaPeels') peelIcons(ctx, x, num(card.radius, 90), ok, t);
+      else if (card.spell === 'anvil') anvilMark(ctx, x, ok, t);
+      else if (card.spell === 'shakenSoda') sodaMark(ctx, x, ok, t);
       return;
     }
     if (card.kind === 'building') {

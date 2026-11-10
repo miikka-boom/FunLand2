@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Battle, DT, canTarget } from '../battle/src/sim/battle.js';
-import { UNIT_TYPES, AIR_MIN, SHOVE, MAX_JBOMBS } from '../battle/src/sim/unit-types.js';
+import { UNIT_TYPES, AIR_MIN, SHOVE, MAX_JBOMBS, BEAT } from '../battle/src/sim/unit-types.js';
 import { Unit } from '../battle/src/sim/unit.js';
 import { segSeg } from '../battle/src/sim/physics.js';
 import { SPELLS, castSpell } from '../battle/src/sim/spells.js';
@@ -119,7 +119,7 @@ test('Bubble Wrap: absorbs damage first (wrapPop), halves stun, no fall damage, 
   assert.equal(u.hp, u.maxHp, 'no fall damage');
   // More damage than is left: the rest goes through, the wrap pops
   u.takeHit(b, { damage: 60, dvx: 0, dvy: 0, x: u.chest.x, y: u.chest.y, stun: 0, kind: 'test' });
-  assert.equal(u.hp, u.maxHp - 20);
+  assert.equal(u.hp, u.maxHp - (30 + 60 - W.absorb));
   const end = run(b, 0.1).filter((e) => e.type === 'wrapEnd');
   assert.equal(end.length, 1);
   assert.equal(end[0].popped, true);
@@ -401,17 +401,18 @@ test('net: the air payload: damage, lift off and yanked down, net-immune for a w
 
 test('bite: the Nutcracker crunches a Brick for x1.6, goes straight through a Squire shield, and half on a tower', () => {
   const A = UNIT_TYPES.nutcracker.attack;
-  const bite = (foe, foeX = 700) => {
+  const bite = (foe, foeX = 700, hp = 0) => {
     const b = arena(18, { towers: false });
     const n = b.addUnit('nutcracker', 'blue', 600, 0.5);
     const f = dummy(b, foe, 'red', foeX);
+    if (hp) f.hp = f.maxHp = hp; // (lives through every bite)
     const hits = run(b, 4).filter((e) => e.type === 'hit' && e.from === n);
     return { f, hits };
   };
   const brick = bite('brick');
   assert.ok(brick.hits.length >= 1 && brick.hits.every((e) => e.kind === 'bite'));
   assert.ok(Math.abs(brick.f.maxHp - brick.f.hp - A.damage * A.vsHeavy * brick.hits.length) < 1e-6, 'x1.6 on a heavy');
-  const sq = bite('squire');
+  const sq = bite('squire', 700, 1e4);
   assert.equal(sq.f.f, -1, 'the squire faces the nutcracker, shield up front');
   assert.ok(sq.hits.length >= 1);
   assert.ok(Math.abs(sq.f.maxHp - sq.f.hp - A.damage * sq.hits.length) < 1e-6, 'full damage through the shield');
@@ -952,7 +953,7 @@ test('Big Jelly: a Big Sneeze makes it let go of its catch, and it cools down be
   const j = b.addUnit('jelly', 'blue', 600, 0.5);
   const c = dummy(b, 'clubber', 'red', 660);
   const E = UNIT_TYPES.jelly.engulf;
-  run(b, 1.5);
+  run(b, 0.6); // (it swallows at once; the Sneeze has to land inside the hold)
   assert.ok(c.held && j.holding === c, 'swallowed');
   castSpell(b, CARDS.bigSneeze, 'red', j.hip.x, 1);
   let out = null;
@@ -1085,17 +1086,17 @@ function swingCycle(offsets) {
   return { acts, beatT: c.beatT, ds };
 }
 
-test('Drummer: a Clubber inside 150 px swings x1.3 faster (and walks x1.3 faster); outside, no change; two never stack', () => {
+test('Drummer: a Clubber inside 150 px swings faster on the beat (BEAT.tempo) and walks faster (BEAT.move); outside, no change; two never stack', () => {
   const plain = swingCycle([]);
   const one = swingCycle([60]);
   const two = swingCycle([60, 80]);
   const far = swingCycle([200]);
   const avg = (a) => a.slice(1).reduce((s, x) => s + x, 0) / (a.length - 1);
   assert.ok(plain.acts.length >= 4 && one.acts.length >= 4);
-  assert.ok(Math.abs(avg(one.acts) - avg(plain.acts) / 1.3) < 0.02, `cycle ${avg(one.acts).toFixed(3)} vs ${avg(plain.acts).toFixed(3)} / 1.3`);
+  assert.ok(Math.abs(avg(one.acts) - avg(plain.acts) / BEAT.tempo) < 0.02, `cycle ${avg(one.acts).toFixed(3)} vs ${avg(plain.acts).toFixed(3)} / ${BEAT.tempo}`);
   assert.deepEqual(two.acts.slice(1), one.acts.slice(1), 'two Drummers: the same beat');
   assert.deepEqual(far.acts, plain.acts, 'out of range: no beat');
-  // Walking: on the beat for 1.5 s it covers x1.3 the ground
+  // Walking: on the beat for 1.5 s it covers BEAT.move times the ground
   const walk = (beat) => {
     const b = arena(58);
     const c = b.addUnit('clubber', 'blue', 450, 0.5, 99);
@@ -1107,7 +1108,7 @@ test('Drummer: a Clubber inside 150 px swings x1.3 faster (and walks x1.3 faster
     return c.hip.x - x0;
   };
   const r = walk(true) / walk(false);
-  assert.ok(Math.abs(r - 1.3) < 0.08, `walked x${r.toFixed(2)}`);
+  assert.ok(Math.abs(r - BEAT.move) < 0.08, `walked x${r.toFixed(2)}`);
 });
 
 test('Drummer: follows behind the friend furthest forward, never attacks, beats every 0.5 s; alone it waits behind its own Guard Tower', () => {
@@ -1160,8 +1161,8 @@ test('tempo: the beat speeds windups, swings and cooldowns, never a fuse, a dive
     return (u.act ? u.act[field] - t0 : NaN) / DT;
   };
   const near = (a, x) => Math.abs(a - x) < 1e-9;
-  assert.ok(near(rate(c, { phase: 'windup', t: 0, variant: 0, hits: new Set(), done: false }), 1.3), 'windup x1.3');
-  assert.ok(near(rate(s, { phase: 'windup', t: 0, variant: 0, hits: new Set(), done: false }), 1.3), 'dash windup x1.3');
+  assert.ok(near(rate(c, { phase: 'windup', t: 0, variant: 0, hits: new Set(), done: false }), BEAT.tempo), 'windup on the beat');
+  assert.ok(near(rate(s, { phase: 'windup', t: 0, variant: 0, hits: new Set(), done: false }), BEAT.tempo), 'dash windup on the beat');
   assert.ok(near(rate(s, { phase: 'dash', t: 0, variant: 0, hits: new Set(), done: false }), 1), 'the flight keeps its pace');
   assert.ok(near(rate(bomb, { phase: 'fuse', t: 0, variant: 0, hits: new Set(), done: false }), 1), 'a fuse burns at its own pace');
   c.act = null;
@@ -1171,7 +1172,7 @@ test('tempo: the beat speeds windups, swings and cooldowns, never a fuse, a dive
   c.control(DT, b);
   k.control(DT, b);
   k.post(DT, b);
-  assert.ok(near((1 - c.cooldown) / DT, 1.3), 'cooldown x1.3');
+  assert.ok(near((1 - c.cooldown) / DT, BEAT.tempo), 'cooldown on the beat');
   assert.ok(near((1 - k.downT) / DT, 1) && near((1 - k.deployT) / DT, 1), 'down and deploy time: x1');
   // Off the beat everything is x1 exactly (golden replays rely on it)
   c.beatT = 0;
