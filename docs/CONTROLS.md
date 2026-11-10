@@ -1,8 +1,8 @@
 # Twin-stick touch controls (Prototype 0)
 
 This is the control scheme for the horde game (We Left Ben), with the default
-values and the reasons behind them. The game is seen from an isometric angle;
-[what that means for the sticks](#sticks-in-the-isometric-view) is below.
+values and the reasons behind them. The world is 3D;
+[what the camera means for the sticks](#sticks-and-the-camera) is below.
 Every number here can be changed live in the in-game tuning panel (sliders
 button, top right). To lock in a different feel, tune it on a phone, press
 **Copy tuning JSON**, and update the defaults in `src/settings.js`.
@@ -31,39 +31,41 @@ button, top right). To lock in a different feel, tune it on a phone, press
 - Faint "ghost" sticks show where thumbs usually rest (and where fixed sticks
   sit). Their labels fade out after about 15 seconds of play.
 
-## Sticks in the isometric view
+## Sticks and the camera
 
-The world is 3D and the camera looks at it from the south-west, tilted 35°
-(true isometric). The map's own axes run diagonally across the screen, so:
+The world is 3D. Out of the box the camera looks north from high up (75°
+above the horizon), so the streets run along the screen, left-right and
+up-down. The other 3D camera is the isometric one: the map turned 45°, seen
+from the south-west. Either way:
 
-- **A stick is a direction on the screen, not on the map.** Push up and you
-  run up the screen (north-east on the map); push right and you run right.
+- **A stick is a direction on the screen.** Push up and you run up the
+  screen; push right and you run right. With the streets along the screen
+  that is north and east on the map; in the isometric view up is north-east.
   The aim stick works the same way: the laser leaves your gun at the angle
   your thumb makes on the glass. `src/iso.js` (`dirToWorld`) turns a screen
   direction into the heading on the ground that looks the same.
 - **Speed is the same over the ground in every direction.** Up and down the
-  screen the ground is foreshortened, so you cover fewer pixels there for the
-  same run speed, and guns reach further in pixels sideways than up. The
-  camera's look-ahead makes up for it: it leads by the same distance on
-  screen whichever way you aim.
+  screen the ground is foreshortened (hardly at 75°, by more than half in
+  the isometric view at 25°), so you cover fewer pixels there for the same
+  run speed, and guns reach further in pixels sideways than up. The camera's
+  look-ahead makes up for it: it leads by the same distance on screen
+  whichever way you aim.
 - **The mouse** (desktop) aims at the spot under the cursor at gun height, so
   the laser runs through the cursor rather than through the ground behind it.
-- **What you can't see, you're told:** a wall or building between the camera
-  and you fades out; a zombie in your line of sight that the camera can't
-  see shows through as a red outline.
-- **Streets along the screen** (a switch, off by default) takes the 45° turn
-  out: the map's axes are the screen's again, so up on the stick is north,
-  as in the top-down view, but the world keeps its height. The camera then
-  looks north, so you see roofs and south-facing walls; walls that run up
-  the screen are seen along their length. It gets its own, steeper tilt:
-  from 35° a wall hides most of a doorway in it.
+- **What the camera can't see, you're told:** a wall or building between the
+  camera and you fades out; a zombie the camera can't see (one you can, when
+  line-of-sight shadows are on) shows through as a red outline.
+- **Streets along the screen** looks north, so you see roofs and
+  south-facing walls; walls that run up the screen are seen along their
+  length. It needs a steep tilt: from 35° a wall hides most of a doorway in
+  it.
 
 | Setting | Default | Why |
 |---|---|---|
-| View | **Isometric 3D** | *Top-down* shows the same world from straight above (sticks are then map directions again): the baseline to compare the feel against. |
-| Streets along the screen | off | The 3D view without its 45° turn: streets run left-right and up-down, and sticks are map directions. Costs the west-facing walls: only south faces show. |
-| Isometric tilt | 35° | True isometric. Lower is more cinematic and hides more behind buildings; higher is closer to the old overhead view. |
-| Tilt with streets along the screen | 55° | Steep enough that a doorway in a wall running up the screen stays open to the eye (the wall's top hides 31 u of a 72-86 u doorway; at 35° it would hide 63 u). |
+| View | **3D** | *Top-down* shows the same world from straight above, flat: the baseline to compare the feel against. |
+| Streets along the screen | **on** | The 3D view without a 45° turn: streets run left-right and up-down, and sticks are map directions. Costs the west-facing walls: only south faces show. Off: the isometric view. |
+| Tilt with streets along the screen | 75° | Nearly overhead: the ground is hardly squeezed, and a wall hides only 12 u of the 72-86 u doorway in it (at 35° it would hide 63 u). The top of the slider. |
+| Isometric tilt | 25° | For the isometric view (the switch off). Low and cinematic; buildings hide a lot behind them. 35° is true isometric; higher is closer to the overhead view. The bottom of the slider. |
 
 ## Left stick: move
 
@@ -116,6 +118,9 @@ The knob turns orange while firing, and the fire ring brightens.
   finger.
 
 ## Special infected: stress tests for the controls
+
+The Hunter and the Tank are off by default (**Hunter + Tank** under
+**Specials**).
 
 ### Hunter: shove timing
 
@@ -463,9 +468,10 @@ What a map gets:
 
 - The view size is **470 units across the short screen axis** on every
   device, so the field of view feels the same on phones and tablets. That is
-  exact in the top-down view; the isometric view is drawn about 18% larger
-  (the tilt squeezes the ground up and down the screen, so it still shows
-  more of it that way, and bodies stay readable).
+  exact in the top-down view; a tilted view is drawn larger the lower the
+  camera (1% at 75°, 18% at true isometric, 24% at 25°), because the tilt
+  squeezes the ground up and down the screen: it still shows more of it that
+  way, and bodies stay readable.
 - Look-ahead is 20% of the view: full while firing, 70% while aiming and 45%
   while just moving. You see more of where you're shooting. The lead is the
   same distance on screen whichever way you aim.

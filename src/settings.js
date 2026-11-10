@@ -43,10 +43,10 @@ export const DEFAULTS = Object.freeze({
   shoveButton: true,
 
   // --- Camera -------------------------------------------------------------
-  camera: 'iso', // 'iso' (3D, isometric angle) | 'top' (the same 3D world seen straight from above)
-  cameraAligned: false, // the 3D view without its 45° turn: streets run along the screen, only south walls face you
-  cameraTilt: 35, // degrees above the horizon in the isometric view (35 = true isometric)
-  cameraAlignedTilt: 55, // ...and with the streets along the screen: steeper, so a wall doesn't hide the doorway in it
+  camera: 'iso', // 'iso' (3D) | 'top' (the same 3D world seen straight from above)
+  cameraAligned: true, // 3D without the 45° turn: streets run along the screen, only south walls face you (off: isometric)
+  cameraTilt: 25, // degrees above the horizon in the isometric view (35 = true isometric)
+  cameraAlignedTilt: 75, // ...and with the streets along the screen: steep, so a wall doesn't hide the doorway in it
   viewSize: 470, // world units visible across the short screen axis
   lookAhead: 0.2, // fraction of view size the camera leads toward the aim
   cameraStiffness: 8,
@@ -65,7 +65,7 @@ export const DEFAULTS = Object.freeze({
   wanderers: 1.0,
 
   // --- Special infected ---------------------------------------------------
-  specials: true, // Hunter + Tank
+  specials: false, // Hunter + Tank (opt-in)
   hunterBreakTaps: 5, // taps to break a Hunter pin
   deadstopWindow: 0.18, // seconds a shove stays live for knocking a pouncing Hunter down
   tankHealth: 1.0,
@@ -80,7 +80,7 @@ export const DEFAULTS = Object.freeze({
   // --- Presentation -------------------------------------------------------
   night: true,
   darkness: 0.8,
-  los: true,
+  los: false, // line-of-sight shadows: what's behind a building stays hidden until you round the corner
   threatIndicators: true,
   haptics: 'light', // 'off' | 'light' | 'full'
   volume: 0.8,
@@ -180,7 +180,7 @@ export const SCHEMA = [
         label: 'View',
         type: 'select',
         options: [
-          ['iso', 'Isometric 3D'],
+          ['iso', '3D'],
           ['top', 'Top-down – straight from above'],
         ],
       },
@@ -319,7 +319,7 @@ function pickControlDefaults() {
 // stored every value; there, a value equal to a default that has changed
 // since is dropped, so the new default applies (the teammate used to be on).
 const SAVE_FORMAT = 2;
-const CHANGED_DEFAULTS = { ally: true };
+const CHANGED_DEFAULTS = { ally: true, specials: true, los: true };
 
 /** Saved JSON -> the values to apply over the defaults. */
 export function parseSaved(saved) {

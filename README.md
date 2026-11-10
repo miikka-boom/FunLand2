@@ -5,7 +5,7 @@ build step and no dependencies.
 
 | Prototype | Folder | What it's testing |
 |---|---|---|
-| 0: HORDE | [`/`](index.html) | Twin-stick touch controls for zombie horde survival, in isometric 3D |
+| 0: HORDE | [`/`](index.html) | Twin-stick touch controls for zombie horde survival, in 3D |
 | 1: WOBBLE WAR | [`battle/`](battle/) | A real-time card battler with funny, satisfying 2D physics units and a fair free-to-play meta game |
 | Thrill Hill | [`thrill/`](thrill) | A Clash-Royale-inspired metagame: two static chests, a theme-park base, randomly generated survivors, a squad of three, three-crown raids |
 | Hope Street | [`hope/`](hope) | A metagame with base building and randomly generated people: take them in, pick a crew of four for each run |
@@ -260,7 +260,7 @@ still wins 94-100%. Every card's win rate sits between about 42% and 61%.
 
 # Prototype 0: "WE LEFT BEN"
 
-An isometric 3D zombie horde survival game for mobile browsers, going for a
+A 3D zombie horde survival game for mobile browsers, going for a
 Left 4 Dead feel. **Prototype 0** is about nailing down the **twin-stick touch
 controls** and how fighting a horde feels in single player. (It was called
 HORDE until it got its name and logo, and it was flat and seen from straight
@@ -277,7 +277,7 @@ and no dependencies.
 
 ## What's in it
 
-- **A world in 3D, seen from an isometric angle.** Buildings have facades,
+- **A world in 3D.** Buildings have facades,
   windows and parapet roofs, warehouses have pitched roofs, cars have cabins
   and wheels, the office floor is furnished down to the monitors, containers
   are stacked two high, the ferry has decks; survivors and the infected are
@@ -287,36 +287,44 @@ and no dependencies.
     limb is a round-capped line and every painted surface (the graffiti, a
     poster on a wall, the words on a roof) is an affine transform away.
     [`src/iso.js`](src/iso.js) is the whole camera.
-  - **The way to go is up the screen.** The camera sits to the south-west and
-    looks north-east: on Streets and Pier 9 the goal is up and a little to
-    the right, in the Building the corridors run up to the right. You see the
-    west and south faces of everything.
+  - **Two 3D cameras.** Out of the box the streets run along the screen:
+    the camera looks north from high up (75° above the horizon), up on the
+    stick is north, and you see roofs and the fronts of south-facing walls.
+    On Streets and Pier 9 the goal is to the right and up; in the Building
+    it is straight to the right. Switch **Streets along the screen** off
+    (under Camera) for the isometric view: the map turned 45°, seen from the
+    south-west and from low down (25°), with the west and south faces of
+    everything showing.
   - **Nothing hides you:** whatever stands between the camera and you fades
     out while you're behind it. A zombie you could see from above but the
-    camera can't (it's round the back of a building, in your line of sight)
-    shows through as a red outline, so the view never costs you information
-    the flat one gave. Your teammate shows through in green.
+    camera can't (it's round the back of a building) shows through as a red
+    outline, so the view never costs you information the flat one gave. With
+    line-of-sight shadows on, only the ones in your own sight do. Your
+    teammate shows through in green.
   - **Night works in 3D:** the same lights fall on the ground and on
     whatever stands on it. Walls are lit along their length by your
-    flashlight, bodies by the light at their feet; out of your line of sight
-    they aren't drawn at all, and they fade in as they round a corner.
-  - **Camera** in the tuning panel: **View** switches between *Isometric 3D*
-    and *Top-down* (the same world seen from straight above, for comparing
-    how the controls feel), **Isometric tilt** goes from 25° (low, cinematic)
-    to 70° (nearly overhead); 35° is true isometric.
-  - **Streets along the screen** (a switch under Camera, off by default)
-    takes the 45° turn out of the 3D view: streets run left-right and
-    up-down, the sticks are map directions, and the camera looks north from
-    a steeper angle (55°, its own slider). The price: only walls that face
-    south show their fronts. A wall that runs up the screen is seen along
-    its length, so a boarded door in one is marked as on a floor plan (the
-    dark of the doorway with the planks across, where the door is on the
-    ground). The top-down view marks them the same way.
+    flashlight, bodies by the light at their feet. With **Line-of-sight
+    shadows** on (under Presentation, off by default) bodies out of your
+    sight aren't drawn at all, and fade in as they round a corner.
+  - **Camera** in the tuning panel: **View** switches between *3D* and
+    *Top-down* (the same world seen from straight above, flat, for comparing
+    how the controls feel).
+  - **Streets along the screen** (a switch under Camera, on by default)
+    is the 3D view without a 45° turn: streets run left-right and up-down,
+    the sticks are map directions, and the camera looks north. Its tilt has
+    its own slider (30° to 75°; 75° by default, nearly overhead). The price:
+    only walls that face south show their fronts. A wall that runs up the
+    screen is seen along its length, so a boarded door in one is marked as
+    on a floor plan (the dark of the doorway with the planks across, where
+    the door is on the ground). The top-down view marks them the same way.
+  - With the switch off you get the isometric view. **Isometric tilt** goes
+    from 25° (low, cinematic: the default) to 70° (nearly overhead); 35° is
+    true isometric.
 - **Twin virtual sticks**: the left thumb moves and the right thumb aims.
   Push past the dashed fire ring to shoot; tap the aim side to **shove**.
-  Sticks are screen directions: push up and you run up the screen, whatever
-  that is on the map. The full spec and the reasoning are in
-  [docs/CONTROLS.md](docs/CONTROLS.md).
+  Sticks are screen directions: push up and you run up the screen (north,
+  with the camera as it comes; north-east in the isometric view). The full
+  spec and the reasoning are in [docs/CONTROLS.md](docs/CONTROLS.md).
 - **Live feel tuning**: the sliders button (top right) pauses the game and
   opens every feel parameter: stick modes and size, dead zones, fire ring, aim
   assist, smoothing, camera, speed, horde size and so on. There are presets
@@ -491,7 +499,8 @@ and no dependencies.
 - **Common infected** that shamble, notice you, sprint in packs, path around
   buildings with a flow field, crowd you and claw. Getting hit slows you down,
   and under 40 HP you limp.
-- **Special infected**:
+- **Special infected** (the Hunter and the Tank are off by default: **Hunter +
+  Tank** under **Specials**):
   - The **Hunter** tests shove timing. It screeches, then pounces: shove it
     out of the air (deadstop), shoot it mid-air (skeet), or get pinned and
     tap to break free.
@@ -516,9 +525,10 @@ and no dependencies.
 - **Four guns** to compare feel: SMG, assault rifle (pierces 2), pump shotgun
   (loads shell by shell; firing interrupts the reload) and hunting rifle
   (pierces lines of zombies). Reloading is automatic when empty.
-- **Night**: a flashlight cone, street lamps, burning wrecks and
-  line-of-sight shadows, so zombies behind buildings stay hidden until you
-  round the corner. You can turn it off in the panel.
+- **Night**: a flashlight cone, street lamps and burning wrecks. You can
+  turn it off in the panel. **Line-of-sight shadows** (under Presentation,
+  off by default) keep zombies behind buildings hidden until you round the
+  corner.
 - **Feedback**: synthesized sound (no audio files), haptics on Android, blood
   decals that stay, casings, tracers, screen shake and recoil, off-screen
   threat arrows.

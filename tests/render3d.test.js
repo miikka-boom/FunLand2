@@ -111,7 +111,7 @@ for (const camera of Object.keys(CAMERAS)) {
   for (const level of ['city', 'interior', 'docks']) {
     test(`${level}, ${camera} camera: the run draws from start to goal with everything switched on`, () => {
       bad = null;
-      const { game, renderer, step, frame } = setup({ level, ...CAMERAS[camera], holdout: true, routes: true, landmarks: true, ally: true, nightTerror: true });
+      const { game, renderer, step, frame } = setup({ level, ...CAMERAS[camera], los: true, holdout: true, routes: true, landmarks: true, ally: true, nightTerror: true });
       assert.equal(game.view.flat, camera === 'top');
       assert.equal(game.view.yaw === 0, camera !== 'iso');
       const map = game.world.map;
@@ -214,8 +214,9 @@ test('Pier 9 finale: the flare, the ferry coming in, the gangway (every camera)'
 
 test('the camera can be changed mid-run: tilt, aligned with the streets, straight down, and back', () => {
   bad = null;
-  const { game, renderer, settings, step } = setup({ level: 'city' });
+  const { game, renderer, settings, step } = setup({ level: 'city', cameraAligned: false, cameraTilt: 35 });
   step(2);
+  assert.ok(Math.abs(game.view.yaw - Math.PI / 4) < 1e-9, 'isometric: turned 45°');
   const ranks = renderer.scene.statics.map((o) => o._r3.rank);
   for (const tilt of [25, 35, 50, 70]) {
     settings.cameraTilt = tilt;
@@ -269,6 +270,27 @@ test('aligned camera: sticks are map directions, and the mouse still aims at gun
   assert.ok(Math.abs(Math.atan2(Math.sin(p.fireAngle), Math.cos(p.fireAngle))) < 0.05, `facing ${p.fireAngle}`);
 });
 
+test('out of the box: streets along the screen from a steep angle, everything in sight drawn', () => {
+  bad = null;
+  const { game, renderer, step } = setup({ level: 'city', wanderers: 0 });
+  step(2);
+  const v = game.view;
+  assert.equal(v.yaw, 0, 'no 45° turn');
+  assert.ok(Math.abs(v.pitch - (75 * Math.PI) / 180) < 1e-9, '75° above the horizon');
+  assert.equal(v.flat, false, 'steep, but walls still have height');
+  // No line-of-sight shadows: a body behind a building is drawn (the camera sees over it or outlines it).
+  game.zombies.length = 0;
+  const p = game.player;
+  const room = game.world.map.startRoom.outer;
+  const z = new Zombie(room.x + room.w / 2, room.y - 60, false);
+  z.state = 'idle';
+  game.zombies.push(z);
+  assert.equal(game.world.segmentClear(p.x, p.y, z.x, z.y), false, 'out of the survivor\'s sight');
+  step(1);
+  assert.ok(renderer.list.some((it) => it.o === z), 'drawn all the same');
+  assert.equal(bad, null, `drawn with a bad number: ${bad}`);
+});
+
 test('boarded doorways the camera cannot look into are marked in plan, where the door is', () => {
   // A boarded room behind a tall wall: the wall goes on over the door (a lintel).
   const marked = (over) => {
@@ -292,7 +314,7 @@ test('boarded doorways the camera cannot look into are marked in plan, where the
     return { game, renderer, step, lintels, seen };
   };
   // Isometric: every doorway shows on a wall that faces the camera (or its inside does).
-  const iso = marked({});
+  const iso = marked({ cameraAligned: false });
   assert.equal(iso.seen.size, 0);
   // Aligned with the streets: doors in walls that run up the screen are edge-on.
   const al = marked({ cameraAligned: true });
@@ -323,7 +345,7 @@ test('boarded doorways the camera cannot look into are marked in plan, where the
 });
 
 test('line of sight: bodies behind a building are left out, and fade in rather than pop', () => {
-  const { game, renderer, step } = setup({ level: 'city', wanderers: 0, specials: false });
+  const { game, renderer, step } = setup({ level: 'city', wanderers: 0, specials: false, los: true });
   step(2);
   game.zombies.length = 0;
   const p = game.player;

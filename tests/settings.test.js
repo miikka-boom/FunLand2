@@ -24,6 +24,40 @@ test('old full saves: the old teammate default gives way to the new one, real ch
   assert.equal(parseSaved({ _v: 2, ally: true }).ally, true);
 });
 
+test('the view out of the box: streets along the screen, steep; specials and line-of-sight shadows are opt-in', () => {
+  assert.equal(DEFAULTS.camera, 'iso', 'the 3D view');
+  assert.equal(DEFAULTS.cameraAligned, true);
+  assert.equal(DEFAULTS.cameraAlignedTilt, 75);
+  assert.equal(DEFAULTS.cameraTilt, 25, 'the isometric view, when you switch to it, is a low one');
+  assert.equal(DEFAULTS.specials, false);
+  assert.equal(DEFAULTS.los, false);
+  assert.equal(DEFAULTS.night, true, 'still night, with the flashlight');
+  // Each has its control in the panel, and the defaults sit inside the sliders' ranges.
+  const items = SCHEMA.flatMap((g) => g.items);
+  for (const k of ['camera', 'cameraAligned', 'cameraTilt', 'cameraAlignedTilt', 'specials', 'los']) assert.ok(items.some((i) => i.key === k), `${k} in the panel`);
+  for (const k of ['cameraTilt', 'cameraAlignedTilt']) {
+    const it = items.find((i) => i.key === k);
+    assert.ok(DEFAULTS[k] >= it.min && DEFAULTS[k] <= it.max, `${k} within ${it.min}..${it.max}`);
+  }
+});
+
+test('old full saves: the old Hunter + Tank and line-of-sight defaults give way too; what you turn on sticks', () => {
+  // Format 1 stored every value: specials:true and los:true there are just the defaults of the day.
+  const old = { ...DEFAULTS, specials: true, los: true, viewSize: 520 };
+  const s = { ...DEFAULTS, ...parseSaved(old) };
+  assert.equal(s.specials, false);
+  assert.equal(s.los, false);
+  assert.equal(s.viewSize, 520);
+  // Chosen since (the new format saves only what differs from the defaults): kept.
+  const mine = JSON.parse(serializeSettings({ ...DEFAULTS, specials: true, los: true, cameraAligned: false, cameraTilt: 35 }));
+  assert.deepEqual(mine, { _v: 2, cameraAligned: false, cameraTilt: 35, specials: true, los: true });
+  assert.deepEqual(parseSaved(mine), { cameraAligned: false, cameraTilt: 35, specials: true, los: true });
+  // A save that spells out today's defaults (tuned on a phone before they became the defaults) loads as nothing to change.
+  const tuned = { _v: 2, cameraAligned: true, cameraTilt: 25, cameraAlignedTilt: 75, specials: false, los: false };
+  assert.deepEqual({ ...DEFAULTS, ...parseSaved(tuned) }, { ...DEFAULTS });
+  assert.deepEqual(JSON.parse(serializeSettings({ ...DEFAULTS, ...parseSaved(tuned) })), { _v: 2 });
+});
+
 test('bad saves are ignored key by key', () => {
   assert.deepEqual(parseSaved(null), {});
   assert.deepEqual(parseSaved('nope'), {});
