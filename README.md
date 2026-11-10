@@ -94,15 +94,15 @@ rainbow sheen and a crown on the frame). Each arena unlocks its own cards.
 | Shaken Soda | 3 | Epic | Boom Ridge | Spell: fizzes for 1.2 s, then a geyser shoots everything on top straight up |
 | Bomb Juggler | 5 | Legendary | Boom Ridge | Juggles three lit bombs and lobs them at crowds and fliers; knock it over and it drops them |
 | Boing Box | 3 | Common | Brick Fortress | Building: a present with a boxing glove on a spring that punches beans away |
-| Bean Patch | 4 | Rare | Brick Fortress | Building: Sprouts keep popping out of it (three at a time at most) |
+| Bean Patch | 3 | Rare | Brick Fortress | Building: Sprouts keep popping out of it (three at a time at most) |
 | Anvil | 4 | Rare | Brick Fortress | Spell: CLANG. One big hit straight down, at any height: squashes a big bean, drops a flier |
 | Nutcracker | 4 | Epic | Brick Fortress | One big CRUNCH at a time: its bite cracks shields, Bricks and big beans |
 | Wrecking Crane | 6 | Legendary | Brick Fortress | Building: a wrecking ball that swings harder as beans come near and sends them FAR |
 | Brolly Brigade | 4 | Rare | Wobble Summit | Three beans float down under umbrellas anywhere on the field (towers can shoot them on the way) |
 | Bubble Wrap | 3 | Epic | Wobble Summit | Spell on your own beans: wraps them for 8 s, every hit just pops bubbles |
-| Tummy Drummer | 4 | Epic | Wobble Summit | BOOM-BOOM: friends nearby march and swing faster to its beat |
+| Tummy Drummer | 3 | Epic | Wobble Summit | BOOM-BOOM: friends nearby march and swing 50% faster to its beat |
 | Pelican | 5 | Legendary | Wobble Summit | Flies high, scoops up a light bean, carries it home and drops it from way up |
-| Big Jelly | 6 | Legendary | Wobble Summit | A huge wobbly tank that swallows a small bean whole, then spits it out |
+| Big Jelly | 7 | Legendary | Wobble Summit | A huge wobbly tank that swallows a small bean whole, then spits it out |
 
 The eight Green Hills cards of the first 14 are your starting deck. Every
 number lives in `battle/src/sim/cards.js` (cards), `sim/unit-types.js` (units),
@@ -116,14 +116,21 @@ that reach it. Once it is knocked, netted or diving low, anyone can bat it out
 of the sky. Every arena has an air answer, and fliers never fight fliers.
 
 **Buildings.** The Boing Box, the Bean Patch and the Wrecking Crane go up on
-your own half (never past it, even after their Guard Tower falls), fall in as a
-crate, work for 24-28 s while their health slowly runs down (a little clock on
-the health bar), then fall apart. They are walls to enemy beans, beans that see
-no enemy go for them like towers, and towers never shoot them. At most 3 stand
-per side (a 4th crumbles your oldest), and they never give crowns.
+your own half (never past it, even after their Guard Tower falls; a spot too
+close to a tower or another building slides up to 80 px to a legal one), fall
+in as a crate, start working a second after they are placed, and last 24–36 s
+(Bean Patch 24 s, Boing Box 28 s, Wrecking Crane 36 s) while their health
+slowly runs down (a little clock on the health bar), then fall apart. They are
+walls to enemy beans, beans that see no enemy go for them like towers, and
+towers never shoot them. Wood, not stone: blasts, quakes and spells hurt them
+three quarters (towers take half). At most 3 stand per side (a 4th crumbles
+your oldest), they never give crowns, and they stop when the match ends.
 
 **Deploy-anywhere.** The Brolly Brigade can be played anywhere between the two
-Castles; its beans float down for about 2.7 s while the towers shoot at them.
+Castles (x 40–1460); next to a tower, a building or a Castle the three slide
+over together, keeping their spacing, until every one is clear. They float
+down for about 2.7 s while the towers shoot at them; a hit turns an umbrella
+inside out and that bean drops.
 
 ## A fair free-to-play game
 
@@ -160,9 +167,12 @@ Wobble War is a free game of the good kind: no money anywhere in power.
   Trail** (rewards up to 1750 trophies, claimable forever by your best
   trophies) hands each new card out soon after its gate, with enough copies
   to bring it to about level 4 (4 copies of a Legendary).
-- **Legendaries** (one per arena from Boom Ridge on) come from the Trail, the
-  Big Chest's 5% roll and, on some days, the shop's third offer. Matchmaking
-  mirrors your card levels, so a low-level legendary is never a pay-to-win gap.
+- **Legendaries** (four: the Bomb Juggler from Boom Ridge, the Wrecking Crane
+  from Brick Fortress, the Pelican and the Big Jelly from Wobble Summit) come
+  from the Trail (4 copies each), the Big Chest's 5% roll (one copy, once one
+  is unlocked) and, on 8% of days, the shop's third offer (1500 gold).
+  Matchmaking mirrors your card levels, so a low-level legendary is never a
+  pay-to-win gap.
 - **Honest opponents:** bots with names like Captain Bonk, labelled "computer
   player". Their card levels mirror your deck card by card (never above any
   of yours), capped at the level usual for your trophies, so upgrading past
@@ -175,7 +185,8 @@ Wobble War is a free game of the good kind: no money anywhere in power.
   colours for Jellybeans, with a live preview. Hats use their own random
   numbers, so they never change how a battle goes.
 - **Badges:** goals such as Frequent Flyer, Pincushion, Chain Reaction and
-  Giant Slayer, paying Jellybeans and some gold.
+  Giant Slayer, plus five for the newer cards (Slip 'n' Slide, Home Run, Air
+  Mail, Jelly Belly, Crane Game), paying Jellybeans and some gold.
 - **Old saves:** a save from the earlier campaign version keeps its
   Jellybeans, cosmetics, settings, stats and badges, and gets a veteran gift of
   20 gold per campaign star (up to 2000).
@@ -288,7 +299,9 @@ battle/tools/balance-arena.mjs   the balance tool (below)
 
 The simulation and the meta game have no DOM code and replay identically from
 the same seed, so they are tested headless in `tests/battle-*.test.js` (sim,
-physics, arena rules, bot, meta, render smoke test, PWA). In the browser,
+physics, arena rules, golden replays that keep the 14 original cards
+bit-identical, the newer units, buildings and spells, bot, meta, render smoke
+tests, PWA, and the CPU budget). In the browser,
 `window.__wobble` exposes the game: `step(n)` fast-forwards the running match,
 `go('match' | 'sandbox' | 'hub')`, `play(i, x)` plays hand card `i` at world x.
 
@@ -297,28 +310,38 @@ physics, arena rules, bot, meta, render smoke test, PWA). In the browser,
 `node battle/tools/balance-arena.mjs` plays seeded bot-vs-bot matches and
 prints tables: side symmetry and match shape (how matches end, towers
 destroyed), skill against skill, a level up against none, every card's win rate
-in random decks (all 32 cards; every random deck holds at least one air
-answer), the archetype decks against the starter deck (the four classic ones
-and the five of the newer cards: Hop Cycle, Fizz Pop, Fortress, Sky Circus,
-Jelly Parade), and a scripted new player against the Training Dummy, plus the
-CPU each match costs. `--n 24` for a bigger sample (about 5 minutes),
-`--only cards,mirror` for some sections, `--seed S`, `--skill K`,
-`--json FILE`, and `--set GUARD.hp=600,CARDS.brick.mana=6` to try numbers
-before changing them in the files (`WORLD.pocket.blue=1150`,
-`BUILDINGS.boingBox.punch.recharge=2.2` and `UNIT_TYPES.pogo.hop.vx=150` work
-too). `--only perf` runs the scripted worst cases for CPU (Bean Patches,
-a Big Jelly push against a Wrecking Crane, a sky full of fliers) against a busy
-match of the original cards; `tests/battle-perf.test.js` checks the same
-budget.
+in random decks (all 32 cards, with a rarity letter and a `*` on the 18
+newer ones; a random deck holds 1–3 spells and draws buildings with the units,
+and holds at least one air answer: without one, a random card of the same kind
+is swapped for one), every opponent style against the starter deck (the five
+classic ones, Bonk Rush, Siege, Big Boom, Turtle and Swarm, and the five of
+the newer cards, Hop Cycle, Fizz Pop, Fortress, Sky Circus and Jelly Parade,
+read from `meta/opponents.js`, as is the air-answer list from
+`meta/collection.js`: the tool keeps no copies), and a scripted new player
+against the Training Dummy, plus the CPU each match costs. `--n 24` for a
+bigger sample (about 5 minutes), `--only cards,mirror` for some sections,
+`--seed S`, `--skill K`, `--json FILE`, and
+`--set GUARD.hp=600,CARDS.brick.mana=6` to try numbers before changing them in
+the files (`WORLD.pocket.blue=1150`, `BUILDINGS.boingBox.punch.recharge=2.2`,
+`BUILDING_TAKES.spell=0.6`, `BEAT.tempo=1.4` and `UNIT_TYPES.pogo.hop.vx=150`
+work too). `--only perf` (`npm run battle:perf`) runs the scripted worst cases
+for CPU (Bean Patches, a Big Jelly push against a Wrecking Crane, a sky full of
+fliers; each mirrored on both sides on a timer, with 20× tower health so the
+fight never stops) against a busy match of the original cards and prints the
+CPU-s of each simulated minute; `tests/battle-perf.test.js` checks the same
+budget relative to the machine.
 
-With today's numbers (`--n 8`, seed 1), equal-skill matches end by a castle
-falling in about a quarter of cases and go to the tiebreak in about a fifth
-(they used to be about half tiebreaks and no castles at all), a 0.6 bot takes
-the castle of a 0.3 bot in about a third of matches, the scripted new player
-takes the Training Dummy's practice castle almost every time, and one level up
-still wins 94-100%. Every card's win rate sat between about 42% and 61% with
-the 14 original cards; the 32-card numbers are being tuned against the targets
-in `docs/WOBBLE-WAR-CARDS.md` section 10.
+With the shipped numbers (two `--n 40` card tables pooled, 960 matches),
+equal-skill matches with random 32-card decks end by a castle falling in 23%
+of cases and go to the tiebreak in 20%, one level up still wins 91–93%, and
+the scripted new player beats the Training Dummy 99% of the time. Each newer
+card's win rate with it against without is 42–56% (the four Legendaries
+47–55%), and each original card's 40–59%, except Archers at 64% (they hit
+fliers now). The five newer opponent styles average 46–54% against the other
+ten decks (the five classic ones 38–60%), though a few single matchups are
+still above 65%. A match costs about 0.22 CPU-s per simulated minute, and the
+busiest minute of the worst case about 1.6. The targets and the full tables
+are in `docs/WOBBLE-WAR-CARDS.md` sections 10 and 13.
 
 # Prototype 0: "HORDE"
 
