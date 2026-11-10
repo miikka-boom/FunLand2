@@ -11,9 +11,10 @@
 // The profile is mutated in place by the meta modules; every change here is
 // followed by persist().
 
-import { h, icon, coin, bean, fmt, fmtShort, fmtTime, clamp, canvas, cardCanvas, cardW, rewardView, ARENAS, CARDS } from './hub-kit.js';
+import { h, icon, coin, bean, fmt, fmtShort, fmtTime, clamp, canvas, cardCanvas, cardW, rewardView, tickSheens, ARENAS, CARDS } from './hub-kit.js';
+import { BUILDINGS } from '../sim/buildings.js';
 import { drawChest } from '../render/chests.js';
-import { chestState, readyChests } from '../meta/chests.js';
+import { CHESTS, chestState, readyChests } from '../meta/chests.js';
 import { arenaProgress, arenaIndex, claimableTrail } from '../meta/ladder.js';
 import { kingInfo, upgradableCount } from '../meta/collection.js';
 import { claimableBadges } from '../meta/badges.js';
@@ -171,6 +172,8 @@ export function createHub(deps) {
       refreshChrome();
       renderTutorial();
       if (ui.later.length) setTimeout(runLater, 200);
+      // (a tip queued by what was just collected: the first flier, building or legendary)
+      else if (P.notices && P.notices.length && !ui.noticeOpen) setTimeout(showNotices, 250);
     }
   }
   /** Run fn now if no modal is up, else once they have all closed. */
@@ -500,11 +503,12 @@ export function createHub(deps) {
 
   // --- notices, rewards, celebrations -----------------------------------------------------------
   function showNotices() {
-    if (ui.noticeOpen || !ui.open) return;
+    if (ui.noticeOpen || !ui.open || ui.stack.length) return;
     const n = P.notices && P.notices[0];
     if (!n) return;
     let modal;
-    if (n.kind === 'veteran') {
+    if (n.kind === 'first' && CARDS[n.card]) modal = firstTip(n);
+    else if (n.kind === 'veteran') {
       const gold = Number(n.gold) || 0;
       const num = h('b', {}, '0');
       modal = cardModal({
@@ -539,9 +543,42 @@ export function createHub(deps) {
     });
   }
 
+  /**
+   * The one-time tip for a first flier, building or legendary (a 'first'
+   * notice from grant()): the card and a few friendly lines about it.
+   */
+  function firstTip(n) {
+    const card = CARDS[n.card];
+    const what = Array.isArray(n.what) ? n.what : [];
+    const legChance = Math.round(CHESTS.big.legendary * 100);
+    const lines = {
+      legendary: `${card.name} is a Legendary: the rarest kind of card, in a shining teal frame. It levels up with only a few copies. Big Chests have a ${legChance}% chance of one, and some days the shop has one too.`,
+      building: `${card.name} is a building. Play it on your side of the field: it stays put, works for ${BUILDINGS[card.building] ? BUILDINGS[card.building].life : 25} seconds, then falls apart. Enemy beans stop to bash it, and losing it never costs a crown.`,
+      flier: `${card.name} ${card.count > 1 ? 'fly' : 'flies'}! Up there only Archers, Arrow Rain, towers and a few other cards can hit ${card.count > 1 ? 'them' : 'it'}: clubs and swords swing right under. Keep an air answer in your deck too, for the enemy's fliers.`,
+    };
+    const order = ['legendary', 'building', 'flier'].filter((k) => what.includes(k));
+    const kicker = { legendary: 'YOUR FIRST LEGENDARY!', building: 'YOUR FIRST BUILDING!', flier: 'YOUR FIRST FLIER!' }[order[0]] || 'NEW CARD';
+    const w = cardW(0.3, 80, 130);
+    setTimeout(() => ui.open && sfx('cardReveal', { rarity: card.rarity }), 120);
+    return cardModal({
+      kicker,
+      body: [
+        h(
+          'div',
+          { class: `hb-first r-${card.rarity}` },
+          h('div', { class: 'hb-first-art' }, h('span', { class: 'hb-rays' }), cardCanvas(n.card, w, { name: true, level: 1 })),
+          h('div', { class: 'hb-first-txt' }, h('h3', {}, card.name), ...order.map((k) => h('p', {}, lines[k]))),
+        ),
+      ],
+      buttons: [btn('Got it!', () => closeTop(), 'primary big', null)],
+      cls: 'hb-notice hb-first-card',
+    });
+  }
+
   /** A modal listing a grant() summary (free gift, Trail rewards). */
   function showRewards(kicker, g, { title = 'You got', after } = {}) {
-    const best = (g.cards || []).reduce((r, c) => (c.rarity === 'epic' || (c.rarity === 'rare' && r !== 'epic') ? c.rarity : r), 'common');
+    const RANK = { common: 0, rare: 1, epic: 2, legendary: 3 };
+    const best = (g.cards || []).reduce((r, c) => ((RANK[c.rarity] || 0) > RANK[r] ? c.rarity : r), 'common');
     const modal = cardModal({ kicker, title, body: [rewardView(g)], buttons: [btn('Collect', () => closeTop(), 'primary big', null)], cls: 'hb-reward-modal' });
     openModal(modal, {
       onClose() {
@@ -588,13 +625,28 @@ export function createHub(deps) {
     refreshChrome();
   }
 
+  /** A line for the arena celebration when arena i unlocks a Legendary. */
+  function legendNote(i, ids) {
+    const legs = (ids || []).filter((id) => CARDS[id] && CARDS[id].rarity === 'legendary').map((id) => CARDS[id].name);
+    if (!legs.length) return null;
+    const first = !Object.values(CARDS).some((c) => c.rarity === 'legendary' && c.arena < i);
+    const names = legs.length > 1 ? `${legs.slice(0, -1).join(', ')} and ${legs[legs.length - 1]}` : legs[0];
+    return h(
+      'p',
+      { class: 'hb-cel-leg' },
+      h('b', {}, legs.length > 1 ? 'Legendaries! ' : 'A Legendary! '),
+      first ? `${names}: in Big Chests (${Math.round(CHESTS.big.legendary * 100)}%) and the shop some days.` : `${names} join the Big Chests and the shop.`,
+    );
+  }
+
   function celebrateArena(i, newCards) {
     const ar = ARENAS[i];
     if (!ar) return;
     sfx('trophyUp');
     haptic(40);
     const row = h('div', { class: 'hb-cel-cards' });
-    const w = cardW(0.2, 52, 96);
+    // (five or six new cards take a smaller size, so the buttons stay on screen)
+    const w = (newCards || []).length > 4 ? cardW(0.16, 48, 84) : cardW(0.2, 52, 96);
     (newCards || []).forEach((id, k) => {
       if (!CARDS[id]) return;
       const t = h('div', { class: `hb-cel-card r-${CARDS[id].rarity}`, style: `animation-delay:${0.55 + k * 0.28}s` }, cardCanvas(id, w, { mini: true }), h('b', {}, CARDS[id].name));
@@ -610,11 +662,12 @@ export function createHub(deps) {
       confetti,
       h(
         'div',
-        { class: 'hb-cel', style: `--arena:${ar.color}` },
+        { class: 'hb-cel' + ((newCards || []).length > 4 ? ' many' : ''), style: `--arena:${ar.color}` },
         h('div', { class: 'hb-kicker light' }, 'NEW ARENA UNLOCKED!'),
         h('div', { class: 'hb-cel-banner' }, h('small', {}, `Arena ${i + 1}`), h('h2', {}, ar.name), h('span', { class: 'hb-cel-tro' }, icon('trophy'), fmt(ar.trophies))),
-        row.childElementCount ? h('p', {}, 'New cards unlocked! They can now drop from chests and the shop, and the Trophy Trail has them waiting for you.') : null,
+        row.childElementCount ? h('p', {}, 'New cards! In chests and the shop now, and on the Trophy Trail.') : null,
         row.childElementCount ? row : null,
+        legendNote(i, newCards),
         h('div', { class: 'hb-row' }, btn('See the Trail', () => (closeTop(), switchTab('trail'))), btn('Awesome!', () => closeTop(), 'primary big', null)),
       ),
     );
@@ -700,6 +753,7 @@ export function createHub(deps) {
       ui.t += dt;
       runTweens(dt);
       opener.update(dt);
+      tickSheens(ui.t);
       const covered = ui.stack.some((m) => m.el && m.el.classList.contains('hb-full'));
       if (ui.tab === 'battle' && !covered) updateChests(dt);
       if (screens[ui.tab].tick && !covered) screens[ui.tab].tick(dt);

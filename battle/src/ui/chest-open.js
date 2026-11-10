@@ -5,9 +5,9 @@
 // app dying mid-show loses nothing. Also the info sheet of a chest that is
 // still refilling (honest contents and odds).
 
-import { h, icon, fmt, fmtTime, clamp, canvas, cardCanvas, amountChip, gainTile, CARDS, RARITIES } from './hub-kit.js';
+import { h, icon, fmt, fmtTime, clamp, canvas, cardCanvas, amountChip, gainTile, CARDS, RARITIES, ARENAS } from './hub-kit.js';
 import { drawChest } from '../render/chests.js';
-import { openChest, chestState, chestOdds } from '../meta/chests.js';
+import { CHESTS, openChest, chestState, chestOdds } from '../meta/chests.js';
 
 const NAMES = { small: 'Small Chest', big: 'Big Chest' };
 const ADVANCE_MS = 330; // a double tap shows the next card, not the one after it
@@ -116,10 +116,11 @@ export function createChestOpener(H) {
     const before = c.isNew ? 0 : c.countBefore;
     const barTxt = h('span', {}, need ? `${fmt(before)} / ${fmt(need)}` : 'Max level');
     fill.style.transform = `scaleX(${need ? clamp(before / need, 0, 1) : 1})`;
+    const leg = c.rarity === 'legendary';
     const info = h(
       'div',
       { class: 'hb-co-info' },
-      h('span', { class: `hb-rarity r-${c.rarity}` }, rar.name),
+      h('span', { class: `hb-rarity r-${c.rarity}` }, leg ? 'Legendary!' : rar.name),
       h('h2', {}, card ? card.name : c.id),
       h('b', { class: 'hb-co-n' }, '×' + fmt(c.n)),
       c.isNew ? h('span', { class: 'hb-new big' }, 'NEW CARD!') : null,
@@ -136,11 +137,13 @@ export function createChestOpener(H) {
     H.pop(S.left);
     S.hint.textContent = leftN > 0 ? 'Tap for the next card' : 'Tap to finish';
     H.sfx('cardReveal', { rarity: c.rarity });
-    if (c.rarity === 'epic') {
-      H.haptic(40);
+    if (c.rarity === 'epic' || leg) {
+      H.haptic(leg ? [40, 60, 90] : 40);
       H.pop(S.el.querySelector('.hb-co-flash'), 'go');
     }
-    S.shake = c.rarity === 'common' ? 0.25 : 0.6;
+    // (a legendary gets the big moment: the chest jumps and the rays turn teal)
+    S.el.classList.toggle('leg', leg);
+    S.shake = c.rarity === 'common' ? 0.25 : leg ? 1 : 0.6;
     // The copies bar fills once the card has landed
     setTimeout(() => {
       if (!r.isConnected) return;
@@ -258,6 +261,12 @@ export function createChestOpener(H) {
     if (o.beans) rows.push(h('li', {}, h('i', { class: 'hb-bean' }), `${fmt(o.beans)} Jellybeans`));
     if (o.pool.rare.length) rows.push(h('li', { class: 'r-rare' }, h('i', { class: 'hb-gem r-rare' }), `Rare stack: ${pct(o.odds.rare)}`));
     if (o.pool.epic.length && o.odds.epic > 0) rows.push(h('li', { class: 'r-epic' }, h('i', { class: 'hb-gem r-epic' }), `Epic stack: ${pct(o.odds.epic)}`));
+    // Legendaries: the real chance once one is unlocked, else when they start
+    const legArena = Math.min(...Object.values(CARDS).filter((c) => c.rarity === 'legendary').map((c) => c.arena));
+    const bigLeg = Math.round(CHESTS.big.legendary * 100);
+    if (o.pool.legendary.length && o.odds.legendary > 0) rows.push(h('li', { class: 'r-legendary' }, h('i', { class: 'hb-gem r-legendary' }), `Legendary: ${pct(o.odds.legendary)} (Big Chest only, 1 copy)`));
+    else if (o.pool.legendary.length) rows.push(h('li', { class: 'r-legendary off' }, h('i', { class: 'hb-gem r-legendary' }), `Legendary: Big Chest only (${bigLeg}%)`));
+    else if (o.legendary > 0 && ARENAS[legArena]) rows.push(h('li', { class: 'r-legendary off' }, h('i', { class: 'hb-gem r-legendary' }), `Legendary: ${bigLeg}% from ${ARENAS[legArena].name} on`));
     const modal = H.cardModal({
       kicker: 'FREE, ALWAYS',
       title: NAMES[kind],

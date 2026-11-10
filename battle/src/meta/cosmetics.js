@@ -6,15 +6,22 @@ import { TEAMS } from '../config.js';
 import { UNIT_IDS, spendBeans } from './profile.js';
 
 // The units that can wear a hat, in wardrobe order (sim/unit-types.js ids).
+// plural: for "Hat for your ..." in the wardrobe.
 export const HAT_UNITS = [
-  { id: 'clubber', name: 'Clubber' },
-  { id: 'squire', name: 'Squire' },
-  { id: 'archer', name: 'Archer' },
-  { id: 'spiker', name: 'Spiker' },
-  { id: 'bomb', name: 'Bomb' },
-  { id: 'brick', name: 'Brick' },
-  { id: 'bruiser', name: 'Bruiser' },
-  { id: 'megabomb', name: 'Mega Bomb' },
+  { id: 'clubber', name: 'Clubber', plural: 'Clubbers' },
+  { id: 'squire', name: 'Squire', plural: 'Squires' },
+  { id: 'archer', name: 'Archer', plural: 'Archers' },
+  { id: 'spiker', name: 'Spiker', plural: 'Spikers' },
+  { id: 'bomb', name: 'Bomb', plural: 'Bombs' },
+  { id: 'brick', name: 'Brick', plural: 'Bricks' },
+  { id: 'bruiser', name: 'Bruiser', plural: 'Bruisers' },
+  { id: 'megabomb', name: 'Mega Bomb', plural: 'Mega Bombs' },
+  { id: 'pogo', name: 'Pogo Bean', plural: 'Pogo Beans' },
+  { id: 'netter', name: 'Butterfly Netter', plural: 'Butterfly Netters' },
+  { id: 'juggler', name: 'Bomb Juggler', plural: 'Bomb Jugglers' },
+  { id: 'brolly', name: 'Brolly', plural: 'Brollies' },
+  { id: 'drummer', name: 'Tummy Drummer', plural: 'Tummy Drummers' },
+  { id: 'jelly', name: 'Big Jelly', plural: 'Big Jellies' },
 ].filter((u) => UNIT_IDS.includes(u.id));
 
 // Every colour stays clearly different from the red enemy.

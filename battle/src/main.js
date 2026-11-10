@@ -9,7 +9,7 @@
 
 import { WORLD, TEAMS, enemyOf } from './config.js';
 import { Battle, DT } from './sim/battle.js';
-import { Match } from './sim/match.js';
+import { Match, ANYWHERE, ANYWHERE_CLEAR } from './sim/match.js';
 import { Bot } from './sim/bot.js';
 import { cardById } from './sim/cards.js';
 import { UNIT_TYPES, UNIT_ORDER } from './sim/unit-types.js';
@@ -19,14 +19,14 @@ import { createBackground } from './render/background.js';
 import { createTowerRenderer } from './render/towers.js';
 import { drawSpellsBack, drawSpells, drawShots, drawZone, DeployGhosts } from './render/spells.js';
 import { cardFace } from './render/cards.js';
-import { Effects } from './render/effects.js';
+import { Effects, fxForEvent } from './render/effects.js';
 import { BattleAudio } from './audio.js';
 import { Input } from './input.js';
 import { loadProfile, saveProfile, newProfile, rngFrom, PROFILE_KEY, PROFILE_VERSION } from './meta/profile.js';
 import { ARENAS, arenaIndex, kingLevelForXp } from './meta/collection.js';
 import { recordMatch, startPending, updatePending, settlePending } from './meta/ladder.js';
 import { readyChests } from './meta/chests.js';
-import { makeOpponent, buildDeck, ARCHETYPES, BOT_NAMES } from './meta/opponents.js';
+import { makeOpponent, buildDeck, BOT_NAMES, archetypesFor } from './meta/opponents.js';
 import { armyPalette } from './meta/cosmetics.js';
 import { HATS } from './render/hats.js';
 import { createHub } from './ui/hub.js';
@@ -315,7 +315,7 @@ function resetFight() {
   game.lastDeath = null;
   game.lastCrowns = { blue: 0, red: 0 };
   game.summary = null;
-  game.track = { explodes: [], chained: false, flew: new WeakSet(), pinned: new WeakSet(), boinged: false, towers: 0, landed: new WeakSet() };
+  game.track = { explodes: [], chained: false, flew: new WeakSet(), pinned: new WeakSet(), homeRun: new WeakSet(), boinged: false, towers: 0, landed: new WeakSet() };
   camera.fast = false;
   acc = 0;
 }
@@ -331,7 +331,7 @@ function startAttract() {
   const arena = clamp(arenaIndex(profile.trophies), 0, ARENAS.length - 1);
   const rng = rngFrom(seed, 'attract');
   const hatIds = HATS.filter((h) => !h.supporter && h.id !== 'none').map((h) => h.id);
-  const side = (hats) => ({ name: rng.pick(BOT_NAMES), deck: buildDeck(arena, rng.pick(Object.keys(ARCHETYPES)), rng), levels: {}, kingLevel: 1, hats });
+  const side = (hats) => ({ name: rng.pick(BOT_NAMES), deck: buildDeck(arena, rng.pick(archetypesFor(arena)), rng), levels: {}, kingLevel: 1, hats });
   const theme = rng.pick(hatIds);
   const m = new Match({ seed, blue: side({ ...profile.equipped.hats }), red: side(Object.fromEntries(UNIT_ORDER.map((u) => [u, rng.chance(0.6) ? theme : 'none']))) });
   game.match = m;
@@ -890,7 +890,11 @@ const aim = {
   dragCard: $('drag-card'),
   trayRect: null,
 
-  /** Can hand card i be played at world x? { id, card, x (snapped), ok, why, inZone, missing } */
+  /**
+   * Can hand card i be played at world x? { id, card, x (snapped), ok, why, inZone, missing }.
+   * Unit cards drop in the unit zone, buildings go up in your own half (never the pocket),
+   * deploy-anywhere cards float down anywhere in ANYWHERE, spells go anywhere.
+   */
   check(i, wx) {
     const m = game.match;
     const side = m.sides.blue;
@@ -900,12 +904,13 @@ const aim = {
     if (!card || !Number.isFinite(wx)) return { id, card, x: wx, ok: false, why: card ? 'zone' : 'card', inZone: false, missing };
     let x = wx;
     let inZone = true;
-    if (card.kind === 'unit') {
-      const [z0, z1] = m.zone('blue');
+    if ((card.kind === 'unit' && !card.anywhere) || card.kind === 'building') {
+      const [z0, z1] = card.kind === 'building' ? m.buildZone('blue') : m.zone('blue');
       if (x < z0 && x > z0 - ZONE_SNAP) x = z0 + 1;
       if (x > z1 && x < z1 + ZONE_SNAP) x = z1 - 1;
       inZone = x >= z0 && x <= z1;
-    } else x = clamp(x, 0, WORLD.width);
+    } else if (card.anywhere) x = clamp(x, ANYWHERE[0], ANYWHERE[1]);
+    else x = clamp(x, 0, WORLD.width);
     const why = m.canPlay('blue', i, x);
     return { id, card, x, ok: why === '', why, inZone, missing };
   },
@@ -913,8 +918,10 @@ const aim = {
   /** Why a check failed, in words ('' if it didn't). */
   reason(c) {
     if (!c.card) return '';
-    if (!c.inZone) return 'Play units on your side';
+    const building = c.card.kind === 'building';
+    if (!c.inZone) return building ? 'Build on your side' : 'Play units on your side';
     if (c.why === 'mana') return `Not enough mana: need ${Math.ceil(c.missing - 1e-6)} more 💧`;
+    if (building && c.why === 'zone') return 'No room to build here';
     return '';
   },
 
@@ -980,8 +987,8 @@ const aim = {
         const c = this.check(i, NaN);
         const r = hand.slots[i].btn.getBoundingClientRect();
         if (c.card && game.match.sides.blue.mana < c.card.mana) tip.show(`Need ${Math.ceil(c.missing - 1e-6)} more 💧`, r.left + r.width / 2, r.top - 34, true, 1.2);
-        // (a unit card lights up its zone; a spell has none to show, so say where it goes)
-        else if (c.card && c.card.kind === 'spell') tip.show('Tap the field to cast it', r.left + r.width / 2, r.top - 34, false, 1.4);
+        // (a unit card lights up its zone; the others say where they go)
+        else if (c.card && selectTip(c.card)) tip.show(selectTip(c.card), r.left + r.width / 2, r.top - 34, false, 1.4);
       }
       return;
     }
@@ -1091,7 +1098,31 @@ const aim = {
   },
 };
 
-/** World-space aiming UI: the playable zone lights up, ghost beans or the spell circle follow the finger. */
+/** What a tapped card says about where it goes ('' for plain unit cards: their zone lights up). */
+function selectTip(card) {
+  if (card.kind === 'spell') return card.spell === 'bubbleWrap' ? 'Tap your own beans to wrap them' : 'Tap the field to cast it';
+  if (card.kind === 'building') return 'Tap your side to build it';
+  if (card.anywhere) return 'Tap anywhere: they float down';
+  return '';
+}
+
+/** [x0, x1] where a deploy-anywhere card's beans can come down (clear of both Castles). */
+function anywhereZone(m) {
+  let [x0, x1] = ANYWHERE;
+  for (const t of m.battle.towers) {
+    if (t.kind !== 'castle') continue;
+    const edge = t.x + t.f * (t.w / 2 + ANYWHERE_CLEAR);
+    if (t.f > 0) x0 = Math.max(x0, edge);
+    else x1 = Math.min(x1, edge);
+  }
+  return [x0, x1];
+}
+
+/**
+ * World-space aiming UI: where the card may go lights up (the unit zone, your half for a
+ * building, the whole field for a deploy-anywhere card), and the ghost beans, the building's
+ * footprint, the drop markers or the spell circle follow the finger.
+ */
 function drawAim() {
   if (!canAct()) return;
   const m = game.match;
@@ -1105,18 +1136,27 @@ function drawAim() {
   // A mouse hovering the field with a card picked previews it too (touch has no hover)
   const hover = !aim.on && game.hover ? camera.toWorld(game.hover.sx, game.hover.sy)[0] : NaN;
   const aiming = (aim.on && aim.over) || Number.isFinite(hover);
-  if (card.kind === 'unit') {
-    const zoom = camera.zoom;
-    drawZone(ctx, z0, z1, true, { team: 'blue', color: pal('blue').body, t, zoom, strength: aiming ? 1 : 0.85 });
+  const zoom = camera.zoom;
+  const color = pal('blue').body;
+  if (card.anywhere) {
+    const [a0, a1] = anywhereZone(m);
+    drawZone(ctx, a0, a1, true, { team: 'blue', color, t, zoom, strength: aiming ? 0.7 : 0.55 });
+  } else if (card.kind === 'unit' || card.kind === 'building') {
+    // (a building goes up in your own half only, even once the enemy Guard Tower is down)
+    const [b0, b1] = card.kind === 'building' ? m.buildZone('blue') : [z0, z1];
+    drawZone(ctx, b0, b1, true, { team: 'blue', color, t, zoom, strength: aiming ? 1 : 0.85 });
     if (aiming) {
-      if (z0 > 0) drawZone(ctx, 0, z0, false, { t, zoom, strength: 0.5 });
-      drawZone(ctx, z1, WORLD.width, false, { t, zoom, strength: 0.75 });
+      if (b0 > 0) drawZone(ctx, 0, b0, false, { t, zoom, strength: 0.5 });
+      drawZone(ctx, b1, WORLD.width, false, { t, zoom, strength: 0.75 });
     }
   }
   if (!aiming) return;
   const c = aim.check(i, aim.on ? aim.wx : hover);
   if (aim.on && aim.lift && !c.ok) return; // (just lifted out of the hand: no red ghost yet)
-  ghosts.draw(ctx, id, c.x, 'blue', { ok: c.ok, t, zone: c.inZone ? [z0, z1] : null, hats: profile.equipped.hats, level: m.sides.blue.levels[id] });
+  // Where it really lands: a building's fitted spot ([] = no room), deploy-anywhere beans nudged
+  // off towers; plain unit beans only once inside the zone (outside, the red ghost stays at the finger)
+  const xs = card.kind === 'building' || card.anywhere || (card.kind === 'unit' && c.inZone) ? m.formation('blue', id, c.x) : undefined;
+  ghosts.draw(ctx, id, c.x, 'blue', { ok: c.ok, t, zone: c.inZone ? [z0, z1] : null, hats: profile.equipped.hats, level: m.sides.blue.levels[id], zoom, xs });
 }
 
 // --- match end and the result screen --------------------------------------------------
@@ -1480,7 +1520,7 @@ function newSandboxBattle() {
   game.erase = false;
   game.finalVictim = null;
   game.lastDeath = null;
-  game.track = { explodes: [], chained: false, flew: new WeakSet(), pinned: new WeakSet(), boinged: false, towers: 0, landed: new WeakSet() };
+  game.track = { explodes: [], chained: false, flew: new WeakSet(), pinned: new WeakSet(), homeRun: new WeakSet(), boinged: false, towers: 0, landed: new WeakSet() };
   camera.fast = false;
   unitsGfx.trails.clear();
   game.battle.hats.blue = { ...profile.equipped.hats };
@@ -2016,7 +2056,8 @@ window.addEventListener('keydown', (e) => {
   }
   if (game.mode !== 'sandbox' || game.paused) return;
   const b = game.battle;
-  if (k >= '1' && k <= String(UNIT_ORDER.length)) {
+  // (digits 1-9 pick the first nine units; a string compare against '18' would drop 2-9)
+  if (/^[1-9]$/.test(k) && +k <= UNIT_ORDER.length) {
     game.selected = UNIT_ORDER[+k - 1];
     game.erase = false;
     ui.refresh();
@@ -2087,6 +2128,17 @@ window.addEventListener('storage', (e) => {
 const BONK_WORDS = ['BONK!', 'POW!', 'WHAM!', 'THWACK!', 'BOINK!'];
 const SPIKE_WORDS = ['POKE!', 'YOINK!', 'BOING!', 'ZING!'];
 const TOWER_WORDS = ['CRUNCH!', 'KRAK!', 'THUD!', 'CRACK!'];
+// The newer cards' heavy hits play like a bonk (sound, dirt, shake, hit-stop on a kill), each
+// with its own sound and words
+const HEAVY_HITS = {
+  dive: { sound: 'bonk', words: ['BONK!', 'ZOOM!', 'POW!'] },
+  peck: { sound: 'bonk', words: ['PECK!', 'YOINK!', 'BONK!'] },
+  bite: { sound: 'crunch', words: ['CRUNCH!', 'CHOMP!', 'KRAK!'] },
+  punch: { sound: 'bonk', words: ['BOING!', 'POW!', 'KA-POW!'] },
+  crane: { sound: 'bonk', words: ['WHAM!', 'KA-BLAM!', 'WHUMP!'] },
+  stomp: { sound: 'bonk', words: ['STOMP!', 'BOINK!'] },
+};
+const TOWER_HIT_WORDS = new Set(['club', 'hammer', 'blast', 'bite', 'pogo']);
 let wordI = 0;
 
 function panOf(sx) {
@@ -2132,6 +2184,7 @@ function track(e) {
       break;
     case 'explode': {
       if (e.team === 'blue') S.booms++;
+      if (e.small) break; // (a Juggler bomb: three in one second are its everyday juggling, not a chain)
       const t = game.battle.time;
       T.explodes = T.explodes.filter((x) => t - x < 1);
       T.explodes.push(t);
@@ -2154,8 +2207,37 @@ function track(e) {
         T.pinned.add(u);
         S.pincushions++;
       }
+      // A red flier batted out of the sky by a club (once per flier)
+      if (e.kind === 'bonk' && u && u.team === 'red' && u.type && u.type.flying && !T.homeRun.has(u)) {
+        T.homeRun.add(u);
+        count('homeRuns');
+      }
+      // The Wrecking Crane's launches
+      if (e.kind === 'crane' && u && u.team === 'red' && e.from && e.from.team === 'blue') count('craneLaunches');
+      break;
+    // The newer cards' badge counters (meta/badges.js reads them from profile.stats)
+    case 'slip':
+      if (u && u.team === 'red') count('slips');
+      break;
+    case 'netted':
+      if (u && u.team === 'red' && !T.homeRun.has(u)) {
+        T.homeRun.add(u);
+        count('homeRuns');
+      }
+      break;
+    case 'pelicanDrop':
+      if (u && u.team === 'blue') count('airMail');
+      break;
+    case 'spit':
+      if (u && u.team === 'blue') count('jellySpits');
       break;
   }
+}
+
+/** +1 on a profile stat (one the meta game may not list yet: cleanStats keeps any number). */
+function count(k) {
+  const S = profile.stats;
+  S[k] = (Number.isFinite(S[k]) ? S[k] : 0) + 1;
 }
 
 /** Enemies launched higher than a castle count as Frequent Flyers. */
@@ -2201,13 +2283,20 @@ function handleEvents() {
   const match = game.mode === 'match';
   for (const e of b.events) {
     if (match) track(e);
+    // The newer cards' effects (render/effects.js): true when it drew this event (a new event,
+    // a hit of a new kind, a hit on a building or a small blast), so the old effect is skipped
+    const drawn = fxForEvent(fx, e, pal);
     switch (e.type) {
       case 'hit': {
         const p = e.power;
-        if (e.kind === 'bonk' || e.kind === 'spike') {
-          fx.spawn('impact', { x: e.x, y: e.y, power: p, dirX: e.dirX, dirY: e.dirY, kind: 'bonk' });
-          if (e.unit) fx.spawn('dirt', { x: e.unit.hip.x, y: e.unit.ground, power: p, dirX: e.dirX });
-          sfx('bonk', soundOpts(e, { power: p }));
+        const heavy = HEAVY_HITS[e.kind];
+        if (e.kind === 'bonk' || e.kind === 'spike' || heavy) {
+          if (!drawn) {
+            fx.spawn('impact', { x: e.x, y: e.y, power: p, dirX: e.dirX, dirY: e.dirY, kind: 'bonk' });
+            if (e.unit) fx.spawn('dirt', { x: e.unit.hip.x, y: e.unit.ground, power: p, dirX: e.dirX });
+          }
+          sfx(heavy ? heavy.sound : 'bonk', soundOpts(e, { power: p }));
+          if (e.kind === 'crane' && p >= 1) sfx('clank', soundOpts(e, { power: 0.6 }));
           shake((0.18 + p * 0.25) * (match ? 0.6 : 1));
           // Hit-stop for bonks that matter (kills, or near the middle of the screen); back off in mobs
           const now = game.realTime;
@@ -2222,7 +2311,13 @@ function handleEvents() {
             game.hitstopCool = match ? 1.2 : game.bonkTimes.length > 2 ? 0.6 : 0.28;
             buzz(p >= 1 ? 14 : 8);
           }
-          if (e.killed || p >= 1.05) word(e.x, e.y - 26, e.kind === 'spike' ? SPIKE_WORDS : BONK_WORDS, '#ffe14d', 20 + p * 6);
+          if (e.killed || p >= 1.05) word(e.x, e.y - 26, heavy ? heavy.words : e.kind === 'spike' ? SPIKE_WORDS : BONK_WORDS, '#ffe14d', 20 + p * 6);
+        } else if (e.kind === 'net') {
+          sfx('netSwish', soundOpts(e, { power: p }));
+          shake(0.05);
+        } else if (e.kind === 'bump') {
+          sfx('bloop', soundOpts(e, { power: 0.5 }));
+          shake(0.08);
         } else if (e.kind === 'slash') {
           fx.spawn('impact', { x: e.x, y: e.y, power: p, dirX: e.dirX, dirY: e.dirY, kind: 'slash' });
           sfx('slash', soundOpts(e, { power: p }));
@@ -2300,6 +2395,12 @@ function handleEvents() {
         shake(0.15);
         break;
       case 'explode': {
+        if (e.small) {
+          // A Juggler bomb (drawn by fxForEvent): a small pop, no hit-stop, no word
+          sfx('boom', soundOpts(e, { power: 0.4 }));
+          shake(0.18);
+          break;
+        }
         fx.spawn('explosion', { x: e.x, y: e.y, power: e.power || 1 });
         // The bomb's googly eyes go flying
         for (const s of [-1, 1]) fx.spawn('eyeball', { x: e.x + s * 4, y: e.y - 4, vx: s * (120 + Math.abs(Math.sin(e.x)) * 160), vy: -380 - Math.abs(Math.cos(e.x)) * 180, size: 5.5 });
@@ -2333,12 +2434,19 @@ function handleEvents() {
       // --- arena -------------------------------------------------------------------
       case 'cardPlayed': {
         const c = cardById(e.card);
-        if (c && c.kind === 'unit') sfx('deploy', soundOpts(e, { power: clamp((c.count || 1) * 0.3 + c.mana * 0.1, 0.4, 1.3) }));
+        if (!c || c.kind !== 'unit') break; // (buildings: buildingPlaced; spells: spellCast)
+        if (c.anywhere) sfx('umbrella', soundOpts(e)); // (they float down: no drop and plop)
+        else if (c.flying) sfx(c.unit === 'pelican' ? 'squawk' : 'whirr', soundOpts(e));
+        else sfx('deploy', soundOpts(e, { power: clamp((c.count || 1) * 0.3 + c.mana * 0.1, 0.4, 1.3) }));
         break;
       }
       case 'spellCast':
-        if (e.spell === 'boulder') sfx('boulderFall', soundOpts(e));
+        if (e.spell === 'boulder' || e.spell === 'anvil') sfx('boulderFall', soundOpts(e));
         else if (e.spell === 'wheel') sfx('wheel', soundOpts(e));
+        else if (e.spell === 'peels') sfx('whoosh', soundOpts(e, { power: 0.6 }));
+        else if (e.spell === 'sneeze') sfx('inhale', soundOpts(e));
+        else if (e.spell === 'soda') sfx('fizz', soundOpts(e));
+        else if (e.spell === 'wrap') sfx('wrapOn', soundOpts(e));
         break;
       case 'rainVolley':
         sfx('rainVolley', soundOpts(e));
@@ -2365,13 +2473,19 @@ function handleEvents() {
         break;
       case 'towerHit': {
         const p = e.power ?? 0.5;
-        const from = e.from;
-        const fromX = from && from.hip ? from.hip.x : from && Number.isFinite(from.x) ? from.x : e.x;
-        const dirX = Math.sign(e.tower.x - fromX) || (e.tower.team === 'blue' ? -1 : 1);
-        fx.spawn('towerHit', { x: e.x, y: e.y, power: p, dirX, kind: e.kind });
-        sfx('towerHit', soundOpts(e, { power: p }));
-        shake(0.06 + p * 0.12);
-        if (p >= 0.8 && (e.kind === 'club' || e.kind === 'hammer' || e.kind === 'blast')) word(e.x, e.y - 30, TOWER_WORDS, '#ffd27a', 22 + p * 6, 1.2);
+        const tw = e.tower;
+        if (!drawn) {
+          const from = e.from;
+          const fromX = from && from.hip ? from.hip.x : from && Number.isFinite(from.x) ? from.x : e.x;
+          const dirX = Math.sign(tw.x - fromX) || (tw.team === 'blue' ? -1 : 1);
+          fx.spawn('towerHit', { x: e.x, y: e.y, power: p, dirX, kind: e.kind });
+        }
+        // Stone towers thunk, the wooden buildings knock, the crane's iron clanks
+        const bld = tw.kind === 'building';
+        sfx(!bld ? 'towerHit' : tw.bid === 'wreckingCrane' ? 'clank' : 'woodHit', soundOpts(e, { power: p }));
+        if (e.kind === 'bite') sfx('crunch', soundOpts(e, { power: p }));
+        shake((0.06 + p * 0.12) * (bld ? 0.6 : 1));
+        if (p >= 0.8 && TOWER_HIT_WORDS.has(e.kind)) word(e.x, e.y - 30, TOWER_WORDS, '#ffd27a', 22 + p * 6, 1.2);
         break;
       }
       case 'arrowTower':
@@ -2410,6 +2524,144 @@ function handleEvents() {
         break;
       case 'matchEnd':
         onMatchEnd(e);
+        break;
+
+      // --- the newer cards (their effects come from fxForEvent above) --------------
+      case 'buildingPlaced':
+        sfx('whoosh', soundOpts(e, { power: 0.6 })); // (the crate drops for LAND_T, then buildingLand)
+        break;
+      case 'buildingLand':
+        sfx('crateLand', soundOpts(e, { power: e.power }));
+        shake(0.1 + 0.12 * (e.power || 1));
+        if (e.tower && e.tower.team === 'blue') buzz(15);
+        break;
+      case 'buildingDown': {
+        // (never a crown: a building that crumbles or runs out of time just falls apart)
+        const crane = e.bid === 'wreckingCrane';
+        const wornOut = e.cause !== 'destroyed';
+        sfx('planks', soundOpts(e, { power: wornOut ? 0.6 : 1.1, metal: crane }));
+        if (crane) sfx('creak', soundOpts(e));
+        shake(wornOut ? 0.1 : 0.4);
+        if (!wornOut && e.tower) word(e.tower.x, -e.tower.h - 24, TOWER_WORDS, '#ffd27a', 26, 0.6);
+        break;
+      }
+      case 'punchWindup':
+        sfx('rattle', soundOpts(e));
+        break;
+      case 'punch':
+        sfx('glove', soundOpts(e));
+        break;
+      case 'sproutPop':
+        sfx('sproutPop', soundOpts(e));
+        break;
+      case 'craneSwing':
+        sfx('whoosh', soundOpts(e, { power: clamp(e.power || 1, 0.4, 1.5) }));
+        sfx('creak', soundOpts(e, { vol: 0.7 }));
+        break;
+      case 'liftOff':
+        // The propeller cuts out (netted, flattened, fizzed); a Pelican complains
+        if (e.unit && e.unit.type.id === 'pelican') sfx('squawk', soundOpts(e));
+        else sfx('whirr', soundOpts(e, { down: true }));
+        break;
+      case 'netted':
+        word(e.x, e.y - 34, ['GOTCHA!', 'SNAG!', 'CAUGHT!'], '#bfeaff', 22, 0.6);
+        break;
+      case 'crash':
+        // (power is the impact like a landing's: 0..1.5)
+        sfx('land', soundOpts(e, { power: clamp(e.power ?? 0.8, 0.5, 1.4) }));
+        shake(0.08 + 0.08 * clamp(e.power ?? 0.8, 0, 1.5));
+        break;
+      case 'propOff':
+        sfx('pop', soundOpts(e));
+        sfx('whirr', soundOpts(e, { down: true, vol: 0.6 }));
+        break;
+      case 'dive':
+        sfx('whoosh', soundOpts(e, { power: 1.3 }));
+        break;
+      case 'boing':
+        sfx('boing', soundOpts(e, { power: 0.8 }));
+        break;
+      case 'stomp':
+        word(e.x, e.y - 20, ['STOMP!', 'BOINK!'], '#ffe14d', 22);
+        break;
+      case 'juggleToss':
+        sfx('whoosh', soundOpts(e, { power: 0.45 }));
+        break;
+      case 'fumble':
+        sfx('drop', soundOpts(e));
+        sfx('fuse', soundOpts(e));
+        word(e.x, e.y - 50, ['OOPS!', 'UH-OH!'], '#ffb02e', 24, 0.5);
+        break;
+      case 'beat':
+        sfx('drum', soundOpts(e));
+        break;
+      case 'swoop':
+        sfx('squawk', soundOpts(e));
+        sfx('whoosh', soundOpts(e, { power: 1 }));
+        break;
+      case 'scoop':
+        sfx('grab', soundOpts(e));
+        word(e.x, e.y - 44, ['YOINK!', 'GULP!'], '#ffe14d', 22, 0.6);
+        break;
+      case 'pelicanDrop':
+        sfx('drop', soundOpts(e));
+        sfx('squawk', soundOpts(e, { vol: 0.7 }));
+        break;
+      case 'letGo':
+        sfx('drop', soundOpts(e));
+        break;
+      case 'engulf':
+        sfx('bloop', soundOpts(e, { power: 1 }));
+        word(e.x, e.y - 56, ['BLOOP', 'GLORP'], '#ffd6f2', 22, 0.6);
+        break;
+      case 'spit':
+        sfx('ptoo', soundOpts(e));
+        word(e.x, e.y - 44, ['PTOO!'], '#ffe14d', 24, 0.5);
+        shake(0.1);
+        break;
+      case 'canopyFlip':
+        sfx('umbrella', soundOpts(e, { flip: true }));
+        break;
+      case 'brollyLand':
+        sfx('land', soundOpts(e, { power: 0.35 }));
+        break;
+      case 'wrapPop':
+        sfx('bubblePop', soundOpts(e, { power: 0.6 }));
+        break;
+      case 'wrapEnd':
+        if (e.popped) sfx('bubblePop', soundOpts(e, { power: 1.2 }));
+        break;
+      case 'slip':
+        sfx('slip', soundOpts(e));
+        word(e.x, e.y - 64, ['WHOOPS!', 'WHOA!', 'OOF!'], '#fff27a', 22, 0.6);
+        break;
+      case 'skid':
+        sfx('skid', soundOpts(e));
+        break;
+      case 'peelKick':
+        sfx('whoosh', soundOpts(e, { power: 0.25 }));
+        break;
+      case 'sneeze':
+        sfx('achoo', soundOpts(e));
+        shake(0.25);
+        word(e.x, e.y - 90, ['ACHOO!'], '#e6ffc2', 30, 0.4);
+        break;
+      case 'sodaErupt':
+        sfx('sodaPop', soundOpts(e));
+        shake(0.35);
+        buzz(20);
+        word(e.x, e.y - 200, ['WHOOSH!', 'POP!'], '#c4f1ff', 30, 0.4);
+        break;
+      case 'anvilImpact':
+        sfx('clang', soundOpts(e, { power: e.power }));
+        shake(0.65);
+        buzz(30);
+        // (like a big bomb: a short freeze when it lands on something, rarely in a match)
+        if (e.hits > 0 && !demo && game.hitstopCool <= 0) {
+          game.hitstop = 0.07;
+          game.hitstopCool = match ? 1.2 : 0.5;
+        }
+        word(e.x, e.y - 80, ['CLANG!'], '#ffffff', 32, 0.4);
         break;
     }
   }
@@ -2516,7 +2768,7 @@ function tickFrame(realDt) {
     frameArena(false);
   }
   handleEvents();
-  if (b.mode === 'arena') fx.follow(b, simDt);
+  fx.follow(b, simDt); // (wheel crumbs, cannon smoke, Juggler bomb sparks: Jugglers throw in the Sandbox too)
   // Effects keep animating through hit-stop: the starburst pops and shrinks while the bodies freeze
   fx.update(game.hitstop > 0 ? realDt * 0.6 : simDt);
 
@@ -2559,8 +2811,10 @@ function lerpIn(b, alpha) {
     add(it.b);
   }
   for (const a of b.arrows) if (a.state === 'fly') vel(a);
-  for (const s of b.shots) vel(s);
-  for (const s of b.spells) if ((s.kind === 'boulder' && s.state === 'fall') || (s.kind === 'wheel' && !s.done)) vel(s);
+  for (const s of b.shots) vel(s); // (cannonballs and Juggler bombs)
+  for (const s of b.spells) if (((s.kind === 'boulder' || s.kind === 'anvil') && s.state === 'fall') || (s.kind === 'wheel' && !s.done)) vel(s);
+  // The Wrecking Crane's ball swings on a pendulum (its last step's spot is kept)
+  for (const t of b.towers) if (t.ball && t.alive && Number.isFinite(t.ball.px)) add(t.ball);
 }
 function lerpOut() {
   for (let i = 0; i < lerped.length; i += 3) {
@@ -2590,10 +2844,8 @@ function render() {
   unitsGfx.drawItems(ctx, b);
   unitsGfx.drawUnits(ctx, b, b.time);
   unitsGfx.drawFlyingArrows(ctx, b);
-  if (arena) {
-    drawSpells(ctx, b, t);
-    drawShots(ctx, b);
-  }
+  if (arena) drawSpells(ctx, b, t);
+  drawShots(ctx, b); // (cannonballs; Juggler bombs in the Sandbox too)
   lerpOut();
   if (game.mode === 'match') drawAim();
   if (placing) drawGhost();

@@ -30,6 +30,12 @@ export const BADGES = [
   B('boing', '🛡️', 'Boing!', 'Bounce a Spiker off one of your shields', 1, stat('boings'), 75),
   B('giants', '🧱', 'Giant Slayer', 'Defeat 10 enemy Bricks', 10, stat('bricksDefeated'), 200),
   B('yeet', '🫳', 'Yeet', 'Fling a bean across the Sandbox', 1, stat('yeets'), 50),
+  // ...and the newer cards'
+  B('slips', '🍌', "Slip 'n' Slide", 'Trip 25 enemy beans on banana peels', 25, stat('slips'), 100),
+  B('homeRuns', '⚾', 'Home Run', 'Bring down 10 enemy fliers with a net or a bonk', 10, stat('homeRuns'), 125),
+  B('airMail', '📮', 'Air Mail', 'Drop 20 enemy beans from a Pelican', 20, stat('airMail'), 150),
+  B('jellySpits', '🍮', 'Jelly Belly', 'Have a Big Jelly spit out 20 enemy beans', 20, stat('jellySpits'), 150),
+  B('craneLaunches', '🏗️', 'Crane Game', 'Launch 30 enemy beans with a Wrecking Crane', 30, stat('craneLaunches'), 150),
   // Collection
   B('dressUp', '🎩', 'Dressed to Bonk', 'Put a hat on a unit', 1, stat('hatsEquipped'), 50),
   B('chests', '🧰', 'Treasure Hunter', 'Open 20 chests', 20, stat('chests'), 100, 100),

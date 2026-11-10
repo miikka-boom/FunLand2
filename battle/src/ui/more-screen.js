@@ -2,8 +2,9 @@
 // (sound, vibration, shake, install, reset), "How it's fair" and the Sandbox.
 // A side menu on the left (the phone is sideways), the page on the right.
 
-import { h, icon, coin, bean, fmt, clamp } from './hub-kit.js';
+import { h, icon, coin, bean, fmt, clamp, CARDS, ARENAS } from './hub-kit.js';
 import { badgeStatus, claimBadge, claimableBadges } from '../meta/badges.js';
+import { CHESTS } from '../meta/chests.js';
 import { swVersion } from '../pwa.js';
 
 const SECTIONS = [
@@ -161,6 +162,12 @@ export function createMoreScreen(H) {
   }
 
   // --- fair play, sandbox ------------------------------------------------------------------------------
+  /** The arena that unlocks the first Legendary. */
+  function legendArena() {
+    const a = Math.min(...Object.values(CARDS).filter((c) => c.rarity === 'legendary').map((c) => c.arena));
+    return ARENAS[a] ? ARENAS[a].name : 'Boom Ridge';
+  }
+
   function renderFair() {
     const li = (b, t) => h('li', {}, h('b', {}, b), ' ', t);
     return [
@@ -171,6 +178,7 @@ export function createMoreScreen(H) {
         li('No money, ever, for power.', 'Every card and every level is earned by playing. Nothing that wins battles is for sale.'),
         li('Two currencies, both earned.', 'Gold upgrades cards and buys shop cards. Jellybeans only buy looks: army colours and hats.'),
         li('Two free chests.', 'The Small Chest refills every 3 hours, the Big Chest every 12. No slots, no paid timers, no chests for sale, and coming back a little late costs nothing. Tap a refilling chest to see exactly what can be inside.'),
+        li('Legendaries are earned too.', `They come from Big Chests (a ${Math.round(CHESTS.big.legendary * 100)}% chance from ${legendArena()} on), from the shop for gold some days, and 4 copies of each on the Trophy Trail. Never for money.`),
         li('Honest opponents.', 'You play computer players (bots), matched card by card to your deck and never above it. Upgrades are a real edge. We never pretend they are people.'),
         li('Gentle losses.', 'You never drop out of an arena you reached, and a loss still pays a little gold (giving up pays none).'),
         li('No ads, no energy.', 'Play as much or as little as you like. No streaks and no penalties: a day off never takes anything away.'),

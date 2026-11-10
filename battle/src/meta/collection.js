@@ -69,11 +69,19 @@ export function kingInfo(p) {
   return { level, xp, from: level > 1 ? KING_LEVELS[level - 2] : 0, need: max ? KING_LEVELS[KING_LEVELS.length - 1] : KING_LEVELS[level - 1], max };
 }
 
+// Cards that can hit a flier high up: units that hit air and the spells that
+// reach the sky. Bots always carry one, and the deck editor warns without one.
+export const AIR_ANSWERS = ['archers', 'arrowRain', 'netter', 'bombJuggler', 'bigSneeze', 'shakenSoda', 'anvil'];
+
 /** Card ids that a given arena has unlocked (CARD_ORDER order). */
 export const cardsUpTo = (arena) => CARD_ORDER.filter((id) => CARDS[id].arena <= arena);
 export const unlockedCards = (p) => cardsUpTo(bestArena(p));
 export const lockedCards = (p) => CARD_ORDER.filter((id) => CARDS[id].arena > bestArena(p));
 export const ownedCards = (p) => CARD_ORDER.filter((id) => p.cards[id]);
+/** Fliers can show up (an arena with a flying card is unlocked: Pointy Pass on). */
+export const fliersUnlocked = (p) => unlockedCards(p).some((id) => CARDS[id].flying);
+/** True when fliers can show up and the deck has nothing that hits them high up. */
+export const deckNeedsAir = (p) => fliersUnlocked(p) && !p.deck.some((id) => AIR_ANSWERS.includes(id));
 
 /**
  * Everything the UI shows about one card, or null for an unknown id.

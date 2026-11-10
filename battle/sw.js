@@ -12,7 +12,7 @@
 
 // BUMP THIS on every deploy that changes ANY file under battle/ (code, CSS, HTML, icons).
 // If it stays the same, players who already have the game keep the old files forever.
-const VERSION = '2026-11-09.1';
+const VERSION = '2026-11-10.1';
 
 const CACHE_PREFIX = 'wobble-war-';
 const CACHE = CACHE_PREFIX + VERSION;

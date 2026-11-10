@@ -5,6 +5,7 @@
 //   node battle/tools/balance-arena.mjs                 # everything, small sample (--n 8)
 //   node battle/tools/balance-arena.mjs --n 40          # bigger sample (n scales every section)
 //   node battle/tools/balance-arena.mjs --only mirror,skill --n 30
+//   node battle/tools/balance-arena.mjs --only perf     # CPU of the scripted worst cases (no bots)
 //   node battle/tools/balance-arena.mjs --json out.json # also write every match result
 //
 // Flags:
@@ -13,20 +14,28 @@
 //   --jobs J     worker processes (default 2, max 2: the sims are CPU-bound)
 //   --seed S     base seed (default 1); every match is reproducible from it
 //   --skill K    the "equal skill" used by mirror / levels / cards / decks (default 0.6)
-//   --only LIST  sections: mirror, skill, levels, cards, decks, newbie
+//   --only LIST  sections: mirror, skill, levels, cards, decks, newbie, perf (perf only when named)
 //   --json FILE  write all match results as JSON
 //   --set LIST   try numbers before committing them, e.g. --set GUARD.hp=800,CARDS.brick.mana=6
 //                (roots: GUARD, CASTLE, TOWER_TAKES, SPELLS, UNIT_TYPES, CARDS, BOT_TUNING, WORLD,
-//                e.g. WORLD.pocket.blue=1150)
+//                BUILDINGS, BUILDING_TAKES, BEAT, e.g. WORLD.pocket.blue=1150,
+//                BUILDINGS.boingBox.punch.recharge=2.2, UNIT_TYPES.pogo.hop.vx=150)
 //
 // A match is ~0.3-1 s of CPU (a full 3:00 match is 21,600 fixed steps). Workers
 // run node --single-threaded (no GC / JIT helper threads), so --jobs 2 really
 // uses two cores: --n 8 (304 matches) takes ~1.5 minutes, --n 24 ~5.
 //
 // Reading the tables: "A wins" counts draws as half, [lo-hi] is a 95% Wilson
-// interval. The card table pits random legal decks (8 cards, 1-3 spells)
-// against each other and, per card, scores the side that has it in matches
-// where only one side does.
+// interval. The card table pits random legal decks (8 cards, 1-3 spells, at
+// least one air answer) against each other and, per card, scores the side that
+// has it in matches where only one side does. Every match also measures its
+// CPU: the card table's last line is the average CPU-s per simulated minute.
+//
+// --only perf runs the scripted worst cases of the cards contract (6.5), with
+// no bots: the same plays on a timer, both sides, for two simulated minutes,
+// and prints the CPU-s of each simulated minute (budget: about 2.2 on average,
+// 3.0 for the worst minute, on a machine where the busy 14-card baseline takes
+// about 2). tests/battle-perf.test.js runs the same scenarios.
 //
 // Sides swap every other match (the same config plays blue, then red), so
 // side bias cancels out of the comparisons; the mirror section measures it.
@@ -39,22 +48,32 @@ import { DT } from '../src/sim/battle.js';
 import { Bot, BOT_TUNING } from '../src/sim/bot.js';
 import { CARDS, CARD_ORDER, STARTER_DECK } from '../src/sim/cards.js';
 import { GUARD, CASTLE, TOWER_TAKES } from '../src/sim/towers.js';
+import { BUILDINGS, BUILDING_TAKES } from '../src/sim/buildings.js';
 import { SPELLS } from '../src/sim/spells.js';
-import { UNIT_TYPES } from '../src/sim/unit-types.js';
+import { UNIT_TYPES, BEAT } from '../src/sim/unit-types.js';
 import { Rng } from '../src/sim/rng.js';
 import { WORLD } from '../src/config.js';
 
 const SELF = fileURLToPath(import.meta.url);
 
-// Decks for "starter vs the new cards" (Arena 2: Pointy Pass, Arena 3: Boom Ridge): the
-// meta/opponents.js archetypes at Arena 3 (copied, so this tool needs nothing outside sim/)
+// Decks for "starter vs the new cards": the meta/opponents.js archetypes with every card
+// unlocked (copied, so this tool needs nothing outside sim/). The first four use the 14
+// original cards; the last five are the archetypes of the 32-card set (cards contract 7).
 export const DECKS = {
   starter: STARTER_DECK,
   siege: ['brick', 'archers', 'cheeseWheel', 'spikers', 'arrowRain', 'squire', 'bomb', 'boulder'],
   bonk: ['bruiser', 'clubberGang', 'clubbers', 'spikers', 'squire', 'archers', 'arrowRain', 'cheeseWheel'],
   boom: ['megaBomb', 'bombSquad', 'bomb', 'shieldWall', 'archers', 'arrowRain', 'spikers', 'boulder'],
   turtle: ['shieldWall', 'squire', 'archers', 'boulder', 'arrowRain', 'bruiser', 'clubbers', 'cheeseWheel'],
+  hop: ['pogoBean', 'sprouts', 'bananaPeels', 'spikers', 'bomb', 'netter', 'archers', 'arrowRain'],
+  fizz: ['bombJuggler', 'shakenSoda', 'bigSneeze', 'megaBomb', 'squire', 'propellerPals', 'sprouts', 'archers'],
+  fortress: ['wreckingCrane', 'beanPatch', 'boingBox', 'brick', 'anvil', 'archers', 'bananaPeels', 'arrowRain'],
+  sky: ['pelican', 'propellerPals', 'brollyBrigade', 'netter', 'bombJuggler', 'bigSneeze', 'squire', 'arrowRain'],
+  parade: ['bigJelly', 'tummyDrummer', 'bubbleWrap', 'clubberGang', 'bombJuggler', 'archers', 'sprouts', 'boulder'],
 };
+
+// Cards that answer fliers (cards contract 7): every random deck holds at least one
+export const AIR_ANSWERS = ['archers', 'arrowRain', 'netter', 'bombJuggler', 'bigSneeze', 'shakenSoda', 'anvil'];
 
 // --- one match ------------------------------------------------------------------------
 
@@ -102,6 +121,7 @@ export function runMatch(job) {
     return P.newbie ? new Newbie(m, team, seed) : new Bot(m, team, { skill: P.skill ?? 0.6, seed, aggro: P.aggro ?? null, tuning: P.tuning || null });
   });
   const played = { blue: {}, red: {} };
+  const c0 = process.cpuUsage();
   while (m.phase !== 'over') {
     for (const c of ctl) c.update(DT);
     m.step();
@@ -109,8 +129,11 @@ export function runMatch(job) {
     m.battle.events.length = 0;
     if (m.time > 400) throw new Error(`match ${job.id} never ended`);
   }
-  const down = m.battle.towers.filter((t) => !t.alive).length;
-  const hp = Object.fromEntries(m.battle.towers.map((t) => [`${t.team}-${t.kind}`, Math.round((1000 * t.hp) / t.maxHp) / 1000]));
+  const c = process.cpuUsage(c0);
+  // (towers only: buildings come and go and never count)
+  const towers = m.battle.towers.filter((t) => t.kind !== 'building');
+  const down = towers.filter((t) => !t.alive).length;
+  const hp = Object.fromEntries(towers.map((t) => [`${t.team}-${t.kind}`, Math.round((1000 * t.hp) / t.maxHp) / 1000]));
   return {
     id: job.id,
     winner: m.winner,
@@ -121,12 +144,100 @@ export function runMatch(job) {
     hp,
     played,
     full: Object.fromEntries(ctl.map((c) => [c.team, c.stats ? Math.round(c.stats.full * 10) / 10 : 0])),
+    cpu: Math.round(((c.user + c.system) / 1e6 / Math.max(1e-9, m.time / 60)) * 1000) / 1000, // CPU-s per simulated minute
   };
+}
+
+// --- perf: the scripted worst cases (cards contract 6.5) ------------------------------------
+
+/**
+ * Each scenario replays `plays` every `every` seconds: [t, team, card, x], where x is a world x
+ * or 'foe' (the enemy bean nearest the caster's castle, else the middle). Both sides play
+ * mirrored versions, no bots, so the load is the scenario's and nothing else's.
+ */
+const mirror = (plays) => plays.flatMap(([t, team, card, x]) => [
+  [t, team, card, x],
+  [t, team === 'blue' ? 'red' : 'blue', card, typeof x === 'number' ? WORLD.width - x : x],
+]);
+export const PERF = {
+  baseline: {
+    name: 'busy match, the 14 original cards',
+    every: 10,
+    plays: mirror([[0, 'blue', 'clubberGang', 600], [1, 'blue', 'archers', 450], [3, 'blue', 'bombSquad', 620], [5, 'blue', 'shieldWall', 560], [7, 'blue', 'arrowRain', 'foe'], [8, 'blue', 'bruiser', 640]]),
+  },
+  patches: {
+    name: 'two Bean Patches per side, Sprouts and a Clubber Gang',
+    every: 12,
+    plays: mirror([[0, 'blue', 'beanPatch', 520], [0.5, 'blue', 'beanPatch', 650], [2, 'blue', 'sprouts', 600], [4, 'blue', 'clubberGang', 600], [8, 'blue', 'sprouts', 620]]),
+  },
+  jelly: {
+    name: 'Big Jelly, Drummer, Juggler and Bomb Squad vs a Wrecking Crane and Peels',
+    every: 14,
+    plays: mirror([[0, 'blue', 'wreckingCrane', 600], [1, 'blue', 'bigJelly', 560], [2, 'blue', 'tummyDrummer', 500], [3, 'blue', 'bombJuggler', 450], [5, 'blue', 'bombSquad', 600], [6, 'blue', 'bananaPeels', 'foe'], [10, 'blue', 'bananaPeels', 'foe']]),
+  },
+  air: {
+    name: 'two Propeller Pals per side, a Pelican, Brollies and Sneezes',
+    every: 10,
+    plays: mirror([[0, 'blue', 'propellerPals', 600], [1, 'blue', 'propellerPals', 520], [2, 'blue', 'pelican', 560], [3, 'blue', 'brollyBrigade', 1020], [5, 'blue', 'bigSneeze', 'foe'], [8, 'blue', 'bigSneeze', 'foe']]),
+  },
+};
+
+/** World x for a scripted play: a number, or 'foe' (the enemy bean nearest our castle). */
+function playX(m, team, x) {
+  if (typeof x === 'number') return x;
+  const f = team === 'blue' ? 1 : -1;
+  let best = null;
+  for (const u of m.battle.units) if (u.alive && u.team !== team && !u.dropping && (best === null || u.hip.x * f < best * f)) best = u.hip.x;
+  return best ?? WORLD.mid;
+}
+
+/**
+ * Run a PERF scenario for `seconds` simulated seconds. Returns { cpu: [CPU-s of each simulated
+ * minute], avg, peak, played, peakUnits, finite, events: { type: count } } (finite: every bean and building ended with
+ * finite numbers). The towers get 20x their health, so no castle falls and the fight never stops.
+ */
+export function runPerf(sc, { seed = 1, seconds = 120, minute = 60, level = 1 } = {}) {
+  const cards = [...new Set(sc.plays.map((p) => p[2]))];
+  const side = (team) => ({ name: team, deck: cards.slice(0, 8), levels: Object.fromEntries(cards.map((id) => [id, level])), kingLevel: level });
+  const m = new Match({ seed, blue: side('blue'), red: side('red') });
+  // Towers that never fall: the fight stays on (a fallen castle would end it and the beans would cheer)
+  for (const t of m.battle.towers) t.hp = t.maxHp *= 20;
+  const plays = sc.plays.slice().sort((a, b) => a[0] - b[0]);
+  const steps = Math.round(seconds / DT);
+  const perMin = Math.round(minute / DT);
+  const cpu = [];
+  let played = 0;
+  let peakUnits = 0;
+  const events = {}; // how many of each event: proof the scenario did what it says
+  let k = 0; // next play in this cycle
+  let c0 = process.cpuUsage();
+  for (let i = 0; i < steps; i++) {
+    const t = (i * DT) % sc.every;
+    if (t < DT / 2) k = 0; // a new cycle
+    while (k < plays.length && plays[k][0] <= t + 1e-9) {
+      const [, team, card, x] = plays[k++];
+      const s = m.sides[team];
+      s.mana = 10;
+      s.hand[0] = card;
+      if (m.play(team, 0, playX(m, team, x))) played++;
+    }
+    m.step();
+    for (const e of m.battle.events) events[e.type] = (events[e.type] || 0) + 1;
+    m.battle.events.length = 0;
+    if (m.battle.units.length > peakUnits) peakUnits = m.battle.units.length;
+    if ((i + 1) % perMin === 0) {
+      const c = process.cpuUsage(c0);
+      cpu.push((c.user + c.system) / 1e6);
+      c0 = process.cpuUsage();
+    }
+  }
+  const finite = m.battle.units.every((u) => u.parts.every((q) => Number.isFinite(q.x) && Number.isFinite(q.y))) && m.battle.towers.every((t) => Number.isFinite(t.hp));
+  return { cpu, avg: cpu.reduce((a, b) => a + b, 0) / Math.max(1, cpu.length), peak: Math.max(...cpu), played, peakUnits, finite, events };
 }
 
 // --- workers ------------------------------------------------------------------------------
 
-const ROOTS = { GUARD, CASTLE, TOWER_TAKES, SPELLS, UNIT_TYPES, CARDS, BOT_TUNING, WORLD };
+const ROOTS = { GUARD, CASTLE, TOWER_TAKES, SPELLS, UNIT_TYPES, CARDS, BOT_TUNING, WORLD, BUILDINGS, BUILDING_TAKES, BEAT };
 
 /** Apply --set patches ('GUARD.hp=800,CARDS.brick.mana=6') to the live tuning objects. */
 function applySets(list) {
@@ -288,10 +399,14 @@ function pairJobs(tag, n, seed0, A, B) {
   return jobs;
 }
 
-/** A random legal deck: 8 different cards, 1-3 spells. */
-function randomDeck(rng) {
+/**
+ * A random legal deck: 8 different cards, 1-3 spells (the rest units and buildings), and at
+ * least one air answer (AIR_ANSWERS), so no deck is shut out of the air game: without one,
+ * a random card of the same kind (spell or not) makes way for a random answer.
+ */
+export function randomDeck(rng) {
   const spells = CARD_ORDER.filter((id) => CARDS[id].kind === 'spell');
-  const units = CARD_ORDER.filter((id) => CARDS[id].kind === 'unit');
+  const others = CARD_ORDER.filter((id) => CARDS[id].kind !== 'spell');
   const shuffle = (a) => {
     for (let i = a.length - 1; i > 0; i--) {
       const j = (rng.next() * (i + 1)) | 0;
@@ -300,12 +415,24 @@ function randomDeck(rng) {
     return a;
   };
   const ns = 1 + ((rng.next() * 3) | 0);
-  return [...shuffle(spells.slice()).slice(0, ns), ...shuffle(units.slice()).slice(0, 8 - ns)];
+  const deck = [...shuffle(spells.slice()).slice(0, ns), ...shuffle(others.slice()).slice(0, 8 - ns)];
+  if (!deck.some((id) => AIR_ANSWERS.includes(id))) {
+    const a = AIR_ANSWERS[(rng.next() * AIR_ANSWERS.length) | 0];
+    const spell = CARDS[a].kind === 'spell';
+    const same = deck.map((id, i) => i).filter((i) => (CARDS[deck[i]].kind === 'spell') === spell);
+    deck[same[(rng.next() * same.length) | 0]] = a;
+  }
+  return deck;
 }
 
 async function main() {
   const A = parseArgs(process.argv.slice(2));
   const want = (s) => !A.only || A.only.has(s);
+  if (A.only && A.only.has('perf')) {
+    applySets(A.set);
+    perfReport(A);
+    if (A.only.size === 1) return;
+  }
   const K = A.skill;
   const sections = [];
   const t0 = Date.now();
@@ -374,7 +501,7 @@ async function main() {
   const cards = get('cards');
   if (cards) {
     console.log('== Cards: random decks, the side with the card vs the side without it ==');
-    console.log('  card           mana  with-vs-without          n    plays/match');
+    console.log('  card             mana  with-vs-without          n    plays/match');
     const rows = [];
     for (const id of CARD_ORDER) {
       let w = 0;
@@ -401,10 +528,16 @@ async function main() {
       rows.push({ id, rate: n ? w / n : 0, lo, hi, n, ppm: had ? plays / had : 0 });
     }
     for (const r of rows) {
-      const mana = String(CARDS[r.id].mana).padStart(4);
-      console.log(`  ${r.id.padEnd(14)} ${mana}  ${pct(r.rate)} [${pct(r.lo)}-${pct(r.hi)}]   ${String(r.n).padStart(5)}    ${r.ppm.toFixed(1)}`);
+      const c = CARDS[r.id];
+      const mana = String(c.mana).padStart(4);
+      // (a rarity letter, and a mark for the 18 newer cards: they are the ones to tune first)
+      const tag = `${c.rarity[0].toUpperCase()}${CARD_ORDER.indexOf(r.id) >= 14 ? '*' : ' '}`;
+      console.log(`  ${r.id.padEnd(14)} ${tag}${mana}  ${pct(r.rate)} [${pct(r.lo)}-${pct(r.hi)}]   ${String(r.n).padStart(5)}    ${r.ppm.toFixed(1)}`);
     }
+    console.log('  (C/R/E/L = rarity, * = one of the 18 newer cards; targets: 40-60%, legendaries 45-55%)');
     printOutcomes('random-deck outcomes', cards.results);
+    const cpu = cards.results.map((r) => r.cpu).filter(Number.isFinite);
+    if (cpu.length) console.log(`    CPU           ${(cpu.reduce((a, b) => a + b, 0) / cpu.length).toFixed(2)} CPU-s per simulated minute on average, worst match ${Math.max(...cpu).toFixed(2)} (budget 2.2 / 3.0)`);
     console.log('');
   }
 
@@ -415,4 +548,18 @@ async function main() {
   }
   console.log(`\n${all.length} matches in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   if (A.json) writeFileSync(A.json, JSON.stringify(sections.map((s) => ({ name: s.name, jobs: s.jobs, results: s.results })), null, 1));
+}
+
+/** --only perf: each PERF scenario for two simulated minutes in this process (after a warm-up). */
+function perfReport(A) {
+  console.log(`Wobble War perf: the scripted worst cases (cards contract 6.5), seed ${A.seed}${A.set ? `, set ${A.set}` : ''}`);
+  console.log('  CPU-s per simulated minute (minute 1 / minute 2), budget 2.2 on average and 3.0 for the worst minute');
+  for (const sc of Object.values(PERF)) runPerf(sc, { seed: A.seed, seconds: 10 }); // (JIT warm-up)
+  const base = runPerf(PERF.baseline, { seed: A.seed });
+  for (const [id, sc] of Object.entries(PERF)) {
+    const r = id === 'baseline' ? base : runPerf(sc, { seed: A.seed });
+    const rel = id === 'baseline' ? '' : `   x${(r.peak / base.peak).toFixed(2)} of the baseline's worst minute`;
+    console.log(`  ${id.padEnd(9)} ${r.cpu.map((c) => c.toFixed(2)).join(' / ')}  peak units ${String(r.peakUnits).padStart(3)}  plays ${r.played}${r.finite ? '' : '  NON-FINITE!'}${rel}`);
+    console.log(`            (${sc.name})`);
+  }
 }

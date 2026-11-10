@@ -18,12 +18,14 @@ export const CHEST_GRACE = 0.25;
 
 // gold: range before arena scaling; cards: total before scaling; rare: chance
 // each stack is rare; minRare: rare stacks guaranteed; epic: chance one stack
-// is epic; legendary: chance of a legendary copy (none drop yet); beans:
-// Jellybeans (flat).
+// is epic; legendary: chance of one legendary copy, rolled only once a
+// legendary is unlocked (Boom Ridge on); beans: Jellybeans (flat).
 export const CHESTS = {
   small: { id: 'small', name: 'Small Chest', period: 3 * HOUR, gold: [25, 45], cards: 8, stacks: 2, rare: 0.15, minRare: 0, epic: 0, legendary: 0, beans: 0 },
-  big: { id: 'big', name: 'Big Chest', period: 12 * HOUR, gold: [120, 200], cards: 30, stacks: 4, rare: 0.15, minRare: 1, epic: 0.35, legendary: 0, beans: 10 },
+  big: { id: 'big', name: 'Big Chest', period: 12 * HOUR, gold: [120, 200], cards: 30, stacks: 4, rare: 0.15, minRare: 1, epic: 0.35, legendary: 0.05, beans: 10 },
 };
+// A chest never holds more than this many legendary copies (one stack of one).
+export const MAX_LEGENDARY = 1;
 export const CHEST_KINDS = ['small', 'big'];
 // Per arena reached: +25% gold, +20% cards.
 export const CHEST_SCALE = { gold: 0.25, cards: 0.2 };
@@ -41,11 +43,11 @@ function poolOf(p) {
 
 /**
  * The rarity of each stack from the roll decisions (rareFlags per stack,
- * epicFlag), after guarantees and after stepping down rarities you have too
- * few unlocked cards of (each stack is a different card). Shared by the roll
- * and by chestOdds so the shown odds are exact.
+ * epicFlag, legFlag), after guarantees and after stepping down rarities you
+ * have too few unlocked cards of (each stack is a different card). Shared by
+ * the roll and by chestOdds so the shown odds are exact.
  */
-function stackRarities(c, rareFlags, epicFlag, sizes) {
+function stackRarities(c, rareFlags, epicFlag, sizes, legFlag = false) {
   const rar = rareFlags.map((f) => (f ? 'rare' : 'common'));
   for (let i = 0, have = rar.filter((r) => r === 'rare').length; i < rar.length && have < c.minRare; i++) {
     if (rar[i] === 'common') {
@@ -57,6 +59,13 @@ function stackRarities(c, rareFlags, epicFlag, sizes) {
     // Replaces a common stack (the last one); with none left, the last stack.
     const i = rar.lastIndexOf('common');
     rar[i >= 0 ? i : rar.length - 1] = 'epic';
+  }
+  if (legFlag) {
+    // One copy of a legendary takes the last common stack; with none left,
+    // the last stack that isn't the epic.
+    let i = rar.lastIndexOf('common');
+    if (i < 0) for (i = rar.length - 1; i > 0 && rar[i] === 'epic'; i--);
+    rar[i] = 'legendary';
   }
   // One common stack always carries the bulk of the cards (an all-rare roll
   // keeps its guaranteed rares and turns the last extra rare into commons).
@@ -94,11 +103,13 @@ export function rollChest(p, kind) {
   const total = Math.round(c.cards * sc.cards);
   const rareFlags = Array.from({ length: c.stacks }, () => rng.chance(c.rare));
   const epicFlag = c.epic > 0 && rng.chance(c.epic) && sizes.epic > 0;
-  const rar = stackRarities(c, rareFlags, epicFlag, sizes);
+  // (no draw at all until a legendary is unlocked: lower arenas roll exactly as before)
+  const legFlag = c.legendary > 0 && sizes.legendary > 0 && rng.chance(c.legendary);
+  const rar = stackRarities(c, rareFlags, epicFlag, sizes, legFlag);
 
-  // Stack sizes: epics 1 (2 from Brick Fortress on), rares ~12% of the total,
-  // commons share the rest with a little wobble.
-  const n = rar.map((r) => (r === 'epic' ? Math.max(1, Math.round(sc.cards)) : r === 'rare' ? Math.max(1, Math.round(total * 0.12)) : 0));
+  // Stack sizes: a legendary 1, epics 1 (2 from Brick Fortress on), rares ~12%
+  // of the total, commons share the rest with a little wobble.
+  const n = rar.map((r) => (r === 'legendary' ? MAX_LEGENDARY : r === 'epic' ? Math.max(1, Math.round(sc.cards)) : r === 'rare' ? Math.max(1, Math.round(total * 0.12)) : 0));
   const commons = rar.map((r, i) => (r === 'common' ? i : -1)).filter((i) => i >= 0);
   const rest = Math.max(commons.length, total - n.reduce((s, k) => s + k, 0));
   const w = commons.map(() => 1 + rng.next() * 0.6);
@@ -171,9 +182,10 @@ export const readyChests = (p, now) => CHEST_KINDS.filter((k) => chestState(p, k
 
 /**
  * For the info popup, exact for this profile:
- * { kind, name, period, gold: [lo, hi], beans, cards, stacks, odds: { common, rare, epic, legendary }, pool: { common: [ids], rare, epic, legendary } }
+ * { kind, name, period, gold: [lo, hi], beans, cards, stacks, odds: { common, rare, epic, legendary }, pool: { common: [ids], rare, epic, legendary }, legendary }
  * cards = about how many cards in total; odds = chance the chest has at
- * least one stack of that rarity (0..1).
+ * least one stack of that rarity (0..1); legendary = the chest's legendary
+ * chance once one is unlocked (shown as "Big Chest only" before that, too).
  */
 export function chestOdds(p, kind) {
   const c = CHESTS[kind];
@@ -183,14 +195,17 @@ export function chestOdds(p, kind) {
   const sizes = { common: pool.common.length, rare: pool.rare.length, epic: pool.epic.length, legendary: pool.legendary.length };
   const odds = { common: 0, rare: 0, epic: 0, legendary: 0 };
   const epicP = sizes.epic > 0 ? c.epic : 0;
+  const legP = sizes.legendary > 0 ? c.legendary : 0;
   for (let mask = 0; mask < 1 << c.stacks; mask++) {
     const flags = Array.from({ length: c.stacks }, (_, i) => !!(mask & (1 << i)));
     const k = flags.filter(Boolean).length;
     const pr = c.rare ** k * (1 - c.rare) ** (c.stacks - k);
     for (const [epic, pe] of [[true, epicP], [false, 1 - epicP]]) {
-      if (!pe) continue;
-      const rar = stackRarities(c, flags, epic, sizes);
-      for (const r of new Set(rar)) odds[r] += pr * pe;
+      for (const [leg, pl] of [[true, legP], [false, 1 - legP]]) {
+        if (!pe || !pl) continue;
+        const rar = stackRarities(c, flags, epic, sizes, leg);
+        for (const r of new Set(rar)) odds[r] += pr * pe * pl;
+      }
     }
   }
   for (const r in odds) odds[r] = Math.round(odds[r] * 10000) / 10000;
@@ -204,5 +219,6 @@ export function chestOdds(p, kind) {
     stacks: c.stacks,
     odds,
     pool,
+    legendary: c.legendary,
   };
 }

@@ -1,5 +1,6 @@
 // The daily shop (by the player's local date): a free gift once a day and 3
-// card offers for gold, each buyable once per day. Gold only, never money.
+// card offers for gold, each buyable once per day (the third is a Legendary
+// now and then, once one is unlocked). Gold only, never money.
 // Cosmetics (colours, hats) are in cosmetics.js.
 //
 // The day's stock is rolled from (p.seed, date, arena) where the arena is
@@ -17,8 +18,10 @@ import { grant, rngFrom, spendGold } from './profile.js';
 
 export const SHOP = {
   offers: 3,
-  price: { common: 10, rare: 60, epic: 300 }, // gold per card
-  count: { common: [10, 20], rare: [2, 5], epic: [1, 1] },
+  price: { common: 10, rare: 60, epic: 300, legendary: 1500 }, // gold per card
+  count: { common: [10, 20], rare: [2, 5], epic: [1, 1], legendary: [1, 1] },
+  // Once a legendary is unlocked, the third offer is one of them on this share of days
+  legendary: 0.08,
 };
 
 // Callers pass `now`; a missing one means the real clock (never 1970).
@@ -76,6 +79,15 @@ function stock(p, day, arena) {
     const cardId = fresh.length ? rng.pick(fresh) : null;
     if (cardId) offers.push({ i, cardId, rarity: r, count: n, price: n * SHOP.price[r] });
   });
+  // Legendary days: drawn after everything else, and only once one is unlocked,
+  // so the shop of a player below Boom Ridge is exactly what it always was.
+  if (pool.legendary.length && rng.chance(SHOP.legendary)) {
+    const n = rng.int(...SHOP.count.legendary);
+    const o = { i: SHOP.offers - 1, cardId: rng.pick(pool.legendary), rarity: 'legendary', count: n, price: n * SHOP.price.legendary };
+    const k = offers.findIndex((x) => x.i === o.i);
+    if (k >= 0) offers[k] = o;
+    else offers.push(o);
+  }
   return { free, offers };
 }
 

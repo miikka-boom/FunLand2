@@ -15,7 +15,7 @@
 
 import { CARDS, DECK_SIZE, MAX_LEVEL } from '../sim/cards.js';
 import { HATS } from '../render/hats.js';
-import { ARENAS, arenaIndex, cardsUpTo, kingLevelForXp, MAX_KING_LEVEL } from './collection.js';
+import { AIR_ANSWERS, ARENAS, arenaIndex, cardsUpTo, kingLevelForXp, MAX_KING_LEVEL } from './collection.js';
 import { UNIT_IDS, rngFrom } from './profile.js';
 
 export const BOT_NAMES = [
@@ -37,13 +37,31 @@ export const LEVEL_CURVE = [[0, 2], [300, 4], [650, 5], [1000, 6], [1500, 7], [2
 
 // Deck styles, cards in order of preference. Cards not unlocked yet are
 // skipped and the deck is topped up from the rest of the unlocked pool.
+// `arena`: the arena a style suits from (its first card unlocks there); it is
+// not picked before then. The first five suit every arena. Every style holds
+// an answer to fliers (AIR_ANSWERS) wherever fliers are unlocked.
 export const ARCHETYPES = {
   bonk: { name: 'Bonk Rush', cards: ['bruiser', 'clubberGang', 'clubbers', 'spikers', 'squire', 'archers', 'arrowRain', 'boulder'] },
   siege: { name: 'Siege', cards: ['brick', 'archers', 'cheeseWheel', 'spikers', 'arrowRain', 'squire', 'bomb', 'boulder'] },
   boom: { name: 'Big Boom', cards: ['megaBomb', 'bombSquad', 'bomb', 'shieldWall', 'archers', 'arrowRain', 'spikers', 'boulder'] },
   turtle: { name: 'Turtle', cards: ['shieldWall', 'squire', 'archers', 'boulder', 'arrowRain', 'bruiser', 'clubbers', 'cheeseWheel'] },
   swarm: { name: 'Swarm', cards: ['spikers', 'clubbers', 'clubberGang', 'bombSquad', 'archers', 'arrowRain', 'cheeseWheel', 'bomb'] },
+  // The newer cards' styles (docs/WOBBLE-WAR-CARDS.md section 7)
+  hop: { name: 'Hop Cycle', arena: 1, cards: ['pogoBean', 'sprouts', 'bananaPeels', 'spikers', 'bomb', 'netter', 'archers', 'arrowRain'] },
+  fizz: { name: 'Fizz Pop', arena: 2, cards: ['bombJuggler', 'shakenSoda', 'bigSneeze', 'megaBomb', 'squire', 'propellerPals', 'sprouts', 'archers'] },
+  fortress: { name: 'Fortress', arena: 3, cards: ['wreckingCrane', 'beanPatch', 'boingBox', 'brick', 'anvil', 'archers', 'bananaPeels', 'arrowRain'] },
+  sky: { name: 'Sky Circus', arena: 4, cards: ['pelican', 'propellerPals', 'brollyBrigade', 'netter', 'bombJuggler', 'bigSneeze', 'squire', 'arrowRain'] },
+  parade: { name: 'Jelly Parade', arena: 4, cards: ['bigJelly', 'tummyDrummer', 'bubbleWrap', 'clubberGang', 'bombJuggler', 'archers', 'sprouts', 'boulder'] },
 };
+
+export { AIR_ANSWERS };
+
+/** The archetype ids a bot may pick at an arena (a style waits for its first card). */
+export const archetypesFor = (arena) =>
+  Object.keys(ARCHETYPES).filter((id) => {
+    const A = ARCHETYPES[id];
+    return !A.arena || (A.arena <= arena && CARDS[A.cards[0]].arena <= arena);
+  });
 
 export const TUTORIAL_OPPONENT = {
   name: 'Training Dummy',
@@ -115,7 +133,7 @@ export function makeOpponent(p, seed = p.stats.matches) {
     };
   }
   const arena = arenaIndex(p.trophies);
-  const archetype = rng.pick(Object.keys(ARCHETYPES));
+  const archetype = rng.pick(archetypesFor(arena));
   const deck = buildDeck(arena, archetype, rng);
 
   // Levels: card by card your own (best for best), capped by the curve for your

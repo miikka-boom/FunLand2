@@ -216,14 +216,15 @@ export function createShopScreen(H) {
       }
       grid.append(h('div', { class: 'hb-wd-item' + (equipped ? ' equipped' : '') }, cv, h('b', {}, it.name), h('button', { class: cls, type: 'button', on: { click: H.tap(() => tapItem(it), null) } }, label)));
     }
-    const unitName = UNIT_TYPES[ui.wdUnit] ? UNIT_TYPES[ui.wdUnit].name : ui.wdUnit;
+    const hu = HAT_UNITS.find((u) => u.id === ui.wdUnit);
+    const units = hu ? hu.plural : UNIT_TYPES[ui.wdUnit] ? UNIT_TYPES[ui.wdUnit].name + 's' : ui.wdUnit;
     wardrobe.innerHTML = '';
     wardrobe.append(
       h('div', { class: 'hb-sec-head' }, h('h3', {}, 'Wardrobe'), h('small', {}, 'Looks only: it never changes how you fight'), tabs),
       h(
         'div',
         { class: 'hb-wd-body' },
-        h('div', { class: 'hb-wd-left' }, wdCanvas, h('small', { class: 'hb-wd-hint' }, ui.wdTab === 'hats' ? `Hat for your ${unitName}s · tap to make it hop` : 'Colour for your whole army'), picker),
+        h('div', { class: 'hb-wd-left' }, wdCanvas, h('small', { class: 'hb-wd-hint' }, ui.wdTab === 'hats' ? `Hat for your ${units} · tap to make it hop` : 'Colour for your whole army'), picker),
         grid,
       ),
     );

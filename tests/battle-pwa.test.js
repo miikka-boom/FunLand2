@@ -95,6 +95,13 @@ test('one VERSION names the cache', () => {
   assert.equal(sw.CACHE_PREFIX, 'wobble-war-');
 });
 
+test('the 32-card release: the building files are precached and VERSION was bumped for it', () => {
+  // (players who had the 14-card game must download the new set: an old VERSION keeps the old files)
+  for (const f of ['./src/sim/buildings.js', './src/render/buildings.js']) assert.ok(listed.has(f), `${f} is in PRECACHE`);
+  assert.match(sw.VERSION, /^\d{4}-\d{2}-\d{2}\.\d+$/, 'VERSION is a date and a build number');
+  assert.ok(sw.VERSION >= '2026-11-10.1', `VERSION ${sw.VERSION} is from the 32-card release or later`);
+});
+
 test('the worker never handles requests outside battle/', () => {
   const run = (url, init = {}) => {
     let responded = false;

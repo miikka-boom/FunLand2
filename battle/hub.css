@@ -70,6 +70,11 @@
   --rcd: #6a2c94;
   --rcg: #ecc9ff;
 }
+.hb .r-legendary {
+  --rc: #2fd3c4;
+  --rcd: #147a72;
+  --rcg: #c8fff8;
+}
 
 /* --- icons, coins, beans --------------------------------------------------------------- */
 
@@ -1113,6 +1118,11 @@
   display: block;
 }
 
+.hb-gain.r-legendary canvas,
+.hb-cel-card.r-legendary canvas {
+  filter: drop-shadow(0 0 6px rgba(47, 211, 196, 0.95));
+}
+
 .hb-gain-n,
 .hb-offer-n {
   position: relative;
@@ -1231,6 +1241,14 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   text-shadow: 0 1px 0 var(--rcd, #5d7186), 0 0 2px var(--rcd, #5d7186);
+}
+
+/* Legendary: teal with a slow rainbow glint running through the label */
+.hb-rarity.r-legendary {
+  border-color: #b8860b;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.85) 42%, rgba(255, 214, 120, 0.7) 47%, rgba(190, 140, 255, 0.55) 52%, transparent 64%) -150% 0 / 250% 100% no-repeat,
+    linear-gradient(var(--rcg), var(--rc) 55%, var(--rcd));
+  animation: hb-glint 2s linear infinite;
 }
 
 /* --- chest opening ------------------------------------------------------------------------------ */
@@ -1435,9 +1453,44 @@
   animation: hb-breathe 1.6s ease-in-out infinite;
 }
 
-.hb-co-reveal.r-epic .hb-co-glow {
+.hb-co-reveal.r-epic .hb-co-glow,
+.hb-co-reveal.r-legendary .hb-co-glow {
   opacity: 1;
   background: radial-gradient(circle, #fff 0, var(--rcg) 18%, var(--rc) 38%, transparent 70%);
+}
+
+.hb-co-reveal.r-legendary .hb-co-glow {
+  background: radial-gradient(circle, #fff 0, var(--rcg) 16%, var(--rc) 34%, rgba(47, 211, 196, 0) 62%);
+  animation: hb-breathe 1.1s ease-in-out infinite;
+}
+
+/* (the words stay readable over the bright glow) */
+.hb-co-reveal.r-legendary .hb-co-info h2,
+.hb-co-reveal.r-legendary .hb-co-info .hb-co-n,
+.hb-co-reveal.r-legendary .hb-co-prog small {
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.5), 0 0 6px rgba(0, 40, 50, 0.95), 0 0 12px rgba(0, 40, 50, 0.8);
+}
+
+/* A legendary in the chest: teal rays, a slow rainbow ring behind the card */
+.hb-co.leg > .hb-rays {
+  background: repeating-conic-gradient(rgba(140, 255, 236, 0.3) 0 9deg, rgba(140, 255, 236, 0) 9deg 18deg);
+  animation-duration: 9s;
+}
+
+.hb-co-reveal.r-legendary .hb-co-cardwrap::before {
+  content: "";
+  position: absolute;
+  inset: -14%;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #ff6b6b, #ffd76b, #7dff9a, #6bd8ff, #b88cff, #ff6b6b);
+  filter: blur(14px);
+  opacity: 0.55;
+  animation: hb-spin 4s linear infinite;
+}
+
+.hb-co-reveal.r-legendary .hb-co-info .hb-rarity {
+  font-size: 14px;
+  padding: 2px 12px;
 }
 
 .hb-co-info {
@@ -1562,8 +1615,72 @@
   border-color: var(--rc);
 }
 
-.hb-odds li.r-epic {
+.hb-odds li.r-epic,
+.hb-odds li.r-legendary {
   border-color: var(--rc);
+}
+
+.hb-odds li.r-legendary {
+  background: linear-gradient(#fffaf0, var(--rcg));
+}
+
+.hb-odds li.off {
+  border-style: dashed;
+  background: #fffaf0;
+  color: var(--ink-soft);
+}
+
+/* the deck editor's warning: nothing in the deck hits fliers */
+.hb-air-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  margin-left: auto;
+  padding: 2px 12px 2px 4px;
+  border-radius: 999px;
+  border: 2px solid #b5651d;
+  background: linear-gradient(#fff3d6, #ffd98f);
+  font: 800 12px system-ui, sans-serif;
+  color: #6a3a06;
+  box-shadow: 0 2px 0 rgba(58, 40, 22, 0.35);
+}
+
+.hb-air-warn i {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #e8862a;
+  color: #fff;
+  font: 900 15px Georgia, serif;
+  font-style: normal;
+}
+
+.hb-air-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+
+.hb-air-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 72px;
+}
+
+.hb-air-card small {
+  font: 800 10px/1.1 system-ui, sans-serif;
+  text-align: center;
+}
+
+.hb-air-card.unfound small {
+  color: var(--ink-soft);
 }
 
 /* --- Cards tab ------------------------------------------------------------------------------------ */
@@ -2095,8 +2212,13 @@
 }
 
 .hb-ms-reward.r-rare,
-.hb-ms-reward.r-epic {
+.hb-ms-reward.r-epic,
+.hb-ms-reward.r-legendary {
   background: linear-gradient(#fffaf0, var(--rcg));
+}
+
+.hb-ms-reward.r-legendary {
+  border-color: var(--rcd);
 }
 
 .hb-ms-reward b {
@@ -2253,7 +2375,26 @@
 }
 
 .hb-gate-cards small {
+  flex-basis: 100%;
   font: 700 11px system-ui, sans-serif;
+}
+
+.hb-gate-row {
+  display: flex;
+  gap: 4px;
+}
+
+.hb-gate-cards.fan {
+  flex-wrap: nowrap;
+  gap: 0;
+}
+
+.hb-gate-cards.fan canvas {
+  filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.45));
+}
+
+.hb-gate-cards.fan canvas + canvas {
+  margin-left: -16px;
 }
 
 .hb-gate:not(.reached) .hb-gate-flag {
@@ -2369,8 +2510,14 @@
 }
 
 .hb-offer.r-rare,
-.hb-offer.r-epic {
+.hb-offer.r-epic,
+.hb-offer.r-legendary {
   background: linear-gradient(#fffaf0, var(--rcg));
+}
+
+.hb-offer.r-legendary {
+  border-color: var(--rcd);
+  box-shadow: 0 4px 0 rgba(58, 40, 22, 0.45), 0 0 14px rgba(47, 211, 196, 0.7);
 }
 
 .hb-offer > .hb-rarity {
@@ -3039,6 +3186,69 @@
   font: 800 13px Georgia, serif;
 }
 
+/* five or six new cards: a little tighter so the buttons stay on a phone screen */
+.hb-cel.many {
+  gap: 4px;
+}
+
+.hb-cel.many .hb-cel-banner {
+  padding: 4px 36px 6px;
+}
+
+.hb-cel.many .hb-cel-banner h2 {
+  font-size: clamp(24px, 8.4vh, 44px);
+}
+
+.hb-cel-leg {
+  padding: 3px 14px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(47, 211, 196, 0), rgba(47, 211, 196, 0.35) 20%, rgba(47, 211, 196, 0.35) 80%, rgba(47, 211, 196, 0));
+}
+
+.hb-cel-leg b {
+  color: #9ffff2;
+}
+
+/* the one-time tip for a first flier, building or legendary */
+.hb-first-card {
+  width: min(560px, 100%);
+}
+
+.hb-first {
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 3vw, 18px);
+  text-align: left;
+}
+
+.hb-first-art {
+  position: relative;
+  flex: none;
+  line-height: 0;
+}
+
+.hb-first-art canvas {
+  position: relative;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
+  animation: hb-pop-in 0.6s 0.1s cubic-bezier(0.2, 1.7, 0.4, 1) backwards;
+}
+
+.hb-first-art .hb-rays {
+  width: 240%;
+  height: 240%;
+  margin: -120% 0 0 -120%;
+  background: repeating-conic-gradient(var(--rcg) 0 10deg, rgba(255, 255, 255, 0) 10deg 20deg);
+  opacity: 0.8;
+}
+
+.hb-first-txt h3 {
+  margin: 0 0 2px;
+}
+
+.hb-first-txt p {
+  margin: 3px 0;
+}
+
 .hb-confetti {
   position: absolute;
   inset: 0;
@@ -3258,6 +3468,11 @@
 
 @keyframes hb-fall {
   to { transform: translateY(110vh) rotate(calc(var(--r) + 540deg)); }
+}
+
+@keyframes hb-glint {
+  0% { background-position: -150% 0, 0 0; }
+  60%, 100% { background-position: 250% 0, 0 0; }
 }
 
 @keyframes hb-level {

@@ -17,8 +17,9 @@ import { ARENAS, arenaIndex, addCards, cardState, kingLevelForXp, KING_LEVELS } 
 
 export const PROFILE_KEY = 'wobblewar.profile.v1'; // same key as v1: the save upgrades in place
 export const PROFILE_VERSION = 2;
-// Unit types that can wear a hat (sim/unit-types.js ids).
-export const UNIT_IDS = ['clubber', 'squire', 'archer', 'spiker', 'bomb', 'brick', 'bruiser', 'megabomb'];
+// Unit types that can wear a hat (sim/unit-types.js ids). The Sprout, Propeller
+// Pal, Nutcracker and Pelican have their own headgear (noHat) and never do.
+export const UNIT_IDS = ['clubber', 'squire', 'archer', 'spiker', 'bomb', 'brick', 'bruiser', 'megabomb', 'pogo', 'netter', 'juggler', 'brolly', 'drummer', 'jelly'];
 // v1 achievements ("trophies") that still exist as badges with the same meaning.
 export const V1_BADGE_IDS = ['firstWin', 'knockdowns', 'kills', 'flyer', 'pincushion', 'chain', 'boing', 'giants', 'dressUp', 'yeet'];
 export const VETERAN_GIFT = { perStar: 20, max: 2000 };
@@ -31,7 +32,20 @@ const STATS = [
   'yeets', 'booms',
   // v2
   'matches', 'losses', 'draws', 'threeCrowns', 'towers', 'cardsPlayed', 'spells', 'chests', 'upgrades',
+  // the 32 cards (battle events, counted by main.js)
+  'slips', 'homeRuns', 'airMail', 'jellySpits', 'craneLaunches',
 ];
+// One-time tips, shown the first time a card of that sort arrives (grant()).
+export const FIRSTS = ['flier', 'building', 'legendary'];
+/** Which of FIRSTS a card is (a Pelican is both a flier and a legendary). */
+export function firstsOf(card) {
+  if (!card) return [];
+  const out = [];
+  if (card.flying) out.push('flier');
+  if (card.kind === 'building') out.push('building');
+  if (card.rarity === 'legendary') out.push('legendary');
+  return out;
+}
 const SETTINGS = { sound: true, volume: 0.8, haptics: true, shake: true };
 const MAX_NUM = Number.MAX_SAFE_INTEGER;
 
@@ -99,6 +113,7 @@ export function newProfile(seed) {
     owned: { hats: ['none'], colors: ['blue'] },
     equipped: { color: 'blue', hats: Object.fromEntries(UNIT_IDS.map((id) => [id, 'none'])) },
     tutorial: 0, // tutorial steps finished (0 = first match not played yet)
+    firsts: Object.fromEntries(FIRSTS.map((k) => [k, false])), // one-time tips already given (see grant)
     // A ladder match in progress (ladder.js startPending): a reload or a killed app
     // mid-match is settled from it on the next start. settled = the last one counted that way (as a loss).
     pending: null, // { id, opponent, startedAt, blue, red }
@@ -246,6 +261,9 @@ function fromV2(raw) {
   p.stats = cleanStats(raw.stats);
   cleanCosmetics(p, raw);
   p.tutorial = num(raw.tutorial);
+  // (a card of that sort already owned counts as told: no tip for old news)
+  const firsts = obj(raw.firsts);
+  for (const k of FIRSTS) p.firsts[k] = firsts[k] === true || Object.keys(p.cards).some((id) => firstsOf(cardById(id)).includes(k));
   p.pending = cleanPending(raw.pending);
   p.settled = typeof raw.settled === 'string' ? raw.settled.slice(0, 40) : '';
   p.settings = cleanSettings(raw.settings);
@@ -338,6 +356,10 @@ export function grant(p, reward) {
     const s = cardState(p, c.id);
     Object.assign(c, { level: s.level, count: s.count, need: s.need, canUpgradeAfter: s.ready, canUpgrade: s.canUpgrade, goldNeed: s.ready ? Math.max(0, s.gold - p.gold) : 0 });
     delete c.ready;
+    // The first flier, building or legendary: a friendly tip, once each
+    const what = c.isNew ? firstsOf(cardById(c.id)).filter((k) => !p.firsts[k]) : [];
+    for (const k of what) p.firsts[k] = true;
+    if (what.length) pushNotice(p, { kind: 'first', card: c.id, what });
   }
   const refund = r.refund == null ? DUPLICATE_REFUND : r.refund;
   for (const [key, list2] of [['hat', 'hats'], ['color', 'colors']]) {

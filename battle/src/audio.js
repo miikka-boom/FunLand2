@@ -8,9 +8,12 @@
 //   power  0..1+   hit strength / swing speed / impact speed
 //   pitch  0..1    per-unit voice pitch, so every bean sounds a bit different
 //   rate   .25..2  game time scale; slow motion lowers and stretches sounds
-//   rarity 'common' | 'rare' | 'epic'   cardReveal: rarer = brighter, longer
+//   rarity 'common' | 'rare' | 'epic' | 'legendary'   cardReveal: rarer = brighter, longer
 //   foe    bool    crown: the other side scored (a softer, lower "dong")
 //   big    bool    chestShake / chestOpen: the Big Chest (heavier, longer)
+//   flip   bool    umbrella: blown inside out
+//   down   bool    whirr: the propeller cuts out instead of spinning up
+//   metal  bool    planks: the crane (iron bars, not planks)
 //
 // Each sound gets its own little bus (gain + panner), so it can be faded out
 // early when the battle gets too busy.
@@ -1100,9 +1103,10 @@ function chestOpen(b) {
 
 // A card flies out of the chest: a pop, then a chime that grows with rarity
 // (o.rarity): common = one note, rare = two rising notes and a little sparkle,
-// epic = a swell, a three-note chord, a high bell and a long sparkle.
+// epic = a swell, a three-note chord, a high bell and a long sparkle,
+// legendary = all of the epic one, then a brassy fanfare up to a high bell.
 function cardReveal(b) {
-  const r = b.o.rarity === 'epic' ? 2 : b.o.rarity === 'rare' ? 1 : 0;
+  const r = b.o.rarity === 'legendary' ? 3 : b.o.rarity === 'epic' ? 2 : b.o.rarity === 'rare' ? 1 : 0;
   b.tone({ f: 380, to: 1100, glide: 0.035, a: 0.001, d: 0.05, g: 0.32 });
   b.noise({ type: 'bandpass', f: 2400, q: 2, d: 0.02, g: 0.2 });
   if (r === 0) {
@@ -1120,6 +1124,15 @@ function cardReveal(b) {
   [523.3, 659.3, 784].forEach((f, i) => bell(b, f, 0.04 + i * 0.06, 0.13, 0.7, 'triangle'));
   bell(b, 1568, 0.24, 0.12, 0.8);
   sparkle(b, 0.24, 0.7, 10, 0.035);
+  if (r < 3) return;
+  horn(
+    b,
+    [[0.3, 392], [0.42, 392], [0.46, 523.3], [0.58, 523.3], [0.62, 784], [1.3, 784]],
+    [[0.3, 400], [0.36, 2200], [0.6, 1600], [0.7, 2600], [1.3, 900]],
+    [[0.3, 0], [0.33, 0.22], [0.42, 0.18], [0.47, 0.25], [0.58, 0.2], [0.63, 0.32], [1.1, 0.22], [1.35, 0]],
+  );
+  bell(b, 2093, 0.64, 0.07, 0.9);
+  sparkle(b, 0.62, 0.9, 12, 0.035, 2600, 4800);
 }
 
 // Card upgraded: a rising "whoomp", a fast arpeggio up an octave and a half and
@@ -1155,6 +1168,335 @@ function trophyDown(b) {
   b.tone({ type: 'triangle', f: 440, a: 0.003, d: 0.14, g: 0.2 });
   b.tone({ type: 'triangle', f: 349.2, at: 0.14, a: 0.005, h: 0.05, d: 0.35, g: 0.2 });
   b.tone({ f: 174.6, at: 0.14, a: 0.01, d: 0.3, g: 0.08 });
+}
+
+// --- arena: the newer cards ----------------------------------------------------------------
+
+// Pogo Bean hop: a springy "boyoing" that bends up and wobbles, the coil's
+// twang on top and the stick tapping the dirt.
+function boing(b) {
+  const p = clamp(b.power, 0.3, 1.3);
+  const w = 0.6 + 0.4 * Math.min(p, 1);
+  const f = 210 + b.pitch * 90;
+  b.noise({ type: 'lowpass', f: 520, a: 0.001, d: 0.03, g: 0.22 * w });
+  const o = b.tone({ f: f * 0.7, to: f * 1.6, glide: 0.09, a: 0.004, h: 0.03, d: 0.2, g: 0.3 * w });
+  b.wobble(o.frequency, f * 1.3, 22, [[0, 0.16], [0.3, 0.02]], 0, 0.3);
+  b.tone({ type: 'triangle', f: f * 3.1, to: f * 4, glide: 0.05, d: 0.06, g: 0.05 * w });
+}
+
+// Boing Box glove: a leather snap and a long metal-spring "boyoyoyoing".
+function glove(b) {
+  b.noise({ type: 'bandpass', f: 1200, q: 1, a: 0.001, d: 0.02, g: 0.4 });
+  b.tone({ f: 200, to: 90, d: 0.05, g: 0.3 });
+  const f = 330;
+  const o = b.tone({ type: 'triangle', f: f * 0.7, to: f * 1.25, glide: 0.06, a: 0.003, h: 0.06, d: 0.4, g: 0.26 });
+  b.wobble(o.frequency, f, 28, [[0, 0.25], [0.5, 0.01]], 0, 0.5);
+  const s = b.tone({ f: f * 2.1, d: 0.3, g: 0.05 });
+  b.wobble(s.frequency, f * 2.1, 28, [[0, 0.2], [0.3, 0]], 0, 0.3);
+}
+
+// The Boing Box lid rattling just before the punch: four quick wooden knocks.
+function rattle(b) {
+  for (let i = 0; i < 4; i++) {
+    const x = i * 0.045 + rand(0, 0.01);
+    const f = rand(600, 750) * (i % 2 ? 1.1 : 1);
+    b.tone({ f: f * 1.2, to: f, glide: 0.008, at: x, d: 0.035, g: 0.22 });
+    b.noise({ type: 'bandpass', f: 2000, q: 1.5, at: x, d: 0.01, g: 0.12 });
+  }
+}
+
+// A Sprout pops out of the Bean Patch: a cork pop, a puff of dirt, a tiny
+// "yip" and a sprinkle of crumbs.
+function sproutPop(b) {
+  const f = 600 + b.pitch * 250;
+  b.tone({ f: f * 0.4, to: f * 1.4, glide: 0.04, a: 0.001, d: 0.06, g: 0.4 });
+  b.noise({ type: 'lowpass', f: 900, d: 0.05, g: 0.3 });
+  b.tone({ type: 'triangle', f: f * 2, to: f * 2.6, glide: 0.05, at: 0.06, a: 0.005, d: 0.06, g: 0.12 });
+  for (let i = 0; i < 3; i++) b.noise({ type: 'bandpass', f: rand(2000, 3500), q: 2, at: 0.07 + i * 0.03, d: 0.015, g: 0.08 });
+}
+
+// A building's crate lands: a heavy wooden thud, the hollow box, boards rattling.
+function crateLand(b) {
+  const p = clamp(b.power, 0.4, 1.4);
+  b.tone({ f: 95, to: 40, glide: 0.2, a: 0.003, d: 0.3, g: 0.75 * p });
+  b.noise({ type: 'lowpass', f: 800, to: 200, sweep: 0.3, d: 0.3, g: 0.5 * p });
+  b.tone({ f: 260, to: 210, d: 0.1, g: 0.3 * p });
+  for (let i = 0; i < 4; i++) b.tone({ f: rand(380, 520), at: 0.06 + i * 0.05 + rand(0, 0.02), d: 0.03, g: 0.12 * p * (1 - i / 5) });
+}
+
+// Something hits a wooden building: a hollow plank knock (brighter than stone).
+function woodHit(b) {
+  const p = Math.min(b.power, 1.2);
+  const w = 0.4 + 0.6 * p;
+  const f = rand(300, 360) * (1.1 - 0.2 * p);
+  b.noise({ type: 'bandpass', f: 2200, q: 1, d: 0.01, g: 0.3 * w });
+  b.tone({ f: f * 1.3, to: f, glide: 0.015, d: 0.12, g: 0.5 * w });
+  b.tone({ type: 'triangle', f: f * 2.6, d: 0.05, g: 0.12 * w });
+  b.noise({ type: 'bandpass', f: 900, to: 450, q: 2, d: 0.09, g: 0.3 * w });
+}
+
+// A building falls apart: a crack, a crash and planks clattering down.
+// o.metal (the crane): iron bars clanging instead of planks.
+function planks(b) {
+  const metal = !!b.o.metal;
+  const p = clamp(b.power, 0.4, 1.3);
+  b.noise({ type: 'highpass', f: 1800, d: 0.04, g: 0.35 * p });
+  b.tone({ f: 90, to: 35, glide: 0.4, a: 0.005, d: 0.5, g: 0.6 * p });
+  b.noise({ type: 'lowpass', f: 1500, to: 200, sweep: 0.5, d: 0.5, g: 0.4 * p });
+  for (let i = 0; i < 7; i++) {
+    const x = 0.08 + i * 0.09 + rand(0, 0.05);
+    const k = (1 - i / 8) * p;
+    if (metal) b.tone({ f: rand(500, 900), at: x, d: 0.15, g: 0.1 * k });
+    else b.tone({ f: rand(280, 420), to: rand(200, 260), glide: 0.02, at: x, d: 0.05, g: 0.28 * k });
+    b.noise({ type: 'bandpass', f: rand(900, 2000), q: 1.5, at: x, d: 0.03, g: 0.15 * k });
+  }
+}
+
+// The crane's cable and jib straining: a slow metal "eeeerk" (a saw ratchet
+// through two narrow resonances).
+function creak(b) {
+  const d = rand(0.4, 0.55);
+  const o = b.osc('sawtooth');
+  b.glide(o.frequency, [[0, 30], [d * 0.5, 55], [d, 38]]);
+  const e = b.gain(0);
+  const bp1 = b.filter('bandpass', 1800, 12, e);
+  const bp2 = b.filter('bandpass', 3100, 14, e);
+  b.glide(bp1.frequency, [[0, 1800], [d, 1500]]);
+  o.connect(bp1);
+  o.connect(bp2);
+  b.line(e.gain, [[0, 0], [0.08, 0.9], [d - 0.1, 1], [d, 0]]);
+  b.run(o, 0, d);
+}
+
+// Banana peel: a shoe squeak, a slide whistle up as the feet go up, and a
+// bump on the back.
+function slip(b) {
+  const s = b.osc('sawtooth');
+  b.glide(s.frequency, [[0, 900], [0.06, 1700]]);
+  const bp = b.filter('bandpass', 2400, 6, null);
+  const e = b.gain(0);
+  s.connect(bp);
+  bp.connect(e);
+  b.run(s, 0, b.perc(e.gain, 0, 0.004, 0.03, 0.05, 0.14));
+  const o = b.tone({ f: 520, to: 1500, glide: 0.3, at: 0.05, a: 0.03, h: 0.2, d: 0.12, g: 0.13 });
+  b.wobble(o.frequency, 1000, 7, [[0.05, 0], [0.4, 0.015]], 0.05, 0.4);
+  b.tone({ f: 120, to: 50, at: 0.42, d: 0.12, g: 0.4 });
+  b.noise({ type: 'lowpass', f: 600, at: 0.42, d: 0.08, g: 0.3 });
+}
+
+// A heavy skids on a peel instead: a low rubbery scrape.
+function skid(b) {
+  const s = b.osc('sawtooth');
+  b.glide(s.frequency, [[0, 70], [0.3, 55]]);
+  const bp = b.filter('bandpass', 900, 3, null);
+  const e = b.gain(0);
+  s.connect(bp);
+  bp.connect(e);
+  b.line(e.gain, [[0, 0], [0.03, 0.3], [0.25, 0.25], [0.32, 0]]);
+  b.run(s, 0, 0.32);
+  b.noise({ type: 'bandpass', f: 800, to: 400, sweep: 0.3, q: 1.2, a: 0.02, h: 0.15, d: 0.12, g: 0.25 });
+}
+
+// Big Sneeze, part one: "ah... ah..." (two breathy rising gasps).
+function inhale(b) {
+  const f = 240 + b.pitch * 60;
+  for (const [at, k] of [[0, 1], [0.2, 1.15]]) {
+    b.speak({
+      f0: [[at, f * k * 0.95], [at + 0.14, f * k * 1.2]],
+      vowels: [[at, 'a'], [at + 0.14, 'a']],
+      env: [[at, 0], [at + 0.04, 0.6], [at + 0.12, 0.55], [at + 0.15, 0]],
+      breath: 0.3,
+    });
+  }
+  b.noise({ type: 'bandpass', f: 900, to: 1800, sweep: 0.35, q: 1, a: 0.3, d: 0.06, g: 0.1 });
+}
+
+// Big Sneeze, part two: "CHOO!", a hiss, a voiced "oo" and the blast of air.
+function achoo(b) {
+  const f = 300 + b.pitch * 80;
+  b.noise({ type: 'highpass', f: 2500, a: 0.004, d: 0.09, g: 0.5 });
+  b.speak({
+    f0: [[0.03, f * 1.3], [0.08, f * 1.45], [0.35, f * 0.8]],
+    vowels: [[0.03, 'u'], [0.35, 'u']],
+    env: [[0.03, 0], [0.06, 1], [0.22, 0.7], [0.36, 0]],
+    breath: 0.25,
+  });
+  b.noise({ type: 'bandpass', f: 600, to: 2600, sweep: 0.2, q: 0.7, at: 0.02, a: 0.03, h: 0.1, d: 0.4, g: 0.4 });
+  b.noise({ type: 'lowpass', f: 400, at: 0.02, d: 0.25, g: 0.3 });
+}
+
+// Shaken Soda: 1.2 s of fizz getting angrier, sloshing as the bottle shakes,
+// with little crackling bubbles.
+function fizz(b) {
+  const d = 1.2;
+  const src = b.noiseSrc(1);
+  const hp = b.filter('highpass', 3500, 0.7, null);
+  const e = b.gain(0);
+  src.connect(hp);
+  hp.connect(e);
+  b.line(e.gain, [[0, 0], [0.1, 0.05], [d - 0.1, 0.2], [d, 0.04]]);
+  b.run(src, 0, d);
+  for (let i = 0; i < 16; i++) {
+    const x = rand(0, d);
+    b.tone({ f: rand(2500, 5000), at: x, a: 0.001, d: 0.012, g: 0.04 + (0.06 * x) / d });
+  }
+  for (let i = 0; i < 5; i++) b.noise({ type: 'bandpass', f: 500, q: 2, at: 0.08 + i * 0.22, a: 0.02, d: 0.08, g: 0.1 + 0.03 * i });
+}
+
+// ...and POP: the cap flies, the geyser roars up (a whoosh) and sprays down.
+function sodaPop(b) {
+  b.tone({ f: 380, to: 1400, glide: 0.03, a: 0.001, d: 0.05, g: 0.45 });
+  b.noise({ type: 'bandpass', f: 2200, q: 1.5, d: 0.02, g: 0.35 });
+  b.tone({ f: 90, to: 45, d: 0.25, g: 0.4 });
+  const d = 0.75;
+  const src = b.noiseSrc(1);
+  const bp = b.filter('bandpass', 500, 0.9, null);
+  const e = b.gain(0);
+  src.connect(bp);
+  bp.connect(e);
+  b.glide(bp.frequency, [[0, 500], [0.12, 2400], [d, 900]]);
+  b.line(e.gain, [[0, 0], [0.08, 0.7], [0.35, 0.55], [d, 0]]);
+  b.run(src, 0, d);
+  b.noise({ type: 'highpass', f: 4000, at: 0.05, a: 0.05, h: 0.3, d: 0.35, g: 0.12 });
+}
+
+// Anvil: CLANG. A heavy thud and the long, beating ring of thick iron.
+function clang(b) {
+  const p = clamp(b.power, 0.5, 1.5);
+  const w = 0.5 + 0.4 * Math.min(p, 1.4);
+  const f = rand(420, 470);
+  b.noise({ type: 'highpass', f: 3000, d: 0.02, g: 0.5 * w });
+  b.tone({ f: 75, to: 32, glide: 0.3, a: 0.003, d: 0.4, g: 0.8 * w });
+  b.noise({ type: 'lowpass', f: 900, to: 150, sweep: 0.4, d: 0.4, g: 0.45 * w });
+  for (const [r, g, d] of [[1, 0.28, 1.1], [2.32, 0.2, 0.8], [3.98, 0.12, 0.55], [5.6, 0.08, 0.35], [7.9, 0.05, 0.2]]) b.tone({ f: f * r, d, g: g * 0.8 * w });
+  b.tone({ f: f * 1.006, d: 1.1, g: 0.12 * w });
+}
+
+// Nutcracker bite: the wooden jaw clacks shut and the shell cracks to bits.
+function crunch(b) {
+  const p = Math.min(b.power, 1.3);
+  const w = 0.5 + 0.5 * p;
+  b.tone({ f: 900, to: 650, glide: 0.015, d: 0.04, g: 0.4 * w });
+  b.tone({ type: 'triangle', f: 1450, d: 0.025, g: 0.12 * w });
+  for (let i = 0; i < 6; i++) {
+    const x = 0.01 + i * 0.018 + rand(0, 0.012);
+    b.noise({ type: 'bandpass', f: rand(1400, 3600), q: 1.5, at: x, a: 0.001, d: rand(0.015, 0.03), g: 0.35 * w * (1 - i / 8) });
+  }
+  b.tone({ f: 140, to: 60, d: 0.1, g: 0.4 * w });
+}
+
+// Tummy Drummer: one BOOM on the bass drum (a felt mallet on a slack skin).
+function drum(b) {
+  const f = 105 + b.pitch * 20;
+  b.tone({ f: f * 1.6, to: f, glide: 0.03, a: 0.002, d: 0.32, g: 0.7 });
+  b.tone({ type: 'triangle', f: f * 2.4, to: f * 1.8, glide: 0.03, d: 0.08, g: 0.12 });
+  b.noise({ type: 'lowpass', f: 1200, to: 300, a: 0.001, d: 0.05, g: 0.3 });
+}
+
+// Propeller Pals: blades chopping the air as they spin up. o.down: the lift
+// cuts out and the propeller sputters down.
+function whirr(b) {
+  const down = !!b.o.down;
+  const d = down ? 0.7 : 0.55;
+  const src = b.noiseSrc(1);
+  const bp = b.filter('bandpass', 1400, 1.2, null);
+  const e = b.gain(0);
+  src.connect(bp);
+  bp.connect(e);
+  b.glide(bp.frequency, down ? [[0, 1600], [d, 500]] : [[0, 700], [d * 0.5, 1700], [d, 1500]]);
+  b.line(e.gain, down ? [[0, 0.28], [d, 0]] : [[0, 0], [0.1, 0.24], [d * 0.7, 0.24], [d, 0]]);
+  const chop = b.osc('square');
+  b.glide(chop.frequency, down ? [[0, 36], [d, 6]] : [[0, 12], [d, 38]]);
+  chop.connect(b.gain(0.18, e.gain));
+  b.run(chop, 0, d);
+  b.run(src, 0, d);
+  const o = b.osc('sawtooth');
+  b.glide(o.frequency, down ? [[0, 170], [d, 60]] : [[0, 90], [d, 180]]);
+  const lp = b.filter('lowpass', 600, 1, null);
+  const h = b.gain(0);
+  o.connect(lp);
+  lp.connect(h);
+  b.line(h.gain, down ? [[0, 0.08], [d, 0]] : [[0, 0], [0.1, 0.07], [d, 0]]);
+  b.run(o, 0, d);
+}
+
+// Pelican: a honking "SKRAAWK" (a harsh, flapping bird voice).
+function squawk(b) {
+  const f = 360 + b.pitch * 80;
+  const d = rand(0.28, 0.36);
+  b.noise({ type: 'bandpass', f: 2200, q: 2, d: 0.05, g: 0.15 });
+  b.speak({
+    f0: [[0, f * 0.8], [0.05, f * 1.2], [d * 0.5, f * 1.1], [d, f * 0.7]],
+    vowels: [[0, 'e'], [0.06, 'a'], [d, 'o']],
+    env: [[0, 0], [0.02, 1], [d * 0.7, 0.8], [d, 0]],
+    vib: [[0, 0.06], [d, 0.1]],
+    vibRate: 28,
+    breath: 0.2,
+    form: 0.95,
+  });
+}
+
+// Big Jelly swallows a bean: a wet "bloop" bending up, then back down.
+function bloop(b) {
+  const p = clamp(b.power, 0.3, 1.3);
+  const w = 0.6 + 0.4 * Math.min(p, 1);
+  const f = 180 + b.pitch * 60;
+  b.tone({ f: f * 0.6, to: f * 2.2, glide: 0.07, a: 0.004, d: 0.12, g: 0.45 * w });
+  b.tone({ f: f * 1.8, to: f * 0.9, glide: 0.08, at: 0.07, a: 0.004, d: 0.12, g: 0.25 * w });
+  b.noise({ type: 'lowpass', f: 500, q: 3, d: 0.12, g: 0.2 * w });
+}
+
+// ...and spits it out: "p-TOO!" and a wet whoosh.
+function ptoo(b) {
+  b.noise({ type: 'lowpass', f: 700, a: 0.001, d: 0.02, g: 0.5 });
+  b.tone({ f: 260, to: 120, d: 0.04, g: 0.35 });
+  b.noise({ type: 'highpass', f: 3000, at: 0.03, d: 0.03, g: 0.35 });
+  const f = 200 + b.pitch * 60;
+  b.speak({
+    f0: [[0.05, f * 1.3], [0.25, f * 0.8]],
+    vowels: [[0.05, 'u'], [0.25, 'u']],
+    env: [[0.05, 0], [0.07, 1], [0.18, 0.6], [0.26, 0]],
+    breath: 0.15,
+    form: 1,
+  });
+  b.noise({ type: 'bandpass', f: 1200, to: 400, sweep: 0.3, q: 1, at: 0.06, a: 0.03, d: 0.25, g: 0.2 });
+}
+
+// Bubble Wrap absorbing a hit: pop-pop-pop (more pops for a harder hit).
+function bubblePop(b) {
+  const n = 2 + Math.round(2 * Math.min(b.power, 1.2));
+  let x = 0;
+  for (let i = 0; i < n; i++) {
+    x += rand(0.025, 0.06);
+    b.noise({ type: 'bandpass', f: rand(1800, 3200), q: 2.5, at: x, a: 0.0008, d: 0.012, g: 0.4 });
+    b.tone({ f: rand(900, 1300), to: rand(400, 600), glide: 0.01, at: x, a: 0.0008, d: 0.018, g: 0.15 });
+  }
+}
+
+// Bubble Wrap cast: crinkly plastic, a stretchy squeak and a little shimmer.
+function wrapOn(b) {
+  for (let i = 0; i < 10; i++) b.noise({ type: 'highpass', f: rand(3000, 6000), at: rand(0, 0.35), a: 0.001, d: rand(0.008, 0.02), g: rand(0.08, 0.18) });
+  b.tone({ type: 'triangle', f: 700, to: 1100, glide: 0.25, a: 0.05, h: 0.1, d: 0.15, g: 0.06 });
+  sparkle(b, 0.1, 0.3, 4, 0.03);
+}
+
+// Brolly: the umbrella snaps open with a cloth "fwump" and its catch clicks.
+// o.flip: blown inside out (a second flap and the spokes twanging).
+function umbrella(b) {
+  b.noise({ type: 'bandpass', f: 500, to: 1400, sweep: 0.08, q: 0.8, a: 0.01, d: 0.12, g: 0.5 });
+  b.noise({ type: 'lowpass', f: 300, a: 0.005, d: 0.1, g: 0.35 });
+  b.tone({ f: 1400, at: 0.06, a: 0.001, d: 0.02, g: 0.08 });
+  if (!b.o.flip) return;
+  b.noise({ type: 'bandpass', f: 700, to: 1800, sweep: 0.06, q: 0.8, at: 0.1, a: 0.01, d: 0.1, g: 0.4 });
+  const o = b.tone({ type: 'triangle', f: 520, to: 380, glide: 0.2, at: 0.08, d: 0.3, g: 0.12 });
+  b.wobble(o.frequency, 450, 18, [[0.08, 0.06], [0.4, 0]], 0.08, 0.4);
+}
+
+// Butterfly Netter catch: a quick swish, the mesh closing, a soft thump.
+function netSwish(b) {
+  b.noise({ type: 'bandpass', f: 900, to: 3800, sweep: 0.08, q: 1.4, a: 0.04, d: 0.06, g: 0.4 });
+  b.noise({ type: 'highpass', f: 4500, at: 0.08, d: 0.04, g: 0.15 });
+  b.tone({ f: 220, to: 120, at: 0.08, d: 0.06, g: 0.2 });
 }
 
 // --- sound table ---------------------------------------------------------------------
@@ -1225,6 +1567,32 @@ const SOUNDS = {
   coins: { fn: coins, gap: 0.03, max: 3, level: 1.5, trim: 1, jit: 0.01, now: true },
   trophyUp: { fn: trophyUp, gap: 0.3, max: 2, level: 2, trim: 1, jit: 0 },
   trophyDown: { fn: trophyDown, gap: 0.3, max: 2, level: 2, trim: 0.85, jit: 0 },
+  // Arena: the newer cards
+  boing: { fn: boing, gap: 0.06, max: 3, level: 0.6, trim: 0.8, hit: true },
+  glove: { fn: glove, gap: 0.1, max: 2, level: 1, trim: 0.9, jit: 0.03 },
+  rattle: { fn: rattle, gap: 0.15, max: 2, level: 0.4, trim: 0.8, jit: 0.04 },
+  sproutPop: { fn: sproutPop, gap: 0.08, max: 2, level: 0.6, trim: 0.8 },
+  crateLand: { fn: crateLand, gap: 0.1, max: 2, level: 1.3, trim: 0.75, hit: true, jit: 0.03 },
+  woodHit: { fn: woodHit, gap: 0.05, max: 4, level: 0.6, trim: 0.75, hit: true, jit: 0.05 },
+  planks: { fn: planks, gap: 0.2, max: 2, level: 1.8, trim: 0.7, hit: true, jit: 0.03 },
+  creak: { fn: creak, gap: 0.3, max: 2, level: 0.5, trim: 1.1, jit: 0.05 },
+  slip: { fn: slip, gap: 0.08, max: 3, level: 0.8, trim: 0.9, jit: 0.04 },
+  skid: { fn: skid, gap: 0.12, max: 2, level: 0.6, trim: 0.8, jit: 0.04 },
+  inhale: { fn: inhale, gap: 0.3, max: 2, level: 0.8, trim: 1, jit: 0.02 },
+  achoo: { fn: achoo, gap: 0.3, max: 2, level: 1.5, trim: 1.1, jit: 0.02 },
+  fizz: { fn: fizz, gap: 0.3, max: 2, level: 0.7, trim: 1, jit: 0.03 },
+  sodaPop: { fn: sodaPop, gap: 0.2, max: 2, level: 1.5, trim: 0.9, jit: 0.03 },
+  clang: { fn: clang, gap: 0.15, max: 2, level: 1.8, trim: 0.7, hit: true, jit: 0.02 },
+  crunch: { fn: crunch, gap: 0.05, max: 3, level: 1, trim: 0.9, hit: true, jit: 0.05 },
+  drum: { fn: drum, gap: 0.12, max: 3, level: 0.7, trim: 0.75, jit: 0.02 },
+  whirr: { fn: whirr, gap: 0.15, max: 3, level: 0.4, trim: 0.9, jit: 0.05 },
+  squawk: { fn: squawk, gap: 0.4, max: 2, level: 0.9, trim: 1.1, jit: 0.03 },
+  bloop: { fn: bloop, gap: 0.08, max: 3, level: 0.8, trim: 0.9, hit: true, jit: 0.04 },
+  ptoo: { fn: ptoo, gap: 0.15, max: 2, level: 0.9, trim: 1, jit: 0.03 },
+  bubblePop: { fn: bubblePop, gap: 0.06, max: 3, level: 0.5, trim: 1.1, hit: true, jit: 0.05 },
+  wrapOn: { fn: wrapOn, gap: 0.2, max: 2, level: 0.8, trim: 1, jit: 0.02 },
+  umbrella: { fn: umbrella, gap: 0.07, max: 3, level: 0.6, trim: 1.3, jit: 0.05 },
+  netSwish: { fn: netSwish, gap: 0.08, max: 2, level: 0.7, trim: 0.9, jit: 0.04 },
 };
 
 export const SOUND_NAMES = Object.keys(SOUNDS);

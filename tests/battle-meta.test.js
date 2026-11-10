@@ -936,7 +936,7 @@ test('shop: the same stock all day, a new one tomorrow, by local date', () => {
       assert.equal(o.rarity, CARDS[o.cardId].rarity);
       const [lo, hi] = SHOP.count[o.rarity];
       assert.ok(o.count >= lo && o.count <= hi, `${o.rarity} x${o.count}`);
-      assert.equal(o.price, o.count * { common: 10, rare: 60, epic: 300 }[o.rarity]);
+      assert.equal(o.price, o.count * { common: 10, rare: 60, epic: 300, legendary: 1500 }[o.rarity]);
       assert.equal(o.bought, false);
     }
     const r = s.free.reward;
@@ -1105,7 +1105,8 @@ test('opponents: fair decks, levels, King Level and skill for every arena', () =
       assert.equal(o.deck.length, 8);
       assert.equal(new Set(o.deck).size, 8, 'unique cards');
       for (const id of o.deck) assert.ok(CARDS[id] && CARDS[id].arena <= arena, `${id} unlocked at arena ${arena}`);
-      assert.ok(o.deck.some((id) => CARDS[id].kind === 'spell') && o.deck.filter((id) => CARDS[id].kind === 'unit').length >= 4);
+      // (buildings count with the units: the Fortress style holds three of them)
+      assert.ok(o.deck.some((id) => CARDS[id].kind === 'spell') && o.deck.filter((id) => CARDS[id].kind !== 'spell').length >= 4);
       const floor = LEVEL_FLOOR[arena];
       const cap = levelCap(trophies);
       assert.deepEqual(Object.keys(o.levels).sort(), o.deck.slice().sort());

@@ -4,6 +4,7 @@
 // unlock; a "you" pin marks your trophies. Opens scrolled to where you are.
 
 import { h, icon, coin, bean, fmt, canvas, cardCanvas, hatIcon, hatById, CARDS, RARITIES, ARENAS, arenaLabel } from './hub-kit.js';
+import { STARTER_DECK } from '../sim/cards.js';
 import { trailStatus, claimTrail } from '../meta/ladder.js';
 import { cardsUpTo } from '../meta/collection.js';
 import { armyPalette } from '../meta/cosmetics.js';
@@ -84,8 +85,17 @@ export function createTrailScreen(H) {
     const prev = i > 0 ? cardsUpTo(i - 1) : [];
     const ids = cardsUpTo(i).filter((id) => !prev.includes(id));
     const cards = h('div', { class: 'hb-gate-cards' });
-    if (i === 0) cards.append(h('small', {}, `${ids.length} starter cards`));
-    else if (ids.length) for (const id of ids) cards.append(cardCanvas(id, 34, { mini: true, locked: !reached, palette: armyPalette(P), hats: P.equipped.hats }));
+    const mini = (id) => cardCanvas(id, 34, { mini: true, locked: !reached, palette: armyPalette(P), hats: P.equipped.hats });
+    if (i === 0) {
+      // The starter deck, and the Green Hills cards you find on the way
+      const more = ids.filter((id) => !STARTER_DECK.includes(id));
+      cards.append(h('small', {}, `${STARTER_DECK.length} starter cards${more.length ? ', then' : ''}`));
+      if (more.length) cards.append(h('span', { class: 'hb-gate-row' }, ...more.map(mini)));
+    } else if (ids.length) {
+      // (five or six cards fan out in one row so the banner keeps its height)
+      if (ids.length > 3) cards.classList.add('fan');
+      for (const id of ids) cards.append(mini(id));
+    }
     else cards.append(h('small', {}, 'The top of the trail!'));
     return h(
       'div',

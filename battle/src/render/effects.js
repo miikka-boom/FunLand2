@@ -2549,7 +2549,7 @@ export function fxForEvent(fx, e, pal = (t) => TEAMS[t] || TEAMS.blue) {
       return true;
     }
     case 'crash':
-      fx.spawn('crash', { x: u && u.hip ? u.hip.x : e.x, y: u ? u.ground : e.y, power: clamp((e.power || 400) / 600, 0.3, 1.3) });
+      fx.spawn('crash', { x: u && u.hip ? u.hip.x : e.x, y: u ? u.ground : e.y, power: clamp(e.power ?? 0.8, 0.3, 1.3) });
       return true;
     case 'propOff': {
       const p = ptOf(u, 'head', e);

@@ -1,15 +1,16 @@
 // Shared bits for the hub (the menus around the matches): a tiny DOM builder,
-// number / time formats, inline SVG icons, card tiles, reward views, unit and
-// hat icons, and the stats a card detail shows. No state of its own besides
-// a few small canvas caches.
+// number / time formats, inline SVG icons, card tiles (legendaries shine),
+// reward views, unit and hat icons, and the stats a card detail shows. No
+// state of its own besides a few small canvas caches.
 
 import { CARDS, RARITIES, levelMul, MAX_LEVEL, cardById } from '../sim/cards.js';
 import { UNIT_TYPES } from '../sim/unit-types.js';
 import { SPELLS } from '../sim/spells.js';
 import { TOWER_TAKES } from '../sim/towers.js';
+import { BUILDINGS } from '../sim/buildings.js';
 import { Battle, DT } from '../sim/battle.js';
 import { UnitRenderer } from '../render/units.js';
-import { cardFace } from '../render/cards.js';
+import { cardFace, drawLegendarySheen } from '../render/cards.js';
 import { HATS, drawHat } from '../render/hats.js';
 import { ARENAS } from '../meta/collection.js';
 import { COLORS } from '../meta/cosmetics.js';
@@ -131,15 +132,44 @@ export function canvas(w, hgt, cls = '') {
   return cv;
 }
 
-/** A card face canvas (render/cards.js, cached faces). */
+/**
+ * A card face canvas (render/cards.js, cached faces). A legendary face that
+ * isn't locked or dimmed gets the slow sheen (tickSheens) unless opts.sheen is false.
+ */
 export function cardCanvas(id, w, opts = {}, cls = 'hb-cardcv') {
   const hgt = Math.round(w * CARD_RATIO);
   const cv = canvas(w, hgt, cls);
   const face = cardFace(id, cv.width, cv.height, opts);
   if (face) cv.getContext('2d').drawImage(face, 0, 0);
+  const card = cardById(id);
+  if (face && card && card.rarity === 'legendary' && !opts.locked && !opts.dim && opts.sheen !== false && w >= 40) {
+    if (shiny.size > 60) for (const c of shiny) if (!c.isConnected) shiny.delete(c);
+    shiny.set(cv, { face, opts });
+  }
   return cv;
 }
 export const CARD_RATIO = 1.3;
+
+// Legendary faces on screen: the rainbow sheen sweeps over them (2 s a pass).
+const shiny = new Map(); // canvas -> { face, opts }
+const SHEEN_FPS = 30;
+let sheenT = 0;
+/** Redraw the sheen on every legendary face on screen (hub.tick, `t` in seconds). */
+export function tickSheens(t) {
+  if (!shiny.size || t - sheenT < 1 / SHEEN_FPS) return;
+  sheenT = t;
+  for (const [cv, s] of shiny) {
+    if (!cv.isConnected) {
+      shiny.delete(cv); // (screens re-render with new canvases)
+      continue;
+    }
+    const g = cv.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, cv.width, cv.height);
+    g.drawImage(s.face, 0, 0);
+    drawLegendarySheen(g, 0, 0, cv.width, cv.height, t, s.opts);
+  }
+}
 
 /** Card size (css px) for the current screen: `k` = share of the screen height. */
 export function cardW(k = 0.165, lo = 50, hi = 96) {
@@ -266,6 +296,25 @@ export function rewardView(g, w = cardW(0.2, 54, 90)) {
 const SPELL_KEY = { cheeseWheel: 'wheel' };
 const speedWord = (v) => (v < 50 ? 'Slow' : v < 70 ? 'Medium' : v < 89 ? 'Fast' : 'Very fast');
 
+/** What a unit type goes for: high fliers too, structures only, nothing at all, or the ground. */
+function targetsWord(t) {
+  if (t.hitsAir) return 'Air & ground';
+  if (t.targets === 'structures' || t.targets === 'towers') return 'Buildings & towers';
+  if (!t.attack && !t.dash && !t.blast && !t.hop && !t.engulf && !t.scoop) return 'Nothing (buffs friends)';
+  return 'Ground';
+}
+
+/** The hit a unit type deals that its card shows: [label, damage] or null. */
+function unitDamage(t) {
+  if (t.bomb && t.attack && t.attack.toss) return ['Bomb damage', t.bomb.damage];
+  if (t.attack && t.attack.damage) return [t.attack.bite ? 'Bite damage' : 'Damage', t.attack.damage];
+  if (t.dash && t.dash.damage) return [t.scoop ? 'Peck damage' : t.dash.kind === 'dive' ? 'Dive damage' : 'Damage', t.dash.damage];
+  if (t.blast && t.blast.damage) return ['Blast damage', t.blast.damage];
+  if (t.hop && t.hop.bonk) return ['Bonk damage', t.hop.bonk.damage];
+  if (t.bump && t.bump.damage) return ['Bump damage', t.bump.damage];
+  return null;
+}
+
 /**
  * Rows for the card detail: [{ label, value, next }] at `level`; next = the
  * value one level up (null when maxed or not scaling).
@@ -283,28 +332,71 @@ export function cardStats(id, level) {
     const t = UNIT_TYPES[card.unit];
     if (!t) return rows;
     rows.push({ label: 'Health', value: sc(t.hp), next: nx(t.hp) });
-    const dmg = (t.attack && t.attack.damage) || (t.dash && t.dash.damage) || (t.blast && t.blast.damage) || 0;
-    if (dmg) rows.push({ label: t.blast ? 'Blast damage' : 'Damage', value: sc(dmg), next: nx(dmg) });
-    rows.push({ label: 'Speed', value: speedWord(t.speed) });
-    rows.push({ label: 'Range', value: t.ranged && t.range ? `${t.range[0]}–${t.range[1]}` : t.blast ? `Blast ${t.blast.radius}` : 'Melee' });
-    rows.push({ label: 'Units', value: '×' + (card.count || 1) });
-    rows.push({ label: 'Targets', value: t.targets === 'towers' ? 'Towers only' : 'Beans & towers' });
+    const dmg = unitDamage(t);
+    if (dmg) rows.push({ label: dmg[0], value: sc(dmg[1]), next: nx(dmg[1]) });
+    else if (t.beat) rows.push({ label: 'Beat', value: 'Friends ×1.3 faster' });
+    rows.push({ label: 'Speed', value: speedWord(t.speed) + (t.flying ? ' · flies' : '') });
+    rows.push({ label: 'Range', value: t.ranged && t.range ? `${t.range[0]}–${t.range[1]}` : t.blast ? `Blast ${t.blast.radius}` : t.beat ? `Beat ${t.beat.radius}` : 'Melee' });
+    rows.push({ label: 'Units', value: '×' + (card.count || 1) + (card.anywhere ? ' · anywhere' : '') });
+    rows.push({ label: 'Targets', value: targetsWord(t) });
+  } else if (card.kind === 'building') {
+    const B = BUILDINGS[card.building];
+    if (!B) return rows;
+    rows.push({ label: 'Health', value: sc(B.hp), next: nx(B.hp) });
+    rows.push({ label: 'Lifetime', value: `${B.life} s` });
+    if (B.punch) {
+      rows.push({ label: 'Punch damage', value: sc(B.punch.damage), next: nx(B.punch.damage) });
+      rows.push({ label: 'Reach', value: B.punch.reach });
+    } else if (B.pendulum) {
+      rows.push({ label: 'Swing damage', value: sc(B.pendulum.damage), next: nx(B.pendulum.damage) });
+      rows.push({ label: 'Reach', value: B.pendulum.sense });
+    }
+    if (B.spawn) {
+      const kid = UNIT_TYPES[B.spawn.unit];
+      rows.push({ label: 'Spawns', value: `${kid ? kid.name : B.spawn.unit} / ${B.spawn.every} s` });
+      rows.push({ label: 'At once', value: `Up to ${B.spawn.max}` });
+    }
+    rows.push({ label: 'Targets', value: 'Ground' });
   } else {
     const S = SPELLS[SPELL_KEY[card.spell] || card.spell];
     if (!S) return rows;
+    const tw = TOWER_TAKES.spell || 0.35;
+    if (card.spell === 'bubbleWrap') {
+      // (it helps your own side: no damage at all)
+      rows.push({ label: 'Absorbs', value: sc(S.absorb), next: nx(S.absorb) });
+      rows.push({ label: 'Lasts', value: `${S.time} s` });
+      rows.push({ label: 'Radius', value: card.radius });
+      rows.push({ label: 'Targets', value: 'Your own beans' });
+      return rows;
+    }
     const volleys = S.volleys || 1;
     const per = S.damage;
     rows.push({
-      label: 'Damage',
+      label: card.spell === 'bananaPeels' ? 'Slip damage' : 'Damage',
       value: volleys > 1 ? `${volleys} × ${sc(per)}` : sc(per),
       next: m2 ? (volleys > 1 ? `${volleys} × ${nx(per)}` : nx(per)) : null,
     });
-    const tw = TOWER_TAKES.spell || 0.35;
-    rows.push({ label: 'Tower damage', value: volleys > 1 ? `${volleys} × ${sc(per * tw)}` : sc(per * tw), next: m2 ? (volleys > 1 ? `${volleys} × ${nx(per * tw)}` : nx(per * tw)) : null });
+    if (card.spell === 'bananaPeels') {
+      rows.push({ label: 'Peels', value: `×${S.peels}` });
+      rows.push({ label: 'Lasts', value: `${S.life} s` });
+    } else rows.push({ label: 'Tower damage', value: volleys > 1 ? `${volleys} × ${sc(per * tw)}` : sc(per * tw), next: m2 ? (volleys > 1 ? `${volleys} × ${nx(per * tw)}` : nx(per * tw)) : null });
+    if (card.spell === 'shakenSoda') rows.push({ label: 'Pops after', value: `${S.fuse} s` });
     rows.push({ label: S.dist ? 'Rolls' : 'Radius', value: S.dist ? `${S.dist} px` : card.radius });
-    rows.push({ label: 'Targets', value: S.dist ? 'Beans on the ground' : 'Beans & towers' });
+    rows.push({ label: 'Targets', value: SKY_SPELLS.includes(card.spell) ? 'Air & ground' : 'Ground' });
   }
   return rows;
 }
+// Spells that reach fliers high up (the rest stay on the ground)
+const SKY_SPELLS = ['arrowRain', 'bigSneeze', 'shakenSoda', 'anvil'];
 
-export const cardKindLine = (card) => (card.kind === 'spell' ? 'Spell · cast anywhere' : `Unit card · ${card.count > 1 ? card.count + ' beans' : '1 bean'}`);
+/** The small line under a card's name: what kind of card it is. */
+export function cardKindLine(card) {
+  if (card.kind === 'spell') return 'Spell · cast anywhere';
+  if (card.kind === 'building') {
+    const B = BUILDINGS[card.building];
+    return B ? `Building · lasts ${B.life} s` : 'Building';
+  }
+  if (card.flying) return 'Unit card · flies';
+  if (card.anywhere) return 'Unit card · lands anywhere';
+  return `Unit card · ${card.count > 1 ? card.count + ' beans' : '1 bean'}`;
+}

@@ -27,7 +27,9 @@ Play it at `battle/` (locally: `npm start`, then open
 `http://localhost:8080/battle/`). It is made for touch in landscape (844×390
 and 667×375 phones first); a mouse works too. Held upright, a phone gets a
 "turn your phone sideways" screen (a running match pauses). The design spec is
-[`docs/WOBBLE-WAR-ARENA.md`](docs/WOBBLE-WAR-ARENA.md).
+[`docs/WOBBLE-WAR-ARENA.md`](docs/WOBBLE-WAR-ARENA.md); the 32 cards, the air
+layer, buildings and the Legendary rarity are specified in
+[`docs/WOBBLE-WAR-CARDS.md`](docs/WOBBLE-WAR-CARDS.md).
 
 ## How to play
 
@@ -35,18 +37,21 @@ and 667×375 phones first); a mouse works too. Held upright, a phone gets a
   right. Each side has a **Guard Tower** (worth 1 crown) in front of its
   **Castle** (all 3 crowns: it wins at once). A Castle sleeps until its Guard
   Tower falls or it is hit.
-- **Playing a card:** drag it from your hand onto the field (see-through beans
-  or the spell circle follow your finger, and the zone you may use lights up),
-  or tap a card and then tap the field. Units go on your half (and further
-  forward once their Guard Tower is down); spells go anywhere. A card that
-  can't go there shakes back into your hand with the reason ("Not enough
-  mana", "Play units on your side").
+- **Playing a card:** drag it from your hand onto the field (see-through beans,
+  a building's footprint, drop markers or the spell circle follow your finger,
+  and the zone you may use lights up), or tap a card and then tap the field.
+  Units go on your half (and further forward once their Guard Tower is down);
+  buildings go up on your own half only; the Brolly Brigade lands anywhere;
+  spells go anywhere. A card that can't go there shakes back into your hand
+  with the reason ("Not enough mana", "Play units on your side", "Build on your
+  side", "No room to build here").
 - **Mana** 💧: starts at 5, max 10, +1 every 2.8 s, and twice as fast in the
   last minute and in overtime. Deck of 8, hand of 4, the next card is shown; a
   played card goes to the back of the line.
 - **The beans** drop from the sky where you play them, land with a wobble and
-  a battle-cry hop, then fight the nearest enemy bean or march on the next
-  tower. The Brick only goes for towers.
+  a battle-cry hop, then fight the nearest enemy bean or march on the nearest
+  enemy tower or building. The Brick and the Pogo Bean ignore beans and go only
+  for towers and buildings.
 - **Winning:** after 2:00 the side with more crowns wins. A tie goes to up to
   1:00 of overtime where the first tower down wins; still tied, the side whose
   weakest tower has less health left (as a fraction) loses, and the result
@@ -61,26 +66,64 @@ and 667×375 phones first); a mouse works too. Held upright, a phone gets a
 
 ## The cards
 
+32 cards in four rarities: Common, Rare, Epic and **Legendary** (teal, with a
+rainbow sheen and a crown on the frame). Each arena unlocks its own cards.
+
 | Card | Mana | Rarity | Unlocks in | What it does |
 |---|---|---|---|---|
 | Clubbers | 3 | Common | Green Hills | Two beans with big wooden clubs: the overhead bonk sends beans cartwheeling |
 | Squire | 3 | Common | Green Hills | Sword and shield: raises the shield against arrows, blocks hits from the front |
-| Archers | 3 | Common | Green Hills | Two archers lobbing arrows that stick (and sometimes miss). Squishy up close |
+| Archers | 3 | Common | Green Hills | Two archers lobbing arrows that stick (and sometimes miss); they hit fliers. Squishy up close |
 | Spikers | 2 | Common | Green Hills | Three small, fast wedges that pounce point-first. A shield bounces them back |
 | Bomb | 2 | Common | Green Hills | Waddles up, lights its fuse and goes BOOM; flings everything nearby |
-| Arrow Rain | 3 | Common | Green Hills | Spell: three volleys of real arrows on a circle |
+| Arrow Rain | 3 | Common | Green Hills | Spell: three volleys of real arrows on a circle (fliers too) |
 | Boulder | 4 | Rare | Green Hills | Spell: a rock falls on an arc; everything under it goes flying |
 | Clubber Gang | 5 | Rare | Green Hills | Four Clubbers at once |
+| Sprouts | 1 | Common | Green Hills | Two tiny sprouts with toothpicks: cheap bait, one bonk sends them to the moon |
+| Banana Peels | 2 | Common | Green Hills | Spell: five peels lie there for 8 s and trip whoever steps on one (heavies only skid) |
 | Bruiser | 4 | Rare | Pointy Pass | An extra-large bean with an extra-large club |
-| Brick | 5 | Epic | Pointy Pass | A giant walking block with a hammer; ignores beans, marches on towers, the slam shakes the ground |
+| Brick | 5 | Epic | Pointy Pass | A giant walking block with a hammer; ignores beans, marches on towers and buildings, the slam shakes the ground |
 | Cheese Wheel | 3 | Epic | Pointy Pass | Spell: a wheel of cheese rolls toward the enemy, bowling beans over and denting towers |
+| Propeller Pals | 3 | Common | Pointy Pass | Three fliers in propeller caps: they fly over the front line and dive head first |
+| Pogo Bean | 4 | Rare | Pointy Pass | Boings over beans (stomping heads) and bonks only towers and buildings |
+| Butterfly Netter | 3 | Rare | Pointy Pass | Nets low fliers and plants them in the dirt; swats beans on the ground |
 | Bomb Squad | 4 | Rare | Boom Ridge | Three bombs (keep them apart, or one sets off the rest) |
 | Mega Bomb | 3 | Epic | Boom Ridge | A huge, slow bomb with a huge blast that hurts towers too |
 | Shield Wall | 7 | Epic | Boom Ridge | Three Squires, shields up |
+| Big Sneeze | 2 | Common | Boom Ridge | Spell: "ah... ah... ACHOO!" blows enemies back (fliers further), pops hats, makes holders let go |
+| Shaken Soda | 3 | Epic | Boom Ridge | Spell: fizzes for 1.2 s, then a geyser shoots everything on top straight up |
+| Bomb Juggler | 5 | Legendary | Boom Ridge | Juggles three lit bombs and lobs them at crowds and fliers; knock it over and it drops them |
+| Boing Box | 3 | Common | Brick Fortress | Building: a present with a boxing glove on a spring that punches beans away |
+| Bean Patch | 4 | Rare | Brick Fortress | Building: Sprouts keep popping out of it (three at a time at most) |
+| Anvil | 4 | Rare | Brick Fortress | Spell: CLANG. One big hit straight down, at any height: squashes a big bean, drops a flier |
+| Nutcracker | 4 | Epic | Brick Fortress | One big CRUNCH at a time: its bite cracks shields, Bricks and big beans |
+| Wrecking Crane | 6 | Legendary | Brick Fortress | Building: a wrecking ball that swings harder as beans come near and sends them FAR |
+| Brolly Brigade | 4 | Rare | Wobble Summit | Three beans float down under umbrellas anywhere on the field (towers can shoot them on the way) |
+| Bubble Wrap | 3 | Epic | Wobble Summit | Spell on your own beans: wraps them for 8 s, every hit just pops bubbles |
+| Tummy Drummer | 4 | Epic | Wobble Summit | BOOM-BOOM: friends nearby march and swing faster to its beat |
+| Pelican | 5 | Legendary | Wobble Summit | Flies high, scoops up a light bean, carries it home and drops it from way up |
+| Big Jelly | 6 | Legendary | Wobble Summit | A huge wobbly tank that swallows a small bean whole, then spits it out |
 
-The eight Green Hills cards are your starting deck. Every number lives in
-`battle/src/sim/cards.js` (cards), `sim/unit-types.js` (units), `sim/towers.js`,
-`sim/spells.js` and `sim/match.js` (rules).
+The eight Green Hills cards of the first 14 are your starting deck. Every
+number lives in `battle/src/sim/cards.js` (cards), `sim/unit-types.js` (units),
+`sim/buildings.js`, `sim/towers.js`, `sim/spells.js` and `sim/match.js` (rules).
+
+**Fliers.** Propeller Pals and the Pelican fly (and a Brolly counts while it
+floats down). A flier high up can only be hit by what hits air: Archers, the
+Netter (low fliers only), the Juggler's bombs, the towers' bolts and
+cannonballs, Arrow Rain, Big Sneeze, Shaken Soda and the Anvil, plus blasts
+that reach it. Once it is knocked, netted or diving low, anyone can bat it out
+of the sky. Every arena has an air answer, and fliers never fight fliers.
+
+**Buildings.** The Boing Box, the Bean Patch and the Wrecking Crane go up on
+your own half (never past it, even after their Guard Tower falls), fall in as a
+crate, work for 24-28 s while their health slowly runs down (a little clock on
+the health bar), then fall apart. They are walls to enemy beans, beans that see
+no enemy go for them like towers, and towers never shoot them. At most 3 stand
+per side (a 4th crumbles your oldest), and they never give crowns.
+
+**Deploy-anywhere.** The Brolly Brigade can be played anywhere between the two
+Castles; its beans float down for about 2.7 s while the towers shoot at them.
 
 ## A fair free-to-play game
 
@@ -96,7 +139,8 @@ Wobble War is a free game of the good kind: no money anywhere in power.
   refills every 3 hours (25–45 gold, about 8 cards in 2 stacks, 15% chance per
   stack of a rare one) and the **Big Chest** every 12 hours (120–200 gold,
   about 30 cards in 4 stacks with at least one rare stack, a 35% chance of an
-  epic stack once you have epic cards unlocked, and 10 Jellybeans). Both are ready on your first visit. They never
+  epic stack once you have epic cards unlocked, and 10 Jellybeans; from Boom
+  Ridge on, a 5% chance that one stack is a single Legendary copy). Both are ready on your first visit. They never
   stack, never need a slot and can't be sped up, and matches never give chests.
   Opening one a little late costs nothing: up to a quarter of its timer of
   lateness comes off the next wait.
@@ -113,9 +157,12 @@ Wobble War is a free game of the good kind: no money anywhere in power.
 - **Arenas:** Green Hills (0 trophies), Pointy Pass (300), Boom Ridge (650),
   Brick Fortress (1000) and Wobble Summit (1500), each with its own scenery.
   A new arena unlocks its cards in chests and the shop, and the **Trophy
-  Trail** (32 rewards up to 1600 trophies, claimable forever by your best
-  trophies) hands each new card out right after its gate, with enough copies
-  to bring it to about level 4.
+  Trail** (rewards up to 1750 trophies, claimable forever by your best
+  trophies) hands each new card out soon after its gate, with enough copies
+  to bring it to about level 4 (4 copies of a Legendary).
+- **Legendaries** (one per arena from Boom Ridge on) come from the Trail, the
+  Big Chest's 5% roll and, on some days, the shop's third offer. Matchmaking
+  mirrors your card levels, so a low-level legendary is never a pay-to-win gap.
 - **Honest opponents:** bots with names like Captain Bonk, labelled "computer
   player". Their card levels mirror your deck card by card (never above any
   of yours), capped at the level usual for your trophies, so upgrading past
@@ -127,7 +174,7 @@ Wobble War is a free game of the good kind: no money anywhere in power.
   gold, one buy each. The **Wardrobe** sells hats for each unit type and army
   colours for Jellybeans, with a live preview. Hats use their own random
   numbers, so they never change how a battle goes.
-- **Badges:** 25 goals such as Frequent Flyer, Pincushion, Chain Reaction and
+- **Badges:** goals such as Frequent Flyer, Pincushion, Chain Reaction and
   Giant Slayer, paying Jellybeans and some gold.
 - **Old saves:** a save from the earlier campaign version keeps its
   Jellybeans, cosmetics, settings, stats and badges, and gets a veteran gift of
@@ -160,8 +207,8 @@ and only updates itself while you are in the menus. Progress is saved in
 **Sandbox** (More → Sandbox): the original toy. Pick a unit card, tap the left
 side for blue or the right side for red, press **FIGHT!**. Drag a bean to grab
 and fling it (a lit bomb stays lit), drag elsewhere to pan, pinch or scroll to
-zoom; 🐢 is slow motion. Keys: `1`–`8` pick a unit, `E` remove, `Space` fight,
-`S` slow-mo, `F` auto camera, `R` reset.
+zoom; 🐢 is slow motion. Keys: `1`–`9` pick one of the first nine units, `E`
+remove, `Space` fight, `S` slow-mo, `F` auto camera, `R` reset.
 
 ## How the beans work
 
@@ -187,9 +234,12 @@ The jokes come from that one rule plus a few extras:
   Medium hits cause a stumble with windmilling arms; corpses give a last wobble
   and pile up.
 - **Juice:** hit-stop on big hits, screen shake, comic starbursts and dirt
-  clods, "BONK!" pop-ups, smooth slow motion (drawing blends between physics
-  steps), a final-blow slow-mo that keeps the victim in the shot, and the
-  winners hop and cheer.
+  clods, "BONK!" pop-ups (and "WHOOPS!", "ACHOO!", "CLANG!", "PTOO!"...),
+  smooth slow motion (drawing blends between physics steps), a final-blow
+  slow-mo that keeps the victim in the shot, and the winners hop and cheer.
+- **Fliers** ride a lift spring instead of legs: it holds them at their
+  height, switches off when they are netted, flattened or fizzed, and sags
+  when they are dazed, so they flop down and climb back up.
 - **Hand of god** (Sandbox): drag a bean to pick it up. It dangles and flails,
   and you can fling it.
 
@@ -203,16 +253,18 @@ battle/src/main.js               boot and game shell: modes (hub demo match / yo
                                  the hand (drag or tap to play), result screen, tutorial coach, back button,
                                  sim events -> effects, sound, haptics and badge stats; window.__wobble debug hook
 battle/src/input.js              canvas touch / mouse: tap, aim, grab, pan, pinch, wheel
-battle/src/audio.js              WebAudio synth: bonks, clanks, squeaky voices, towers, spells, chests, jingles
+battle/src/audio.js              WebAudio synth: bonks, clanks, squeaky voices, towers, spells, chests, jingles,
+                                 and the newer cards' boings, slips, ACHOO, fizz, CLANG, crunch, drum, whirr, squawk...
 battle/src/pwa.js, battle/sw.js  install + offline + updates (bump VERSION in sw.js on every deploy)
 
 battle/src/sim/                  the match, pure and seeded (no DOM)
   physics.js                     Verlet particles, constraints, ground, segment tests
-  unit.js, unit-types.js         the ragdoll (skeleton, muscles, walking, attacks, AI) and the 8 unit types
-  battle.js                      fixed 120 Hz step, hits, pounces, blasts, arrows; sandbox and arena modes
-  towers.js, spells.js           Guard Towers and Castles; Boulder, Arrow Rain, Cheese Wheel
-  cards.js                       the 14 cards (the contract between sim, meta and UI)
-  match.js                       rules: mana, hand and deck cycle, zones, crowns, overtime, tiebreak, surrender
+  unit.js, unit-types.js         the ragdoll (skeleton, muscles, walking, flying, hopping, attacks, AI) and the 18 unit types
+  battle.js                      fixed 120 Hz step, hits, pounces, bites, blasts, arrows, holding, spawns; sandbox and arena modes
+  towers.js, buildings.js        Guard Towers and Castles; the three buildings (a Tower of kind 'building')
+  spells.js                      Boulder, Arrow Rain, Cheese Wheel, Banana Peels, Big Sneeze, Shaken Soda, Anvil, Bubble Wrap
+  cards.js                       the 32 cards and 4 rarities (the contract between sim, meta and UI)
+  match.js                       rules: mana, hand and deck cycle, zones, building and anywhere plays, crowns, overtime, tiebreak
   bot.js                         the computer player (plays only through match.play(), never peeks)
 battle/src/meta/                 the free-to-play meta game, pure functions of the profile
   profile.js                     the save (v2), migration from v1, currencies, rewards, notices, seeded RNG
@@ -222,10 +274,11 @@ battle/src/meta/                 the free-to-play meta game, pure functions of t
   opponents.js, cosmetics.js     fair bot opponents (and the Training Dummy); colours and hats
 battle/src/render/               canvas drawing
   units.js, hats.js              beans, weapons, arrows, faces, corpse fade, HP bars; the hats
-  towers.js, spells.js           towers (damage, collapse, HP bars); spells, cannonballs, aim circle, deploy ghosts
+  towers.js, buildings.js        towers (damage, collapse, HP bars); the buildings (crate drop, glove, patch, crane, wreck)
+  spells.js                      spells, cannonballs, Juggler bombs, aim circle, deploy ghosts, building footprints, drop markers
   background.js, camera.js       sky, hills, castles, arena themes; framing, shake
   effects.js                     starbursts, dust, debris, confetti, comic words, crowns
-  cards.js, chests.js            card faces (a real settled ragdoll as art); chest art and its opening
+  cards.js, chests.js            card faces (a real settled ragdoll as art, the legendary frame); chest art and its opening
 battle/src/ui/                   the menus (plain DOM)
   hub.js                         shell: top bar, tabs, Battle tab, modals, notices, tutorial hints, celebrations
   hub-kit.js                     DOM helper, icons, card tiles, reward views, card stats
@@ -244,18 +297,28 @@ physics, arena rules, bot, meta, render smoke test, PWA). In the browser,
 `node battle/tools/balance-arena.mjs` plays seeded bot-vs-bot matches and
 prints tables: side symmetry and match shape (how matches end, towers
 destroyed), skill against skill, a level up against none, every card's win rate
-in random decks, the archetype decks against the starter deck, and a scripted
-new player against the Training Dummy. `--n 24` for a bigger sample (about 5
-minutes), `--only cards,mirror` for some sections, `--seed S`, `--skill K`,
+in random decks (all 32 cards; every random deck holds at least one air
+answer), the archetype decks against the starter deck (the four classic ones
+and the five of the newer cards: Hop Cycle, Fizz Pop, Fortress, Sky Circus,
+Jelly Parade), and a scripted new player against the Training Dummy, plus the
+CPU each match costs. `--n 24` for a bigger sample (about 5 minutes),
+`--only cards,mirror` for some sections, `--seed S`, `--skill K`,
 `--json FILE`, and `--set GUARD.hp=600,CARDS.brick.mana=6` to try numbers
-before changing them in the files (`WORLD.pocket.blue=1150` works too).
+before changing them in the files (`WORLD.pocket.blue=1150`,
+`BUILDINGS.boingBox.punch.recharge=2.2` and `UNIT_TYPES.pogo.hop.vx=150` work
+too). `--only perf` runs the scripted worst cases for CPU (Bean Patches,
+a Big Jelly push against a Wrecking Crane, a sky full of fliers) against a busy
+match of the original cards; `tests/battle-perf.test.js` checks the same
+budget.
 
 With today's numbers (`--n 8`, seed 1), equal-skill matches end by a castle
 falling in about a quarter of cases and go to the tiebreak in about a fifth
 (they used to be about half tiebreaks and no castles at all), a 0.6 bot takes
 the castle of a 0.3 bot in about a third of matches, the scripted new player
 takes the Training Dummy's practice castle almost every time, and one level up
-still wins 94-100%. Every card's win rate sits between about 42% and 61%.
+still wins 94-100%. Every card's win rate sat between about 42% and 61% with
+the 14 original cards; the 32-card numbers are being tuned against the targets
+in `docs/WOBBLE-WAR-CARDS.md` section 10.
 
 # Prototype 0: "HORDE"
 

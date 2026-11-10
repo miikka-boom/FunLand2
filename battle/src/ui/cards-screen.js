@@ -1,10 +1,11 @@
-// The Cards tab: your deck of 8 (levels, copies, average mana) and the
-// collection (owned, not found yet, locked by arena). Tapping a card opens its
-// detail sheet: art, stats, copies, Upgrade (gold + copies) and Use (then tap
-// a deck card to swap it in; tapping anywhere else cancels).
+// The Cards tab: your deck of 8 (levels, copies, average mana, a word when it
+// can't hit fliers) and the collection (owned, not found yet, locked by
+// arena). Tapping a card opens its detail sheet: art, stats, copies, Upgrade
+// (gold + copies) and Use (then tap a deck card to swap it in; tapping
+// anywhere else cancels). Legendary faces shine (hub-kit tickSheens).
 
 import { h, icon, coin, fmt, clamp, cardCanvas, cardW, cardStats, cardKindLine, arenaLabel, CARDS, RARITIES, ARENAS } from './hub-kit.js';
-import { cardState, upgradeCard, swapIntoDeck, deckAvgMana, ownedCards, unlockedCards, lockedCards } from '../meta/collection.js';
+import { cardState, upgradeCard, swapIntoDeck, deckAvgMana, deckNeedsAir, ownedCards, unlockedCards, lockedCards, AIR_ANSWERS } from '../meta/collection.js';
 import { armyPalette } from '../meta/cosmetics.js';
 
 const UPGRADE_GUARD_MS = 450;
@@ -83,7 +84,9 @@ export function createCardsScreen(H) {
     const unfound = unlockedCards(P).filter((id) => !P.cards[id]);
     const locked = lockedCards(P);
     const total = Object.keys(CARDS).length;
-    const coll = h('div', { class: 'hb-coll' }, h('div', { class: 'hb-sec-head' }, h('h3', {}, 'Collection'), h('small', {}, `${ownedCards(P).length}/${total} found`)));
+    // (next to the cards that could fix it: nothing in the deck hits fliers)
+    const airWarn = !ui.swap && deckNeedsAir(P) ? h('button', { class: 'hb-air-warn', type: 'button', on: { click: H.tap(() => airTip()) } }, h('i', { 'aria-hidden': 'true' }, '!'), 'No air answer in this deck') : null;
+    const coll = h('div', { class: 'hb-coll' }, h('div', { class: 'hb-sec-head' }, h('h3', {}, 'Collection'), h('small', {}, `${ownedCards(P).length}/${total} found`), airWarn));
     const grid = (ids) => h('div', { class: 'hb-coll-grid' }, ...ids.map((id) => tile(id, w)));
     if (owned.length) coll.append(grid(owned));
     else coll.append(h('p', { class: 'hb-empty' }, unfound.length ? 'All your cards are in your deck. Open chests to find more!' : 'All your cards are in your deck.'));
@@ -93,6 +96,24 @@ export function createCardsScreen(H) {
       coll.append(h('div', { class: 'hb-sec-sub' }, next ? `Locked · reach ${next.name} (${fmt(next.trophies)} trophies) to unlock more` : 'Locked'), grid(locked));
     }
     el.append(deck, coll);
+  }
+
+  /** Which cards hit fliers high up (the ones unlocked so far). */
+  function airTip() {
+    const ids = AIR_ANSWERS.filter((id) => !cardState(P, id).locked);
+    const w = cardW(0.13, 40, 64);
+    H.openModal(
+      H.cardModal({
+        kicker: 'NO AIR ANSWER',
+        title: 'Fliers are about!',
+        body: [
+          h('p', {}, 'Fliers float over the beans on the ground: clubs and swords can\'t reach them up there. Your towers can, and so can these cards:'),
+          h('div', { class: 'hb-air-cards' }, ...ids.map((id) => h('span', { class: 'hb-air-card' + (P.cards[id] ? '' : ' unfound') }, cardCanvas(id, w, { mini: true, dim: !P.cards[id], ...look() }), h('small', {}, CARDS[id].name)))),
+        ],
+        buttons: [H.btn('OK', () => H.closeTop(), 'primary', null)],
+        cls: 'hb-air-modal',
+      }),
+    );
   }
 
   // --- swapping a card into the deck -------------------------------------------------------

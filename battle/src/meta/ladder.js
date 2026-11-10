@@ -147,7 +147,9 @@ export function settlePending(p) {
 // or { random: rarity, n } = n copies of one unlocked card of that rarity.
 // Every card of a new arena is handed out shortly after its gate, with enough
 // copies to upgrade it to about level 4 (near a typical deck there), so a new
-// card is playable at once instead of weeks later.
+// card is playable at once instead of weeks later: commons 20, rares 12,
+// epics 8, legendaries 4. (The two Green Hills cards that aren't in the
+// starter deck come early on the way to Pointy Pass.)
 export const TRAIL = [
   { at: 10, reward: { gold: 50 } },
   { at: 25, reward: { cards: { sprouts: 20 } } },
@@ -224,7 +226,7 @@ export function trailStatus(p) {
 /** How many milestones are waiting to be claimed. */
 export const claimableTrail = (p) => TRAIL.filter((m) => p.best >= m.at && !p.road.claimed[m.at]).length;
 
-const RARITY_DOWN = { epic: 'rare', rare: 'common', common: null };
+const RARITY_DOWN = { legendary: 'epic', epic: 'rare', rare: 'common', common: null };
 
 /** A random-card reward picks one unlocked card of that rarity, deterministically. */
 function resolveRandom(p, m) {
