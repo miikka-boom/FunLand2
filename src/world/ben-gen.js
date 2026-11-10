@@ -67,7 +67,8 @@ export function addBen(map, seed, opts = {}) {
   const busy = [];
   for (const d of map.decor) {
     if (CLUTTER.has(d.type) || d.x === undefined || d.y === undefined) continue;
-    const w = d.type === 'graffiti' ? (d.text || '').length * (d.size || 12) * 0.32 : 0;
+    // Writing takes its length (half of it either side): sprayed lines, painted words, a ledger's slab.
+    const w = d.type === 'epitaph' ? d.w / 2 : d.type === 'graffiti' || (d.type === 'paint' && d.text) ? (d.text || '').length * (d.size || 12) * 0.32 : 0;
     busy.push({ x: d.x, y: d.y, r: Math.max(26, w + 14) });
   }
   for (const s of map.stashes || []) busy.push({ x: s.x, y: s.y, r: 60 });

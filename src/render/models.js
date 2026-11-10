@@ -22,7 +22,7 @@ import { buildDecorProps } from './decor3d.js';
 const pts = new Float64Array(16);
 const samp = new Float32Array(12);
 
-export function strHash(s) {
+function strHash(s) {
   let h = 7;
   for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
   return h >>> 0;
@@ -59,7 +59,7 @@ export function pbox(R, x0, y0, x1, y1, z0, z1, color, b) {
  * along (nx, ny): the light just in front of it, sampled along its length
  * (a flat tone when it is even, a gradient across the screen when it isn't).
  */
-export function wallFill(R, color, k, xa, ya, xb, yb, nx, ny) {
+function wallFill(R, color, k, xa, ya, xb, yb, nx, ny) {
   const L = R.L;
   const len = Math.abs(xb - xa) + Math.abs(yb - ya);
   const ox = nx * 4;
@@ -145,7 +145,7 @@ export function onFaceX(R, x0, y0, x1, y1, fn) {
 const FACADES = ['#77604f', '#62656b', '#7b735f', '#664f47', '#686d5d', '#7c766d', '#5c6672', '#716253'];
 const WAREHOUSE = ['#5e6468', '#6a6258', '#566068', '#6b5a4c'];
 
-export function buildingModel(o, map) {
+function buildingModel(o, map) {
   const hc = strHash(o.color || '#444');
   const own = hash01((o.seed || 1) % 977); // the same for every piece of a carved-up building
   const kiosk = o.booth || Math.max(o.w, o.h) < 110;
@@ -164,7 +164,7 @@ export function buildingModel(o, map) {
   return { h, draw: drawBuilding, data };
 }
 
-export function windows(ctx, len, h, floors, seed, lit, t) {
+function windows(ctx, len, h, floors, seed, lit, t) {
   // Rows of windows along a wall `len` long; a rare one still has a light on.
   const ww = 13;
   const wh = 17;
@@ -196,7 +196,7 @@ export function windows(ctx, len, h, floors, seed, lit, t) {
   }
 }
 
-export function drawBuilding(R, o, rec) {
+function drawBuilding(R, o, rec) {
   const { ctx, v } = R;
   const d = rec.data;
   const x0 = o.x;
@@ -283,7 +283,7 @@ export function drawBuilding(R, o, rec) {
 }
 
 /** A low pitched roof with its ridge along the long side (warehouses). */
-export function gableRoof(R, o, H, rise, k) {
+function gableRoof(R, o, H, rise, k) {
   const { ctx, v } = R;
   const x0 = o.x;
   const y0 = o.y;
@@ -750,7 +750,7 @@ function drawContainerModel(R, o, rec) {
 
 // --- Vehicles ----------------------------------------------------------------------------------
 
-export function drawCarModel(R, o, rec) {
+function drawCarModel(R, o, rec) {
   const { ctx, v } = R;
   const b = propLight(R, o);
   if (b < 0.032) return;

@@ -27,7 +27,7 @@ const bys = new Float64Array(16);
  * axis 'y': it runs north-south, and the gable ends face north and south.
  * `over` is how far the eaves hang past the walls. wall: the gable ends' colour.
  */
-export function pitchedRoof(R, x0, y0, x1, y1, H, rise, axis, roof, wall, over = 4, k = R.roofK) {
+function pitchedRoof(R, x0, y0, x1, y1, H, rise, axis, roof, wall, over = 4, k = R.roofK) {
   const { ctx, v } = R;
   if (v.flat) {
     topFill(R, x0 - over, y0 - over, x1 + over, y1 + over, H, tone(roof, k));
@@ -916,7 +916,7 @@ function drawPlayset(R, o) {
 function drawBus(R, o) {
   const b = propLight(R, o);
   if (b < 0.032) return;
-  const { ctx, v } = R;
+  const { v } = R;
   const horiz = o.w >= o.h;
   const len = horiz ? o.w : o.h;
   const c = o.color;
@@ -939,7 +939,6 @@ function drawBus(R, o) {
   };
   if (horiz) onFaceY(R, o.x, o.y, o.x + o.w, o.y + o.h, (c2, l, fwd) => { if ((o.front > 0) === fwd) { c2.save(); c2.translate(l, 0); c2.scale(-1, 1); stripe(c2, l); c2.restore(); } else stripe(c2, l); });
   else onFaceX(R, o.x, o.y, o.x + o.w, o.y + o.h, (c2, l) => stripe(c2, l));
-  void ctx;
 }
 
 /** A light by a front door. */

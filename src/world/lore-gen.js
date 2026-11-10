@@ -52,6 +52,22 @@ export function addLore(map, seed) {
     for (const f of [-0.5, -0.25, 0, 0.25, 0.5]) if (!world.isFree(x + f * w, y, Math.max(8, h / 2))) return false;
     return true;
   };
+  // Writing never runs into other writing: the boxes of everything written on
+  // the ground so far (the words the map came with included).
+  const written = [];
+  const boxOf = (x, y, w, h, a = 0) => {
+    const c = Math.abs(Math.cos(a));
+    const sn = Math.abs(Math.sin(a));
+    const hw = (w * c + h * sn) / 2;
+    const hh = (w * sn + h * c) / 2;
+    return { x0: x - hw, y0: y - hh, x1: x + hw, y1: y + hh };
+  };
+  const crowded = (b, pad = 12) => written.some((q) => b.x0 < q.x1 + pad && b.x1 > q.x0 - pad && b.y0 < q.y1 + pad && b.y1 > q.y0 - pad);
+  for (const d of map.decor) {
+    if (d.type === 'epitaph') written.push(boxOf(d.x, d.y, d.w, 22));
+    else if (d.text && (d.type === 'paint' || d.type === 'chalkart')) written.push(boxOf(d.x, d.y, d.text.length * (d.size || 14) * 0.64, (d.size || 14) + 8, d.a || 0));
+  }
+  const ink = { written, boxOf, crowded, fits };
 
   // Free cells with their detour (for "on the way" vs "off in a corner").
   const cells = [];
@@ -66,7 +82,7 @@ export function addLore(map, seed) {
 
   // --- Safe rooms: the first wall you read, and the welcome at the end ---------------------
   safeRoomWall(map, map.startRoom, SAFE_ROOM.start, rnd, interior, true);
-  if (map.endRoom.gangway) docksEnd(map, rnd, busy);
+  if (map.endRoom.gangway) docksEnd(map, rnd, busy, ink);
   else safeRoomWall(map, map.endRoom, SAFE_ROOM.end, rnd, interior, false);
 
   // --- Ground graffiti -------------------------------------------------------------------
@@ -84,15 +100,25 @@ export function addLore(map, seed) {
       if (!fits(q.x, q.y, w, size + 6)) continue;
       const color = interior ? pick(MARKER) : pick(SPRAY);
       const a = (rnd() - 0.5) * (rnd() < 0.2 ? 0.6 : 0.22);
+      // The whole of it (the reply underneath and the mark beside it too) clear of other writing.
+      const box = boxOf(q.x + (g.art ? 24 : 0), q.y, w + (g.art ? 48 : 0), size + 6, a);
+      const ny = q.y + size + 14;
+      const pw = g.pair ? g.pair.length * size * 0.55 : 0;
+      const reply = !!g.pair && fits(q.x + 20, ny, pw, size);
+      if (reply) {
+        const b2 = boxOf(q.x + 20, ny, pw, size + 4, a);
+        box.x0 = Math.min(box.x0, b2.x0);
+        box.x1 = Math.max(box.x1, b2.x1);
+        box.y1 = Math.max(box.y1, b2.y1);
+      }
+      if (crowded(box)) continue;
+      written.push(box);
       map.decor.push({ type: 'graffiti', x: q.x, y: q.y, text: g.text, color, size, a, drip: !interior && rnd() < 0.55, marker: interior });
       placed.push(q);
       busy.push({ x: q.x, y: q.y, r: w / 2 + 30 });
-      if (g.pair) {
+      if (reply) {
         // Somebody argued back, right underneath.
-        const ny = q.y + size + 14;
-        if (fits(q.x + 20, ny, g.pair.length * size * 0.55, size)) {
-          map.decor.push({ type: 'graffiti', x: q.x + 20, y: ny, text: g.pair, color: color === SPRAY[0] ? SPRAY[1] : SPRAY[0], size: size * 0.85, a: -a, drip: false, marker: interior });
-        }
+        map.decor.push({ type: 'graffiti', x: q.x + 20, y: ny, text: g.pair, color: color === SPRAY[0] ? SPRAY[1] : SPRAY[0], size: size * 0.85, a: -a, drip: false, marker: interior });
       }
       if (g.art === 'dot') map.decor.push({ type: 'doodle', art: 'youarehere', x: q.x + w / 2 + 22, y: q.y, color, s: 1 });
       if (g.art === 'arrow') map.decor.push({ type: 'doodle', art: 'arrow', x: q.x + w / 2 + 26, y: q.y, color, s: 1, a: r(-0.6, 0.6) });
@@ -114,6 +140,9 @@ export function addLore(map, seed) {
     if (!clearOf(q.x, q.y, 20) || placed.some((p) => Math.hypot(p.x - q.x, p.y - q.y) < spacing) || !fits(q.x, q.y, 120, 26)) continue;
     const a = alongPath(world, A.fg, q.i);
     if (a === null) continue;
+    const box = boxOf(q.x + 12, q.y, 170, 40);
+    if (crowded(box)) continue;
+    written.push(box);
     const color = interior ? MARKER[1] : SPRAY[1];
     map.decor.push({ type: 'graffiti', x: q.x - 18, y: q.y, text: interior ? 'EXIT' : 'PIER 9', color, size: interior ? 15 : 22, a: 0, drip: !interior, marker: interior });
     map.decor.push({ type: 'doodle', art: 'arrow', x: q.x + (interior ? 34 : 56), y: q.y, color, s: 1.2, a });
@@ -126,6 +155,9 @@ export function addLore(map, seed) {
   for (let k = 0, made = 0; k < doodleCells.length && made < (interior ? 6 : 9); k++) {
     const q = doodleCells[k];
     if (!clearOf(q.x, q.y, 10) || placed.some((p) => Math.hypot(p.x - q.x, p.y - q.y) < 120) || !world.isFree(q.x, q.y, 22)) continue;
+    const box = boxOf(q.x, q.y, 60, 60);
+    if (crowded(box, 4)) continue;
+    written.push(box);
     map.decor.push({ type: 'doodle', art: pick(DOODLES), x: q.x, y: q.y, color: interior ? pick(MARKER) : pick(SPRAY), s: r(0.9, 1.5), a: r(-0.3, 0.3) });
     placed.push(q);
     busy.push({ x: q.x, y: q.y, r: 40 });
@@ -139,10 +171,10 @@ export function addLore(map, seed) {
   posterWalls(map, world, A, rnd, interior, clearOf);
 
   // --- Survivor dens (hidden, candle-lit) ---------------------------------------------------------
-  dens(map, world, A, rnd, interior, cells, clearOf, busy);
+  dens(map, world, A, rnd, interior, cells, clearOf, busy, ink);
 
   // --- Little scenes --------------------------------------------------------------------------------
-  vignettes(map, world, A, rnd, interior, cells, clearOf, busy);
+  vignettes(map, world, A, rnd, interior, cells, clearOf, busy, ink);
   return map;
 }
 
@@ -232,7 +264,7 @@ function safeRoomWall(map, room, items, rnd, interior, isStart) {
 }
 
 /** Pier 9: painted on the planks toward the end, spread out (no safe room there). */
-function docksEnd(map, rnd, busy) {
+function docksEnd(map, rnd, busy, ink) {
   const F = map.finale;
   const P = F.pier;
   const end = P.x + P.w;
@@ -246,7 +278,9 @@ function docksEnd(map, rnd, busy) {
   SAFE_ROOM.docks.forEach((it, k) => {
     const s = spots[k % spots.length];
     const color = SPRAY[(k * 3 + 1) % SPRAY.length];
-    map.decor.push({ type: 'graffiti', x: s.x, y: s.y, text: it.text, color, size: it.size || 12, a: (rnd() - 0.5) * 0.1, drip: false, marker: true });
+    const a = (rnd() - 0.5) * 0.1;
+    map.decor.push({ type: 'graffiti', x: s.x, y: s.y, text: it.text, color, size: it.size || 12, a, drip: false, marker: true });
+    ink.written.push(ink.boxOf(s.x, s.y, it.text.length * (it.size || 12) * 0.64, (it.size || 12) + 8, a));
     busy.push({ x: s.x, y: s.y, r: 110 });
   });
 }
@@ -291,8 +325,21 @@ function posterWalls(map, world, A, rnd, interior, clearOf) {
     : map.obstacles.filter((o) => o.kind === 'building' && !o.safe && Math.max(o.w, o.h) >= 120);
   const clusters = [];
   const wantClusters = interior ? 6 : 5;
-  for (const o of shuffle(walls.slice(), rnd)) {
-    if (clusters.length >= wantClusters) break;
+  // Out of town there are few walls, and fewer on the way: a notice board may be a longer walk off it
+  // (the yard's office trailer, the chapel).
+  const rural = !interior && !!map.theme && map.theme !== 'docks';
+  hang(interior ? 700 : rural ? 1000 : 500);
+  // ...and if even that found none, the nearest wall there is gets the notices.
+  if (rural && !clusters.length) hang(Infinity, 1);
+
+  function hang(far, most = wantClusters) {
+    for (const o of shuffle(walls.slice(), rnd)) {
+      if (clusters.length >= most) break;
+      tryWall(o, far);
+    }
+  }
+
+  function tryWall(o, far) {
     const horiz = o.w >= o.h;
     for (const side of shuffle(horiz ? ['n', 's'] : ['w', 'e'], rnd)) {
       const count = interior ? 1 + Math.floor(rnd() * 2) : 2 + Math.floor(rnd() * 3);
@@ -310,7 +357,7 @@ function posterWalls(map, world, A, rnd, interior, clearOf) {
       const py = horiz ? face + out * 30 : midA;
       const i = world.navIndex(px, py);
       if (world.blocked[i] || A.fs.dist[i] >= INF) continue;
-      if (detour(A, i) > (interior ? 700 : 500)) continue;
+      if (detour(A, i) > far) continue;
       if (!clearOf(px, py, 10) || clusters.some((q) => Math.hypot(q.x - px, q.y - py) < 600)) continue;
       // The strip in front of the wall must be clear of props for the posters to show.
       const strip = horiz
@@ -331,7 +378,7 @@ function posterWalls(map, world, A, rnd, interior, clearOf) {
   }
 }
 
-function dens(map, world, A, rnd, interior, cells, clearOf, busy) {
+function dens(map, world, A, rnd, interior, cells, clearOf, busy, ink) {
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
   const spots = [];
   if (interior) {
@@ -379,8 +426,10 @@ function dens(map, world, A, rnd, interior, cells, clearOf, busy) {
     const scribbles = shuffle(DEN_SCRIBBLES.slice(), rnd).slice(0, 6);
     const jokes = shuffle(DEN_JOKES.slice(), rnd).slice(0, 2);
     const ring = [...scribbles.map((t) => ({ t, joke: false })), ...jokes.map((t) => ({ t, joke: true }))];
-    // Text boxes already used (the camp itself first), so nothing is written over anything else.
+    // Text boxes already used (the camp itself first), so nothing is written over anything else
+    // (nor over what was sprayed on the ground before the camp was made).
     const boxes = [{ x: x - 62, y: y - 70, w: 124, h: 112 }];
+    const inked = (b) => ({ x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h });
     // The page's words, written out on the floor beside the camp where anyone can read them
     // (on two lines if it's long, so it fits in an alley).
     const spots = [[0, 64], [0, -84], [0, 84], [0, -104]];
@@ -399,7 +448,7 @@ function dens(map, world, A, rnd, interior, cells, clearOf, busy) {
           const tx = x + dx;
           const ty = y + dy;
           const box = rot ? { x: tx - nh + 8, y: ty - nw / 2, w: nh, h: nw } : { x: tx - nw / 2, y: ty - 8, w: nw, h: nh };
-          if (boxes.some((b) => rectsOverlap(b, box, 4))) continue;
+          if (boxes.some((b) => rectsOverlap(b, box, 4)) || ink.crowded(inked(box), 6)) continue;
           const at = (j) => ({ x: tx - uy * j * 15, y: ty + ux * j * 15 });
           if (!pageLines.every((_, j) => {
             const c = at(j);
@@ -410,6 +459,7 @@ function dens(map, world, A, rnd, interior, cells, clearOf, busy) {
             map.decor.push({ type: 'graffiti', x: c.x, y: c.y, text: l, color: interior ? MARKER[1] : '#efe9d6', size: 11, a: rot, drip: false, marker: true, page: true });
           });
           boxes.push(box);
+          ink.written.push(inked(box));
           written = true;
           break;
         }
@@ -424,10 +474,12 @@ function dens(map, world, A, rnd, interior, cells, clearOf, busy) {
         const size = it.joke ? 9 : 10 + rnd() * 3;
         const w = it.t.length * size * 0.68;
         const box = { x: tx - w / 2, y: ty - size / 2 - 2, w, h: size + 4 };
-        if (boxes.some((b) => rectsOverlap(b, box, 4))) continue;
+        if (boxes.some((b) => rectsOverlap(b, box, 4)) || ink.crowded(inked(box), 6)) continue;
         if (!world.isFree(tx, ty, 8) || !world.isFree(tx - w / 2, ty, 6) || !world.isFree(tx + w / 2, ty, 6)) continue;
         boxes.push(box);
-        map.decor.push({ type: 'graffiti', x: tx, y: ty, text: it.t, color: interior ? pick(MARKER) : it.joke ? '#f2c94c' : '#ece9df', size, a: (rnd() - 0.5) * 0.16, drip: false, marker: true });
+        ink.written.push(inked(box));
+        // Long lines lie nearly level: their ends stay inside their own box.
+        map.decor.push({ type: 'graffiti', x: tx, y: ty, text: it.t, color: interior ? pick(MARKER) : it.joke ? '#f2c94c' : '#ece9df', size, a: (rnd() - 0.5) * 0.16 * Math.min(1, 100 / w), drip: false, marker: true });
         break;
       }
     });
@@ -436,7 +488,7 @@ function dens(map, world, A, rnd, interior, cells, clearOf, busy) {
   map.dens = spots.map((s) => ({ x: s.x, y: s.y }));
 }
 
-function vignettes(map, world, A, rnd, interior, cells, clearOf, busy) {
+function vignettes(map, world, A, rnd, interior, cells, clearOf, busy, ink) {
   const list = shuffle((interior ? VIGNETTES.building : VIGNETTES[map.theme] || VIGNETTES.city).slice(), rnd);
   let made = 0;
   const want = interior ? 3 : 3;
@@ -478,11 +530,17 @@ function vignettes(map, world, A, rnd, interior, cells, clearOf, busy) {
       return false;
     }
     if (!interior) {
+      // The words go under the bus stop, over the rest: on open ground, clear of other writing.
+      const ty = v.id === 'busstop' ? 40 : -40;
+      const tw = v.text.length * 11 * 0.62;
+      const words = (c) => ink.fits(c.x, c.y + ty, tw, 14) && !ink.crowded(ink.boxOf(c.x, c.y + ty, tw, 18), 8);
+      // Out of town a bus stop stands by the road (not in somebody's backyard).
+      const kerb = (c) => map.streets.some((st) => pointInRect(c.x, c.y, st, 56) && !pointInRect(c.x, c.y, st, -8));
       const q = v.id === 'busstop'
-        ? nearCell(220, 0, (c) => c.enc >= 4 && world.isFree(c.x, c.y, 26))
+        ? (map.theme && map.theme !== 'docks' && nearCell(320, 0, (c) => kerb(c) && world.isFree(c.x, c.y, 26) && words(c))) || nearCell(220, 0, (c) => c.enc >= 4 && world.isFree(c.x, c.y, 26) && words(c))
         : v.id === 'lemonade'
-          ? nearCell(500, 0, (c) => world.isFree(c.x, c.y, 34))
-          : nearCell(1400, 250, (c) => c.enc >= 9 && world.isFree(c.x, c.y, 26));
+          ? nearCell(500, 0, (c) => world.isFree(c.x, c.y, 34) && words(c))
+          : nearCell(1400, 250, (c) => c.enc >= 9 && world.isFree(c.x, c.y, 26) && words(c));
       if (!q) return false;
       if (v.id === 'busstop') {
         add({ type: 'suitcase', x: q.x - 22, y: q.y + 4, c: '#7a4a2a', s: 1 });
@@ -497,7 +555,8 @@ function vignettes(map, world, A, rnd, interior, cells, clearOf, busy) {
         add({ type: 'chair', x: q.x + 26, y: q.y + 16, s: 1, a: 0 });
         add({ type: 'junk', x: q.x - 30, y: q.y - 20, s: 1 });
       }
-      add({ type: 'graffiti', x: q.x, y: q.y + (v.id === 'busstop' ? 40 : -40), text: v.text, color: SPRAY[1], size: 11, a: 0, drip: false, marker: true });
+      add({ type: 'graffiti', x: q.x, y: q.y + ty, text: v.text, color: SPRAY[1], size: 11, a: 0, drip: false, marker: true });
+      ink.written.push(ink.boxOf(q.x, q.y + ty, tw, 18));
       busy.push({ x: q.x, y: q.y, r: 220 });
       return true;
     }

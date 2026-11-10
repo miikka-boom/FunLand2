@@ -106,6 +106,7 @@ for (const [name, { gen, lines }] of Object.entries(MAPS)) {
       assert.ok(g.filter((d) => own.has(d.text)).length >= 7, `seed ${seed}: the place's own graffiti (${g.filter((d) => own.has(d.text)).length})`);
       assert.ok(g.some((d) => town.has(d.text)), `seed ${seed}: a line or two from town as well`);
       assert.ok(g.some((d) => d.text === 'PIER 9'), `seed ${seed}: the way to Pier 9 is signposted`);
+      assert.ok(map.posters.length >= 2, `seed ${seed}: notices on a wall somewhere (${map.posters.length})`);
       assert.ok(map.dens.length >= 1, `seed ${seed}: a den`);
       assert.ok(g.some((d) => d.page), `seed ${seed}: the den's page, written out`);
       assert.ok(map.ben && map.ben.nest, `seed ${seed}: his bed`);
@@ -238,4 +239,38 @@ test('the setting is Philadelphia, 2020: the notices and the walls say so (and n
   assert.ok(POSTERS.indoors.sub.includes('City of Philadelphia'));
   // The year's own notices are posters now.
   for (const id of ['mask', 'sixfeet', 'broadrun']) assert.ok(POSTERS[id] && POSTERS[id].city, id);
+});
+
+test('writing on the ground never runs into other writing (every map type)', () => {
+  // The box a line takes, turned as it is drawn.
+  const boxOf = (d) => {
+    const size = d.size || 14;
+    const w = d.type === 'epitaph' ? d.w : d.text.length * size * 0.6;
+    const h = d.type === 'epitaph' ? 22 : size;
+    const c = Math.abs(Math.cos(d.a || 0));
+    const s = Math.abs(Math.sin(d.a || 0));
+    const hw = (w * c + h * s) / 2;
+    const hh = (w * s + h * c) / 2;
+    return { x0: d.x - hw, y0: d.y - hh, x1: d.x + hw, y1: d.y + hh };
+  };
+  for (const [level, gen] of Object.entries(GENERATORS)) {
+    for (const seed of [1337, 3, 7922, 23760, 79193, 95031]) {
+      const map = gen(seed);
+      addScavenging(map, seed);
+      addLore(map, seed);
+      addBen(map, seed, { level });
+      // The safe rooms' walls are laid out by hand (and tested with the lore): leave them out.
+      const T = map.decor.filter((d) => d.text && ['graffiti', 'paint', 'epitaph', 'chalkart'].includes(d.type) && !pointInRect(d.x, d.y, map.startRoom.outer, 10) && !pointInRect(d.x, d.y, map.endRoom.outer, 10));
+      assert.ok(T.length >= 20, `${level} ${seed}: ${T.length} lines to read`);
+      for (let i = 0; i < T.length; i++) {
+        for (let j = i + 1; j < T.length; j++) {
+          // A reply written right under its line is meant to sit that close.
+          if (Math.abs(T[i].x - T[j].x) <= 21 && Math.abs(T[i].y - T[j].y) < 50) continue;
+          const a = boxOf(T[i]);
+          const b = boxOf(T[j]);
+          assert.ok(!(a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0), `${level} ${seed}: "${T[i].text}" runs into "${T[j].text}"`);
+        }
+      }
+    }
+  }
 });
