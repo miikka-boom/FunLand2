@@ -29,7 +29,7 @@ import { CARDS, cardById } from '../sim/cards.js';
 import { Battle, DT } from '../sim/battle.js';
 import { ANYWHERE } from '../sim/match.js';
 import { SPELLS } from '../sim/spells.js';
-import { BUILDINGS } from '../sim/buildings.js';
+import { BUILDINGS, fitBuilding } from '../sim/buildings.js';
 import { drawBuildingGhost } from './buildings.js';
 
 const TAU = Math.PI * 2;
@@ -1687,7 +1687,8 @@ export function aimCheck(m, team, i, wx) {
   } else if (card.anywhere) x = Math.min(ANYWHERE[1], Math.max(ANYWHERE[0], x));
   else x = Math.min(WORLD.width, Math.max(0, x));
   const why = m.canPlay(team, i, x);
-  if (card.kind === 'building' && why === '') inZone = true; // (it goes up where it fits: on your side)
+  // (a building goes up where it fits on your side: a spot it slides in from is in the zone, mana or not)
+  if (card.kind === 'building' && !inZone) inZone = fitBuilding(m.battle, team, card.building, x) != null;
   return { id, card, x, ok: why === '', why, inZone, missing };
 }
 

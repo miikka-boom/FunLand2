@@ -376,8 +376,9 @@ export function cardStats(id, level) {
       rows.push({ label: 'Spawns', value: `${kid ? kid.name : B.spawn.unit} / ${B.spawn.every} s` });
       rows.push({ label: 'At once', value: `Up to ${B.spawn.max}` });
     }
-    // (the crane's ball hits whatever it sweeps through, fliers at Propeller Pal height too)
-    rows.push({ label: 'Targets', value: B.pendulum ? 'Air & ground' : 'Ground' });
+    // (the crane's ball hits whatever it sweeps through: Propeller Pals, never a cruising Pelican;
+    // "Air & ground" is kept for the deck's air answers, AIR_ANSWERS)
+    rows.push({ label: 'Targets', value: B.pendulum ? 'Ground & low fliers' : 'Ground' });
   } else {
     const S = SPELLS[SPELL_KEY[card.spell] || card.spell];
     if (!S) return rows;

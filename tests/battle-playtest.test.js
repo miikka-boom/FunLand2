@@ -51,7 +51,7 @@ function dropSoundRule() {
   assert.ok(m, "main.js has a 'drop' case that plays sfx('drop')");
   return new Function('e', `return !!(${m[1]});`);
 }
-const { BUILD_SNAP } = await import(R + 'sim/buildings.js');
+const { BUILD_SNAP, fitBuilding } = await import(R + 'sim/buildings.js');
 const { Effects } = await import(R + 'render/effects.js');
 const { UnitRenderer } = await import(R + 'render/units.js');
 
@@ -157,6 +157,19 @@ test('play-test: dragging a card, the tip, the ghost and the play agree at every
   assert.equal(aimTip(aimCheck(m, 'blue', 3, z1 + ZONE_SNAP + 5)), 'Play units on your side');
   m.sides.blue.mana = 0;
   assert.ok(/^Not enough mana/.test(aimTip(aimCheck(m, 'blue', 0, z1 - 100))));
+  // Short of mana just past the edge: the spot is fine (it slides in), so the tip names the mana, not the side
+  m.sides.blue.mana = 1;
+  for (const i of [0, 1, 2]) {
+    let fit = 0;
+    for (let dx = 0; dx <= BUILD_SNAP + ZONE_SNAP + 20; dx += 5) {
+      const tip = aimTip(aimCheck(m, 'blue', i, z1 + dx));
+      const fits = fitBuilding(m.battle, 'blue', m.sides.blue.hand[i], dx > 0 && dx < ZONE_SNAP ? z1 - 1 : z1 + dx) != null; // (as aimCheck snaps it)
+      fit += fits;
+      assert.equal(tip.startsWith('Not enough mana'), fits, `${m.sides.blue.hand[i]} @z1+${dx} with 1 mana: "${tip}"`);
+    }
+    assert.ok(fit > ZONE_SNAP / 5 + 1, `${m.sides.blue.hand[i]}: fits at only ${fit} spots past the edge`);
+  }
+  assert.equal(aimTip(aimCheck(m, 'blue', 0, z1 + BUILD_SNAP + ZONE_SNAP + 60)), 'Build on your side');
 });
 
 test('play-test: a Brolly floats down with its umbrella sound only, a hand-of-god drop still says "drop"', () => {

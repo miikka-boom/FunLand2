@@ -658,7 +658,9 @@ export class Battle {
    * is wide: the last wall pushes a bean caught in the gap back into the one
    * before, every step. A bean the walls leave inside an enemy structure goes
    * out past the whole row of that side's structures with gaps narrower than
-   * itself, on its own side (blue beans to -x, red to +x), all of it at once.
+   * itself, all of it at once: on the side the walls put it (out of a building,
+   * its own side: blue beans to -x, red to +x), else the other side, never
+   * through a Guard Tower or past a Castle while there is another way.
    */
   unpinch() {
     for (const u of this.units) {
@@ -674,20 +676,33 @@ export class Battle {
         }
       }
       if (!t) continue;
-      const side = u.team === 'blue' ? -1 : 1;
-      let edge = t.x + (side * t.w) / 2;
-      for (let more = true; more; ) {
-        more = false;
-        for (const s of this.towers) {
-          if (!s.alive || s.team !== t.team) continue;
-          const near = s.x - (side * s.w) / 2;
-          const far = s.x + (side * s.w) / 2;
-          if ((far - edge) * side > 0 && (near - edge) * side < 2 * u.R + 2) {
-            edge = far;
-            more = true;
+      // Out past the row of that side's structures with gaps narrower than the bean:
+      // first on the side the walls put it (a building: the bean's own side), then the
+      // other side, never through a Guard Tower, never past a Castle; only if neither
+      // has room, out on its own side through the tower (the old rule).
+      const own = u.team === 'blue' ? -1 : 1;
+      const exit = (side, throughTower) => {
+        let edge = t.x + (side * t.w) / 2;
+        for (let more = true; more; ) {
+          more = false;
+          for (const s of this.towers) {
+            if (!s.alive || s.team !== t.team) continue;
+            const near = s.x - (side * s.w) / 2;
+            const far = s.x + (side * s.w) / 2;
+            if ((far - edge) * side > 0 && (near - edge) * side < 2 * u.R + 2) {
+              if (s.kind === 'castle' || (s.kind !== 'building' && !throughTower)) return null;
+              edge = far;
+              more = true;
+            }
           }
         }
-      }
+        return edge;
+      };
+      let side = t.kind === 'building' ? own : t.kind === 'castle' ? t.f : h.x < t.x ? -1 : 1;
+      let edge = exit(side, false);
+      if (edge == null && t.kind !== 'castle') edge = exit((side = -side), false);
+      if (edge == null) edge = exit((side = t.kind === 'castle' ? t.f : own), true);
+      if (edge == null) continue;
       const dx = edge + side * h.r - h.x;
       for (const p of u.parts) {
         p.x += dx;

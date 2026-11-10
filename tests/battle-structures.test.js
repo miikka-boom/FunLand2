@@ -667,6 +667,34 @@ test('walls: a building played on enemies at your Guard Tower puts them out past
   }
 });
 
+test('walls: an enemy bean that got behind your Guard Tower and lands between it and a building stays behind the tower (never moved through it)', () => {
+  const W = { boingBox: 46, beanPatch: 64, wreckingCrane: 36 };
+  for (const bid of Object.keys(W)) {
+    for (const unit of ['clubber', 'pogo', 'bruiser']) {
+      const b = arena(3);
+      for (const t of b.towers) t.cool = 1e9;
+      const g = tower(b, 'blue', 'guard');
+      const s = b.addBuilding(bid, 'blue', fitBuilding(b, 'blue', bid, g.x - g.w / 2 - 12 - W[bid] / 2), 1);
+      if (s.punch !== undefined) s.punch = null; // (keep the glove out of it)
+      const u = b.addUnit(unit, 'red', s.x + s.w / 2 - 4, 0.5, 7, { drop: true });
+      const castle = tower(b, 'blue', 'castle');
+      const room = s.x - s.w / 2 - (castle.x + castle.w / 2) >= 2 * u.R + 2;
+      let last = u.hip.x;
+      let jump = 0;
+      for (let i = 0; i < 3 / DT && u.alive; i++) {
+        b.step(DT);
+        b.events.length = 0;
+        jump = Math.max(jump, Math.abs(u.hip.x - last));
+        last = u.hip.x;
+        if (room) assert.ok(u.hip.x < g.x, `${unit} by a ${bid}: moved out in front of the tower (${u.hip.x.toFixed(0)})`);
+      }
+      // (out past the building; with no room behind it, out past the tower instead)
+      assert.ok(jump <= (room ? s.w : g.w) + 2 * u.R + 12, `${unit} by a ${bid}: one-step jump of ${jump.toFixed(0)} px`);
+      assert.ok(finite(b));
+    }
+  }
+});
+
 test('Bean Patch: a Brick walks through its Sprouts and bashes it (its listed counter); the Sprouts never shove it back', () => {
   for (const seed of [1, 2, 3]) {
     const b = arena(seed);

@@ -174,7 +174,7 @@ test('card details: the Crane\'s Reach is how far its ball hits, not where it wa
     assert.equal(craneVs(unit, reach + past).hit, false, `${unit} at Reach + ${past}`);
   }
   // Targets: the ball sweeps Propeller Pals out of the air at their cruise height
-  assert.equal(cardStats('wreckingCrane', 1).find((r) => r.label === 'Targets').value, 'Air & ground');
+  assert.equal(cardStats('wreckingCrane', 1).find((r) => r.label === 'Targets').value, 'Ground & low fliers');
   assert.deepEqual(craneVs('copter', reach - 30), { hit: true, air: true }, 'a Pal in high air is hit');
 });
 
