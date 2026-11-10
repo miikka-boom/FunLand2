@@ -92,8 +92,20 @@ function palOf(team) {
   return TEAMS[team] || TEAMS.blue;
 }
 
+// A building's look is the same all its life: worked out once (it is asked for
+// several times a frame: the art, the HP bar's clock, where the bar goes)
+const looks = new WeakMap(); // building -> { bid, def, w, h, G }
+
 /** The look of one building: its def (from the sim) over the fallback numbers. */
 function lookOf(b) {
+  if (!b || typeof b !== 'object') return makeLook(b);
+  const c = looks.get(b);
+  if (c && c.bid === b.bid && c.def === b.def && c.w === b.w && c.h === b.h) return c.G;
+  const G = makeLook(b);
+  looks.set(b, { bid: b.bid, def: b.def, w: b.w, h: b.h, G });
+  return G;
+}
+function makeLook(b) {
   const bid = b && BUILDING_LOOK[b.bid] ? b.bid : 'boingBox';
   const L = BUILDING_LOOK[bid];
   const D = (b && b.def) || {};
@@ -298,6 +310,14 @@ function paintBoxLid(g, T, ws) {
   g.restore();
 }
 
+/** The glove's fist and thumb, grown by k (the ink rim). */
+function fistPath(ctx, k) {
+  ctx.beginPath();
+  ctx.ellipse(1.4, 0.6, 10.6 + k, 9.6 + k, 0, 0, TAU);
+  ctx.moveTo(-1 + 5 + k, -7.2);
+  ctx.ellipse(-1, -7.2, 5 + k, 4.2 + k, -0.35, 0, TAU);
+}
+
 /** The boxing glove, centre (x, y), punching toward dir (+1 / -1). Shared with the card art. */
 export function drawGlove(ctx, x, y, dir = 1, s = 1) {
   ctx.save();
@@ -316,16 +336,10 @@ export function drawGlove(ctx, x, y, dir = 1, s = 1) {
   ctx.fillStyle = '#cfc3ad';
   ctx.fillRect(-9.8, -5.5, 1.2, 11);
   // Fist and thumb (an ink rim first, then the red)
-  const fist = (k) => {
-    ctx.beginPath();
-    ctx.ellipse(1.4, 0.6, 10.6 + k, 9.6 + k, 0, 0, TAU);
-    ctx.moveTo(-1 + 5 + k, -7.2);
-    ctx.ellipse(-1, -7.2, 5 + k, 4.2 + k, -0.35, 0, TAU);
-  };
-  fist(1.5);
+  fistPath(ctx, 1.5);
   ctx.fillStyle = INK;
   ctx.fill();
-  fist(0);
+  fistPath(ctx, 0);
   ctx.fillStyle = GLOVE.base;
   ctx.fill();
   ctx.fillStyle = GLOVE.shade;
@@ -380,6 +394,14 @@ function drawSpring(ctx, x0, y0, x1, y1, amp = 4.6) {
   ctx.stroke();
 }
 
+// The pair glovePos, lidPose and ballAt hand back: reused (read it at once), no array per frame
+const XY = [0, 0];
+const xy = (x, y) => {
+  XY[0] = x;
+  XY[1] = y;
+  return XY;
+};
+
 /** Where the glove is (local x, y) for an extension ext (0..1). */
 function glovePos(ext, dir, reach, phase, pt) {
   const face = BOX.w / 2;
@@ -391,20 +413,20 @@ function glovePos(ext, dir, reach, phase, pt) {
     y += Math.sin(pt * 34) * 7 * k;
     x += dir * Math.sin(pt * 21) * 4 * k;
   }
-  return [x, y];
+  return xy(x, y);
 }
 
 /** The lid's lift (px) and tilt (rad) for the punch phase. */
 function lidPose(punch, dir) {
   const ph = punch && punch.phase;
   const pt = num(punch && punch.t, 0);
-  if (ph === 'windup') return [2 + 2.4 * Math.abs(Math.sin(pt * 55)), Math.sin(pt * 47) * 0.09];
-  if (ph === 'out' || ph === 'hold') return [8, -dir * 0.16];
+  if (ph === 'windup') return xy(2 + 2.4 * Math.abs(Math.sin(pt * 55)), Math.sin(pt * 47) * 0.09);
+  if (ph === 'out' || ph === 'hold') return xy(8, -dir * 0.16);
   if (ph === 'back') {
     const k = Math.exp(-pt * 7);
-    return [8 * k * Math.abs(Math.cos(pt * 18)), -dir * 0.16 * k];
+    return xy(8 * k * Math.abs(Math.cos(pt * 18)), -dir * 0.16 * k);
   }
-  return [0, 0];
+  return xy(0, 0);
 }
 
 // --- Bean Patch ------------------------------------------------------------------------
@@ -826,7 +848,7 @@ function ballAt(P, f, ang) {
   const pu = num(P.pivotUp, 170);
   const pf = num(P.pivotFwd, 34);
   const L = num(P.L, 125);
-  return [f * pf + Math.sin(ang) * L, -pu + Math.cos(ang) * L];
+  return xy(f * pf + Math.sin(ang) * L, -pu + Math.cos(ang) * L);
 }
 
 /** Speed streaks behind a fast ball. */
@@ -1094,12 +1116,13 @@ function drawPunch(ctx, dir, ext, reach, phase, pt) {
 }
 
 function drawTufts(ctx, f, wilt, shake, time, popGrow) {
-  PATCH.tufts.forEach((tx, i) => {
+  for (let i = 0; i < PATCH.tufts.length; i++) {
+    const tx = PATCH.tufts[i];
     const front = i === PATCH.tufts.length - 1;
     const grow = front ? popGrow : 1;
     const sh = shake ? Math.sin(time * 41 + i * 2.1) * 0.32 * shake : 0;
     drawTuft(ctx, f * tx, -PATCH.soil + 1 + Math.abs(tx) * 0.12, grow, wilt, sh, i);
-  });
+  }
 }
 
 // --- Aiming --------------------------------------------------------------------------------

@@ -57,6 +57,7 @@ const SMOKE_BELOW = 0.34; // hp share below which a tower smokes
 const INK = '#2a1d14';
 const FONT = '"Arial Black", "Segoe UI Black", system-ui, sans-serif';
 const BUILD_BW = 42; // a building's HP bar width (bar units; a guard tower's is 56)
+const VEIL = 0.4; // a bar's opacity while a flier crosses it
 
 const face = (t) => (t.f ? Math.sign(t.f) : t.team === 'red' ? -1 : 1);
 
@@ -821,6 +822,9 @@ export function createTowerRenderer(opts = {}) {
   const rubbles = new Map();
   const shown = new WeakMap(); // tower -> hp share shown by the trailing damage chip
   const barCache = new WeakMap(); // tower -> { cv, key }: its HP bar, repainted only on change
+  const veil = new WeakMap(); // tower -> its bar's opacity while a flier crosses it (eased toward VEIL)
+  const placed = []; // drawBars' screen boxes of the bars placed so far this frame (reused)
+  const CAM = { a: 1, d: 1, e: 0, f: 0 }; // drawBars' camera (scale, offset) as plain numbers
   const zCache = new Map(); // px size -> 'z' sprite
   const builds = createBuildingRenderer({ seed });
   let lastT = null;
@@ -1182,8 +1186,31 @@ export function createTowerRenderer(opts = {}) {
     return { x0: -(BW + 15) / 2 - 4, y0: -20, w: BW + 23, h: 30 };
   }
 
+  /**
+   * True when a flier, a floating Brolly or a bean a Pelican carries covers
+   * the screen box r (device px). Ground beans never reach a bar's height.
+   */
+  function flierUnder(units, r) {
+    if (!units) return false;
+    // (the camera's scale and offset: CAM, read once per frame by drawBars)
+    for (let i = 0; i < units.length; i++) {
+      const v = units[i];
+      if (!v || v.gone || !v.head || !v.hip || !v.type) continue;
+      // (a bean in a Pelican's beak counts; one inside a Big Jelly on the ground does not)
+      if (!v.type.flying && !(v.floatT > 0) && !(v.held && v.heldBy && v.heldBy.type && v.heldBy.type.flying)) continue;
+      const pad = num(v.R, 14) * 1.1;
+      // world box -> device px (the camera only scales and moves)
+      const x0 = CAM.a * (Math.min(v.head.x, v.hip.x) - pad) + CAM.e;
+      const x1 = CAM.a * (Math.max(v.head.x, v.hip.x) + pad) + CAM.e;
+      const y0 = CAM.d * (Math.min(v.head.y, v.hip.y) - pad) + CAM.f;
+      const y1 = CAM.d * (Math.max(v.head.y, v.hip.y) + pad) + CAM.f;
+      if (x0 < r.x1 && x1 > r.x0 && y0 < r.y1 && y1 > r.y0) return true;
+    }
+    return false;
+  }
+
   /** One tower's HP bar: repainted into its own little canvas only when it changes. */
-  function bar(ctx, tw, u, X, Y, dt) {
+  function bar(ctx, tw, u, X, Y, dt, veilK = 1) {
     const castle = tw.kind === 'castle';
     const T = pal(tw.team);
     const frac = tw.maxHp > 0 ? clamp(num(tw.hp, 0) / tw.maxHp, 0, 1) : 0;
@@ -1228,7 +1255,7 @@ export function createTowerRenderer(opts = {}) {
       barCache.set(tw, c);
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = alpha * veilK;
     ctx.drawImage(c.cv, Math.round(X + x0 * u), Math.round(Y + y0 * u));
     ctx.globalAlpha = 1;
   }
@@ -1282,10 +1309,14 @@ export function createTowerRenderer(opts = {}) {
       }
       // HP bars in screen space, a fixed-ish size so they read at any zoom
       const u = clamp(zoom / 0.55, 0.9, 1.6) * dpr; // device px per bar unit
-      const placed = [];
+      CAM.a = m.a;
+      CAM.d = m.d;
+      CAM.e = m.e;
+      CAM.f = m.f;
+      let placedN = 0;
       // Towers first, where they always are; then buildings, each nudged down
       // below any bar it would cover (a crane next to a guard tower)
-      for (const pass of [0, 1]) {
+      for (let pass = 0; pass < 2; pass++) {
         for (const tw of towers) {
           if ((tw.kind === 'building') !== (pass === 1)) continue;
           const wx = num(tw.x, 0);
@@ -1293,17 +1324,32 @@ export function createTowerRenderer(opts = {}) {
           const X = m.a * wx + m.c * wy + m.e;
           let Y = m.b * wx + m.d * wy + m.f - 10 * u;
           const B = barBox(tw);
-          const r = { x0: X + B.x0 * u, x1: X + (B.x0 + B.w) * u, y0: Y + B.y0 * u, y1: Y + (B.y0 + B.h) * u };
+          // (the boxes come from a pool kept between frames: no objects per bar per frame)
+          if (placedN >= placed.length) placed.push({ x0: 0, x1: 0, y0: 0, y1: 0 });
+          const r = placed[placedN];
+          r.x0 = X + B.x0 * u;
+          r.x1 = X + (B.x0 + B.w) * u;
+          r.y0 = Y + B.y0 * u;
+          r.y1 = Y + (B.y0 + B.h) * u;
           for (let k = 0; pass && k < 4; k++) {
-            const hit = placed.find((o) => r.x0 < o.x1 && r.x1 > o.x0 && r.y0 < o.y1 && r.y1 > o.y0);
+            let hit = null;
+            for (let i = 0; i < placedN && !hit; i++) {
+              const o = placed[i];
+              if (r.x0 < o.x1 && r.x1 > o.x0 && r.y0 < o.y1 && r.y1 > o.y0) hit = o;
+            }
             if (!hit) break;
             const dy = hit.y1 + 2 * u - r.y0;
             Y += dy;
             r.y0 += dy;
             r.y1 += dy;
           }
-          if (tw.alive !== false && (!pass || landedK(tw) > 0)) placed.push(r);
-          bar(ctx, tw, u, X, Y, dt);
+          if (tw.alive !== false && (!pass || landedK(tw) > 0)) placedN++;
+          // A flier crossing the bar (a Pelican cruises at bar height): the bar thins out so the bird reads through it
+          let k = veil.get(tw);
+          const want = flierUnder(battle.units, r) ? VEIL : 1;
+          k = k == null ? want : k + clamp(want - k, -dt * 5, dt * 5);
+          veil.set(tw, k);
+          bar(ctx, tw, u, X, Y, dt, k);
         }
       }
     } catch (e) {

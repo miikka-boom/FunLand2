@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Match, REGULATION, OVERTIME, ANYWHERE } from '../battle/src/sim/match.js';
+import { Match, REGULATION, OVERTIME, ANYWHERE, MANA_TIME } from '../battle/src/sim/match.js';
 import { DT } from '../battle/src/sim/battle.js';
 import { Bot, CLASS, CLASSES, COUNTER, airValue } from '../battle/src/sim/bot.js';
 import { CARDS, CARD_ORDER } from '../battle/src/sim/cards.js';
@@ -221,6 +221,23 @@ test('own side: a Tummy Drummer joins a big push from behind; never alone', () =
   const lone = redBot(f, ['tummyDrummer', 'pogoBean', 'bubbleWrap', 'bananaPeels'], { mana: 8 });
   run(f, [lone], 3);
   assert.ok(!lone.log.some((p) => p.card === 'tummyDrummer' && p.why === 'support'), 'drummed for nobody');
+});
+
+test('lead: a Big Jelly leads its deck\'s pushes: a careful bot waits for its mana rather than pushing with something smaller, then sends it from the back', () => {
+  const hand = ['bigJelly', 'clubbers', 'spikers', 'squire'];
+  const m = match(145, DECK, DECK);
+  const bot = redBot(m, hand, { mana: 6.4 });
+  run(m, [bot], 4, () => !bot.log.length);
+  const l = firstPlay(bot);
+  assert.ok(l && l.card === 'bigJelly' && l.why === 'push', `${JSON.stringify(bot.log)}`);
+  assert.ok(l.t >= (CARDS.bigJelly.mana - 6.4) * MANA_TIME - 0.05, `played at ${l.t.toFixed(2)} s, before its mana was there`);
+  assert.ok(l.x > WORLD.towerX.red, `jelly at ${l.x.toFixed(1)}: from the back, behind the Guard Tower`);
+  // Without it the same bot pushes at once with what it has
+  const f = match(145, DECK, DECK);
+  const now = redBot(f, ['clubberGang', 'clubbers', 'spikers', 'squire'], { mana: 6.4 });
+  run(f, [now], 1, () => !now.log.length);
+  const k = firstPlay(now);
+  assert.ok(k && k.why === 'push' && k.t < 1, `${JSON.stringify(now.log)}`);
 });
 
 test('air: Propeller Pals get an answer that reaches them (Archers or a Netter under them), never a card with no air value', () => {

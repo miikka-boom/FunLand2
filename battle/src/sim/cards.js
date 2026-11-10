@@ -303,7 +303,7 @@ export const CARDS = {
     name: 'Bean Patch',
     kind: 'building',
     building: 'beanPatch',
-    mana: 4,
+    mana: 3,
     rarity: 'rare',
     arena: 3,
     desc: 'Plant it and Sprouts pop out of the dirt, shake it off and charge.',

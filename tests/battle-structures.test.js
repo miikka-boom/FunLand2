@@ -371,6 +371,20 @@ test('Boing Box: a second shove within 1.6 s is weak (anti-lock); it ignores fli
   assert.equal(pal.hp, pal.maxHp);
 });
 
+test('the Box punches a Pogo hopping at it', () => {
+  // A Pogo rides high on its stick, so its body is over the glove: the stick is what's at glove height
+  for (const seed of [1, 2, 3, 4]) {
+    const b = arena(seed);
+    const box = b.addBuilding('boingBox', 'blue', 560, 1);
+    const p = b.addUnit('pogo', 'red', 860, 0.5);
+    const ev = run(b, 10);
+    const hits = ev.filter((e) => e.type === 'hit' && e.kind === 'punch' && e.from === box && e.unit === p).length;
+    const bonks = ev.filter((e) => e.type === 'towerHit' && e.tower === box).length;
+    assert.ok(hits >= 1, `seed ${seed}: ${hits} punches hit the Pogo (it bonked the box ${bonks} times)`);
+    assert.ok(box.alive, `seed ${seed}: the box still stands`);
+  }
+});
+
 // --- the Bean Patch ----------------------------------------------------------------------
 
 test('Bean Patch: Sprouts pop out of its front from arming on, never more than 3 alive, 5-8 in its life, at its level', () => {
@@ -538,17 +552,30 @@ test('deploy-anywhere: Brolly Brigade plays anywhere in [40, 1460] and floats in
   // Spread like a unit card, toward the enemy
   assert.deepEqual(m.formation('blue', 'brollyBrigade', 600), [570, 600, 630]);
   assert.deepEqual(m.formation('red', 'brollyBrigade', 600), [630, 600, 570]);
-  // Onto a Guard Tower: nudged off it to the nearer side
+  // The group slides as a block (contract 3.4 as changed): it keeps its spacing, never stacks on one spot
+  const spaced = (xs) => {
+    const s = xs.slice().sort((p, q) => p - q);
+    for (let i = 1; i < s.length; i++) assert.ok(Math.abs(s[i] - s[i - 1] - 30) < 1e-6, `spacing kept: ${xs}`);
+  };
+  // Onto a Guard Tower: slid off it to the nearer side
   const rg = tower(b, 'red', 'guard');
   const xs = m.formation('blue', 'brollyBrigade', rg.x + 4);
   clear(xs);
-  assert.ok(xs.every((x) => Math.abs(x - rg.x) <= rg.w / 2 + ANYWHERE_CLEAR + 31), `${xs}`);
+  spaced(xs);
+  assert.ok(xs.every((x) => Math.abs(x - rg.x) <= rg.w / 2 + ANYWHERE_CLEAR + 61), `${xs}`);
   // Into a castle: always out to the field side
   for (const team of ['blue', 'red']) {
     const c = tower(b, team, 'castle');
     const ys = m.formation('blue', 'brollyBrigade', c.x);
     clear(ys);
+    spaced(ys);
     assert.ok(ys.every((x) => (x - c.x) * c.f > 0), `${team}: ${ys}`);
+  }
+  // Against the edge of the field, beside a castle: still three spots
+  for (const x of [ANYWHERE[0], ANYWHERE[1]]) {
+    const zs = m.formation('blue', 'brollyBrigade', x);
+    clear(zs);
+    spaced(zs);
   }
   // Onto a building: off it too
   m.play('blue', 1, 600);

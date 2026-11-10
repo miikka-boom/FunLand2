@@ -434,6 +434,7 @@ function lobePath(ctx, bx, by, tx, ty, w, bend) {
   ctx.closePath();
 }
 
+const PEEL_SPOTS = [-5, -3, 4, -4.5, 1, -2, -1.2, -9]; // brown spots on a used peel (x, y pairs)
 const LOBES = [
   [-1.8, -9, -11, 0.4, 4.6, -3.4], // back left
   [1.8, -9, 11, -0.2, 4.6, 3.4], // back right
@@ -496,9 +497,9 @@ export function drawPeel(ctx, x, y, s = 1, rot = 0, used = false) {
   }
   if (used) {
     ctx.fillStyle = 'rgba(90,56,20,0.55)';
-    for (const [sx, sy] of [[-5, -3], [4, -4.5], [1, -2], [-1.2, -9]]) {
+    for (let i = 0; i < PEEL_SPOTS.length; i += 2) {
       ctx.beginPath();
-      ctx.arc(sx, sy, 0.9, 0, TAU);
+      ctx.arc(PEEL_SPOTS[i], PEEL_SPOTS[i + 1], 0.9, 0, TAU);
       ctx.fill();
     }
   } else {
@@ -722,6 +723,7 @@ function sneezeFront(ctx, s) {
 // --- Shaken Soda ------------------------------------------------------------------------------
 
 const SODA = { glass: '#3fae5a', dark: '#24773a', light: '#9ee3a6', label: '#e0352b', cap: '#c9d1d9', foam: '#f4ecd8', foamDark: '#d8c3a0' };
+const SODA_FIZZ = [-3, -16, 2.6, 2.4, -19, 1.8, 3, -14.6, 1.3]; // the label's three fizz bubbles (x, y, r)
 
 function bottlePath(ctx) {
   ctx.moveTo(-8, -28);
@@ -784,9 +786,9 @@ export function drawSodaBottle(ctx, x, y, s = 1, shake = 0, t = 0, capOn = true)
   ctx.fillRect(-8, -23, 16, 11);
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  for (const [bx, by, br] of [[-3, -16, 2.6], [2.4, -19, 1.8], [3, -14.6, 1.3]]) {
-    ctx.moveTo(bx + br, by);
-    ctx.arc(bx, by, br, 0, TAU);
+  for (let i = 0; i < SODA_FIZZ.length; i += 3) {
+    ctx.moveTo(SODA_FIZZ[i] + SODA_FIZZ[i + 2], SODA_FIZZ[i + 1]);
+    ctx.arc(SODA_FIZZ[i], SODA_FIZZ[i + 1], SODA_FIZZ[i + 2], 0, TAU);
   }
   ctx.fill();
   ctx.fillStyle = SODA.label;
@@ -853,6 +855,16 @@ function sodaBack(ctx, s, t) {
   }
 }
 
+const FOAM_N = 21; // the geyser's foam balls: 9 in the crown, 12 spilling
+const FOAM = new Float64Array(FOAM_N * 3); // their x, y, r, refilled every frame
+/** The geyser column's half width at u (0 = the bottle, 1 = the top). */
+const geyserHalf = (w, u) => w * (0.22 + 0.7 * u ** 1.3);
+/** x of the column's wobbling edge on `side` (-1 left, 1 right) at u. */
+function geyserEdge(x, w, t, side, u) {
+  const wob = Math.sin(u * 11 - t * 28 + side * 1.7) * 2.4 * (0.3 + u) + Math.sin(u * 5 + t * 19) * 1.4;
+  return x + side * (geyserHalf(w, u) + wob);
+}
+
 /**
  * The foam geyser, h tall from the bottle's mouth (x, y): a wobbly column
  * flaring out like a fountain, a frothy crown and foam spilling down both sides.
@@ -861,26 +873,23 @@ function drawGeyser(ctx, x, y, h, w, t, k) {
   if (h < 2) return;
   const top = y - h;
   const N = 12;
-  const half = (u) => w * (0.22 + 0.7 * u ** 1.3);
-  const edge = (side, i) => {
-    const u = i / N;
-    const wob = Math.sin(u * 11 - t * 28 + side * 1.7) * 2.4 * (0.3 + u) + Math.sin(u * 5 + t * 19) * 1.4;
-    return x + side * (half(u) + wob);
-  };
   // Crown: a low arch of foam balls; spill: blobs arcing out and down both sides
-  const head = [];
+  // (x, y, r triples in a reused buffer: no arrays per frame)
+  const F = FOAM;
   for (let i = 0; i < 9; i++) {
     const u = i / 8 - 0.5;
     const r = w * (0.42 + 0.18 * (1 - Math.abs(u) * 2) + 0.1 * hash(31, i)) * (0.92 + 0.08 * Math.sin(t * 17 + i * 1.3));
-    head.push([x + u * w * 2.1 + Math.sin(t * 9 + i) * 1.2, top + (u * 2) ** 2 * w * 0.45 - hash(43, i) * w * 0.2, r]);
+    F[i * 3] = x + u * w * 2.1 + Math.sin(t * 9 + i) * 1.2;
+    F[i * 3 + 1] = top + (u * 2) ** 2 * w * 0.45 - hash(43, i) * w * 0.2;
+    F[i * 3 + 2] = r;
   }
-  const spill = [];
   for (let i = 0; i < 12; i++) {
     const side = i % 2 ? 1 : -1;
     const ph = (t * 1.5 + hash(73, i)) % 1;
-    const sx = x + side * (w * 0.9 + ph * w * (1.8 + hash(79, i)));
-    const sy = top - w * 0.3 + ph * ph * Math.min(h, 220) * 0.55 - ph * (1 - ph) * w * 1.6;
-    spill.push([sx, sy, w * (0.3 - 0.16 * ph) * (0.8 + 0.4 * hash(83, i))]);
+    const j = (9 + i) * 3;
+    F[j] = x + side * (w * 0.9 + ph * w * (1.8 + hash(79, i)));
+    F[j + 1] = top - w * 0.3 + ph * ph * Math.min(h, 220) * 0.55 - ph * (1 - ph) * w * 1.6;
+    F[j + 2] = w * (0.3 - 0.16 * ph) * (0.8 + 0.4 * hash(83, i));
   }
   for (let layer = 0; layer < 3; layer++) {
     const o = layer === 0 ? 2.2 : 0;
@@ -889,12 +898,13 @@ function drawGeyser(ctx, x, y, h, w, t, k) {
     const dy = layer === 2 ? -1.6 : 0;
     const sk = layer === 2 ? 0.84 : 1;
     ctx.beginPath();
-    for (let i = 0; i <= N; i++) ctx.lineTo(edge(-1, i) - o + dx, lerp(y, top, i / N));
-    for (let i = N; i >= 0; i--) ctx.lineTo(x + (edge(1, i) - x) * sk + o + dx, lerp(y, top, i / N));
+    for (let i = 0; i <= N; i++) ctx.lineTo(geyserEdge(x, w, t, -1, i / N) - o + dx, lerp(y, top, i / N));
+    for (let i = N; i >= 0; i--) ctx.lineTo(x + (geyserEdge(x, w, t, 1, i / N) - x) * sk + o + dx, lerp(y, top, i / N));
     ctx.closePath();
-    for (const [hx, hy, r] of head.concat(spill)) {
-      ctx.moveTo(hx + dx + r * sk + o, hy + dy);
-      ctx.arc(hx + dx, hy + dy, r * sk + o, 0, TAU);
+    for (let j = 0; j < FOAM_N * 3; j += 3) {
+      const r = F[j + 2];
+      ctx.moveTo(F[j] + dx + r * sk + o, F[j + 1] + dy);
+      ctx.arc(F[j] + dx, F[j + 1] + dy, r * sk + o, 0, TAU);
     }
     ctx.fill();
   }
@@ -905,7 +915,7 @@ function drawGeyser(ctx, x, y, h, w, t, k) {
   ctx.beginPath();
   for (let i = 0; i < 10; i++) {
     const u = (t * 2.2 + hash(47, i)) % 1;
-    const bx = x + (hash(53, i) - 0.5) * half(u) * 1.3;
+    const bx = x + (hash(53, i) - 0.5) * geyserHalf(w, u) * 1.3;
     const by = lerp(y, top, u);
     const r = 1.2 + hash(59, i) * 2;
     ctx.moveTo(bx + r, by);
@@ -914,7 +924,10 @@ function drawGeyser(ctx, x, y, h, w, t, k) {
   ctx.stroke();
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  for (const [hx, hy, r] of head.slice(2, 7)) {
+  for (let j = 2 * 3; j < 7 * 3; j += 3) {
+    const hx = F[j];
+    const hy = F[j + 1];
+    const r = F[j + 2];
     ctx.moveTo(hx - r * 0.3 + r * 0.25, hy - r * 0.35);
     ctx.arc(hx - r * 0.3, hy - r * 0.35, r * 0.25, 0, TAU);
   }

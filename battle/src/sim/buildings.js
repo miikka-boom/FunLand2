@@ -64,10 +64,10 @@ export const BUILDINGS = {
     hp: 850,
     w: 36,
     h: 170,
-    life: 32,
+    life: 36,
     arm: 1.0,
     // A 1-DOF pendulum hanging from the jib: pumped while enemies are near, it golf-swings them away
-    pendulum: { pivotUp: 170, pivotFwd: 34, L: 125, r: 20, sense: 190, pump: 9, maxAng: 1.2, damp: 0.4, minHit: 260, damage: 75, vRef: 430, dmgRange: [0.6, 1.25], up: 320, carry: 1.1, stun: 1.0, hitLoss: 0.85 },
+    pendulum: { pivotUp: 170, pivotFwd: 34, L: 125, r: 20, sense: 230, pump: 9, maxAng: 1.2, damp: 0.4, minHit: 260, damage: 90, vRef: 430, dmgRange: [0.6, 1.25], up: 320, carry: 1.1, stun: 1.0, hitLoss: 0.85 },
   },
 };
 
@@ -179,7 +179,9 @@ function boxTarget(b, t, P) {
   for (const u of b.units) {
     if (u.team === t.team || !u.alive || u.gone || u.held || u.air) continue;
     const d = Math.abs(u.hip.x - t.x) - t.w / 2;
-    if (d > P.reach || Math.abs(u.hip.y - GLOVE_Y) > P.band) continue;
+    // (a Pogo rides high on its stick: its stick in the band counts too)
+    const band = Math.min(Math.abs(u.hip.y - GLOVE_Y), u.type.hop && u.tip ? Math.abs(u.tip.y - GLOVE_Y) : Infinity);
+    if (d > P.reach || band > P.band) continue;
     if (d < bd) {
       bd = d;
       best = u;
@@ -253,6 +255,8 @@ function glove(b, t, P, S, e0, e1) {
     const rr = (GLOVE_R + e.R) ** 2;
     let hit = segSeg(x0, GLOVE_Y, x1, GLOVE_Y, e.hip.x, e.hip.y, e.chest.x, e.chest.y, tmp).d2 < rr;
     if (!hit) hit = segSeg(x0, GLOVE_Y, x1, GLOVE_Y, e.chest.x, e.chest.y, e.head.x, e.head.y, tmp).d2 < rr;
+    // A Pogo rides high on its stick: the stick is what's at glove height
+    if (!hit && e.type.hop && e.tip) hit = segSeg(x0, GLOVE_Y, x1, GLOVE_Y, e.hand[e.mainHand].x, e.hand[e.mainHand].y, e.tip.x, e.tip.y, tmp).d2 < (GLOVE_R + 3) ** 2;
     if (!hit) continue;
     const hx = tmp.x2;
     const hy = tmp.y2;

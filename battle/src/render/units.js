@@ -19,6 +19,15 @@ import { drawPeelItem, drawWrapBubbles, wrapFrame, drawJBomb } from './spells.js
 import { drawCraneBall } from './buildings.js';
 
 const HAT_AT = {}; // reused: no allocation per hat
+const PT = [0, 0]; // reused point for the helpers below (read it at once: the next call overwrites it)
+const FACE_EYES = [{ p: [0, 0], r: 0 }, { p: [0, 0], r: 0 }]; // reused by drawFace for every unit
+const FACE = { x: 0, y: 0, fx: 0, fy: 0, ux: 0, uy: 0 }; // the head frame drawFace is working in
+/** A point `fw` forward and `up` up in the current face frame, into out. */
+function facePt(out, fw, up) {
+  out[0] = FACE.x + FACE.fx * fw + FACE.ux * up;
+  out[1] = FACE.y + FACE.fy * fw + FACE.uy * up;
+  return out;
+}
 let A0 = 1; // the caller's globalAlpha while a unit is drawn (parts that set their own alpha multiply it)
 let scratch = null; // offscreen canvas for drawing a see-through unit in one piece
 
@@ -49,6 +58,7 @@ const BOMB_LOOP = 0.9; // seconds per lap of the Juggler's figure-eight (contrac
 const NET_TANGLE = 0.3; // a freshly netted flier shows the mesh over it this long
 const NET_IMMUNE = (UNIT_TYPES.netter && UNIT_TYPES.netter.attack.air.immune) || 3;
 const BROLLY_R = 34; // open canopy radius: about 30 px wide on a phone at zoom 0.43
+const FLOAT_IN = 0.35; // seconds a Brolly takes to fade in after it is played
 
 export class UnitRenderer {
   /** opts: { showHp: small HP bars over hurt units (arena; the sandbox leaves them off) } */
@@ -56,6 +66,10 @@ export class UnitRenderer {
     this.trails = new Map(); // unit id -> recent weapon tip positions
     this.palettes = {}; // team -> palette override (your army colour)
     this.showHp = !!(opts && opts.showHp);
+    // Device px from the top of the canvas covered by the match HUD's top row
+    // (0: nothing). A Brolly floating in from the top fades in below it.
+    this.skyTop = 0;
+    this.floatSeen = new WeakMap(); // unit -> battle time it was first drawn floating
   }
 
   pal(team) {
@@ -218,17 +232,36 @@ export class UnitRenderer {
   }
 
   drawUnits(ctx, battle, time) {
+    let cam = null; // (the camera, read once a frame and only if a Brolly is floating in)
     // Corpses first, then the living, each back-to-front by lane
     for (let pass = 0; pass < 2; pass++) {
       for (const u of battle.units) {
         if ((pass === 0) === u.alive || u.gone) continue;
         if (heldInDrawing(u)) continue; // its holder draws it (inside the jelly, under the beak)
         // Arena corpses fade out (u.fade 1 -> 0) before they are removed
-        const fade = u.fade == null ? 1 : u.fade;
+        let fade = u.fade == null ? 1 : u.fade;
+        if (u.floatT > 0 && u.alive) fade *= this.floatInAlpha(ctx, u, time, cam || (cam = ctx.getTransform()));
         if (fade < 1) this.drawUnitAlpha(ctx, u, battle, time, fade);
         else this.drawUnit(ctx, u, battle, time);
       }
     }
+  }
+
+  /**
+   * A Brolly that was just played drifts in from the top of the sky: it fades
+   * in over its first moments, and stays faint until its umbrella is clear of
+   * the HUD's top row (skyTop), so it never shows under the clock.
+   */
+  floatInAlpha(ctx, u, time, m = null) {
+    let t0 = this.floatSeen.get(u);
+    if (t0 == null || time < t0) this.floatSeen.set(u, (t0 = time));
+    let a = clamp((time - t0) / FLOAT_IN, 0, 1);
+    if (this.skyTop > 0) {
+      if (!m) m = ctx.getTransform();
+      const y = m.d * (u.head.y - u.R * 1.6) + m.f; // the umbrella, device px
+      a = Math.min(a, clamp((y - this.skyTop) / (this.skyTop * 0.6), 0, 1));
+    }
+    return a;
   }
 
   /**
@@ -256,12 +289,14 @@ export class UnitRenderer {
       if (p.y > y1) y1 = p.y;
     }
     const pad = u.R * 1.8 + 34; // hats, weapons, stuck arrows
-    // Device-pixel box (the camera never rotates, but map all four corners anyway)
+    // Device-pixel box (the camera never rotates, but map all four corners anyway; no arrays per frame)
     let dx0 = Infinity;
     let dy0 = Infinity;
     let dx1 = -Infinity;
     let dy1 = -Infinity;
-    for (const [wx, wy] of [[x0 - pad, y0 - pad], [x1 + pad, y0 - pad], [x0 - pad, y1 + pad], [x1 + pad, y1 + pad]]) {
+    for (let i = 0; i < 4; i++) {
+      const wx = i & 1 ? x1 + pad : x0 - pad;
+      const wy = i & 2 ? y1 + pad : y0 - pad;
       const X = m.a * wx + m.c * wy + m.e;
       const Y = m.b * wx + m.d * wy + m.f;
       if (X < dx0) dx0 = X;
@@ -506,20 +541,15 @@ export class UnitRenderer {
     }
     const hurt = u.hurtT > 0.05 && u.alive; // white flash, then a light tint
     const tint = u.hurtT > 0 && !hurt && u.alive;
-    const path = () => {
-      ctx.beginPath();
-      ctx.moveTo(hip.x, hip.y);
-      ctx.quadraticCurveTo(qx, qy, head.x, head.y);
-    };
     // 1) shade (full width)
-    path();
+    beanPath(ctx, hip, qx, qy, head);
     ctx.strokeStyle = hurt ? '#ffffff' : T.shade;
     ctx.lineWidth = R * 2;
     ctx.stroke();
     if (!hurt) {
       // 2) body colour, shifted toward the light
       ctx.translate(nx * R * 0.17, ny * R * 0.17);
-      path();
+      beanPath(ctx, hip, qx, qy, head);
       ctx.strokeStyle = tint ? T.light : T.body;
       ctx.lineWidth = R * 1.66;
       ctx.stroke();
@@ -761,12 +791,20 @@ export class UnitRenderer {
     // Body-frame point near the head -> world; shapes put the face lower or further forward
     const ofw = face.fw * R;
     const oup = face.up * R;
-    const P = (fw, up) => [head.x + fx * (fw + ofw) + ux * (up + oup), head.y + fy * (fw + ofw) + uy * (up + oup)];
+    // (points in the head's frame go into reused pairs: no closure or array per unit per frame)
+    FACE.x = head.x + fx * ofw + ux * oup;
+    FACE.y = head.y + fy * ofw + uy * oup;
+    FACE.fx = fx;
+    FACE.fy = fy;
+    FACE.ux = ux;
+    FACE.uy = uy;
+    const P = facePt;
     const er = R * 0.42;
-    const eyes = [
-      { p: P(R * 0.22, R * 0.14), r: er * 0.9 },
-      { p: P(R * 0.74, R * 0.04), r: er },
-    ];
+    const eyes = FACE_EYES;
+    P(eyes[0].p, R * 0.22, R * 0.14);
+    eyes[0].r = er * 0.9;
+    P(eyes[1].p, R * 0.74, R * 0.04);
+    eyes[1].r = er;
     // Dead: eyes stay open in shock for a beat, then turn into cartoon X's
     const blink = u.alive && u.blinkT < 0 ? 1 : 0;
     const xEyes = !u.alive && u.deadT > 0.45;
@@ -815,10 +853,10 @@ export class UnitRenderer {
         const { r } = eyes[i];
         const base = i === 0 ? R * 0.22 : R * 0.74;
         const upb = (i === 0 ? R * 0.14 : R * 0.04) + r + R * 0.12;
-        const [ax, ay] = P(base - r * 0.8, upb + r * 0.25);
-        const [bx, by] = P(base + r * 0.8, upb - r * 0.3);
-        ctx.moveTo(ax, ay);
-        ctx.lineTo(bx, by);
+        P(PT, base - r * 0.8, upb + r * 0.25);
+        ctx.moveTo(PT[0], PT[1]);
+        P(PT, base + r * 0.8, upb - r * 0.3);
+        ctx.lineTo(PT[0], PT[1]);
       }
       ctx.stroke();
       ctx.globalAlpha = A0;
@@ -830,9 +868,9 @@ export class UnitRenderer {
     }
     const open = u.alive ? clamp(u.mouth * 5, 0, 1) : 0.45;
     if (open > 0.05) {
-      const [mx, my] = P(R * 0.58, -R * 0.55);
+      P(PT, R * 0.58, -R * 0.55);
       ctx.save();
-      ctx.translate(mx, my);
+      ctx.translate(PT[0], PT[1]);
       ctx.rotate(Math.atan2(uy, ux) + Math.PI / 2);
       if (u.mouthKind === 'smile' && u.alive) {
         ctx.beginPath();
@@ -1251,6 +1289,13 @@ function mixHex(a, b, t) {
   return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
 }
 
+/** The bean's body line, hip to head through (qx, qy) (stroked thick by drawBean). */
+function beanPath(ctx, hip, qx, qy, head) {
+  ctx.beginPath();
+  ctx.moveTo(hip.x, hip.y);
+  ctx.quadraticCurveTo(qx, qy, head.x, head.y);
+}
+
 /** A held bean whose holder draws it (between the jelly's layers, under the beak). */
 function heldInDrawing(u) {
   const h = u.held && u.heldBy;
@@ -1407,20 +1452,46 @@ function drawLeaves(ctx, u, battle) {
  * `ang` (as drawHat), size R, facing f. spin: the blades' angle (radians);
  * blur 0..1: how fast it whirrs (the disc). Also draws the popped-off 'propCap' item.
  */
+const CAP_AT = { x: 0, y: 0, ang: 0 }; // reused anchor for drawCopterCap
+
+// A frame along a stick held at (hx, hy) with unit axis (ax, ay) and length L:
+// stickPt(s, w) is the point s of the way to the tip and w px across, written
+// into PT (no closure or array per stick per frame).
+const STICK = { x: 0, y: 0, ax: 0, ay: 0, nx: 0, ny: 0 };
+function setStick(hx, hy, ax, ay, L) {
+  STICK.x = hx;
+  STICK.y = hy;
+  STICK.ax = ax * L;
+  STICK.ay = ay * L;
+  STICK.nx = -ay;
+  STICK.ny = ax;
+}
+function stickPt(s, w = 0) {
+  PT[0] = STICK.x + STICK.ax * s + STICK.nx * w;
+  PT[1] = STICK.y + STICK.ay * s + STICK.ny * w;
+  return PT;
+}
+
+/** The propeller cap's dome, in the cap's frame. */
+function capDome(ctx) {
+  ctx.beginPath();
+  ctx.moveTo(-0.98, 0.22);
+  ctx.bezierCurveTo(-0.98, -0.42, -0.52, -0.68, 0, -0.68);
+  ctx.bezierCurveTo(0.52, -0.68, 0.98, -0.42, 0.98, 0.22);
+  ctx.quadraticCurveTo(0, 0.38, -0.98, 0.22);
+  ctx.closePath();
+}
+
 export function drawCopterCap(ctx, x, y, ang, R, f, spin, blur = 1) {
   if (!Number.isFinite(x) || !Number.isFinite(y) || !(R > 0)) return;
   ctx.save();
-  headFrame(ctx, { x, y, ang }, R, f || 1);
+  CAP_AT.x = x;
+  CAP_AT.y = y;
+  CAP_AT.ang = ang;
+  headFrame(ctx, CAP_AT, R, f || 1);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  const dome = () => {
-    ctx.beginPath();
-    ctx.moveTo(-0.98, 0.22);
-    ctx.bezierCurveTo(-0.98, -0.42, -0.52, -0.68, 0, -0.68);
-    ctx.bezierCurveTo(0.52, -0.68, 0.98, -0.42, 0.98, 0.22);
-    ctx.quadraticCurveTo(0, 0.38, -0.98, 0.22);
-    ctx.closePath();
-  };
+  const dome = capDome;
   // Visor out front
   ctx.fillStyle = CAP.red;
   ctx.beginPath();
@@ -1429,14 +1500,16 @@ export function drawCopterCap(ctx, x, y, ang, R, f, spin, blur = 1) {
   ctx.strokeStyle = CAP.dark;
   ctx.lineWidth = 0.09;
   ctx.stroke();
-  dome();
+  dome(ctx);
   ctx.fillStyle = CAP.red;
   ctx.fill();
   ctx.save();
-  dome();
+  dome(ctx);
   ctx.clip();
   ctx.fillStyle = CAP.yellow;
-  for (const [x0, x1] of [[-0.66, -0.22], [0.22, 0.66]]) {
+  for (let i = 0; i < 2; i++) {
+    const x0 = i ? 0.22 : -0.66;
+    const x1 = i ? 0.66 : -0.22;
     ctx.beginPath();
     ctx.moveTo(x0 * 1.5, 0.45);
     ctx.lineTo(x0 * 0.12, -0.72);
@@ -1450,7 +1523,7 @@ export function drawCopterCap(ctx, x, y, ang, R, f, spin, blur = 1) {
   ctx.ellipse(0.55, 0.15, 0.75, 0.55, 0, 0, TAU);
   ctx.fill();
   ctx.restore();
-  dome();
+  dome(ctx);
   ctx.strokeStyle = CAP.dark;
   ctx.lineWidth = 0.1;
   ctx.stroke();
@@ -1509,7 +1582,8 @@ function drawPogoStick(ctx, hx, hy, tx, ty, pegT = -1) {
   const nx = -ay;
   const ny = ax;
   const pt = pegT >= 0 ? pegT : 0.5;
-  const P = (t, o = 0) => [hx + ax * L * t + nx * o, hy + ay * L * t + ny * o];
+  setStick(hx, hy, ax, ay, L);
+  const P = stickPt;
   ctx.lineCap = 'round';
   // Shaft
   ctx.strokeStyle = OUTLINE;
@@ -1524,8 +1598,12 @@ function drawPogoStick(ctx, hx, hy, tx, ty, pegT = -1) {
   ctx.strokeStyle = POGO.light;
   ctx.lineWidth = 0.9;
   ctx.beginPath();
-  const [l0x, l0y] = P(0.05, -0.7);
-  const [l1x, l1y] = P(0.9, -0.7);
+  P(0.05, -0.7);
+  const l0x = PT[0];
+  const l0y = PT[1];
+  P(0.9, -0.7);
+  const l1x = PT[0];
+  const l1y = PT[1];
   ctx.moveTo(l0x, l0y);
   ctx.lineTo(l1x, l1y);
   ctx.stroke();
@@ -1537,7 +1615,9 @@ function drawPogoStick(ctx, hx, hy, tx, ty, pegT = -1) {
   ctx.beginPath();
   const turns = 9;
   for (let i = 0; i <= turns; i++) {
-    const [x, y] = P(t0 + ((t1 - t0) * i) / turns, i % 2 ? 3.6 : -3.6);
+    P(t0 + ((t1 - t0) * i) / turns, i % 2 ? 3.6 : -3.6);
+    const x = PT[0];
+    const y = PT[1];
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
@@ -1548,21 +1628,25 @@ function drawPogoStick(ctx, hx, hy, tx, ty, pegT = -1) {
   ctx.arc(tx - ax * 1.5, ty - ay * 1.5, 3, 0, TAU);
   ctx.fill();
   // Footpegs and the handlebar, sticking out both sides
-  const bar = (t, half, w, col) => {
-    const [x0, y0] = P(t, -half);
-    const [x1, y1] = P(t, half);
-    ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = w + 1.4;
-    ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    ctx.lineTo(x1, y1);
-    ctx.stroke();
-    ctx.strokeStyle = col;
-    ctx.lineWidth = w;
-    ctx.stroke();
-  };
-  bar(pt, 6.5, 2.2, POGO.black);
-  bar(0, 7.5, 2.8, POGO.bar);
+  pogoBar(ctx, pt, 6.5, 2.2, POGO.black);
+  pogoBar(ctx, 0, 7.5, 2.8, POGO.bar);
+}
+
+/** A crossbar t of the way down the current stick (setStick), half px out each side. */
+function pogoBar(ctx, t, half, w, col) {
+  stickPt(t, -half);
+  const x0 = PT[0];
+  const y0 = PT[1];
+  stickPt(t, half);
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = w + 1.4;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(PT[0], PT[1]);
+  ctx.stroke();
+  ctx.strokeStyle = col;
+  ctx.lineWidth = w;
+  ctx.stroke();
 }
 
 /** Where a pogo's footpegs go: level with its feet, along the stick. */
@@ -1736,6 +1820,9 @@ function drawGlasses(ctx, eyes, R, fx, fy) {
 
 // --- Bomb Juggler ------------------------------------------------------------------
 
+// The jester diamonds: [t along the spine, across (R), white] per diamond, flat
+const HARLEQUIN = [0.08, -0.48, 1, 0.08, 0.48, 0, 0.36, -0.48, 0, 0.36, 0.48, 1, 0.22, 0, 1];
+
 /** Jester diamonds on the body (team colour and white, like the Brick's mortar). */
 function drawHarlequin(ctx, u, T) {
   if (u.hurtT > 0.05 && u.alive) return;
@@ -1746,8 +1833,10 @@ function drawHarlequin(ctx, u, T) {
   const ny = u.fwy;
   const hu = R * 0.42;
   const hw = R * 0.44;
-  const cells = [[0.08, -0.48, 1], [0.08, 0.48, 0], [0.36, -0.48, 0], [0.36, 0.48, 1], [0.22, 0, 1]];
-  for (const [t, o, white] of cells) {
+  for (let i = 0; i < HARLEQUIN.length; i += 3) {
+    const t = HARLEQUIN[i];
+    const o = HARLEQUIN[i + 1];
+    const white = HARLEQUIN[i + 2];
     const c = spineAt(u, t, o * R, SP);
     ctx.beginPath();
     ctx.moveTo(c.x + ux * hu, c.y + uy * hu);
@@ -1818,15 +1907,12 @@ function drawJuggle(ctx, u) {
   const B = R * 0.95;
   const r = (u.type.bomb && u.type.bomb.r) || 6;
   const ph = u.time / BOMB_LOOP;
-  const at = (i) => {
-    const th = (ph + i / 3) * TAU;
-    return [cx + Math.sin(th) * A * u.f, cy + Math.sin(th) * Math.cos(th) * B - Math.cos(th) * B * 0.35];
-  };
+  // (bomb i's spot on the figure-eight: worked out in place, no closure or array per frame)
   let n = 3;
   if (a && (a.phase === 'draw' || a.phase === 'recover')) n = 2;
   for (let i = 0; i < n; i++) {
-    const [x, y] = at(i);
-    drawJBomb(ctx, x, y, r, ph * 4 + i * 2, 0, u.time);
+    const th = (ph + i / 3) * TAU;
+    drawJBomb(ctx, cx + Math.sin(th) * A * u.f, cy + Math.sin(th) * Math.cos(th) * B - Math.cos(th) * B * 0.35, r, ph * 4 + i * 2, 0, u.time);
   }
   if (a && a.phase === 'draw') {
     const h = u.hand[u.mainHand];
@@ -1835,7 +1921,9 @@ function drawJuggle(ctx, u) {
     // The fresh one, pulled from the belt up into the loop
     const k = clamp(a.t / ((u.type.attack && u.type.attack.recover) || 0.45), 0, 1);
     const e = 1 - (1 - k) * (1 - k);
-    const [lx, ly] = at(2);
+    const th = (ph + 2 / 3) * TAU;
+    const lx = cx + Math.sin(th) * A * u.f;
+    const ly = cy + Math.sin(th) * Math.cos(th) * B - Math.cos(th) * B * 0.35;
     const bx = u.hip.x + u.fwx * R * 0.7;
     const by = u.hip.y + u.fwy * R * 0.7;
     drawJBomb(ctx, bx + (lx - bx) * e, by + (ly - by) * e - Math.sin(e * Math.PI) * R, r, e * 6, 0, u.time);
@@ -2110,20 +2198,25 @@ function drawBrolly(ctx, hx, hy, tx, ty, T, state, t = 0) {
   // Furled: a slim spindle along the shaft
   const s0 = 0.22;
   const s1 = 0.96;
-  const P = (s, w) => [hx + ax * L * s + nx * w, hy + ay * L * s + ny * w];
+  setStick(hx, hy, ax, ay, L);
+  const P = stickPt;
   ctx.beginPath();
   const N = 8;
   for (let i = 0; i <= N; i++) {
     const s = s0 + ((s1 - s0) * i) / N;
     const w = 4.2 * Math.sin((Math.PI * i) / N) ** 0.8 * (1 - (0.35 * i) / N);
-    const [x, y] = P(s, w);
+    P(s, w);
+    const x = PT[0];
+    const y = PT[1];
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
   for (let i = N; i >= 0; i--) {
     const s = s0 + ((s1 - s0) * i) / N;
     const w = 4.2 * Math.sin((Math.PI * i) / N) ** 0.8 * (1 - (0.35 * i) / N);
-    const [x, y] = P(s, -w);
+    P(s, -w);
+    const x = PT[0];
+    const y = PT[1];
     ctx.lineTo(x, y);
   }
   ctx.closePath();
@@ -2136,9 +2229,14 @@ function drawBrolly(ctx, hx, hy, tx, ty, T, state, t = 0) {
   ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = 1.4;
   ctx.beginPath();
-  for (const s of [0.42, 0.66]) {
-    const [x0, y0] = P(s - 0.05, -3);
-    const [x1, y1] = P(s + 0.05, 3);
+  for (let k = 0; k < 2; k++) {
+    const s = k ? 0.66 : 0.42;
+    P(s - 0.05, -3);
+    const x0 = PT[0];
+    const y0 = PT[1];
+    P(s + 0.05, 3);
+    const x1 = PT[0];
+    const y1 = PT[1];
     ctx.moveTo(x0, y0);
     ctx.lineTo(x1, y1);
   }
@@ -2148,10 +2246,18 @@ function drawBrolly(ctx, hx, hy, tx, ty, T, state, t = 0) {
     ctx.strokeStyle = '#3a3a46';
     ctx.lineWidth = 1.1;
     ctx.beginPath();
-    for (const [s, side] of [[0.62, 1], [0.78, -1]]) {
-      const [x0, y0] = P(s, side * 3);
-      const [x1, y1] = P(s + 0.12, side * 9);
-      const [x2, y2] = P(s + 0.02, side * 13);
+    for (let k = 0; k < 2; k++) {
+      const s = k ? 0.78 : 0.62;
+      const side = k ? -1 : 1;
+      P(s, side * 3);
+      const x0 = PT[0];
+      const y0 = PT[1];
+      P(s + 0.12, side * 9);
+      const x1 = PT[0];
+      const y1 = PT[1];
+      P(s + 0.02, side * 13);
+      const x2 = PT[0];
+      const y2 = PT[1];
       ctx.moveTo(x0, y0);
       ctx.lineTo(x1, y1);
       ctx.lineTo(x2, y2);
@@ -2160,27 +2266,31 @@ function drawBrolly(ctx, hx, hy, tx, ty, T, state, t = 0) {
   }
 }
 
+/** The open canopy's outline (tip at 0, 0; the rim BROLLY_R wide below it). */
+function canopyDome(ctx) {
+  const W = BROLLY_R;
+  const rim = W * 0.46;
+  ctx.beginPath();
+  ctx.moveTo(-W, rim);
+  ctx.bezierCurveTo(-W * 0.98, rim * 0.05, -W * 0.55, -W * 0.06, 0, -W * 0.06);
+  ctx.bezierCurveTo(W * 0.55, -W * 0.06, W * 0.98, rim * 0.05, W, rim);
+  const n = 6;
+  for (let i = n - 1; i >= 0; i--) {
+    const x = -W + (2 * W * i) / n;
+    ctx.quadraticCurveTo(x + W / n, rim - W * 0.12, x, rim);
+  }
+  ctx.closePath();
+}
 /** The open canopy in its frame (tip at 0, 0; the rim BROLLY_R wide below it): eight panels, team colour and white. */
 function openCanopy(ctx, T) {
   const W = BROLLY_R;
   const rim = W * 0.46;
-  const dome = () => {
-    ctx.beginPath();
-    ctx.moveTo(-W, rim);
-    ctx.bezierCurveTo(-W * 0.98, rim * 0.05, -W * 0.55, -W * 0.06, 0, -W * 0.06);
-    ctx.bezierCurveTo(W * 0.55, -W * 0.06, W * 0.98, rim * 0.05, W, rim);
-    const n = 6;
-    for (let i = n - 1; i >= 0; i--) {
-      const x = -W + (2 * W * i) / n;
-      ctx.quadraticCurveTo(x + W / n, rim - W * 0.12, x, rim);
-    }
-    ctx.closePath();
-  };
-  dome();
+  const dome = canopyDome;
+  dome(ctx);
   ctx.fillStyle = T.body;
   ctx.fill();
   ctx.save();
-  dome();
+  dome(ctx);
   ctx.clip();
   // White panels: wedges from the top to every other rim point (side view shows six of the eight)
   ctx.fillStyle = '#ffffff';
@@ -2202,7 +2312,7 @@ function openCanopy(ctx, T) {
   ctx.fillStyle = 'rgba(20,10,40,0.25)';
   ctx.fillRect(-W, rim - W * 0.1, 2 * W, W * 0.12);
   ctx.restore();
-  dome();
+  dome(ctx);
   ctx.strokeStyle = OUTLINE;
   ctx.lineWidth = 1.6;
   ctx.stroke();
@@ -2222,13 +2332,15 @@ function openCanopy(ctx, T) {
 }
 
 /** Blown inside out: a crumpled cup above the tip, its lining showing, with bent spokes. */
+/** How high rib i's tip pokes up on a blown-out umbrella (W wide), flapping. */
+const flipTipY = (W, t, i) => -W * (0.62 + 0.12 * Math.sin(i * 2.3 + 1)) + Math.sin(t * 9 + i) * 1.5;
+
 function insideOutCanopy(ctx, T, t) {
   const W = BROLLY_R * 0.82;
   const n = 6;
-  const tipY = (i) => -W * (0.62 + 0.12 * Math.sin(i * 2.3 + 1)) + Math.sin(t * 9 + i) * 1.5;
   ctx.beginPath();
   ctx.moveTo(0, 4);
-  for (let i = 0; i <= n; i++) ctx.lineTo(-W + (2 * W * i) / n, tipY(i));
+  for (let i = 0; i <= n; i++) ctx.lineTo(-W + (2 * W * i) / n, flipTipY(W, t, i));
   ctx.closePath();
   ctx.fillStyle = T.light;
   ctx.fill();
@@ -2236,8 +2348,8 @@ function insideOutCanopy(ctx, T, t) {
   for (let i = 0; i < n; i += 2) {
     ctx.beginPath();
     ctx.moveTo(0, 4);
-    ctx.lineTo(-W + (2 * W * i) / n, tipY(i));
-    ctx.lineTo(-W + (2 * W * (i + 1)) / n, tipY(i + 1));
+    ctx.lineTo(-W + (2 * W * i) / n, flipTipY(W, t, i));
+    ctx.lineTo(-W + (2 * W * (i + 1)) / n, flipTipY(W, t, i + 1));
     ctx.closePath();
     ctx.fill();
   }
@@ -2245,7 +2357,7 @@ function insideOutCanopy(ctx, T, t) {
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(0, 4);
-  for (let i = 0; i <= n; i++) ctx.lineTo(-W + (2 * W * i) / n, tipY(i));
+  for (let i = 0; i <= n; i++) ctx.lineTo(-W + (2 * W * i) / n, flipTipY(W, t, i));
   ctx.closePath();
   ctx.stroke();
   // Spokes, kinked and poking past the cloth
@@ -2254,7 +2366,7 @@ function insideOutCanopy(ctx, T, t) {
   ctx.beginPath();
   for (let i = 0; i <= n; i++) {
     const x = -W + (2 * W * i) / n;
-    const y = tipY(i);
+    const y = flipTipY(W, t, i);
     ctx.moveTo(0, 4);
     ctx.lineTo(x * 0.55, y * 0.5 + 2);
     ctx.lineTo(x * 1.12 + (i % 2 ? 3 : -3), y - 5);
@@ -2479,56 +2591,86 @@ function birdWing(ctx, u, i, fill, flap) {
     px = -px;
     py = -py;
   }
-  const W = (s, o) => [sx + dx * span * s + px * chord * o, sy + dy * span * s + py * chord * o];
-  const outline = (upTo) => {
-    ctx.beginPath();
-    const [x0, y0] = W(0, -0.3);
-    ctx.moveTo(x0, y0);
-    const [cx, cy] = W(0.5 * upTo, -0.55);
-    const [ex, ey] = W(upTo, upTo >= 1 ? 0.1 : -0.25);
-    ctx.quadraticCurveTo(cx, cy, ex, ey);
-    if (upTo >= 1) {
-      // Primaries: scalloped trailing edge back toward the root
-      const n = 4;
-      for (let k = 1; k <= n; k++) {
-        const s = 1 - (0.42 * k) / n;
-        const o = 0.25 + (0.6 * k) / n;
-        const [qx, qy] = W(s + 0.06, o + 0.14);
-        const [x, y] = W(s, o);
-        ctx.quadraticCurveTo(qx, qy, x, y);
-      }
-    } else {
-      const [x, y] = W(upTo - 0.05, 0.88);
-      ctx.lineTo(x, y);
-    }
-    const [rx, ry] = W(0.05, 1);
-    ctx.quadraticCurveTo(...W(0.3, 1.05), rx, ry);
-    ctx.closePath();
-  };
+  // (the wing's frame: axesPt(s, o) is s of the span out and o of the chord back, into PT)
+  AXES.x = sx;
+  AXES.y = sy;
+  AXES.ax = dx * span;
+  AXES.ay = dy * span;
+  AXES.bx = px * chord;
+  AXES.by = py * chord;
   ctx.lineJoin = 'round';
   // White primaries first, then the coloured coverts over the inner part
-  outline(1);
+  wingOutline(ctx, 1);
   ctx.fillStyle = '#ffffff';
   ctx.fill();
   ctx.strokeStyle = OUTLINE;
   ctx.lineWidth = 1.2;
   ctx.stroke();
-  outline(0.66);
+  wingOutline(ctx, 0.66);
   ctx.fillStyle = fill;
   ctx.fill();
   ctx.lineWidth = 1;
   ctx.stroke();
 }
 
+// A skewed frame for the bird's wing and beak: origin (x, y), axes (ax, ay) and (bx, by);
+// axesPt(s, o) = origin + s * a + o * b, into PT
+const AXES = { x: 0, y: 0, ax: 0, ay: 0, bx: 0, by: 0 };
+function axesPt(s, o) {
+  PT[0] = AXES.x + AXES.ax * s + AXES.bx * o;
+  PT[1] = AXES.y + AXES.ay * s + AXES.by * o;
+  return PT;
+}
+
+/** The wing's outline out to `upTo` of its span (1: the whole wing with its scalloped primaries). */
+function wingOutline(ctx, upTo) {
+  ctx.beginPath();
+  axesPt(0, -0.3);
+  ctx.moveTo(PT[0], PT[1]);
+  axesPt(0.5 * upTo, -0.55);
+  const cx = PT[0];
+  const cy = PT[1];
+  axesPt(upTo, upTo >= 1 ? 0.1 : -0.25);
+  ctx.quadraticCurveTo(cx, cy, PT[0], PT[1]);
+  if (upTo >= 1) {
+    // Primaries: scalloped trailing edge back toward the root
+    const n = 4;
+    for (let k = 1; k <= n; k++) {
+      const s = 1 - (0.42 * k) / n;
+      const o = 0.25 + (0.6 * k) / n;
+      axesPt(s + 0.06, o + 0.14);
+      const qx = PT[0];
+      const qy = PT[1];
+      axesPt(s, o);
+      ctx.quadraticCurveTo(qx, qy, PT[0], PT[1]);
+    }
+  } else {
+    axesPt(upTo - 0.05, 0.88);
+    ctx.lineTo(PT[0], PT[1]);
+  }
+  axesPt(0.3, 1.05);
+  const qx = PT[0];
+  const qy = PT[1];
+  axesPt(0.05, 1);
+  ctx.quadraticCurveTo(qx, qy, PT[0], PT[1]);
+  ctx.closePath();
+}
+
+// The tail fan's feather tips: [back (R), toward the belly (R)] pairs, flat
+const TAIL = [1.55, -0.05, 1.4, 0.2, 1.62, 0.32, 1.45, 0.55, 1.5, 0.8];
+
 /** A short fan of tail feathers off the hips. */
 function birdTail(ctx, u, T, body) {
   const R = u.R;
   const bx = u.hip.x - u.ux * R * 0.5;
   const by = u.hip.y - u.uy * R * 0.5;
-  const P = (b, o) => [u.hip.x - u.ux * R * b - u.fwx * R * o, u.hip.y - u.uy * R * b - u.fwy * R * o];
   ctx.beginPath();
   ctx.moveTo(bx + u.fwx * R * 0.5, by + u.fwy * R * 0.5);
-  for (const [b, o] of [[1.55, -0.05], [1.4, 0.2], [1.62, 0.32], [1.45, 0.55], [1.5, 0.8]]) ctx.lineTo(...P(b, o));
+  for (let i = 0; i < TAIL.length; i += 2) {
+    const b = TAIL[i];
+    const o = TAIL[i + 1];
+    ctx.lineTo(u.hip.x - u.ux * R * b - u.fwx * R * o, u.hip.y - u.uy * R * b - u.fwy * R * o);
+  }
   ctx.lineTo(bx - u.fwx * R * 0.6, by - u.fwy * R * 0.6);
   ctx.closePath();
   ctx.fillStyle = body;
@@ -2549,6 +2691,15 @@ function webFoot(ctx, p, f, R) {
   ctx.lineTo(p.x - f * 1.5 * k, p.y + 2 * k);
   ctx.closePath();
   ctx.fill();
+}
+
+/** A quadratic curve through two points of the current AXES frame. */
+function curveB(ctx, s0, o0, s1, o1) {
+  axesPt(s0, o0);
+  const qx = PT[0];
+  const qy = PT[1];
+  axesPt(s1, o1);
+  ctx.quadraticCurveTo(qx, qy, PT[0], PT[1]);
 }
 
 /**
@@ -2573,12 +2724,25 @@ function drawBeak(ctx, u, hx, hy, R, held = null) {
   }
   const len = R * 2.15;
   const open = u.alive ? clamp(u.mouth * 2.5, 0, 0.45) : 0.25;
-  const B = (s, o) => [hx + dx * (R * 0.42 + len * s) + px * R * o, hy + dy * (R * 0.42 + len * s) + py * R * o];
+  // (the bill's frame: B(s, o) is s of its length out from the base and o (R) toward the belly, into PT)
+  AXES.x = hx + dx * R * 0.42;
+  AXES.y = hy + dy * R * 0.42;
+  AXES.ax = dx * len;
+  AXES.ay = dy * len;
+  AXES.bx = px * R;
+  AXES.by = py * R;
+  const B = axesPt;
   // Pouch (the lower bill swings open about the base)
   const sag = 0.62 + open * 0.6;
-  const [ax, ay] = B(0, 0.12);
-  const [tx, ty] = B(0.94, 0.12 + open * 0.9);
-  let [cx, cy] = B(0.45, 0.12 + sag * 1.9);
+  B(0, 0.12);
+  const ax = PT[0];
+  const ay = PT[1];
+  B(0.94, 0.12 + open * 0.9);
+  const tx = PT[0];
+  const ty = PT[1];
+  B(0.45, 0.12 + sag * 1.9);
+  let cx = PT[0];
+  let cy = PT[1];
   if (held) {
     // Stretched round the bean's chest: the curve's middle passes just below the hold point
     const [hpx, hpy] = u.holdPoint();
@@ -2588,7 +2752,8 @@ function drawBeak(ctx, u, hx, hy, R, held = null) {
   ctx.beginPath();
   ctx.moveTo(ax, ay);
   ctx.quadraticCurveTo(cx, cy, tx, ty);
-  ctx.lineTo(...B(0.5, 0.08 + open * 0.45));
+  B(0.5, 0.08 + open * 0.45);
+  ctx.lineTo(PT[0], PT[1]);
   ctx.closePath();
   ctx.fillStyle = BEAK.pouch;
   ctx.fill();
@@ -2597,11 +2762,14 @@ function drawBeak(ctx, u, hx, hy, R, held = null) {
   ctx.stroke();
   // Upper bill with a hooked nail
   ctx.beginPath();
-  ctx.moveTo(...B(-0.05, -0.36));
-  ctx.quadraticCurveTo(...B(0.5, -0.3), ...B(1, -0.04));
-  ctx.quadraticCurveTo(...B(1.07, 0.1), ...B(0.98, 0.24));
-  ctx.lineTo(...B(0.9, 0.1));
-  ctx.lineTo(...B(0, 0.16));
+  B(-0.05, -0.36);
+  ctx.moveTo(PT[0], PT[1]);
+  curveB(ctx, 0.5, -0.3, 1, -0.04);
+  curveB(ctx, 1.07, 0.1, 0.98, 0.24);
+  B(0.9, 0.1);
+  ctx.lineTo(PT[0], PT[1]);
+  B(0, 0.16);
+  ctx.lineTo(PT[0], PT[1]);
   ctx.closePath();
   ctx.fillStyle = BEAK.base;
   ctx.fill();
@@ -2611,23 +2779,25 @@ function drawBeak(ctx, u, hx, hy, R, held = null) {
   ctx.strokeStyle = 'rgba(255,255,255,0.55)';
   ctx.lineWidth = 1.1;
   ctx.beginPath();
-  ctx.moveTo(...B(0.1, -0.2));
-  ctx.lineTo(...B(0.75, -0.14));
+  B(0.1, -0.2);
+  ctx.moveTo(PT[0], PT[1]);
+  B(0.75, -0.14);
+  ctx.lineTo(PT[0], PT[1]);
   ctx.stroke();
 }
 
 /** Two googly eyes high on the bird's head, looking along the beak. */
 function birdEyes(ctx, u, hx, hy, R, T) {
   const er = R * 0.42;
-  const back = [-u.fwx, -u.fwy];
-  const eyes = [
-    [hx + u.ux * R * 0.02 + back[0] * R * 0.36, hy + u.uy * R * 0.02 + back[1] * R * 0.36, R * 0.3],
-    [hx + u.ux * R * 0.3 + back[0] * R * 0.22, hy + u.uy * R * 0.3 + back[1] * R * 0.22, R * 0.34],
-  ];
   const xEyes = !u.alive && u.deadT > 0.45;
   const blink = u.alive && u.blinkT < 0;
   for (let i = 0; i < 2; i++) {
-    const [x, y, r] = eyes[i];
+    // the near eye a little up the head and back from the beak, the far one higher and bigger
+    const up = i ? 0.3 : 0.02;
+    const back = i ? 0.22 : 0.36;
+    const x = hx + u.ux * R * up - u.fwx * R * back;
+    const y = hy + u.uy * R * up - u.fwy * R * back;
+    const r = R * (i ? 0.34 : 0.3);
     ctx.beginPath();
     ctx.arc(x, y, r, 0, TAU);
     ctx.fillStyle = '#ffffff';

@@ -9,6 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CARDS, CARD_ORDER, RARITIES, MAX_LEVEL } from '../battle/src/sim/cards.js';
 import { UNIT_TYPES } from '../battle/src/sim/unit-types.js';
+import { BUILDINGS } from '../battle/src/sim/buildings.js';
 import { newProfile, migrate, grant, UNIT_IDS, FIRSTS, firstsOf } from '../battle/src/meta/profile.js';
 import { UPGRADE_COPIES, UPGRADE_GOLD, AIR_ANSWERS, cardsUpTo, deckNeedsAir, fliersUnlocked, upgradeCard, bestArena } from '../battle/src/meta/collection.js';
 import { ARENAS, TRAIL, claimTrail } from '../battle/src/meta/ladder.js';
@@ -283,17 +284,21 @@ test('opponents: every style is valid, waits for its first card, and answers fli
     const c = CARDS[id];
     assert.ok(c.kind === 'spell' || UNIT_TYPES[c.unit].hitsAir, `${id} hits air`);
   }
-  // The contract's five newer styles, exactly
-  assert.deepEqual(ARCHETYPES.hop.cards, ['pogoBean', 'sprouts', 'bananaPeels', 'spikers', 'bomb', 'netter', 'archers', 'arrowRain']);
-  assert.deepEqual(ARCHETYPES.fizz.cards, ['bombJuggler', 'shakenSoda', 'bigSneeze', 'megaBomb', 'squire', 'propellerPals', 'sprouts', 'archers']);
-  assert.deepEqual(ARCHETYPES.fortress.cards, ['wreckingCrane', 'beanPatch', 'boingBox', 'brick', 'anvil', 'archers', 'bananaPeels', 'arrowRain']);
-  assert.deepEqual(ARCHETYPES.sky.cards, ['pelican', 'propellerPals', 'brollyBrigade', 'netter', 'bombJuggler', 'bigSneeze', 'squire', 'arrowRain']);
-  assert.deepEqual(ARCHETYPES.parade.cards, ['bigJelly', 'tummyDrummer', 'bubbleWrap', 'clubberGang', 'bombJuggler', 'archers', 'sprouts', 'boulder']);
+  // The five newer styles, exactly (the contract's lists, rebuilt in the polish pass so each holds its
+  // own against the other styles: see deviations POLISH-SIM)
+  assert.deepEqual(ARCHETYPES.hop.cards, ['pogoBean', 'propellerPals', 'sprouts', 'spikers', 'clubberGang', 'archers', 'arrowRain', 'boulder']);
+  assert.deepEqual(ARCHETYPES.fizz.cards, ['bombJuggler', 'shakenSoda', 'bigSneeze', 'clubberGang', 'spikers', 'clubbers', 'archers', 'squire']);
+  assert.deepEqual(ARCHETYPES.fortress.cards, ['wreckingCrane', 'boingBox', 'brick', 'anvil', 'archers', 'spikers', 'squire', 'arrowRain']);
+  assert.deepEqual(ARCHETYPES.sky.cards, ['pelican', 'propellerPals', 'brollyBrigade', 'archers', 'bombJuggler', 'bigSneeze', 'squire', 'arrowRain']);
+  assert.deepEqual(ARCHETYPES.parade.cards, ['bigJelly', 'tummyDrummer', 'bubbleWrap', 'clubberGang', 'bombJuggler', 'archers', 'squire', 'boulder']);
   assert.deepEqual([ARCHETYPES.hop.arena, ARCHETYPES.fizz.arena, ARCHETYPES.fortress.arena, ARCHETYPES.sky.arena, ARCHETYPES.parade.arena], [1, 2, 3, 4, 4]);
   for (const [id, A] of Object.entries(ARCHETYPES)) {
     assert.ok(A.name && A.cards.length === 8 && new Set(A.cards).size === 8, id);
     for (const c of A.cards) assert.ok(CARDS[c], `${id}: ${c}`);
     if (A.arena) assert.equal(CARDS[A.cards[0]].arena, A.arena, `${id} suits the arena of its first card`);
+    // (a newer style is all itself from its own arena on: buildDeck tops nothing up there)
+    if (A.arena) for (const c of A.cards) assert.ok(CARDS[c].arena <= A.arena, `${id}: ${c} unlocks after the style's arena`);
+    if (A.arena) assert.deepEqual(buildDeck(A.arena, id, rngFrom('own', id)).slice().sort(), A.cards.slice().sort(), `${id} at its own arena`);
   }
   for (let arena = 0; arena < ARENAS.length; arena++) {
     const ids = archetypesFor(arena);
@@ -418,8 +423,8 @@ test('card details: the newer kinds say what they are and every stat is a real v
   assert.equal(cardKindLine(CARDS.propellerPals), 'Unit card · flies');
   assert.equal(cardKindLine(CARDS.pelican), 'Unit card · flies');
   assert.equal(cardKindLine(CARDS.brollyBrigade), 'Unit card · lands anywhere');
-  assert.equal(cardKindLine(CARDS.boingBox), 'Building · lasts 28 s');
-  assert.equal(cardKindLine(CARDS.wreckingCrane), 'Building · lasts 32 s');
+  assert.equal(cardKindLine(CARDS.boingBox), `Building · lasts ${BUILDINGS.boingBox.life} s`);
+  assert.equal(cardKindLine(CARDS.wreckingCrane), `Building · lasts ${BUILDINGS.wreckingCrane.life} s`);
   assert.equal(cardKindLine(CARDS.anvil), 'Spell · cast anywhere');
   assert.equal(cardKindLine(CARDS.clubbers), 'Unit card · 2 beans');
   const targets = (id) => cardStats(id, 1).find((r) => r.label === 'Targets').value;
@@ -430,13 +435,13 @@ test('card details: the newer kinds say what they are and every stat is a real v
   for (const id of ['clubbers', 'propellerPals', 'pelican', 'bigJelly', 'boingBox', 'boulder']) assert.equal(targets(id), 'Ground', id);
   assert.equal(targets('bubbleWrap'), 'Your own beans');
   const row = (id, label) => cardStats(id, 1).find((r) => r.label === label);
-  assert.equal(row('boingBox', 'Lifetime').value, '28 s');
-  assert.equal(row('beanPatch', 'Lifetime').value, '24 s');
+  assert.equal(row('boingBox', 'Lifetime').value, `${BUILDINGS.boingBox.life} s`);
+  assert.equal(row('beanPatch', 'Lifetime').value, `${BUILDINGS.beanPatch.life} s`);
   assert.ok(/Sprout/.test(row('beanPatch', 'Spawns').value));
   assert.ok(/flies/.test(row('propellerPals', 'Speed').value));
   assert.ok(/anywhere/.test(row('brollyBrigade', 'Units').value));
-  assert.equal(row('bombJuggler', 'Bomb damage').value, 40);
-  assert.equal(row('wreckingCrane', 'Health').next, Math.round(850 * 1.1));
+  assert.equal(row('bombJuggler', 'Bomb damage').value, UNIT_TYPES.juggler.bomb.damage);
+  assert.equal(row('wreckingCrane', 'Health').next, Math.round(BUILDINGS.wreckingCrane.hp * 1.1));
   for (const id of CARD_ORDER) {
     for (const lv of [1, 5, MAX_LEVEL]) {
       const rows = cardStats(id, lv);

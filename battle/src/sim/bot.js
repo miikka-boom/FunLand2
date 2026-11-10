@@ -134,6 +134,10 @@ export const COUNTER = {
 export const TANK = { brick: 1, bruiser: 0.9, shieldWall: 0.85, clubberGang: 0.6, squire: 0.5, bigJelly: 0.9, nutcracker: 0.3 };
 // Win conditions that rush on their own (a punish, a late push at the bridge), never support
 export const RUSH = { pogoBean: 1 };
+// The front-liner a deck is built around: it leads that deck's pushes, and a careful bot waits for its
+// mana rather than starting one with something smaller (else a 7-mana Jelly never comes out of the hand)
+export const LEAD = { bigJelly: 1 };
+const LEAD_SKILL = 0.35;
 // Some attackers are worse for a tower than their mana says (fast swarms get their hits in; fliers skip the front line)
 const DANGER = { swarm: 1.5, siege: 1.2, air: 1.2 };
 // Bombs hurt (and fling) their own side too
@@ -502,7 +506,9 @@ export class Bot {
     const late = (dbl ? 2 : 0) + (sudden || this.behindLate() ? 1.5 : 0);
     if (!saving && calm && mana >= clamp(this.pushAt - late - 2 * this.aggro, 3, MANA_MAX) && push.v < 2) {
       const fast = dbl || sudden || this.skill < 0.4;
-      const h = this.pickTank(ok, false, V, fast);
+      const lead = this.skill >= LEAD_SKILL ? hand.find((c) => LEAD[c.id]) : null;
+      if (lead && lead.card.mana > mana + 1e-9) return; // (saving up for it)
+      const h = lead || this.pickTank(ok, false, V, fast);
       if (h) {
         if (this.tryPlay(h, fast ? this.bridgeAt() : this.backAt(V), 'push')) return;
       }

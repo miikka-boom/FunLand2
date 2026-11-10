@@ -26,10 +26,11 @@ import { loadProfile, saveProfile, newProfile, rngFrom, PROFILE_KEY, PROFILE_VER
 import { ARENAS, arenaIndex, kingLevelForXp } from './meta/collection.js';
 import { recordMatch, startPending, updatePending, settlePending } from './meta/ladder.js';
 import { readyChests } from './meta/chests.js';
-import { makeOpponent, buildDeck, BOT_NAMES, archetypesFor } from './meta/opponents.js';
+import { makeOpponent, buildDeck, BOT_NAMES } from './meta/opponents.js';
 import { armyPalette } from './meta/cosmetics.js';
 import { HATS } from './render/hats.js';
 import { createHub } from './ui/hub.js';
+import { demoStyle } from './ui/hub-kit.js';
 import { registerPWA, promptInstall, installMethod } from './pwa.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -166,6 +167,15 @@ function pal(team) {
 let W = 1;
 let H = 1;
 let dpr = 1;
+// The bottom of the match HUD's top row (CSS px), measured once per layout (-1: not yet)
+let hudTop = -1;
+function hudTopPx() {
+  if (hudTop < 0) {
+    const r = hud.top ? hud.top.getBoundingClientRect() : null;
+    if (r && r.height > 0) hudTop = r.bottom; // (hidden until the match screen shows: try again next frame)
+  }
+  return Math.max(0, hudTop);
+}
 function resize() {
   W = Math.max(1, window.innerWidth);
   H = Math.max(1, window.innerHeight);
@@ -185,6 +195,7 @@ function resize() {
   // Turned upright: the rotate prompt covers the field (style.css), so the match waits for you
   // (during the VS intro too: pauseGame freezes the intro's countdown)
   if (W < H && W <= 700 && inMatch()) pauseGame();
+  hudTop = -1;
 }
 window.addEventListener('resize', resize);
 if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
@@ -331,7 +342,8 @@ function startAttract() {
   const arena = clamp(arenaIndex(profile.trophies), 0, ARENAS.length - 1);
   const rng = rngFrom(seed, 'attract');
   const hatIds = HATS.filter((h) => !h.supporter && h.id !== 'none').map((h) => h.id);
-  const side = (hats) => ({ name: rng.pick(BOT_NAMES), deck: buildDeck(arena, rng.pick(archetypesFor(arena)), rng), levels: {}, kingLevel: 1, hats });
+  // (half the demo decks play the arena's newest style: a Wobble Summit demo shows Summit cards)
+  const side = (hats) => ({ name: rng.pick(BOT_NAMES), deck: buildDeck(arena, demoStyle(arena, rng), rng), levels: {}, kingLevel: 1, hats });
   const theme = rng.pick(hatIds);
   const m = new Match({ seed, blue: side({ ...profile.equipped.hats }), red: side(Object.fromEntries(UNIT_ORDER.map((u) => [u, rng.chance(0.6) ? theme : 'none']))) });
   game.match = m;
@@ -2842,6 +2854,7 @@ function render() {
   if (game.mode === 'match') unitsGfx.drawTeamRings(ctx, b, camera.zoom < 0.7 ? 0.55 : 0.35);
   unitsGfx.drawGroundArrows(ctx, b);
   unitsGfx.drawItems(ctx, b);
+  unitsGfx.skyTop = game.mode === 'match' ? hudTopPx() * dpr : 0; // (a Brolly fades in below the HUD row)
   unitsGfx.drawUnits(ctx, b, b.time);
   unitsGfx.drawFlyingArrows(ctx, b);
   if (arena) drawSpells(ctx, b, t);

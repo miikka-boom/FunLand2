@@ -553,7 +553,7 @@ export function createHub(deps) {
     const legChance = Math.round(CHESTS.big.legendary * 100);
     const lines = {
       legendary: `${card.name} is a Legendary: the rarest kind of card, in a shining teal frame. It levels up with only a few copies. Big Chests have a ${legChance}% chance of one, and some days the shop has one too.`,
-      building: `${card.name} is a building. Play it on your side of the field: it stays put, works for ${BUILDINGS[card.building] ? BUILDINGS[card.building].life : 25} seconds, then falls apart. Enemy beans stop to bash it, and losing it never costs a crown.`,
+      building: `${card.name} is a building. Play it on your side of the field: it stays put, ${BUILDINGS[card.building] ? `works for ${BUILDINGS[card.building].life} seconds, ` : 'works for a while, '}then falls apart. Enemy beans stop to bash it, and losing it never costs a crown.`,
       flier: `${card.name} ${card.count > 1 ? 'fly' : 'flies'}! Up there only Archers, Arrow Rain, towers and a few other cards can hit ${card.count > 1 ? 'them' : 'it'}: clubs and swords swing right under. Keep an air answer in your deck too, for the enemy's fliers.`,
     };
     const order = ['legendary', 'building', 'flier'].filter((k) => what.includes(k));

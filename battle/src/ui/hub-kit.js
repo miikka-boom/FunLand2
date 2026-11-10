@@ -4,7 +4,7 @@
 // state of its own besides a few small canvas caches.
 
 import { CARDS, RARITIES, levelMul, MAX_LEVEL, cardById } from '../sim/cards.js';
-import { UNIT_TYPES } from '../sim/unit-types.js';
+import { UNIT_TYPES, BEAT } from '../sim/unit-types.js';
 import { SPELLS } from '../sim/spells.js';
 import { TOWER_TAKES } from '../sim/towers.js';
 import { BUILDINGS } from '../sim/buildings.js';
@@ -12,7 +12,8 @@ import { Battle, DT } from '../sim/battle.js';
 import { UnitRenderer } from '../render/units.js';
 import { cardFace, drawLegendarySheen } from '../render/cards.js';
 import { HATS, drawHat } from '../render/hats.js';
-import { ARENAS } from '../meta/collection.js';
+import { ARENAS, AIR_ANSWERS } from '../meta/collection.js';
+import { ARCHETYPES, archetypesFor } from '../meta/opponents.js';
 import { COLORS } from '../meta/cosmetics.js';
 
 export { CARDS, RARITIES, MAX_LEVEL, cardById, ARENAS, HATS, COLORS };
@@ -315,6 +316,12 @@ function unitDamage(t) {
   return null;
 }
 
+/** What the Drummer's beat does to friends nearby (BEAT: swing tempo and walking speed). */
+function beatWords() {
+  const x = (v) => '×' + +v.toFixed(2);
+  return BEAT.tempo === BEAT.move ? `Friends ${x(BEAT.tempo)} faster` : `Friends swing ${x(BEAT.tempo)}, walk ${x(BEAT.move)}`;
+}
+
 /**
  * Rows for the card detail: [{ label, value, next }] at `level`; next = the
  * value one level up (null when maxed or not scaling).
@@ -334,7 +341,7 @@ export function cardStats(id, level) {
     rows.push({ label: 'Health', value: sc(t.hp), next: nx(t.hp) });
     const dmg = unitDamage(t);
     if (dmg) rows.push({ label: dmg[0], value: sc(dmg[1]), next: nx(dmg[1]) });
-    else if (t.beat) rows.push({ label: 'Beat', value: 'Friends ×1.3 faster' });
+    else if (t.beat) rows.push({ label: 'Beat', value: beatWords() });
     rows.push({ label: 'Speed', value: speedWord(t.speed) + (t.flying ? ' · flies' : '') });
     rows.push({ label: 'Range', value: t.ranged && t.range ? `${t.range[0]}–${t.range[1]}` : t.blast ? `Blast ${t.blast.radius}` : t.beat ? `Beat ${t.beat.radius}` : 'Melee' });
     rows.push({ label: 'Units', value: '×' + (card.count || 1) + (card.anywhere ? ' · anywhere' : '') });
@@ -382,12 +389,30 @@ export function cardStats(id, level) {
     } else rows.push({ label: 'Tower damage', value: volleys > 1 ? `${volleys} × ${sc(per * tw)}` : sc(per * tw), next: m2 ? (volleys > 1 ? `${volleys} × ${nx(per * tw)}` : nx(per * tw)) : null });
     if (card.spell === 'shakenSoda') rows.push({ label: 'Pops after', value: `${S.fuse} s` });
     rows.push({ label: S.dist ? 'Rolls' : 'Radius', value: S.dist ? `${S.dist} px` : card.radius });
-    rows.push({ label: 'Targets', value: SKY_SPELLS.includes(card.spell) ? 'Air & ground' : 'Ground' });
+    rows.push({ label: 'Targets', value: AIR_ANSWERS.includes(card.id) ? 'Air & ground' : 'Ground' }); // (the air answers reach high fliers)
   }
   return rows;
 }
-// Spells that reach fliers high up (the rest stay on the ground)
-const SKY_SPELLS = ['arrowRain', 'bigSneeze', 'shakenSoda', 'anvil'];
+
+// --- the hub's demo match ---------------------------------------------------------------
+
+const DEMO_NEWEST = 0.5; // share of demo decks that play the arena's newest style(s)
+
+/**
+ * The style one side of the hub's demo match plays at `arena`: half the time
+ * one of the newest styles that arena has unlocked (so a Wobble Summit demo
+ * shows Summit cards), otherwise any of the others. An arena with no newer
+ * style (Green Hills) picks exactly as before. Ladder opponents never use this.
+ */
+export function demoStyle(arena, rng) {
+  const all = archetypesFor(arena);
+  let top = 0;
+  for (const id of all) top = Math.max(top, ARCHETYPES[id].arena || 0);
+  if (!top) return rng.pick(all);
+  const newest = all.filter((id) => (ARCHETYPES[id].arena || 0) === top);
+  const rest = all.filter((id) => (ARCHETYPES[id].arena || 0) !== top);
+  return rng.chance(DEMO_NEWEST) || !rest.length ? rng.pick(newest) : rng.pick(rest);
+}
 
 /** The small line under a card's name: what kind of card it is. */
 export function cardKindLine(card) {

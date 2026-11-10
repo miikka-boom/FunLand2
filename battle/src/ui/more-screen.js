@@ -5,6 +5,7 @@
 import { h, icon, coin, bean, fmt, clamp, CARDS, ARENAS } from './hub-kit.js';
 import { badgeStatus, claimBadge, claimableBadges } from '../meta/badges.js';
 import { CHESTS } from '../meta/chests.js';
+import { TRAIL } from '../meta/ladder.js';
 import { swVersion } from '../pwa.js';
 
 const SECTIONS = [
@@ -168,6 +169,15 @@ export function createMoreScreen(H) {
     return ARENAS[a] ? ARENAS[a].name : 'Boom Ridge';
   }
 
+  const hours = (ms) => +(ms / 3600e3).toFixed(1);
+  /** How many copies of each Legendary the Trophy Trail hands out ("4 copies of each"). */
+  function trailLegendaries() {
+    const n = new Set();
+    for (const m of TRAIL) for (const [id, k] of Object.entries((m.reward && m.reward.cards) || {})) if (CARDS[id] && CARDS[id].rarity === 'legendary') n.add(k);
+    const k = n.size === 1 ? [...n][0] : 0;
+    return k > 1 ? `${k} copies of each` : k === 1 ? 'a copy of each' : 'copies of each';
+  }
+
   function renderFair() {
     const li = (b, t) => h('li', {}, h('b', {}, b), ' ', t);
     return [
@@ -177,8 +187,8 @@ export function createMoreScreen(H) {
         { class: 'hb-fair' },
         li('No money, ever, for power.', 'Every card and every level is earned by playing. Nothing that wins battles is for sale.'),
         li('Two currencies, both earned.', 'Gold upgrades cards and buys shop cards. Jellybeans only buy looks: army colours and hats.'),
-        li('Two free chests.', 'The Small Chest refills every 3 hours, the Big Chest every 12. No slots, no paid timers, no chests for sale, and coming back a little late costs nothing. Tap a refilling chest to see exactly what can be inside.'),
-        li('Legendaries are earned too.', `They come from Big Chests (a ${Math.round(CHESTS.big.legendary * 100)}% chance from ${legendArena()} on), from the shop for gold some days, and 4 copies of each on the Trophy Trail. Never for money.`),
+        li('Two free chests.', `The Small Chest refills every ${hours(CHESTS.small.period)} hours, the Big Chest every ${hours(CHESTS.big.period)}. No slots, no paid timers, no chests for sale, and coming back a little late costs nothing. Tap a refilling chest to see exactly what can be inside.`),
+        li('Legendaries are earned too.', `They come from Big Chests (a ${Math.round(CHESTS.big.legendary * 100)}% chance from ${legendArena()} on), from the shop for gold some days, and ${trailLegendaries()} on the Trophy Trail. Never for money.`),
         li('Honest opponents.', 'You play computer players (bots), matched card by card to your deck and never above it. Upgrades are a real edge. We never pretend they are people.'),
         li('Gentle losses.', 'You never drop out of an arena you reached, and a loss still pays a little gold (giving up pays none).'),
         li('No ads, no energy.', 'Play as much or as little as you like. No streaks and no penalties: a day off never takes anything away.'),

@@ -46,12 +46,13 @@ export const ARCHETYPES = {
   boom: { name: 'Big Boom', cards: ['megaBomb', 'bombSquad', 'bomb', 'shieldWall', 'archers', 'arrowRain', 'spikers', 'boulder'] },
   turtle: { name: 'Turtle', cards: ['shieldWall', 'squire', 'archers', 'boulder', 'arrowRain', 'bruiser', 'clubbers', 'nutcracker'] }, // (the Nutcracker from Brick Fortress on)
   swarm: { name: 'Swarm', cards: ['spikers', 'clubbers', 'clubberGang', 'bombSquad', 'archers', 'arrowRain', 'cheeseWheel', 'bomb'] },
-  // The newer cards' styles (docs/WOBBLE-WAR-CARDS.md section 7)
-  hop: { name: 'Hop Cycle', arena: 1, cards: ['pogoBean', 'sprouts', 'bananaPeels', 'spikers', 'bomb', 'netter', 'archers', 'arrowRain'] },
-  fizz: { name: 'Fizz Pop', arena: 2, cards: ['bombJuggler', 'shakenSoda', 'bigSneeze', 'megaBomb', 'squire', 'propellerPals', 'sprouts', 'archers'] },
-  fortress: { name: 'Fortress', arena: 3, cards: ['wreckingCrane', 'beanPatch', 'boingBox', 'brick', 'anvil', 'archers', 'bananaPeels', 'arrowRain'] },
-  sky: { name: 'Sky Circus', arena: 4, cards: ['pelican', 'propellerPals', 'brollyBrigade', 'netter', 'bombJuggler', 'bigSneeze', 'squire', 'arrowRain'] },
-  parade: { name: 'Jelly Parade', arena: 4, cards: ['bigJelly', 'tummyDrummer', 'bubbleWrap', 'clubberGang', 'bombJuggler', 'archers', 'sprouts', 'boulder'] },
+  // The newer cards' styles (docs/WOBBLE-WAR-CARDS.md section 7; the lists were rebuilt in the balance
+  // polish so each holds its own against the others, and every card is unlocked at the style's arena)
+  hop: { name: 'Hop Cycle', arena: 1, cards: ['pogoBean', 'propellerPals', 'sprouts', 'spikers', 'clubberGang', 'archers', 'arrowRain', 'boulder'] },
+  fizz: { name: 'Fizz Pop', arena: 2, cards: ['bombJuggler', 'shakenSoda', 'bigSneeze', 'clubberGang', 'spikers', 'clubbers', 'archers', 'squire'] },
+  fortress: { name: 'Fortress', arena: 3, cards: ['wreckingCrane', 'boingBox', 'brick', 'anvil', 'archers', 'spikers', 'squire', 'arrowRain'] },
+  sky: { name: 'Sky Circus', arena: 4, cards: ['pelican', 'propellerPals', 'brollyBrigade', 'archers', 'bombJuggler', 'bigSneeze', 'squire', 'arrowRain'] },
+  parade: { name: 'Jelly Parade', arena: 4, cards: ['bigJelly', 'tummyDrummer', 'bubbleWrap', 'clubberGang', 'bombJuggler', 'archers', 'squire', 'boulder'] },
 };
 
 export { AIR_ANSWERS };

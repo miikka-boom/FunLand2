@@ -102,11 +102,12 @@ test('every card is well formed: kind, mana, name, a description of at most 80 c
   }
   for (const id of UNIT_ORDER) for (const w of AVOID) assert.ok(!`${UNIT_TYPES[id].name} ${UNIT_TYPES[id].blurb}`.includes(w), `${id} uses "${w}"`);
   for (const [id, d] of Object.entries(BUILDINGS)) for (const w of AVOID) assert.ok(!d.name.includes(w), `${id} uses "${w}"`);
-  // The newer cards' mana: 1 to 7, 3.67 on average (balance: the Big Jelly went to 7, the Tummy Drummer to 3)
+  // The newer cards' mana: 1 to 7, 3.61 on average (balance: the Big Jelly went to 7, the Tummy Drummer
+  // and the Bean Patch to 3)
   const mana = NEWER.map((id) => CARDS[id].mana);
   assert.equal(Math.min(...mana), 1);
   assert.equal(Math.max(...mana), 7);
-  assert.equal((mana.reduce((a, b) => a + b, 0) / mana.length).toFixed(2), '3.67');
+  assert.equal((mana.reduce((a, b) => a + b, 0) / mana.length).toFixed(2), '3.61');
 });
 
 test('every unit, spell and building a card names exists, and casting each spell works', () => {

@@ -53,27 +53,18 @@ import { SPELLS } from '../src/sim/spells.js';
 import { UNIT_TYPES, BEAT } from '../src/sim/unit-types.js';
 import { Rng } from '../src/sim/rng.js';
 import { WORLD } from '../src/config.js';
+import { ARCHETYPES, AIR_ANSWERS } from '../src/meta/opponents.js';
 
 const SELF = fileURLToPath(import.meta.url);
 
-// Decks for "starter vs the new cards": the meta/opponents.js archetypes with every card
-// unlocked (copied, so this tool needs nothing outside sim/). The first four use the 14
-// original cards; the last five are the archetypes of the 32-card set (cards contract 7).
-export const DECKS = {
-  starter: STARTER_DECK,
-  siege: ['brick', 'archers', 'cheeseWheel', 'spikers', 'arrowRain', 'squire', 'bomb', 'boulder'],
-  bonk: ['bruiser', 'clubberGang', 'clubbers', 'spikers', 'squire', 'archers', 'arrowRain', 'cheeseWheel'],
-  boom: ['megaBomb', 'bombSquad', 'bomb', 'shieldWall', 'archers', 'arrowRain', 'spikers', 'boulder'],
-  turtle: ['shieldWall', 'squire', 'archers', 'boulder', 'arrowRain', 'bruiser', 'clubbers', 'cheeseWheel'],
-  hop: ['pogoBean', 'sprouts', 'bananaPeels', 'spikers', 'bomb', 'netter', 'archers', 'arrowRain'],
-  fizz: ['bombJuggler', 'shakenSoda', 'bigSneeze', 'megaBomb', 'squire', 'propellerPals', 'sprouts', 'archers'],
-  fortress: ['wreckingCrane', 'beanPatch', 'boingBox', 'brick', 'anvil', 'archers', 'bananaPeels', 'arrowRain'],
-  sky: ['pelican', 'propellerPals', 'brollyBrigade', 'netter', 'bombJuggler', 'bigSneeze', 'squire', 'arrowRain'],
-  parade: ['bigJelly', 'tummyDrummer', 'bubbleWrap', 'clubberGang', 'bombJuggler', 'archers', 'sprouts', 'boulder'],
-};
+// Decks for "starter vs the styles": the starter deck and every deck style the ladder
+// bots use (meta/opponents.js ARCHETYPES, read from there so the two never drift), with
+// every card unlocked. bonk, siege, boom, turtle and swarm hold the original cards (the
+// Turtle's Nutcracker aside); the rest are built around the 18 newer cards (contract 7).
+export const DECKS = { starter: STARTER_DECK, ...Object.fromEntries(Object.entries(ARCHETYPES).map(([id, A]) => [id, A.cards.slice()])) };
 
-// Cards that answer fliers (cards contract 7): every random deck holds at least one
-export const AIR_ANSWERS = ['archers', 'arrowRain', 'netter', 'bombJuggler', 'bigSneeze', 'shakenSoda', 'anvil'];
+// Cards that answer fliers (cards contract 7, meta/collection.js): every random deck holds at least one
+export { AIR_ANSWERS };
 
 // --- one match ------------------------------------------------------------------------
 

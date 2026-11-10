@@ -155,8 +155,9 @@ export class Match {
 
   /**
    * Where a card lands if played at x, for the play and for ghost previews:
-   * a unit card's beans (world x each: inside the zone, or nudged clear of
-   * structures for a deploy-anywhere card), or [the building's fitted x]
+   * a unit card's beans (world x each: inside the zone, or for a
+   * deploy-anywhere card the group slid clear of structures, keeping its
+   * spacing where there is room), or [the building's fitted x]
    * ([] when there is no legal spot). Spells: [].
    */
   formation(team, cardId, x) {
@@ -170,7 +171,23 @@ export class Match {
     const n = card.count || 1;
     const offs = card.spread && card.spread.length >= n ? card.spread : Array.from({ length: n }, (_, k) => (k - (n - 1) / 2) * FORMATION_GAP);
     const dir = team === 'blue' ? 1 : -1;
-    if (card.anywhere) return Number.isFinite(x) ? offs.slice(0, n).map((o) => this.clearSpot(x + o * dir)) : [];
+    if (card.anywhere) {
+      if (!Number.isFinite(x)) return [];
+      // The group keeps its spacing: it slides as a block until every bean is
+      // clear (beans nudged one by one would all land on the same edge)
+      const os = offs.slice(0, n);
+      let c = x;
+      for (let k = 0; k < 4; k++) {
+        let m = 0;
+        for (const o of os) {
+          const d = this.clearSpot(c + o * dir) - (c + o * dir);
+          if (Math.abs(d) > Math.abs(m)) m = d;
+        }
+        if (Math.abs(m) < 0.5) break;
+        c += m;
+      }
+      return os.map((o) => this.clearSpot(c + o * dir));
+    }
     const [z0, z1] = this.zone(team);
     return offs.slice(0, n).map((o) => Math.min(z1, Math.max(z0, x + o * dir)));
   }

@@ -579,7 +579,7 @@ export const UNIT_TYPES = {
     engage: 30,
     reach: 120,
     scoop: { sight: 320, maxMass: 1.0, swoop: 0.9, swoopAlt: 25, beak: 24, pinch: 20, carryAlt: 220, carryBack: 140, carryMax: 2.0, dropDamage: 40, dropStun: 0.4, cooldown: 3.5, letGoDamage: 60, letGoStun: 0.5 },
-    dash: { kind: 'dive', windup: 0.4, climb: 20, speed: 420, time: 0.6, recover: 0.7, cooldown: 2.0, damage: 40, launch: [160, 140], stun: 0.4, vsTower: 0.5 }, // the peck
+    dash: { kind: 'dive', windup: 0.4, climb: 20, speed: 420, time: 0.6, recover: 0.7, cooldown: 2.0, damage: 30, launch: [160, 140], stun: 0.4, vsTower: 0.5 }, // the peck
     poses: {
       rest: { main: [-6, 4], off: [-6, 4], ang: 0, lean: 1.1, crouch: 0, wk: 1 }, // nearly horizontal, wings back
       flap: { main: [-2, 16], off: [-2, 16], ang: 0, lean: 1.1, crouch: 0, wk: 1 }, // wings up (alternate at 3 Hz)
@@ -595,7 +595,7 @@ export const UNIT_TYPES = {
     shape: 'jelly',
     blurb: 'Swallows beans, spits them out. Wobbles.',
     cost: 260,
-    hp: 750,
+    hp: 680,
     radius: 28,
     bodyLen: 34,
     speed: 36,
