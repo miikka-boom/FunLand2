@@ -11,9 +11,10 @@
 import { WORLD, enemyOf } from '../config.js';
 import { Particle, Dist, integrate, collideGround, clampGround, hingeLimit, segSeg, springTo } from './physics.js';
 import { UNIT_TYPES } from './unit-types.js';
-import { Unit } from './unit.js';
+import { Unit, isFlier } from './unit.js';
 import { Rng } from './rng.js';
-import { Tower, TOWER_TAKES, updateTowers, damageTower, rectDist, segRect } from './towers.js';
+import { Tower, takesOf, updateTowers, damageTower, rectDist, segRect } from './towers.js';
+import { makeBuilding } from './buildings.js';
 import { updateSpells } from './spells.js';
 
 export const DT = 1 / 120;
@@ -34,7 +35,25 @@ export const CORPSE_FADE_AT = 4; // seconds dead before a corpse starts to fade
 export const CORPSE_FADE_T = 1; // fade duration; then it's removed
 export const ITEM_FADE_AT = 4; // dropped weapons and hats likewise
 export const ARROW_FADE_AT = 6; // arrows stuck in the dirt (arena)
+export const MAX_LIVE = 32; // live units per side: spawns (never cards) are skipped above this
 const MAX_TOWER_ARROWS = 24;
+const BITE_SPIT = [260, 340]; // px/s (away, up): a lethal Nutcracker bite spits its victim out spinning
+const CAP_LIFE = 7; // seconds a Propeller Pal's cap flutters about before it fades
+
+/** Units that only ever go for towers and buildings (the Brick, the Pogo Bean). */
+const structuresOnly = (type) => type.targets === 'structures' || type.targets === 'towers';
+
+/**
+ * Can unit u pick e as a target? Not a dead or held one (in a Pelican's beak,
+ * inside a jelly), and a bean high in the air only if u hits air (and, with
+ * airReach, only one low enough).
+ */
+export function canTarget(u, e) {
+  if (!e.alive || e.held) return false;
+  if (!e.air) return true;
+  if (!u.type.hitsAir) return false;
+  return !u.type.airReach || e.ground - e.hip.y <= u.type.airReach;
+}
 
 export class Battle {
   constructor(seed = 1, opts = {}) {
@@ -63,6 +82,7 @@ export class Battle {
     this.sorted = [];
     this.sortedDead = [];
     this.blasts = []; // bombs waiting to go off (chain reactions run one step apart)
+    this.pending = []; // closures run in order at the very end of step() (see later())
     // Cosmetic hats per team: { unitTypeId | 'all': hatId }. Hats pop off when a bean gets bonked.
     this.hats = { blue: {}, red: {} };
     this.stats = { hits: 0, blocks: 0, arrows: 0, kills: 0 };
@@ -79,7 +99,8 @@ export class Battle {
 
   /**
    * opts: { level: card level (hp and damage +10% per level), drop: fall in
-   * from the sky and stand still for DEPLOY_T before joining the fight }.
+   * from the sky and stand still for DEPLOY_T before joining the fight,
+   * float: drift down under an umbrella instead (a Brolly: floatIn) }.
    */
   addUnit(typeId, team, x, lane = null, seed = null, opts = null) {
     const type = Object.prototype.hasOwnProperty.call(UNIT_TYPES, typeId) ? UNIT_TYPES[typeId] : null;
@@ -90,8 +111,9 @@ export class Battle {
     u.placeSeed = s;
     const hats = this.hats[team] || {};
     const hat = hats[typeId] || hats.all;
-    u.hat = hat && hat !== 'none' ? hat : null;
-    if (opts && opts.drop) this.dropIn(u);
+    u.hat = hat && hat !== 'none' && !type.noHat ? hat : null; // (noHat: its leaves, cap or shako are its hat)
+    if (opts && opts.float && type.float) this.floatIn(u);
+    else if (opts && opts.drop) this.dropIn(u);
     this.units.push(u);
     // Keep the crowd drawn back-to-front
     this.units.sort((a, b) => a.lane - b.lane || a.id - b.id);
@@ -115,6 +137,122 @@ export class Battle {
     this.emit('drop', u.hip.x, u.hip.y, { unit: u });
   }
 
+  /**
+   * A Brolly floats in under its umbrella: it starts float.height up, at rest,
+   * and drifts down (the drag cap and the sway are in Unit.control). It is not
+   * `dropping`, so towers shoot it all the way down, and it is air while it is
+   * high. It lands (brollyLand) and goes deployT 0.4 s later; a hit on the way
+   * down flips the umbrella inside out and it falls (Unit.takeHit).
+   */
+  floatIn(u) {
+    const h = u.type.float.height * u.rng.range(0.95, 1.05);
+    const dt = this.dt;
+    for (const p of u.parts) {
+      p.teleport(0, -h);
+      p.setVel(0, 0, dt);
+    }
+    u.floatT = 1;
+    u.dropping = false;
+    u.deployT = 99; // (until it lands)
+    u.lookX = u.hip.x + u.f * 200;
+    u.lookY = u.ground;
+    this.emit('drop', u.hip.x, u.hip.y, { unit: u });
+  }
+
+  // --- holding (Pelican beak, inside a Big Jelly) -----------------------------------
+
+  /**
+   * holder takes v: v is `held` (it flails and nobody targets it), and every
+   * step a spring pulls its chest to holder.holdPoint(). A lit fuse stays lit,
+   * a Bomb that wasn't lit is lit now, and a Bomb Juggler fumbles. The caller
+   * emits its own event (scoop, engulf).
+   */
+  hold(holder, v) {
+    v.held = true;
+    v.heldBy = holder;
+    holder.holding = v;
+    if (!(v.act && v.act.phase === 'fuse')) v.act = null;
+    v.bowDraw = 0;
+    v.striking = false;
+    v.wantVx = 0;
+    v.asleep = false;
+    v.stillT = 0;
+    v.mouth = 0.8;
+    v.mouthKind = 'o';
+    if (v.type.blast && !v.exploded && !(v.act && v.act.phase === 'fuse')) this.light(v);
+    if (v.type.fumble) this.fumble(v);
+  }
+
+  /** Release v from whatever holds it, adding (dvx, dvy) px/s to every part. */
+  letGo(v, dvx = 0, dvy = 0) {
+    const h = v.heldBy;
+    if (!h) return;
+    v.held = false;
+    v.heldBy = null;
+    if (h.holding === v) h.holding = null;
+    if (dvx || dvy) for (const p of v.parts) p.addVel(dvx, dvy, this.dt);
+  }
+
+  /**
+   * An early release: holder lets go of what it holds (if anything) and
+   * emits letGo {unit, victim, why} ('sneeze' | 'stun' | 'damage' | 'death').
+   */
+  letGoOf(holder, why, dvx = 0, dvy = 0) {
+    const v = holder.holding;
+    if (!v) return null;
+    this.letGo(v, dvx, dvy);
+    this.emit('letGo', v.chest.x, v.chest.y, { unit: holder, victim: v, why });
+    return v;
+  }
+
+  /** A Bomb's fuse is lit (grabbed by a holder): it panics, then goes off. */
+  light(v) {
+    v.act = { phase: 'fuse', t: 0, variant: 0, hits: new Set(), done: false, aim: null, quaked: false };
+    v.mouth = 1;
+    v.mouthKind = 'o';
+    this.emit('fuse', v.head.x, v.head.y, { unit: v });
+  }
+
+  /**
+   * Run fn at the very end of this step (after every unit has moved and been
+   * hit). Anything that would add a unit in the middle of a step goes through
+   * here: adding one re-sorts battle.units under the loops that walk it.
+   */
+  later(fn) {
+    this.pending.push(fn);
+  }
+
+  /**
+   * A unit that appears mid-fight (popped out of a Bean Patch, ...), added at
+   * the end of the step. Not dropped from the sky: towers may shoot it at
+   * once, it gets no battle-cry hop, and it takes no fall damage while
+   * deployT > 0. Its lane and seed come from battle.rng when it is added.
+   * Skipped when its side already has MAX_LIVE live units.
+   * opts: { level, lane?, seed?, pop: [vx, vy] (px/s), deployT, from: Tower | Unit | null }
+   */
+  spawn(typeId, team, x, opts = {}) {
+    this.later(() => {
+      if (this.liveCount(team) >= MAX_LIVE) return;
+      const u = this.addUnit(typeId, team, x, opts.lane ?? null, opts.seed ?? null, { level: opts.level || 1 });
+      if (!u) return;
+      if (opts.pop) for (const p of u.parts) p.setVel(opts.pop[0], opts.pop[1], this.dt);
+      u.deployT = opts.deployT || 0;
+      const from = opts.from;
+      if (from && from.isTower && from.spawn) {
+        u.spawnOf = from.id;
+        from.spawn.kids.push(u.id);
+        this.emit('sproutPop', u.hip.x, u.hip.y, { tower: from, unit: u });
+      }
+    });
+  }
+
+  /** Live units of one side. */
+  liveCount(team) {
+    let n = 0;
+    for (const u of this.units) if (u.alive && u.team === team) n++;
+    return n;
+  }
+
   /** A Guard Tower ('guard') or Castle ('castle'); level = the side's King Level. */
   addTower(kind, team, x, level = 1, hpMul = 1) {
     const t = new Tower(kind, team, x, level, this.nextId++, hpMul);
@@ -122,10 +260,25 @@ export class Battle {
     return t;
   }
 
+  /**
+   * A building card's building (sim/buildings.js), centred at x and solid and
+   * damageable from this step on (it drops in, arms and decays in
+   * updateBuilding). Returns the building, or null for an unknown id.
+   */
+  addBuilding(bid, team, x, level = 1) {
+    const t = makeBuilding(bid, team, x, level, this.nextId++);
+    if (!t) return null;
+    this.towers.push(t);
+    this.emit('buildingPlaced', t.x, 0, { tower: t, team, bid });
+    return t;
+  }
+
   removeUnit(u) {
     const i = this.units.indexOf(u);
     if (i >= 0) this.units.splice(i, 1);
     if (this.grab && this.grab.unit === u) this.grab = null;
+    if (u.heldBy) this.letGo(u);
+    if (u.holding) this.letGo(u.holding);
     this.arrows = this.arrows.filter((a) => a.host !== u);
     if (this.mode !== 'arena') return;
     // Arena: forget it everywhere, so long matches don't hold on to the dead
@@ -138,8 +291,14 @@ export class Battle {
       if (o.lastHitBy === u) o.lastHitBy = null;
     }
     for (const t of this.towers) if (t.target === u) t.target = null;
+    for (const s of this.shots) if (s.from === u) s.from = null;
     const k = this.blasts.indexOf(u);
     if (k >= 0) this.blasts.splice(k, 1);
+    if (u.spawnOf != null) {
+      // A spawner keeps the ids of its live kids only
+      const t = this.towers.find((o) => o.id === u.spawnOf);
+      if (t && t.spawn) t.spawn.kids = t.spawn.kids.filter((id) => id !== u.id);
+    }
   }
 
   clearTeam(team) {
@@ -216,6 +375,9 @@ export class Battle {
     const units = this.units;
     if (this.blasts.length) for (const u of this.blasts.splice(0)) this.explode(u);
 
+    // Tummy Drummers keep the beat
+    for (const u of units) if (u.type.beat) this.drum(u, dt);
+
     // AI (staggered, ~7 Hz)
     for (const u of units) {
       u.thinkT -= dt;
@@ -237,6 +399,13 @@ export class Battle {
       const g = this.grab;
       springTo(g.p, g.x, g.y, 900, 48, dt, (g.unit.supportMass + 1) / g.p.mass * 0.55);
     }
+    // Held beans hang from their holder (the same spring)
+    for (const h of units) {
+      const v = h.holding;
+      if (!v) continue;
+      const [ax, ay] = h.holdPoint();
+      springTo(v.chest, ax, ay, 900, 48, dt, ((v.supportMass + 1) / v.chest.mass) * 0.55);
+    }
 
     // Integrate + ground
     for (const u of units) {
@@ -250,6 +419,7 @@ export class Battle {
       it.age += dt;
       integrate(it.a, dt, G, DRAG);
       integrate(it.b, dt, G, DRAG);
+      if (it.flutter) flutter(it, dt);
       collideGround(it.a, dt);
       collideGround(it.b, dt);
     }
@@ -281,6 +451,7 @@ export class Battle {
       for (const u of units) {
         if (!u.striking || !u.alive) continue;
         if (u.type.dash) this.resolveDash(u);
+        else if (u.type.attack && u.type.attack.bite) this.resolveBite(u);
         else this.resolveMelee(u);
       }
     }
@@ -292,6 +463,7 @@ export class Battle {
 
     if (this.mode === 'arena') this.reap(dt);
     else if (this.phase === 'battle') this.checkEnd();
+    if (this.pending.length) for (const fn of this.pending.splice(0)) fn();
   }
 
   /** Arena housekeeping: fade out and remove the dead, old weapons and old arrows. */
@@ -309,7 +481,7 @@ export class Battle {
     }
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it = this.items[i];
-      if (it.age < ITEM_FADE_AT) continue;
+      if (it.age < (it.life ?? ITEM_FADE_AT)) continue;
       it.fade = Math.max(0, (it.fade ?? 1) - dt / CORPSE_FADE_T);
       if (it.fade > 0) continue;
       this.items.splice(i, 1);
@@ -330,7 +502,7 @@ export class Battle {
   separate(dt) {
     const s = this.sorted;
     s.length = 0;
-    for (const u of this.units) if (u.alive) s.push(u);
+    for (const u of this.units) if (u.alive && !u.held) s.push(u); // (a held bean is carried through the crowd)
     s.sort((a, b) => a.hip.x - b.hip.x);
     for (let i = 0; i < s.length; i++) {
       const a = s[i];
@@ -355,6 +527,8 @@ export class Battle {
           for (const p of b.body) p.addVel(acc * wb * dt, 0, dt);
           continue;
         }
+        // A Pogo high on its hop sails over beans, and a swooping Pelican flies right into its catch
+        if (hopsOver(a) || hopsOver(b) || swoopsAt(a, b) || swoopsAt(b, a)) continue;
         // Enemies: solid. Move whole torsos (keeps velocity), bleed off approach speed
         const minD = (a.R + b.R) * 1.05 + 3;
         if (dx < minD) {
@@ -374,7 +548,7 @@ export class Battle {
     // Corpses shove each other so they pile up instead of sinking into one another
     const d = this.sortedDead;
     d.length = 0;
-    for (const u of this.units) if (!u.alive && !u.gone) d.push(u);
+    for (const u of this.units) if (!u.alive && !u.gone && !u.held) d.push(u);
     d.sort((a, b) => a.hip.x - b.hip.x);
     for (let i = 0; i < d.length; i++) {
       for (let j = i + 1; j < d.length; j++) {
@@ -458,7 +632,7 @@ export class Battle {
     }
   }
 
-  /** Is a standing tower of `team` strictly between x0 and x1? */
+  /** Is a standing tower or building of `team` strictly between x0 and x1? */
   towerBetween(team, x0, x1) {
     const a = Math.min(x0, x1);
     const b = Math.max(x0, x1);
@@ -468,29 +642,18 @@ export class Battle {
 
   /**
    * Arena targeting: the nearest enemy bean in sight along x (melee
-   * MELEE_SIGHT, ranged preferred range + RANGED_SIGHT), else the nearest
-   * standing enemy tower. The Brick only ever goes for towers, and melee beans
-   * don't chase someone standing behind an enemy tower: the tower comes first.
+   * MELEE_SIGHT, ranged preferred range + RANGED_SIGHT) that it can target,
+   * else the nearest standing enemy structure (tower or building). The Brick
+   * and the Pogo only ever go for structures, and melee beans don't chase
+   * someone standing behind an enemy structure: the structure comes first. A
+   * netter (prefersAir) goes for any flier it can reach within that far first.
    */
   findArenaTarget(u) {
     const foe = enemyOf(u.team);
     let best = null;
-    if (u.type.targets !== 'towers') {
-      const sight = u.type.ranged ? u.preferRange + RANGED_SIGHT : MELEE_SIGHT;
-      let bestScore = Infinity;
-      for (const e of this.units) {
-        if (e.team !== foe || !e.alive) continue;
-        const d = Math.abs(e.hip.x - u.hip.x);
-        if (d > sight) continue;
-        if (!u.type.ranged && this.towerBetween(foe, u.hip.x, e.hip.x)) continue;
-        let score = d + Math.abs(e.lane - u.lane) * 20;
-        if (e === u.target) score -= 30;
-        score += ((e.id * 7919 + u.id * 104729) % 23) - 11;
-        if (score < bestScore) {
-          bestScore = score;
-          best = e;
-        }
-      }
+    if (!structuresOnly(u.type)) {
+      if (u.type.prefersAir) best = this.nearestBean(u, foe, u.type.prefersAir, isFlier);
+      if (!best) best = this.nearestBean(u, foe, u.type.ranged ? u.preferRange + RANGED_SIGHT : MELEE_SIGHT, null);
     }
     if (best) return best;
     let bd = Infinity;
@@ -505,13 +668,38 @@ export class Battle {
     return best;
   }
 
+  /** The enemy bean u would go for within `sight` px along x (only those passing `only`, if given), or null. */
+  nearestBean(u, foe, sight, only) {
+    let best = null;
+    let bestScore = Infinity;
+    for (const e of this.units) {
+      if (e.team !== foe || !e.alive || !canTarget(u, e) || (only && !only(e))) continue;
+      const d = Math.abs(e.hip.x - u.hip.x);
+      if (d > sight) continue;
+      if (!u.type.ranged && this.towerBetween(foe, u.hip.x, e.hip.x)) continue;
+      let score = d + Math.abs(e.lane - u.lane) * 20;
+      if (e === u.target) score -= 30;
+      score += ((e.id * 7919 + u.id * 104729) % 23) - 11;
+      if (score < bestScore) {
+        bestScore = score;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  /** Can unit u pick e as a target? (The exported canTarget, for callers holding a battle.) */
+  canTarget(u, e) {
+    return canTarget(u, e);
+  }
+
   findTarget(u) {
     if (this.mode === 'arena') return this.findArenaTarget(u);
     const foe = enemyOf(u.team);
     let best = null;
     let bestScore = Infinity;
     for (const e of this.units) {
-      if (e.team !== foe || !e.alive) continue;
+      if (e.team !== foe || !e.alive || (e.air && !canTarget(u, e))) continue; // (a flier out of its reach: no point chasing it)
       let score = Math.abs(e.hip.x - u.hip.x) + Math.abs(e.lane - u.lane) * 20;
       if (e === u.target) score -= 30; // sticky
       // Spread out a bit so everyone doesn't dogpile the same bean
@@ -524,17 +712,24 @@ export class Battle {
     return best;
   }
 
-  /** Spiker pounce: its point against enemy shields and bodies. One hit per leap. */
+  /**
+   * Spiker pounce: its point against enemy shields and bodies. One hit per
+   * leap. A flier's dive (dash.kind 'dive': Propeller Pals, the Pelican's
+   * peck) works the same, head first, and rebounds up and back off what it hits.
+   */
   resolveDash(u) {
     const a = u.act;
     if (!a || a.done) return;
     const D = u.type.dash;
     const dt = this.dt;
+    const dive = D.kind === 'dive';
+    const kind = dive ? (u.type.scoop ? 'peck' : 'dive') : 'spike';
     const tx = u.head.x + u.ux * u.R * 0.7;
     const ty = u.head.y + u.uy * u.R * 0.7;
     for (const e of this.units) {
       if (e.team === u.team || !e.alive) continue;
       if (Math.abs(e.hip.x - u.hip.x) > 100) continue;
+      if (e.air && !u.type.hitsAir) continue; // high up: out of its league
       const sh = e.shieldFrame();
       if (sh && e.conscious > 0.4 && Math.sign(u.hip.x - e.hip.x) === e.f) {
         const pad = (u.R * 0.6 + 4) ** 2;
@@ -559,11 +754,11 @@ export class Battle {
       const k = (lethal ? 1.2 : 1) * this.rng.range(0.9, 1.1);
       const hx = tmp.x2;
       const hy = tmp.y2;
-      e.takeHit(this, { damage: D.damage * this.rng.range(0.9, 1.1) * u.dmgMul, dvx: u.f * D.launch[0] * k, dvy: -D.launch[1] * k, x: hx, y: hy, stun: D.stun, kind: 'spike', from: u, spin: 0.4, flip: 140 });
-      // The spiker rebounds off its victim
-      for (const p of u.parts) p.setVel(-u.f * 120, -180, dt);
+      e.takeHit(this, { damage: D.damage * this.rng.range(0.9, 1.1) * u.dmgMul, dvx: u.f * D.launch[0] * k, dvy: -D.launch[1] * k, x: hx, y: hy, stun: D.stun, kind, from: u, spin: 0.4, flip: 140 });
+      // The spiker rebounds off its victim (a diver bounces up and back, BONK)
+      for (const p of u.parts) p.setVel(-u.f * 120, dive ? -260 : -180, dt);
       this.stats.hits++;
-      this.emit('hit', hx, hy, { kind: 'spike', power: 1.05, dirX: u.f * 0.8, dirY: -0.6, unit: e, from: u, killed: !e.alive });
+      this.emit('hit', hx, hy, { kind, power: dive ? 0.8 : 1.05, dirX: u.f * 0.8, dirY: -0.6, unit: e, from: u, killed: !e.alive });
       return;
     }
     // Point-first into an enemy tower
@@ -574,7 +769,11 @@ export class Battle {
       if (!hit) continue;
       a.done = true;
       const hx = clamp(hit.x, t.x - t.w / 2, t.x + t.w / 2);
-      damageTower(this, t, D.damage * this.rng.range(0.9, 1.1) * u.dmgMul * TOWER_TAKES.spike, hx, hit.y, 'spike', u);
+      damageTower(this, t, D.damage * this.rng.range(0.9, 1.1) * u.dmgMul * takesOf(t, 'spike', D.vsTower), hx, hit.y, kind, u);
+      if (dive) {
+        for (const p of u.parts) p.setVel(-u.f * 120, -260, dt);
+        return;
+      }
       for (const p of u.parts) p.setVel(-u.f * 170, -220, dt); // boing off the stone
       u.conscious = Math.max(0, u.conscious - 0.3);
       return;
@@ -622,7 +821,7 @@ export class Battle {
       const ad = Math.max(0, Math.abs(t.x - x) - t.w / 2);
       if (ad > Q.radius) continue;
       const k = 1 - ad / Q.radius;
-      damageTower(this, t, Q.damage * k * u.dmgMul * (Q.vsTower ?? TOWER_TAKES.quake), clamp(x, t.x - t.w / 2, t.x + t.w / 2), -12, 'quake', u);
+      damageTower(this, t, Q.damage * k * u.dmgMul * takesOf(t, 'quake', Q.vsTower), clamp(x, t.x - t.w / 2, t.x + t.w / 2), -12, 'quake', u);
     }
   }
 
@@ -648,7 +847,7 @@ export class Battle {
     // Same seat as the renderer's hatAnchor (render/hats.js), so the hat leaves from where it sat
     const shape = u.type.shape || 'bean';
     const base = shape === 'ball' ? u.chest : u.head;
-    const seat = shape === 'triangle' ? 0.45 : shape === 'brick' ? 0.95 : shape === 'ball' ? 1.0 : 0.92;
+    const seat = shape === 'triangle' ? 0.45 : shape === 'brick' ? 0.95 : shape === 'ball' ? 1.0 : shape === 'jelly' ? 0.9 : 0.92;
     const cx = base.x + ux * R * seat;
     const cy = base.y + uy * R * seat;
     const w = R * 1.5;
@@ -674,12 +873,10 @@ export class Battle {
     if (!u.exploded && !this.blasts.includes(u)) this.blasts.push(u);
   }
 
-  /** Bomb goes off: launches everything around it (teammates get a share of the damage). */
+  /** Bomb goes off: blown to bits, and a blast launches everything around it. */
   explode(u) {
     if (u.exploded) return;
     u.exploded = true;
-    const X = u.type.blast;
-    const dt = this.dt;
     const cx = u.chest.x;
     const cy = u.chest.y;
     // Blown to bits: no corpse, nothing left to simulate
@@ -692,11 +889,26 @@ export class Battle {
     u.gone = true;
     u.asleep = true;
     if (this.grab && this.grab.unit === u) this.grab = null;
+    if (u.heldBy) this.letGoOf(u.heldBy, 'death');
+    if (u.holding) this.letGoOf(u, 'death');
     this.arrows = this.arrows.filter((a) => a.host !== u);
     u.arrows.length = 0;
-    this.emit('explode', cx, cy, { unit: u, power: 1, team: u.team });
+    this.blastAt(cx, cy, u.type.blast, u.team, u.dmgMul, u);
+  }
+
+  /**
+   * A blast at (cx, cy) set off by `team`: launches every bean in X.radius
+   * (teammates get X.friendly of the damage), lights bombs close to it, flings
+   * items and damages enemy structures. X = { radius, damage, launch,
+   * friendly, chain, vsGiant, vsTower }; from = the bomb that went off (it is
+   * never hit by its own blast), or null (nobody is spared).
+   * opts: { power (event strength, 1), small (a little blast: no hitstop or word) }
+   */
+  blastAt(cx, cy, X, team, dmgMul, from = null, opts = {}) {
+    const dt = this.dt;
+    this.emit('explode', cx, cy, { unit: from, power: opts.power ?? 1, team, radius: X.radius, small: !!opts.small });
     for (const e of this.units) {
-      if (e === u || e.gone) continue;
+      if (e === from || e.gone) continue;
       let d = Infinity;
       for (const p of e.body) d = Math.min(d, Math.hypot(p.x - cx, p.y - cy));
       if (d > X.radius) continue;
@@ -713,7 +925,7 @@ export class Battle {
         ny /= l;
       }
       const sp = X.launch * (0.35 + 0.65 * k);
-      const friend = e.team === u.team;
+      const friend = e.team === team;
       // Bombs right next to the blast light up, get flung, and go off where they land
       if (e.type.blast && e.alive && !e.exploded && d < X.radius * 0.5) {
         const left = e.act && e.act.phase === 'fuse' ? e.type.blast.fuse - e.act.t : Infinity;
@@ -725,14 +937,14 @@ export class Battle {
       // the sandbox keeps the full chaos.
       const soft = friend && e.alive && this.mode === 'arena' ? 0.35 : 1;
       e.takeHit(this, {
-        damage: X.damage * k * (friend ? X.friendly : 1) * (e.mass >= 3 ? X.vsGiant || 1 : 1) * u.dmgMul,
+        damage: X.damage * k * (friend ? X.friendly : 1) * (e.mass >= 3 ? X.vsGiant || 1 : 1) * dmgMul,
         dvx: nx * sp * soft,
         dvy: ny * sp * soft,
         x: cx,
         y: cy,
         stun: (0.3 + 1.0 * k) * soft,
         kind: 'blast',
-        from: u,
+        from,
         spin: 0.5,
         flip: 120 * k * Math.sign(nx || 1) * soft,
       });
@@ -745,13 +957,13 @@ export class Battle {
         p.addVel(((p.x - cx) / (d || 1)) * 300 * k, -420 * k, dt);
       }
     }
-    // Enemy towers in the blast (a wall right next to it takes nearly all of it)
+    // Enemy towers and buildings in the blast (a wall right next to it takes nearly all of it)
     for (const t of this.towers) {
-      if (t.team === u.team || !t.alive) continue;
+      if (t.team === team || !t.alive) continue;
       const d = rectDist(t, cx, cy);
       if (d > X.radius) continue;
       const k = 1 - (0.5 * d) / X.radius;
-      damageTower(this, t, X.damage * k * u.dmgMul * (X.vsTower ?? TOWER_TAKES.blast), clamp(cx, t.x - t.w / 2, t.x + t.w / 2), clamp(cy, -t.h, 0), 'blast', u);
+      damageTower(this, t, X.damage * k * dmgMul * takesOf(t, 'blast', X.vsTower), clamp(cx, t.x - t.w / 2, t.x + t.w / 2), clamp(cy, -t.h, 0), 'blast', from);
     }
   }
 
@@ -774,6 +986,8 @@ export class Battle {
       if (u.act.done) return;
       if (e.team === u.team || !e.alive || u.act.hits.has(e.id)) continue;
       if (Math.abs(e.hip.x - u.hip.x) > 140) continue;
+      if (e.air && !u.type.hitsAir) continue; // swinging at thin air: it's flying too high
+      if (A.air && u.act.variant && !isFlier(e)) continue; // a netter's air scoop sweeps up past the beans below its flier
       const rr = e.R + W.tipR;
       // Body capsule (hip-chest, chest-head)
       let hit = false;
@@ -810,6 +1024,11 @@ export class Battle {
       if (!hit) continue;
       u.act.hits.add(e.id);
       if (!A.cleave) u.act.done = true;
+      if (A.air && isFlier(e) && !(e.netImmuneT > 0)) {
+        this.netted(u, e, hx, hy);
+        if (!A.cleave) return;
+        continue;
+      }
       const dmg = A.damage * (0.55 + 0.45 * sf) * this.rng.range(0.9, 1.1) * u.dmgMul;
       const lethal = e.hp - dmg <= 0;
       const tl = tipSpeed || 1;
@@ -848,10 +1067,75 @@ export class Battle {
       t.addVel(-tvx * 0.35, -tvy * 0.35, this.dt);
       this.stats.hits++;
       const power = clamp((dmg / 40) * sf, 0.15, 1.5);
-      this.emit('hit', hx, hy, { kind: u.type.weapon === 'club' ? 'bonk' : 'slash', power, dirX: kx, dirY: ky, unit: e, from: u, killed: !e.alive });
+      this.emit('hit', hx, hy, { kind: u.type.weapon === 'club' ? 'bonk' : u.type.weapon === 'net' ? 'net' : 'slash', power, dirX: kx, dirY: ky, unit: e, from: u, killed: !e.alive });
       if (!A.cleave) return;
     }
     if (this.towers.length && !u.act.done) this.meleeTower(u, ax, ay, sf);
+  }
+
+  /**
+   * Butterfly Netter catches a flier (high or low): it's slammed down into the
+   * dirt with its lift off, a ground target for everyone until the lift comes
+   * back. Once caught it is net-immune for a while: a new net hit is a plain swat.
+   */
+  netted(u, e, hx, hy) {
+    const N = u.type.attack.air;
+    e.takeHit(this, { damage: N.damage * u.dmgMul, dvx: u.f * 60, dvy: 0, x: hx, y: hy, stun: N.stun, kind: 'net', from: u, spin: 0.3 });
+    e.liftOff(this, N.liftOff, u);
+    for (const p of e.parts) p.addVel(0, N.yank, this.dt);
+    e.netImmuneT = N.immune;
+    this.stats.hits++;
+    this.emit('netted', hx, hy, { unit: e, from: u });
+    this.emit('hit', hx, hy, { kind: 'net', power: 1, dirX: u.f * 0.3, dirY: 1, unit: e, from: u, killed: !e.alive });
+  }
+
+  /**
+   * Nutcracker: one CRUNCH, on the first strike substep, at the jaw just in
+   * front of its face. The nearest enemy bean whose head or chest is in reach
+   * takes it (heavies x vsHeavy; shields don't help); with no bean there, a
+   * structure face within 20 px does (stone x vsTower: "ow, my teeth").
+   */
+  resolveBite(u) {
+    const a = u.act;
+    if (!a || a.done) return;
+    a.done = true; // one bite per strike, hit or miss
+    const A = u.type.attack;
+    const jaw = u.R + 8;
+    const jx = u.head.x + u.fwx * jaw;
+    const jy = u.head.y + u.fwy * jaw;
+    let best = null;
+    let bd = Infinity;
+    for (const e of this.units) {
+      if (e.team === u.team || !e.alive || e.held || (e.air && !u.type.hitsAir)) continue;
+      if (Math.abs(e.hip.x - jx) > 120) continue;
+      const d = Math.min(Math.hypot(e.head.x - jx, e.head.y - jy), Math.hypot(e.chest.x - jx, e.chest.y - jy));
+      if (d < A.biteR + e.R && d < bd) {
+        bd = d;
+        best = e;
+      }
+    }
+    if (best) {
+      this.bite(u, best, jx, jy);
+      return;
+    }
+    for (const t of this.towers) {
+      if (t.team === u.team || !t.alive || rectDist(t, jx, jy) > 20) continue;
+      damageTower(this, t, A.damage * u.dmgMul * takesOf(t, 'melee', A.vsTower), clamp(jx, t.x - t.w / 2, t.x + t.w / 2), clamp(jy, -t.h, 0), 'bite', u);
+      return;
+    }
+  }
+
+  bite(u, e, jx, jy) {
+    const A = u.type.attack;
+    const dmg = A.damage * u.dmgMul * (e.mass >= A.heavyMass ? A.vsHeavy : 1);
+    const lethal = e.hp + e.wrapHp - dmg <= 0;
+    // A crunch shoves the victim back a step; a lethal one spits it out spinning
+    const dvx = u.f * (lethal ? BITE_SPIT[0] : A.knock * 0.8);
+    const dvy = -(lethal ? BITE_SPIT[1] : A.knock * 0.6);
+    e.takeHit(this, { damage: dmg, dvx, dvy, x: jx, y: jy, stun: A.stun, kind: 'bite', from: u, spin: lethal ? 1.2 : 0.4, flip: lethal ? 220 : 0 });
+    e.sqv += 10; // squeezed between the jaws
+    this.stats.hits++;
+    this.emit('hit', jx, jy, { kind: 'bite', power: clamp(dmg / 70, 0.5, 1.5), dirX: u.f, dirY: -0.4, unit: e, from: u, killed: !e.alive });
   }
 
   /** The weapon against enemy tower walls: one hit per swing, and it bounces off the stone. */
@@ -870,7 +1154,7 @@ export class Battle {
       if (!hit) continue;
       u.act.hits.add(tw.id);
       if (!A.cleave) u.act.done = true;
-      const dmg = A.damage * (0.55 + 0.45 * sf) * this.rng.range(0.9, 1.1) * u.dmgMul * TOWER_TAKES.melee;
+      const dmg = A.damage * (0.55 + 0.45 * sf) * this.rng.range(0.9, 1.1) * u.dmgMul * takesOf(tw, 'melee', A.vsTower);
       const hx = clamp(hit.x, tw.x - tw.w / 2, tw.x + tw.w / 2);
       damageTower(this, tw, dmg, hx, hit.y, u.type.weapon, u);
       // Thunk: the weapon rebounds and the swing's kick goes back into the bean
@@ -988,6 +1272,258 @@ export class Battle {
     });
     this.stats.arrows++;
     this.emit('bowRelease', bh.x, bh.y, { unit: u });
+  }
+
+  /**
+   * Bomb Juggler: lob one of its bombs along an aim solution (solveAim with
+   * its own maxSpeed: a lob), from arm's length like an arrow. The bomb is a
+   * 'jbomb' shot (towers.js updateShots): it bursts on the first enemy it
+   * touches, or bounces once, rolls and goes off after its fuse.
+   */
+  fireBomb(u, sol) {
+    const A = u.type.attack;
+    const X = u.type.bomb;
+    const ang = sol.ang + u.rng.gauss() * A.spread;
+    const sp = sol.speed * (1 + u.rng.gauss() * 0.04);
+    const reach = u.armLen * 0.92 + 6;
+    const x = u.chest.x + Math.cos(sol.ang) * reach;
+    const y = u.chest.y + Math.sin(sol.ang) * reach;
+    const t = u.target;
+    const ground = t && !t.isTower ? t.ground : u.ground;
+    this.shots.push({ kind: 'jbomb', team: u.team, x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: X.r, age: 0, bounced: false, fuseT: -1, from: u, dmgMul: u.dmgMul, X, ground });
+    this.emit('juggleToss', x, y, { unit: u });
+  }
+
+  /** How many of u's own thrown bombs are still in the air (fumbles are nobody's). */
+  bombsInFlight(u) {
+    let n = 0;
+    for (const s of this.shots) if (s.from === u && s.kind === 'jbomb') n++;
+    return n;
+  }
+
+  /**
+   * A Bomb Juggler drops lit bombs: one at its feet when it's knocked down or
+   * grabbed (at most once per fumble.every s), or all of them scattered
+   * around it when it dies. They are 'jbomb' shots of nobody's (from: null):
+   * its own side, the Juggler included, takes the friendly share.
+   */
+  fumble(u, death = false) {
+    const F = u.type.fumble;
+    if (!F) return;
+    if (!death) {
+      if (u.fumbleT > 0) return;
+      u.fumbleT = F.every;
+    }
+    const n = death ? F.onDeath : F.onDown;
+    const X = u.type.bomb;
+    this.later(() => {
+      for (let i = 0; i < n; i++) {
+        const x = u.hip.x + (death ? (this.rng.next() * 2 - 1) * F.spread : 0);
+        const vx = (this.rng.next() * 2 - 1) * 60;
+        this.shots.push({ kind: 'jbomb', team: u.team, x, y: u.chest.y, vx, vy: -120, r: X.r, age: 0, bounced: false, fuseT: F.delay, from: null, dmgMul: u.dmgMul, X, ground: u.ground });
+      }
+      this.emit('fumble', u.hip.x, u.chest.y, { unit: u, n });
+    });
+  }
+
+  /** A Propeller Pal's cap pops off as it dies: it spins up and away, then flutters down like a maple seed (cosmetic). */
+  popCap(u) {
+    const dt = this.dt;
+    const r = this.fxRng;
+    const cx = u.head.x + u.ux * u.R;
+    const cy = u.head.y + u.uy * u.R;
+    const vx = u.head.vx(dt) * 0.5 + (r.next() - 0.5) * 160;
+    const vy = Math.min(0, u.head.vy(dt) * 0.5) - 240 - r.next() * 100;
+    const spin = (r.next() - 0.5) * 600;
+    const w = u.R * 1.3;
+    const mk = (x, y, s) => {
+      const p = new Particle(x, y, 0.2, 2);
+      p.setVel(vx, vy + spin * s, dt);
+      p.ground = u.ground;
+      p.friction = 0.5;
+      p.bounce = 0.2;
+      return p;
+    };
+    const a = mk(cx - w / 2, cy, -1);
+    const b = mk(cx + w / 2, cy, 1);
+    this.items.push({ kind: 'propCap', team: u.team, f: u.f, R: u.R, a, b, con: new Dist(a, b, w), age: 0, life: CAP_LIFE, flutter: 50 });
+    this.emit('propOff', cx, cy, { unit: u });
+  }
+
+  // --- Tummy Drummer -----------------------------------------------------------------
+
+  /**
+   * A Drummer's beat (each step, before the AI): every beat.every s every
+   * friend within beat.radius along x (at any height, the Drummer too) is on
+   * the beat for beat.time s (beatT: tempo() and moveMul()). Two Drummers
+   * never stack: beatT only ever goes up to beat.time.
+   */
+  drum(u, dt) {
+    if (!u.alive || u.deployT > 0 || u.downT > 0 || u.held || this.phase !== 'battle') return;
+    const B = u.type.beat;
+    u.beatClock += dt;
+    if (u.beatClock < B.every) return;
+    u.beatClock -= B.every;
+    u.beats++;
+    for (const o of this.units) {
+      if (o.team !== u.team || !o.alive || Math.abs(o.hip.x - u.hip.x) > B.radius) continue;
+      if (o.beatT < B.time) o.beatT = B.time;
+    }
+    this.emit('beat', u.chest.x, u.chest.y, { unit: u });
+  }
+
+  /** A Drummer's drum comes off as it dies and rolls away ringing (cosmetic: a short stick drawn as a disc). */
+  dropDrum(u) {
+    const dt = this.dt;
+    const r = this.fxRng;
+    const c = u.chest;
+    const vx = c.vx(dt) * 0.6 + (r.next() - 0.5) * 120 - u.f * 60;
+    const vy = Math.min(0, c.vy(dt) * 0.5) - 160 - r.next() * 80;
+    const R = u.R * 0.75;
+    const mk = (x) => {
+      const p = new Particle(x, c.y, 0.6, R);
+      p.setVel(vx, vy, dt);
+      p.ground = u.ground;
+      p.friction = 0.04; // it rolls
+      p.bounce = 0.45;
+      return p;
+    };
+    const a = mk(c.x - 3);
+    const b = mk(c.x + 3);
+    this.items.push({ kind: 'drum', team: u.team, f: u.f, R, a, b, con: new Dist(a, b, 6), age: 0 });
+  }
+
+  // --- Pogo Bean -----------------------------------------------------------------------
+
+  /**
+   * The stick touches down (Unit.hop): within hop.bonk.reach of an enemy
+   * structure's face it bonks it.
+   */
+  bonk(u) {
+    const K = u.type.hop.bonk;
+    for (const t of this.towers) {
+      if (t.team === u.team || !t.alive || rectDist(t, u.hip.x, -10) > K.reach) continue;
+      const x = clamp(u.hip.x, t.x - t.w / 2, t.x + t.w / 2);
+      damageTower(this, t, K.damage * u.dmgMul * takesOf(t, 'melee'), x, -20, 'pogo', u);
+      u.hip.addVel(-Math.sign(t.x - u.hip.x) * 60, 0, this.dt); // BONK: it rebounds a little
+      return t;
+    }
+    return null;
+  }
+
+  /**
+   * A Pogo coming down: its stick tip on an enemy head stomps it (damage,
+   * stun, a squash) and bounces the Pogo high off it. Once per hop.
+   */
+  stomp(u) {
+    const H = u.type.hop;
+    const S = H.stomp;
+    const tip = u.tip;
+    for (const e of this.units) {
+      if (e.team === u.team || !e.alive || e.held || e.air || Math.abs(e.head.x - tip.x) > 40) continue;
+      if (Math.hypot(e.head.x - tip.x, e.head.y - tip.y) > e.R + 4) continue;
+      u.stomped = true;
+      e.takeHit(this, { damage: S.damage * u.dmgMul, dvx: 0, dvy: 120, x: tip.x, y: e.head.y - e.R, stun: S.stun, kind: 'stomp', from: u, spin: 0.2 });
+      e.sqv += 8;
+      const vy = -H.vy * S.bounce * 0.8 - u.hip.vy(this.dt);
+      for (const p of u.parts) p.addVel(0, vy, this.dt);
+      this.stats.hits++;
+      this.emit('stomp', tip.x, e.head.y - e.R, { unit: u, victim: e });
+      this.emit('hit', tip.x, e.head.y - e.R, { kind: 'stomp', power: 0.7, dirX: 0, dirY: 1, unit: e, from: u, killed: !e.alive });
+      return e;
+    }
+    return null;
+  }
+
+  // --- Pelican ------------------------------------------------------------------------
+
+  /**
+   * The bean a Pelican would scoop: the best liftable enemy within scoop.sight
+   * along x, by |dx| - 80 for the back line (ranged units and the Drummer),
+   * ties by id. Null if there is none.
+   */
+  scoopTarget(u) {
+    const S = u.type.scoop;
+    let best = null;
+    let bs = Infinity;
+    for (const e of this.units) {
+      if (e.team === u.team || !liftable(e, S.maxMass)) continue;
+      const dx = Math.abs(e.hip.x - u.hip.x);
+      if (dx > S.sight) continue;
+      const score = dx - (e.type.ranged || e.type.follow ? 80 : 0);
+      if (score < bs || (score === bs && e.id < best.id)) {
+        bs = score;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Where a carry ends: carryBack px toward the Pelican's own side from x0,
+   * but never into its own Castle's face (nothing gets behind a Castle).
+   */
+  carryGoal(u, x0) {
+    const home = u.team === 'blue' ? -1 : 1;
+    let goal = x0 + home * u.type.scoop.carryBack;
+    for (const t of this.towers) {
+      if (t.team !== u.team || !t.alive || t.kind !== 'castle') continue;
+      const limit = t.x - home * (t.w / 2 + 30);
+      if ((goal - limit) * home > 0) goal = limit;
+    }
+    return clamp(goal, 30, WORLD.width - 30);
+  }
+
+  // --- Big Jelly ---------------------------------------------------------------------
+
+  /** The liftable enemy a Big Jelly can engulf right now (within engulf.gap of its surface, the nearest), or null. */
+  engulfTarget(u) {
+    const E = u.type.engulf;
+    let best = null;
+    let bd = Infinity;
+    for (const e of this.units) {
+      if (e.team === u.team || !liftable(e, E.maxMass)) continue;
+      const d = Math.hypot(e.hip.x - u.hip.x, e.hip.y - u.hip.y);
+      if (d < u.R + e.R + E.gap && d < bd) {
+        bd = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * The Jelly's belly bump: the nearest enemy bean (not high up, not held)
+   * within bump.gap of its surface is knocked away; with none, a structure
+   * face that close takes vsStructure. Returns whether it bumped anything.
+   */
+  jellyBump(u) {
+    const B = u.type.bump;
+    let best = null;
+    let bd = Infinity;
+    for (const e of this.units) {
+      if (e.team === u.team || !e.alive || e.held || e.air) continue;
+      const d = Math.hypot(e.hip.x - u.hip.x, e.hip.y - u.hip.y) - u.R - e.R;
+      if (d < B.gap && d < bd) {
+        bd = d;
+        best = e;
+      }
+    }
+    if (best) {
+      const dir = Math.sign(best.hip.x - u.hip.x) || u.f;
+      const hx = u.hip.x + dir * u.R;
+      const hy = u.chest.y;
+      best.takeHit(this, { damage: B.damage * u.dmgMul, dvx: dir * B.knock * 0.85, dvy: -B.knock * 0.55, x: hx, y: hy, stun: B.stun, kind: 'bump', from: u, spin: 0.4, flip: 60 });
+      this.stats.hits++;
+      this.emit('hit', hx, hy, { kind: 'bump', power: 0.9, dirX: dir, dirY: -0.5, unit: best, from: u, killed: !best.alive });
+      return true;
+    }
+    for (const t of this.towers) {
+      if (t.team === u.team || !t.alive || rectDist(t, u.hip.x, u.chest.y) - u.R > B.gap) continue;
+      damageTower(this, t, B.vsStructure * u.dmgMul * takesOf(t, 'melee'), clamp(u.hip.x, t.x - t.w / 2, t.x + t.w / 2), u.chest.y, 'bump', u);
+      return true;
+    }
+    return false;
   }
 
   updateArrows(dt) {
@@ -1134,7 +1670,7 @@ export class Battle {
       const k = this.arrows.indexOf(old);
       if (k >= 0) this.arrows.splice(k, 1);
     }
-    if (a.damage > 0) damageTower(this, t, a.damage * TOWER_TAKES.arrow, x, y, a.from && a.from.isTower ? 'bolt' : 'arrow', a.from);
+    if (a.damage > 0) damageTower(this, t, a.damage * takesOf(t, 'arrow'), x, y, a.from && a.from.isTower ? 'bolt' : 'arrow', a.from);
     else this.emit('arrowTower', x, y, { tower: t, dirX: Math.sign(a.vx) });
   }
 
@@ -1223,6 +1759,7 @@ export class Battle {
     if (u.tip) {
       const a = mk(h.x, h.y, h.vx(dt), h.vy(dt), 0.5, 2.5);
       const b = mk(u.tip.x, u.tip.y, u.tip.vx(dt), u.tip.vy(dt), W.tipMass, W.tipR);
+      if (kind === 'pogo') a.bounce = b.bounce = 0.8; // boing... boing... boing
       this.items.push({ kind, team: u.team, a, b, con: new Dist(a, b, W.len), age: 0, scale: u.type.weaponScale || 1 });
       // Detach the weapon from the corpse
       u.parts.splice(u.parts.indexOf(u.tip), 1);
@@ -1344,6 +1881,22 @@ function zoneClamp(team, x) {
   return clamp(x, z0 + 12, z1 - 12);
 }
 
+/** A Pogo Bean on its hop (from the boing to the next touchdown, or above hop.overAlt): enemies don't push it, it hops over them. */
+const hopsOver = (u) => !!u.type.hop && (u.hopping || u.alt > u.type.hop.overAlt);
+
+/** Is a swooping at b (a Pelican's swoop: it flies into its catch)? */
+const swoopsAt = (a, b) => !!a.act && a.act.victim === b;
+
+/**
+ * Can a holder (a Pelican beak, a Big Jelly) take e? Only a light bean
+ * (mass <= maxMass) that is alive, standing on the ground (not high in the
+ * air, not floating down or falling from a flipped umbrella, not a flier),
+ * done deploying and not held already.
+ */
+export function liftable(e, maxMass) {
+  return e.alive && !e.gone && !e.held && !e.holding && !e.air && !e.type.flying && !(e.floatT > 0) && !e.flipFall && e.deployT <= 0 && e.mass <= maxMass;
+}
+
 /** Move a bean's torso without changing its velocity; planted feet follow halfway. */
 function moveTorso(u, dx, dy) {
   for (const p of u.body) p.teleport(dx, dy);
@@ -1379,6 +1932,17 @@ function capsulePush(a, b, rr, k) {
     b.body[i].teleport(-nx * push * mb * wb[i], -ny * push * mb * wb[i]);
   }
   return rr - d;
+}
+
+/** A light item (a propeller cap) falling no faster than it.flutter px/s, swaying side to side as it goes. */
+function flutter(it, dt) {
+  const sway = Math.sin(it.age * 5) * 40; // px/s
+  for (const p of [it.a, it.b]) {
+    if (p.y - p.py > it.flutter * dt) p.py = p.y - it.flutter * dt;
+    if (p.y >= p.ground - p.r - 1) continue;
+    const vx = (p.x - p.px) / dt; // the air drags it toward the sway
+    p.px = p.x - (vx + (sway - vx) * 0.05) * dt;
+  }
 }
 
 function segFrame(p, q) {

@@ -15,9 +15,20 @@
 // cannonHit, boulderImpact (dust ring, clods, a crater decal), crumbs and
 // cheeseBurst (the Cheese Wheel), deploy (landing ring), crown (sparkle burst
 // with a crown), awake (a castle wakes up). fx.follow(battle, dt) adds the
-// running trails: crumbs behind a rolling wheel, smoke behind cannonballs.
+// running trails: crumbs behind a rolling wheel, smoke behind cannonballs,
+// sparks off Juggler bombs.
+//
+// The 32-card kinds (one per event of the cards contract, 6.4, mostly):
+// buildingLand, buildingDown, punchWindup, punch, sproutPop, craneSwing,
+// liftOff, netted, crash, propOff, dive, boing, stomp, juggleToss, fumble,
+// miniBlast (a Juggler bomb), beat, swoop, scoop, feathers, letGo, engulf,
+// spit, canopyFlip, brollyLand, wrap, wrapPop (throttled per key), wrapEnd,
+// slip, skid, peelKick, sneeze, sodaErupt, anvilImpact; towerHit takes
+// mat: 'wood' | 'metal' for buildings, impact takes the new hit kinds (bite,
+// punch, crane, bump, stomp, dive, peck, net). fxForEvent(fx, e, pal) maps a
+// sim event of the new cards to these (returns false for the others).
 
-import { WORLD } from '../config.js';
+import { WORLD, TEAMS } from '../config.js';
 
 const TAU = Math.PI * 2;
 const CAP = 1500;
@@ -77,6 +88,21 @@ const CANNON_SMOKE = [
 ];
 const CHEESE_COLS = ['#ffd34d', '#f5b82e', '#ffe68a'];
 const GOLD_COLS = ['#ffe14d', '#fff3b0', '#ffc23a'];
+// The 32 cards: crate and building wood, crane steel, leaves, foam, mist, bubbles
+const CRATE_COLS = ['#c48d4c', '#dcab6c', '#8e5c2c'];
+const PLANK_COLS = ['#8a5a2e', '#a8723f', '#c48d4c'];
+const STEEL_COLS = ['#f2b632', '#b9b2a6', '#7c8490', '#f2b632'];
+const LEAF_COLS = ['#5fbf3a', '#4aa32c', '#8fdc5e'];
+const FOAM_COLS = [
+  ['#e9dcc0', '#fbf6ea'],
+  ['#d8c3a0', '#f4ecd8'],
+];
+const MIST_COLS = [
+  ['#b9cfa6', '#e2eed6'],
+  ['#c5d8b4', '#eef5e6'],
+];
+const DROP_COL = '#cfeaff';
+const SWEAT_COL = '#9fd6ff';
 
 // --- particle kinds -----------------------------------------------------------------
 
@@ -99,6 +125,10 @@ const STONE = 15; // a chunk of masonry (or cheese) that tumbles and bounces
 const CRATER = 16; // dark dent in the grass that fades slowly (decal)
 const GRING = 17; // flat ring spreading along the ground
 const CROWN = 18; // a golden crown popping up out of a fallen tower
+const BUBBLE = 19; // a bubble that drifts and pops (wrap, soda, jelly)
+const DROP = 20; // a droplet stretched along its flight (sneeze, soda, jelly, sweat)
+const FEATHER = 21; // a feather, leaf or scrap see-sawing down
+const PLANK = 22; // a wooden board (or girder) that tumbles and bounces
 // Drawn in their own back passes (decals first, dust last)
 const BACK_OWN = new Set([DUST, SCUFF, CRATER, GRING]);
 
@@ -182,6 +212,17 @@ export class Effects {
     // Set per draw call from the ctx transform
     this.px = 1; // one screen pixel in world units
     this.boost = 1; // grows effects when zoomed far out so they still read
+    this.clock = 0; // effect seconds (throttles)
+    this.lastAt = new Map(); // throttle key -> clock
+  }
+
+  /** True at most once per `gap` seconds for a key (e.g. a wrapped bean's pops). */
+  throttle(key, gap) {
+    const last = this.lastAt.get(key);
+    if (last != null && this.clock - last < gap) return false;
+    if (this.lastAt.size > 96) this.lastAt.clear();
+    this.lastAt.set(key, this.clock);
+    return true;
   }
 
   get count() {
@@ -212,7 +253,10 @@ export class Effects {
         case 'impact':
           if (p.kind === 'slash') this.slash(x, y, p);
           else if (p.kind === 'arrow') this.arrowHit(x, y, p);
+          else if (p.kind === 'bite') this.bite(x, y, p);
+          else if (p.kind === 'net') this.netted(x, y);
           else this.bonk(x, y, p);
+          if (p.kind === 'stomp' || p.kind === 'crane' || p.kind === 'punch') this.stars(x, y - 8);
           break;
         case 'block':
           this.block(x, y, p);
@@ -251,7 +295,121 @@ export class Effects {
           this.quake(x, y, clamp(num(p.power, 1), 0.3, 2));
           break;
         case 'towerHit':
-          this.towerHit(x, y, clamp(num(p.power, 0.5), 0.1, 1.5), num(p.dirX, 0), p.kind);
+          if (p.mat === 'wood' || p.mat === 'metal') this.buildingHit(x, y, clamp(num(p.power, 0.5), 0.1, 1.5), num(p.dirX, 0), p.kind, p.mat);
+          else this.towerHit(x, y, clamp(num(p.power, 0.5), 0.1, 1.5), num(p.dirX, 0), p.kind);
+          break;
+        case 'buildingHit':
+          this.buildingHit(x, y, clamp(num(p.power, 0.5), 0.1, 1.5), num(p.dirX, 0), p.kind, p.mat === 'metal' ? 'metal' : 'wood');
+          break;
+        case 'buildingLand':
+          this.buildingLand(x, y, clamp(num(p.w, 46), 20, 120), p.bid, clamp(num(p.power, 1), 0.3, 1.5));
+          break;
+        case 'buildingDown':
+          this.buildingDown(x, y, clamp(num(p.w, 46), 20, 120), clamp(num(p.h, 46), 20, 220), p.bid, p.color);
+          break;
+        case 'punchWindup':
+          this.punchWindup(x, y);
+          break;
+        case 'punch':
+          this.punch(x, y, Math.sign(num(p.dir, num(p.dirX, 1))) || 1);
+          break;
+        case 'sproutPop':
+          this.sproutPop(x, y, num(p.dirX, 0));
+          break;
+        case 'craneSwing':
+          this.craneSwing(x, y, Math.sign(num(p.dirX, 1)) || 1, clamp(num(p.power, 1), 0.3, 1.5));
+          break;
+        case 'liftOff':
+          this.liftOff(x, y);
+          break;
+        case 'netted':
+          this.netted(x, y);
+          break;
+        case 'crash':
+          this.crash(x, y, clamp(num(p.power, 0.8), 0.2, 1.5));
+          break;
+        case 'propOff':
+          this.propOff(x, y);
+          break;
+        case 'dive':
+        case 'swoop':
+          this.dive(x, y, p);
+          break;
+        case 'boing':
+          this.boing(x, y);
+          break;
+        case 'stomp':
+          this.bonk(x, y, { power: 0.8, dirX: 0, dirY: 1 });
+          this.stars(x, y - 6);
+          break;
+        case 'juggleToss':
+          this.juggleToss(x, y, num(p.dirX, 1));
+          break;
+        case 'fumble':
+          this.fumble(x, y);
+          break;
+        case 'miniBlast':
+          this.miniBlast(x, y, clamp(num(p.power, 0.6), 0.3, 1.2));
+          break;
+        case 'beat':
+          this.beat(x, y, p.color);
+          break;
+        case 'scoop':
+          this.bonk(x, y, { power: 0.5, dirX: num(p.dirX, 0), dirY: -1 });
+          this.feathers(x, y, p.color, 4);
+          break;
+        case 'feathers':
+          this.feathers(x, y, p.color, clamp(num(p.count, 5), 1, 12) | 0);
+          break;
+        case 'pelicanDrop':
+          this.feathers(x, y, p.color, 3);
+          break;
+        case 'letGo':
+          this.poof(x, y, '#ffffff');
+          this.feathers(x, y, p.color, 3);
+          break;
+        case 'engulf':
+          this.engulf(x, y, p.color);
+          break;
+        case 'spit':
+          this.spit(x, y, Math.sign(num(p.dirX, 1)) || 1, p.color);
+          break;
+        case 'canopyFlip':
+          this.canopyFlip(x, y, p.color);
+          break;
+        case 'brollyLand':
+          this.deploy(x, y, p.color, 22);
+          this.land(x, y, 0.4);
+          break;
+        case 'wrap':
+          this.wrapOn(x, y);
+          break;
+        case 'wrapPop':
+          if (this.throttle(p.key != null ? 'w' + p.key : 'w' + Math.round(x / 24), 0.09)) this.wrapPop(x, y);
+          break;
+        case 'wrapEnd':
+          this.wrapEnd(x, y, !!p.popped);
+          break;
+        case 'slip':
+          this.slip(x, y, num(p.dirX, 1));
+          break;
+        case 'skid':
+          this.skid(x, y, num(p.dirX, 1));
+          break;
+        case 'peelKick':
+          this.dust(x, y, 0.3, num(p.dirX, 0));
+          break;
+        case 'sneeze':
+          this.sneeze(x, y, clamp(num(p.radius, 140), 30, 300), Math.sign(num(p.dirX, 1)) || 1);
+          break;
+        case 'sodaErupt':
+          this.sodaErupt(x, y, clamp(num(p.radius, 75), 20, 200));
+          break;
+        case 'anvilImpact':
+          this.anvilImpact(x, y, clamp(num(p.power, 1.4), 0.3, 2));
+          break;
+        case 'bubbles':
+          this.bubbles(x, y, clamp(num(p.count, 6), 1, 20) | 0, num(p.spread, 14));
           break;
         case 'towerDown':
           this.towerDown(x, y, p.kind === 'castle', clamp(num(p.w, p.kind === 'castle' ? 200 : 70), 20, 320));
@@ -1034,10 +1192,543 @@ export class Effects {
     this.word(x, y - 16, { text: '!', size: 30, color: '#ffe14d' });
   }
 
+  // --- the 32-card recipes ---------------------------------------------------------------
+
+  /** A wooden board (or girder) that tumbles, bounces and fades. */
+  plank(x, y, vx, vy, len, cols = PLANK_COLS, front = false) {
+    const c = this.add(PLANK, front, x, y, this.r(1.4, 2.1));
+    c.ground = this.groundFor(y > 0 ? y : -1);
+    c.vx = vx;
+    c.vy = vy;
+    c.grav = G;
+    c.drag = 0.25;
+    c.bounces = 2;
+    c.rest = 0.3;
+    c.a = len;
+    c.size = len * 0.22;
+    c.rot = this.r(0, TAU);
+    c.spin = this.r(-12, 12);
+    c.col = this.pick(cols);
+    c.fade = 0.5;
+    return c;
+  }
+
+  /** A droplet flung along (vx, vy), falling and fading (sneeze, soda, jelly, sweat). */
+  drop(x, y, vx, vy, size, col, front = true, life = this.r(0.45, 0.75)) {
+    const d = this.add(DROP, front, x, y, life);
+    d.vx = vx;
+    d.vy = vy;
+    d.grav = G * 0.8;
+    d.drag = 0.8;
+    d.ground = this.groundFor(-1);
+    d.size = size;
+    d.col = isHex(col) ? col : DROP_COL;
+    d.fade = 0.15;
+    return d;
+  }
+
+  /** A bubble drifting up that pops at the end of its life. */
+  bubble(x, y, vx, vy, size, life = this.r(0.5, 1)) {
+    const b = this.add(BUBBLE, true, x, y, life);
+    b.vx = vx;
+    b.vy = vy;
+    b.drag = 1.6;
+    b.size = size;
+    b.seed = (this.rnd() * 1000) | 0;
+    return b;
+  }
+
+  /** A feather (or leaf, or scrap of cloth) that see-saws down. */
+  feather(x, y, vx, vy, col, size = this.r(5, 8)) {
+    const f = this.add(FEATHER, true, x, y, this.r(1.2, 1.9));
+    f.vx = vx;
+    f.vy = vy;
+    f.grav = 160;
+    f.drag = 2.6;
+    f.ground = this.groundFor(-1);
+    f.size = size;
+    f.c = this.r(-0.6, 0.6); // resting tilt
+    f.col = isHex(col) ? col : '#ffffff';
+    f.fade = 0.4;
+    return f;
+  }
+
+  feathers(x, y, color, n) {
+    for (let i = 0; i < n; i++) {
+      const a = this.r(-Math.PI, 0);
+      const sp = this.r(60, 160);
+      this.feather(x + this.r(-6, 6), y + this.r(-6, 6), Math.cos(a) * sp, Math.sin(a) * sp, i % 2 && isHex(color) ? color : '#ffffff');
+    }
+  }
+
+  bubbles(x, y, n, spread) {
+    for (let i = 0; i < n; i++) this.bubble(x + this.r(-spread, spread), y + this.r(-spread, spread) * 0.6, this.r(-30, 30), -this.r(30, 90), this.r(2.5, 5));
+  }
+
+  /** A Nutcracker's CRUNCH: a white chomp burst with tooth-white chips. */
+  bite(x, y, p) {
+    this.bonk(x, y, { ...p, power: Math.max(0.8, num(p.power, 1)) });
+    for (let i = 0; i < 5; i++) {
+      const s = this.add(SPECK, true, x, y, this.r(0.5, 0.8));
+      const a = this.r(-Math.PI, 0);
+      const sp = this.r(140, 300);
+      s.vx = Math.cos(a) * sp;
+      s.vy = Math.sin(a) * sp;
+      s.grav = G;
+      s.drag = 0.6;
+      s.ground = this.groundFor(-1);
+      s.bounces = 1;
+      s.size = this.r(2.6, 4);
+      s.rot = this.r(0, TAU);
+      s.spin = this.r(-18, 18);
+      s.col = i % 2 ? '#f2efe6' : '#ffffff';
+      s.fade = 0.2;
+    }
+  }
+
+  /** Something hit a building: wood chips (or bolts and paint flakes off the crane). */
+  buildingHit(x, y, P, dirX, kind, mat) {
+    const back = -(Math.sign(dirX) || 1);
+    const small = kind === 'arrow' || kind === 'bolt';
+    const n = small ? 2 : 3 + Math.round(P * 3);
+    for (let i = 0; i < n; i++) {
+      if (mat === 'metal') {
+        const k = this.add(SPARK, true, x, y, this.r(0.15, 0.3));
+        const a = Math.atan2(-0.5, back) + this.r(-0.9, 0.9);
+        const sp = this.r(200, 420);
+        k.vx = Math.cos(a) * sp;
+        k.vy = Math.sin(a) * sp;
+        k.grav = G * 0.7;
+        k.drag = 1.4;
+        k.size = this.r(1.4, 2.2);
+        k.col = SPARK_COLS[i % 3];
+      } else {
+        const s = this.add(SPLINTER, true, x, y, this.r(0.45, 0.7));
+        const a = Math.atan2(-0.6, back) + this.r(-0.9, 0.9);
+        const sp = this.r(110, 260) * (0.6 + 0.5 * P);
+        s.vx = Math.cos(a) * sp;
+        s.vy = Math.sin(a) * sp;
+        s.grav = G;
+        s.drag = 0.8;
+        s.ground = this.groundFor(-1);
+        s.bounces = 1;
+        s.a = this.r(4.5, 7.5);
+        s.size = 1.8;
+        s.rot = this.r(0, TAU);
+        s.spin = this.r(-22, 22);
+        s.col = this.pick(WOOD_COLS);
+        s.fade = 0.2;
+      }
+    }
+    if (!small) this.puff(true, x + back * 3, y, back * this.r(20, 50), -this.r(5, 20), this.r(0.3, 0.45), 3, this.r(6, 9) * (0.7 + P * 0.5), this.pick(DUST_COLS));
+    if (!small && P > 0.7 && mat !== 'metal') this.plank(x, y, back * this.r(60, 160), -this.r(150, 260), this.r(8, 12), PLANK_COLS, true);
+  }
+
+  /** The crate hits the ground and bursts open (the patch: a clod of dirt splats). */
+  buildingLand(x, y, w, bid, P) {
+    const gy = Math.max(0, y);
+    this.land(x, gy, 0.9 * P);
+    this.groundRing(x, gy, w * 0.4, w + 50, 0.45, 6, '#f6edd4', 0.85);
+    if (bid === 'beanPatch') {
+      this.dirt(x - w * 0.25, gy, 1.2 * P, -1);
+      this.dirt(x + w * 0.25, gy, 1.2 * P, 1);
+      for (let i = 0; i < 6; i++) {
+        const c = this.clod(x + this.r(-w / 2, w / 2), gy - 10, this.r(-200, 200), -this.r(250, 450), this.r(2.5, 4.5));
+        if (i % 2) c.col = GRASS_COL;
+      }
+      return;
+    }
+    // Crate boards fly off to both sides, with splinters and a puff
+    for (let i = 0; i < 7; i++) {
+      const side = i % 2 ? 1 : -1;
+      this.plank(x + side * this.r(0, w * 0.4), gy - this.r(10, 40), side * this.r(90, 260) * P, -this.r(220, 460) * P, this.r(12, 20), CRATE_COLS, true);
+    }
+    for (let i = 0; i < 8; i++) {
+      const s = this.add(SPLINTER, true, x, gy - 20, this.r(0.5, 0.8));
+      const a = this.r(-Math.PI, 0);
+      const sp = this.r(150, 360);
+      s.vx = Math.cos(a) * sp;
+      s.vy = Math.sin(a) * sp;
+      s.grav = G;
+      s.drag = 0.8;
+      s.ground = this.groundFor(-1);
+      s.bounces = 1;
+      s.a = this.r(4, 8);
+      s.size = 1.8;
+      s.rot = this.r(0, TAU);
+      s.spin = this.r(-20, 20);
+      s.col = this.pick(CRATE_COLS);
+      s.fade = 0.2;
+    }
+    this.poof(x, gy - 22, '#ffd84a');
+  }
+
+  /** A building goes down: boards, dust along its base, and bits that say what it was. */
+  buildingDown(x, y, w, h, bid, color) {
+    const base = Math.max(0, y) > 0 ? y : WORLD.laneDepth * 0.5;
+    const crane = bid === 'wreckingCrane';
+    for (let i = 0; i < 8; i++) {
+      const u = (i / 7 - 0.5) * 2;
+      const side = Math.sign(u) || 1;
+      this.puff(false, x + u * w * 0.6, base - this.r(0, 10), side * this.r(30, 120), -this.r(10, 50), this.r(0.9, 1.5), this.r(7, 10), this.r(16, 26), this.pick(DUST_COLS), 0.95, 1.8);
+    }
+    const n = crane ? 6 : 8;
+    for (let i = 0; i < n; i++) {
+      const side = i % 2 ? 1 : -1;
+      this.plank(x + this.r(-w * 0.4, w * 0.4), base - this.r(10, crane ? 120 : 40), side * this.r(60, 240), -this.r(200, 420), this.r(12, 22), crane ? STEEL_COLS : PLANK_COLS);
+    }
+    for (let i = 0; i < 10; i++) {
+      const s = this.add(SPLINTER, true, x, base - 20, this.r(0.5, 0.8));
+      const a = this.r(-Math.PI, 0);
+      const sp = this.r(140, 340);
+      s.vx = Math.cos(a) * sp;
+      s.vy = Math.sin(a) * sp;
+      s.grav = G;
+      s.drag = 0.8;
+      s.ground = this.groundFor(-1);
+      s.bounces = 1;
+      s.a = this.r(4, 8);
+      s.size = 1.8;
+      s.rot = this.r(0, TAU);
+      s.spin = this.r(-20, 20);
+      s.col = crane ? this.pick(['#f2b632', '#7c8490']) : this.pick(WOOD_COLS);
+      s.fade = 0.2;
+    }
+    if (bid === 'boingBox') {
+      // Gift paper scraps and ribbon
+      for (let i = 0; i < 8; i++) this.feather(x + this.r(-15, 15), base - this.r(15, 40), this.r(-180, 180), -this.r(200, 380), i % 3 === 2 ? '#fbf8f0' : color, this.r(6, 9));
+    } else if (bid === 'beanPatch') {
+      this.dirt(x, base, 1.3, 0);
+      for (let i = 0; i < 4; i++) this.feather(x + this.r(-20, 20), base - 28, this.r(-120, 120), -this.r(160, 300), this.pick(LEAF_COLS), this.r(6, 8));
+    } else {
+      for (let i = 0; i < 6; i++) this.puff(false, x + this.r(-20, 20), base - this.r(20, 120), this.r(-30, 30), -this.r(40, 100), this.r(1.1, 1.8), 9, this.r(18, 28), this.pick(STONE_DUST), 0.85, 1.4);
+    }
+    this.groundRing(x, base, w * 0.4, w + 70, 0.6, 6, '#efe6d2', 0.85);
+    const sc = this.add(SCUFF, false, x, base + 2, 2.5);
+    sc.size = w * 0.7;
+  }
+
+  /** The Boing Box lid rattles: two little shake ticks. */
+  punchWindup(x, y) {
+    for (const s of [-1, 1]) {
+      const g = this.add(GLINT, true, x + s * 20, y - 6, 0.22);
+      g.size = 6;
+      g.rot = s * 0.3;
+      g.col = '#fff6c2';
+    }
+  }
+
+  /** BOING: the glove shoots out (speed lines off the box face, a puff at its foot). */
+  punch(x, y, dir) {
+    const ln = this.add(LINES, true, x + dir * 6, y, 0.16);
+    ln.size = 10;
+    ln.b = 6;
+    ln.rot = this.r(0, TAU);
+    const s = this.add(SLASH, true, x + dir * 40, y, 0.18);
+    s.size = 70;
+    s.a = dir > 0 ? 0 : Math.PI;
+    s.b = 6;
+    s.c = dir > 0 ? -1 : 1;
+    this.dust(x, 4, 0.35, -dir);
+  }
+
+  /** A Sprout pops out of the patch: dirt flies, a leaf or two, a little puff. */
+  sproutPop(x, y, dirX) {
+    for (let i = 0; i < 6; i++) this.clod(x + this.r(-6, 6), y, dirX * this.r(20, 120) + this.r(-60, 60), -this.r(180, 340), this.r(2, 3.6));
+    for (let i = 0; i < 2; i++) this.feather(x, y - 6, this.r(-60, 60), -this.r(120, 200), this.pick(LEAF_COLS), this.r(4.5, 6));
+    this.puff(false, x, y - 3, 0, -20, 0.4, 4, 10, this.pick(DUST_COLS));
+  }
+
+  /** The wrecking ball swings through the bottom fast: a whoosh along its arc. */
+  craneSwing(x, y, dirX, P) {
+    const s = this.add(SLASH, true, x - dirX * 30, y + 6, 0.22);
+    s.size = 80 + 30 * P;
+    s.a = dirX > 0 ? 0 : Math.PI;
+    s.b = 7 + 3 * P;
+    s.c = dirX > 0 ? 1 : -1; // bulge down: the bottom of the arc
+  }
+
+  /** A flier's lift cuts out: a sputter of grey smoke. */
+  liftOff(x, y) {
+    for (let i = 0; i < 4; i++) this.puff(true, x + this.r(-6, 6), y - 10 + this.r(-4, 4), this.r(-40, 40), -this.r(20, 60), this.r(0.35, 0.55), 3, this.r(6, 9), this.pick(SMOKE_COLS), 0.8, 3);
+  }
+
+  /** Caught in the net: a white mesh poof and a twinkle. */
+  netted(x, y) {
+    const ring = this.add(RING, true, x, y, 0.26);
+    ring.a = 8;
+    ring.b = 32;
+    ring.c = 4;
+    ring.col = '#ffffff';
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * TAU + this.r(-0.3, 0.3);
+      this.puff(true, x + Math.cos(a) * 4, y + Math.sin(a) * 4, Math.cos(a) * this.r(60, 110), Math.sin(a) * this.r(60, 110), this.r(0.25, 0.4), 4, this.r(7, 10), PUFF_COLS, 0.9, 5);
+    }
+    for (let i = 0; i < 3; i++) {
+      const g = this.add(GLINT, true, x + this.r(-18, 18), y + this.r(-18, 10), this.r(0.3, 0.45));
+      g.size = this.r(5, 8);
+      g.col = '#ffffff';
+      g.c = this.r(0, 0.1);
+    }
+  }
+
+  /** A flier hits the dirt. */
+  crash(x, y, P) {
+    const gy = Math.max(0, y);
+    this.land(x, gy, P);
+    this.dirt(x, gy, 0.8 * P, 0);
+    this.stars(x, gy - 18);
+  }
+
+  /** A Propeller Pal's cap pops off. */
+  propOff(x, y) {
+    const ring = this.add(RING, true, x, y, 0.18);
+    ring.a = 4;
+    ring.b = 18;
+    ring.c = 3;
+    ring.col = '#ffffff';
+    for (let i = 0; i < 3; i++) this.puff(true, x, y, this.r(-60, 60), -this.r(40, 90), this.r(0.25, 0.4), 3, this.r(5, 7), PUFF_COLS, 0.9, 4);
+  }
+
+  /** A dive or a swoop starts: speed lines streaming back from it. */
+  dive(x, y, p) {
+    const ln = this.add(LINES, true, x, y, 0.2);
+    ln.size = 12;
+    ln.b = 5;
+    ln.rot = Math.atan2(-num(p.dirY, 1), -num(p.dirX, 0));
+  }
+
+  /** A Pogo touchdown: a little scuff of dust either side of the stick. */
+  boing(x, y) {
+    const gy = Math.max(0, y);
+    for (const s of [-1, 1]) this.puff(false, x + s * 3, gy - 1, s * this.r(40, 80), -this.r(5, 20), this.r(0.25, 0.4), 2.5, this.r(5, 8), this.pick(DUST_COLS));
+  }
+
+  /** A Juggler throw: a few sparks off the fuse. */
+  juggleToss(x, y, dirX) {
+    for (let i = 0; i < 3; i++) {
+      const k = this.add(SPARK, true, x, y, this.r(0.15, 0.28));
+      const a = -Math.PI / 2 + dirX * 0.6 + this.r(-0.7, 0.7);
+      const sp = this.r(120, 260);
+      k.vx = Math.cos(a) * sp;
+      k.vy = Math.sin(a) * sp;
+      k.grav = G * 0.5;
+      k.drag = 2;
+      k.size = this.r(1.2, 2);
+      k.col = SPARK_COLS[i % 3];
+    }
+  }
+
+  /** Uh-oh: sweat drops flick off the Juggler. */
+  fumble(x, y) {
+    for (let i = 0; i < 4; i++) {
+      const a = -Math.PI / 2 + (i - 1.5) * 0.55;
+      this.drop(x + Math.cos(a) * 10, y + Math.sin(a) * 10, Math.cos(a) * this.r(80, 140), Math.sin(a) * this.r(80, 140), this.r(2.4, 3.2), SWEAT_COL);
+    }
+  }
+
+  /** A Juggler bomb: a compact blast (no smoke column, no scorch). */
+  miniBlast(x, y, P) {
+    const gy = Math.max(0, y + 12);
+    const flash = this.add(RING, true, x, y, 0.2);
+    flash.a = 6;
+    flash.b = 60 * P;
+    flash.c = 8;
+    flash.col = '#fffbea';
+    const b = this.add(BURST, true, x, y, 0.18);
+    b.size = 22 * P;
+    b.a = -Math.PI / 2;
+    b.b = 11;
+    b.c = 4;
+    b.rot = this.r(0, TAU);
+    for (let i = 0; i < 6; i++) {
+      const a = this.r(0, TAU);
+      const sp = this.r(70, 180) * P;
+      this.puff(true, x + Math.cos(a) * 4, y + Math.sin(a) * 4, Math.cos(a) * sp, Math.sin(a) * sp - 40, this.r(0.28, 0.45), 5, this.r(10, 15) * P, this.pick(FIRE_COLS), 1, 4.5);
+    }
+    for (let i = 0; i < 3; i++) this.puff(false, x + this.r(-15, 15), y + this.r(-10, 5), this.r(-30, 30), -this.r(40, 90), this.r(0.8, 1.2), 6, this.r(12, 18) * P, this.pick(SMOKE_COLS), 0.8, 1.6);
+    for (let i = 0; i < 5; i++) this.clod(x + this.r(-8, 8), gy, this.r(-260, 260), -this.r(200, 420) * P, this.r(2.2, 3.6));
+    for (let i = 0; i < 5; i++) {
+      const a = this.r(-Math.PI, 0);
+      const k = this.add(SPARK, true, x, y, this.r(0.25, 0.45));
+      const sp = this.r(250, 480);
+      k.vx = Math.cos(a) * sp;
+      k.vy = Math.sin(a) * sp;
+      k.grav = G * 0.6;
+      k.drag = 1.2;
+      k.size = this.r(1.6, 2.6);
+      k.col = SPARK_COLS[i % 3];
+    }
+  }
+
+  /** BOOM-BOOM: two rings pulsing out of the drum. */
+  beat(x, y, color) {
+    const col = isHex(color) ? color : '#ffffff';
+    for (let i = 0; i < 2; i++) {
+      const ring = this.add(RING, true, x, y, 0.32 + i * 0.08);
+      ring.a = 10 + i * 4;
+      ring.b = 34 + i * 16;
+      ring.c = 4 - i;
+      ring.col = i ? '#ffffff' : col;
+      ring.alpha = 0.9;
+    }
+  }
+
+  /** Big Jelly swallows a bean: a wobbly splash ring and blobs of jelly. */
+  engulf(x, y, color) {
+    const col = isHex(color) ? color : '#7fd36a';
+    const ring = this.add(RING, true, x, y, 0.3);
+    ring.a = 14;
+    ring.b = 44;
+    ring.c = 5;
+    ring.col = col;
+    for (let i = 0; i < 9; i++) {
+      const a = this.r(-Math.PI, 0);
+      const sp = this.r(90, 220);
+      this.drop(x, y, Math.cos(a) * sp, Math.sin(a) * sp, this.r(2.6, 4.2), i % 3 ? col : '#ffffff');
+    }
+    this.bubbles(x, y, 4, 10);
+  }
+
+  /** PTOO: the Jelly spits a bean out, spraying jelly. */
+  spit(x, y, dirX, color) {
+    const col = isHex(color) ? color : '#7fd36a';
+    for (let i = 0; i < 12; i++) {
+      const a = (dirX > 0 ? 0 : Math.PI) + this.r(-0.5, 0.5) - dirX * 0.3;
+      const sp = this.r(160, 380);
+      this.drop(x, y, Math.cos(a) * sp, Math.sin(a) * sp, this.r(2.2, 3.8), i % 4 ? col : '#ffffff');
+    }
+    const ln = this.add(LINES, true, x, y, 0.16);
+    ln.size = 10;
+    ln.b = 6;
+    ln.rot = this.r(0, TAU);
+  }
+
+  /** A Brolly's umbrella flips inside out: a poof and scraps of canopy. */
+  canopyFlip(x, y, color) {
+    this.poof(x, y, '#ffffff');
+    for (let i = 0; i < 4; i++) this.feather(x + this.r(-10, 10), y + this.r(-6, 6), this.r(-120, 120), -this.r(80, 180), i % 2 ? '#ffffff' : color, this.r(5, 7));
+  }
+
+  /** Bubble Wrap goes on: bubbles rising round the bean and a twinkle. */
+  wrapOn(x, y) {
+    this.bubbles(x, y, 7, 16);
+    for (let i = 0; i < 2; i++) {
+      const g = this.add(GLINT, true, x + this.r(-16, 16), y + this.r(-20, 10), this.r(0.35, 0.5));
+      g.size = this.r(6, 9);
+      g.col = '#ffffff';
+      g.c = this.r(0, 0.12);
+    }
+  }
+
+  /** Pop! A white pop star and a couple of bubble shards. */
+  wrapPop(x, y) {
+    for (let i = 0; i < 2; i++) {
+      const g = this.add(GLINT, true, x + this.r(-10, 10), y + this.r(-10, 10), 0.22);
+      g.size = this.r(6, 9);
+      g.rot = this.r(-0.4, 0.4);
+      g.col = '#ffffff';
+    }
+    for (let i = 0; i < 2; i++) this.bubble(x + this.r(-8, 8), y + this.r(-8, 8), this.r(-60, 60), -this.r(40, 100), this.r(2, 3), this.r(0.2, 0.35));
+  }
+
+  /** The wrap is gone: popped in a burst of bubbles, or drifting off. */
+  wrapEnd(x, y, popped) {
+    if (popped) {
+      const ring = this.add(RING, true, x, y, 0.22);
+      ring.a = 10;
+      ring.b = 36;
+      ring.c = 3;
+      ring.col = '#dff4ff';
+      this.bubbles(x, y, 9, 18);
+    } else this.bubbles(x, y, 4, 14);
+  }
+
+  /** Feet up on a peel: a whoosh, a scuff and a puff of dust. */
+  slip(x, y, dirX) {
+    const gy = Math.max(0, y);
+    const s = this.add(SLASH, true, x, gy - 14, 0.2);
+    s.size = 46;
+    s.a = dirX > 0 ? -0.5 : Math.PI + 0.5;
+    s.b = 5;
+    s.c = dirX > 0 ? -1 : 1;
+    this.dust(x, gy, 0.6, dirX);
+    const sc = this.add(SCUFF, false, x + dirX * 8, gy + 1, 1.2);
+    sc.size = 14;
+  }
+
+  /** A heavy skids on a peel: a dust trail behind it. */
+  skid(x, y, dirX) {
+    const gy = Math.max(0, y);
+    for (let i = 0; i < 5; i++) this.puff(false, x - dirX * i * 6, gy - 2, -dirX * this.r(20, 60), -this.r(5, 20), this.r(0.4, 0.6), 3, this.r(7, 11), this.pick(DUST_COLS));
+    const sc = this.add(SCUFF, false, x - dirX * 12, gy + 1, 1.6);
+    sc.size = 24;
+  }
+
+  /** ACHOO: a spray of droplets and a green-grey mist blown across the circle. */
+  sneeze(x, y, R, dirX) {
+    const x0 = x - dirX * R * 0.7;
+    for (let i = 0; i < 16; i++) {
+      const sp = this.r(300, 620);
+      const a = (dirX > 0 ? 0 : Math.PI) + this.r(-0.35, 0.35);
+      this.drop(x0, -80 + this.r(-10, 10), Math.cos(a) * sp, Math.sin(a) * sp - 60, this.r(1.8, 3), DROP_COL);
+    }
+    for (let i = 0; i < 6; i++) this.puff(true, x0 + dirX * this.r(10, 40), -80 + this.r(-15, 15), dirX * this.r(200, 420), this.r(-30, 30), this.r(0.45, 0.7), 8, this.r(14, 22), this.pick(MIST_COLS), 0.8, 2.4);
+  }
+
+  /** POP: foam blobs and droplets thrown up off the geyser, bubbles, a splash ring. */
+  sodaErupt(x, y, R) {
+    const gy = Math.max(0, y);
+    for (let i = 0; i < 10; i++) {
+      const d = this.puff(true, x + this.r(-8, 8), gy - this.r(40, 200), this.r(-120, 120), -this.r(100, 300), this.r(0.6, 1), 6, this.r(10, 16), this.pick(FOAM_COLS), 1, 1.2);
+      d.grav = G * 0.5;
+      d.ground = this.groundFor(-1);
+    }
+    for (let i = 0; i < 16; i++) this.drop(x + this.r(-10, 10), gy - this.r(60, 260), this.r(-200, 200), -this.r(100, 380), this.r(2.4, 4), '#f4ecd8');
+    this.bubbles(x, gy - 40, 8, 16);
+    this.groundRing(x, gy, 10, R + 20, 0.45, 5, '#f4ecd8', 0.9);
+    // The bottle cap shoots off, spins and clatters down somewhere (cosmetic)
+    const cap = this.chunk(x, gy - 50, this.r(-110, 110), -this.r(620, 760), 6, ['#c9d1d9', '#aab3bd'], true);
+    cap.life = 2.4;
+    cap.spin = this.r(14, 22) * (this.rnd() < 0.5 ? -1 : 1);
+  }
+
+  /** CLANG: a flash, dust rolling out both ways, clods, sparks off the iron, stars, a dent. */
+  anvilImpact(x, y, P) {
+    const gy = Math.max(0, y);
+    const flash = this.add(RING, true, x, gy - 14, 0.18);
+    flash.a = 10;
+    flash.b = 60 * P;
+    flash.c = 8;
+    flash.col = '#fffbea';
+    this.groundRing(x, gy, 14, 90 * P, 0.5, 8, '#f6edd4', 0.95);
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 6; i++) this.puff(false, x + side * this.r(10, 30), gy - this.r(0, 8), side * this.r(140, 360) * P, -this.r(10, 60), this.r(0.55, 0.95), 6, this.r(12, 20) * P, this.pick(DUST_COLS), 0.95, 2.4);
+    }
+    for (let i = 0; i < 12; i++) {
+      const side = i % 2 ? 1 : -1;
+      this.clod(x + side * this.r(5, 25), gy, side * this.r(60, 300) * P, -this.r(220, 520) * P, this.r(2.6, 4.8));
+    }
+    for (let i = 0; i < 8; i++) {
+      const a = this.r(-Math.PI * 0.95, -Math.PI * 0.05);
+      const k = this.add(SPARK, true, x, gy - 18, this.r(0.25, 0.45));
+      const sp = this.r(250, 520);
+      k.vx = Math.cos(a) * sp;
+      k.vy = Math.sin(a) * sp;
+      k.grav = G * 0.6;
+      k.drag = 1.2;
+      k.size = this.r(1.6, 2.4);
+      k.col = SPARK_COLS[i % 3];
+    }
+    this.stars(x, gy - 46);
+    const c = this.add(CRATER, false, x, gy + 2, 5);
+    c.size = 34 * P;
+  }
+
   /**
    * Running trails that come from sim state rather than events: crumbs and
-   * dust behind a rolling Cheese Wheel, a wisp of smoke behind cannonballs.
-   * Call once per rendered frame with the game dt.
+   * dust behind a rolling Cheese Wheel, a wisp of smoke behind cannonballs,
+   * sparks off a Juggler bomb's fuse. Call once per rendered frame with the game dt.
    */
   follow(battle, dt) {
     if (!battle || !(dt > 0)) return;
@@ -1057,9 +1748,22 @@ export class Effects {
     for (const sh of battle.shots || []) {
       if (!sh || !Number.isFinite(sh.x)) continue;
       let a = (this.acc.get(sh) || 0) + dt;
-      while (a >= 0.03) {
-        a -= 0.03;
-        this.puff(false, sh.x, sh.y, this.r(-10, 10), this.r(-15, 0), this.r(0.25, 0.4), 2.5, this.r(5, 8), this.pick(CANNON_SMOKE), 0.7, 3);
+      if (sh.kind === 'jbomb') {
+        while (a >= 0.06) {
+          a -= 0.06;
+          const k = this.add(SPARK, true, sh.x, sh.y - num(sh.r, 6) * 1.4, this.r(0.12, 0.22));
+          k.vx = this.r(-70, 70);
+          k.vy = -this.r(40, 120);
+          k.grav = G * 0.4;
+          k.drag = 2.5;
+          k.size = this.r(1, 1.6);
+          k.col = SPARK_COLS[(this.rnd() * 3) | 0];
+        }
+      } else {
+        while (a >= 0.03) {
+          a -= 0.03;
+          this.puff(false, sh.x, sh.y, this.r(-10, 10), this.r(-15, 0), this.r(0.25, 0.4), 2.5, this.r(5, 8), this.pick(CANNON_SMOKE), 0.7, 3);
+        }
       }
       this.acc.set(sh, a);
     }
@@ -1068,6 +1772,7 @@ export class Effects {
   // --- simulation -----------------------------------------------------------------------
 
   update(dt) {
+    if (dt > 0) this.clock += Math.min(dt, 0.1);
     if (!(dt > 0) || this.live === 0) return;
     dt = Math.min(dt, 0.1);
     for (const p of this.pool) {
@@ -1091,6 +1796,11 @@ export class Effects {
         // Flip and sway like paper
         p.c += p.d * dt;
         p.x += Math.sin(p.age * 3 + p.seed) * p.size * dt;
+      } else if (p.kind === FEATHER && p.grav > 0) {
+        // See-saw down: drift side to side, tipping into each swing
+        const sw = Math.sin(p.age * 4.2 + (p.seed % 7));
+        p.x += sw * p.size * 7 * dt;
+        p.rot = p.c + sw * 0.75;
       }
       if (p.y > p.ground && p.vy > 0) this.hitGround(p);
     }
@@ -1647,6 +2357,94 @@ function drawCrown(ctx, p, fx) {
   }
 }
 
+/** A bubble: a thin blue rim, a faint fill, a highlight; it pops (swells and fades) at the end. */
+function drawBubble(ctx, p, fx) {
+  const t = p.age / p.life;
+  const r = Math.max(p.size * fx.boost, 2 * fx.px) * (t > 0.85 ? 1 + (t - 0.85) * 3 : Math.min(1, t * 8));
+  if (r <= 0.3) return;
+  ctx.globalAlpha = t > 0.85 ? 1 - (t - 0.85) / 0.15 : 1;
+  ctx.fillStyle = 'rgba(223,244,255,0.35)';
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, r, 0, TAU);
+  ctx.fill();
+  ctx.lineWidth = Math.max(r * 0.18, 0.8 * fx.px);
+  ctx.strokeStyle = '#8fc8ea';
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(p.x - r * 0.35, p.y - r * 0.38, r * 0.28, 0, TAU);
+  ctx.fill();
+}
+
+/** A droplet stretched along its velocity, with a glint. */
+function drawDrop(ctx, p, fx) {
+  const s = Math.max(p.size * fx.boost, 1.6 * fx.px);
+  const sp = Math.hypot(p.vx, p.vy);
+  const L = s * (1 + Math.min(2, sp / 300));
+  const a = sp > 1 ? Math.atan2(p.vy, p.vx) : Math.PI / 2;
+  ctx.globalAlpha = tailAlpha(p, p.fade || 0.15);
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(a);
+  ctx.fillStyle = 'rgba(42,29,20,0.45)';
+  ctx.beginPath();
+  ctx.ellipse(-L * 0.25, 0, L * 0.75 + 0.8, s * 0.55 + 0.8, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = p.col;
+  ctx.beginPath();
+  ctx.ellipse(-L * 0.25, 0, L * 0.75, s * 0.55, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.beginPath();
+  ctx.arc(L * 0.1, -s * 0.18, s * 0.2, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** A feather (or leaf, or scrap): a pointed oval with a quill down the middle. */
+function drawFeather(ctx, p, fx) {
+  const s = Math.max(p.size * fx.boost, 3 * fx.px);
+  const c = Math.cos(p.rot);
+  const n = Math.sin(p.rot);
+  ctx.globalAlpha = tailAlpha(p, p.fade || 0.4);
+  ctx.beginPath();
+  ctx.moveTo(p.x - c * s, p.y - n * s);
+  ctx.quadraticCurveTo(p.x - n * s * 0.5, p.y + c * s * 0.5, p.x + c * s, p.y + n * s);
+  ctx.quadraticCurveTo(p.x + n * s * 0.5, p.y - c * s * 0.5, p.x - c * s, p.y - n * s);
+  ctx.closePath();
+  ctx.lineWidth = Math.max(s * 0.18, 0.8 * fx.px);
+  ctx.strokeStyle = 'rgba(42,29,20,0.6)';
+  ctx.stroke();
+  ctx.fillStyle = p.col;
+  ctx.fill();
+  ctx.lineWidth = Math.max(s * 0.1, 0.6 * fx.px);
+  ctx.strokeStyle = 'rgba(42,29,20,0.35)';
+  ctx.beginPath();
+  ctx.moveTo(p.x - c * s * 1.15, p.y - n * s * 1.15);
+  ctx.lineTo(p.x + c * s * 0.8, p.y + n * s * 0.8);
+  ctx.stroke();
+}
+
+/** A board: a long block with a dark rim, a lit edge and a nail at each end. */
+function drawPlank(ctx, p, fx) {
+  const L = p.a * fx.boost;
+  const W = Math.max(p.size * fx.boost, 2.2 * fx.px);
+  ctx.globalAlpha = tailAlpha(p, p.fade || 0.4);
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(p.rot);
+  ctx.fillStyle = 'rgba(42,29,20,0.85)';
+  ctx.fillRect(-L / 2 - 0.9, -W / 2 - 0.9, L + 1.8, W + 1.8);
+  ctx.fillStyle = p.col;
+  ctx.fillRect(-L / 2, -W / 2, L, W);
+  ctx.fillStyle = 'rgba(255,252,240,0.35)';
+  ctx.fillRect(-L / 2, -W / 2, L, W * 0.3);
+  ctx.fillStyle = '#3b3b3f';
+  ctx.fillRect(-L / 2 + 1.2, -0.6, 1.2, 1.2);
+  ctx.fillRect(L / 2 - 2.4, -0.6, 1.2, 1.2);
+  ctx.restore();
+}
+
 const DRAW = [];
 DRAW[BURST] = drawBurst;
 DRAW[LINES] = drawLines;
@@ -1667,6 +2465,10 @@ DRAW[STONE] = drawStone;
 DRAW[CRATER] = drawCrater;
 DRAW[GRING] = drawGroundRing;
 DRAW[CROWN] = drawCrown;
+DRAW[BUBBLE] = drawBubble;
+DRAW[DROP] = drawDrop;
+DRAW[FEATHER] = drawFeather;
+DRAW[PLANK] = drawPlank;
 
 function drawEye(ctx, p, fx) {
   const r = Math.max(p.size * fx.boost, 2.5 * fx.px);
@@ -1682,4 +2484,149 @@ function drawEye(ctx, p, fx) {
   ctx.beginPath();
   ctx.arc(p.x + Math.cos(p.rot) * r * 0.45, p.y + Math.sin(p.rot) * r * 0.45, r * 0.5, 0, TAU);
   ctx.fill();
+}
+
+// --- Sim events of the 32 cards -> effects ---------------------------------------------------
+
+const NEW_HITS = new Set(['bite', 'punch', 'crane', 'bump', 'stomp', 'dive', 'peck', 'net']);
+const ptOf = (u, part, e) => (u && u[part] && Number.isFinite(u[part].x) ? u[part] : { x: e.x, y: e.y });
+
+/**
+ * Spawn the effects for one sim event of the new cards (contract 6.4). Returns
+ * true when it handled the event; false for the existing ones (and for a
+ * towerHit on a real tower, an `explode` that isn't a small Juggler blast and
+ * a `hit` of an old kind), which the caller maps as before. Words and sounds
+ * are the caller's. pal(team) -> palette (team colours of jelly, feathers...).
+ */
+export function fxForEvent(fx, e, pal = (t) => TEAMS[t] || TEAMS.blue) {
+  if (!fx || !e || !e.type) return false;
+  const u = e.unit;
+  const tw = e.tower;
+  const col = (team) => (pal(team) || TEAMS.blue).body;
+  switch (e.type) {
+    case 'buildingPlaced':
+      return true;
+    case 'buildingLand':
+      if (tw) fx.spawn('buildingLand', { x: tw.x, y: WORLD.laneDepth * 0.5, w: tw.w, bid: tw.bid, power: e.power ?? 1 });
+      return true;
+    case 'buildingDown':
+      if (tw) fx.spawn('buildingDown', { x: tw.x, y: WORLD.laneDepth * 0.5, w: tw.w, h: tw.h, bid: e.bid || tw.bid, color: col(e.team || tw.team) });
+      return true;
+    case 'towerHit': {
+      if (!tw || tw.kind !== 'building') return false;
+      const dirX = e.from && e.from.hip ? Math.sign(tw.x - e.from.hip.x) : -(tw.f || 1);
+      fx.spawn('towerHit', { x: e.x, y: e.y, power: e.power ?? 0.5, dirX, kind: e.kind, mat: tw.bid === 'wreckingCrane' ? 'metal' : 'wood' });
+      return true;
+    }
+    case 'punchWindup':
+      if (tw) fx.spawn('punchWindup', { x: tw.x, y: -tw.h });
+      return true;
+    case 'punch':
+      if (tw) fx.spawn('punch', { x: tw.x + (e.dir || tw.f || 1) * tw.w * 0.5, y: -21, dir: e.dir || tw.f });
+      return true;
+    case 'sproutPop':
+      if (tw) fx.spawn('sproutPop', { x: tw.x + (tw.f || 1) * tw.w * 0.3, y: -28, dirX: tw.f || 1 });
+      return true;
+    case 'craneSwing': {
+      const B = tw && tw.ball;
+      if (B) fx.spawn('craneSwing', { x: B.x, y: B.y, dirX: Math.sign(B.vx) || 1, power: e.power ?? 1 });
+      return true;
+    }
+    case 'hit':
+      if (!NEW_HITS.has(e.kind)) return false;
+      fx.spawn('impact', { x: e.x, y: e.y, power: e.power, dirX: e.dirX, dirY: e.dirY, kind: e.kind });
+      if ((e.kind === 'crane' || e.kind === 'punch') && u) fx.spawn('dirt', { x: u.hip.x, y: u.ground, power: 0.8, dirX: e.dirX });
+      return true;
+    case 'explode':
+      if (!e.small) return false;
+      fx.spawn('miniBlast', { x: e.x, y: e.y, power: 0.6 });
+      return true;
+    case 'liftOff':
+    case 'netted':
+    case 'fumble': {
+      const p = ptOf(u, 'head', e);
+      fx.spawn(e.type, { x: p.x, y: p.y });
+      return true;
+    }
+    case 'crash':
+      fx.spawn('crash', { x: u && u.hip ? u.hip.x : e.x, y: u ? u.ground : e.y, power: clamp((e.power || 400) / 600, 0.3, 1.3) });
+      return true;
+    case 'propOff': {
+      const p = ptOf(u, 'head', e);
+      fx.spawn('propOff', { x: p.x, y: p.y - (u ? u.R || 10 : 10) });
+      return true;
+    }
+    case 'dive':
+    case 'swoop': {
+      const p = ptOf(u, 'head', e);
+      fx.spawn(e.type, { x: p.x, y: p.y, dirX: u ? u.f : 1, dirY: e.type === 'dive' ? 1 : 0.4 });
+      return true;
+    }
+    case 'boing':
+      fx.spawn('boing', { x: e.x, y: u ? u.ground : e.y });
+      return true;
+    case 'stomp': {
+      const p = ptOf(e.victim, 'head', e);
+      fx.spawn('stomp', { x: p.x, y: p.y });
+      return true;
+    }
+    case 'juggleToss':
+      fx.spawn('juggleToss', { x: e.x, y: e.y, dirX: u ? u.f : 1 });
+      return true;
+    case 'beat': {
+      const c = ptOf(u, 'chest', e);
+      const h = ptOf(u, 'hip', e);
+      fx.spawn('beat', { x: (c.x + h.x) / 2 + (u ? u.f * (u.R || 14) * 0.5 : 0), y: (c.y + h.y) / 2, color: u ? col(u.team) : null });
+      return true;
+    }
+    case 'scoop':
+    case 'pelicanDrop':
+    case 'letGo': {
+      const p = ptOf(e.victim, 'chest', e);
+      fx.spawn(e.type, { x: p.x, y: p.y, dirX: u ? u.f : 0, color: u ? col(u.team) : null });
+      return true;
+    }
+    case 'engulf': {
+      const p = ptOf(u, 'chest', e);
+      fx.spawn('engulf', { x: p.x, y: p.y, color: u ? col(u.team) : null });
+      return true;
+    }
+    case 'spit': {
+      const p = ptOf(u, 'head', e);
+      fx.spawn('spit', { x: p.x, y: p.y, dirX: u ? u.f : 1, color: u ? col(u.team) : null });
+      return true;
+    }
+    case 'canopyFlip': {
+      const p = ptOf(u, 'head', e);
+      fx.spawn('canopyFlip', { x: p.x, y: p.y - 30, color: u ? col(u.team) : null });
+      return true;
+    }
+    case 'brollyLand':
+      fx.spawn('brollyLand', { x: u && u.hip ? u.hip.x : e.x, y: u ? u.ground : e.y, color: u ? col(u.team) : null });
+      return true;
+    case 'wrap':
+    case 'wrapPop':
+    case 'wrapEnd': {
+      const p = ptOf(u, 'chest', e);
+      fx.spawn(e.type, { x: p.x, y: p.y, key: u ? u.id : null, popped: e.popped });
+      return true;
+    }
+    case 'slip':
+    case 'skid':
+      fx.spawn(e.type, { x: u && u.hip ? u.hip.x : e.x, y: u ? u.ground : e.y, dirX: u ? u.f : 1 });
+      return true;
+    case 'peelKick':
+      fx.spawn('peelKick', { x: e.x, y: e.y });
+      return true;
+    case 'sneeze':
+      fx.spawn('sneeze', { x: e.spell ? e.spell.x : e.x, y: e.y, radius: e.radius, dirX: e.spell ? e.spell.f : 1 });
+      return true;
+    case 'sodaErupt':
+      fx.spawn('sodaErupt', { x: e.spell ? e.spell.x : e.x, y: WORLD.laneDepth * 0.5, radius: e.radius });
+      return true;
+    case 'anvilImpact':
+      fx.spawn('anvilImpact', { x: e.spell ? e.spell.x : e.x, y: WORLD.laneDepth * 0.5, power: e.power ?? 1.4 });
+      return true;
+  }
+  return false;
 }

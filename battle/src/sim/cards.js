@@ -10,12 +10,17 @@ export const RARITIES = {
   common: { id: 'common', name: 'Common', color: '#9fb4c8', dark: '#5d7186', glow: '#e8f1fa' },
   rare: { id: 'rare', name: 'Rare', color: '#f0a43a', dark: '#a8641a', glow: '#ffe2b0' },
   epic: { id: 'epic', name: 'Epic', color: '#b05ce0', dark: '#6a2c94', glow: '#ecc9ff' },
+  legendary: { id: 'legendary', name: 'Legendary', color: '#2fd3c4', dark: '#147a72', glow: '#c8fff8' },
 };
 
 // kind 'unit': `unit` is a UNIT_TYPES id, `count` beans drop in a little
 //   formation around the spot you picked (offsets in world px along x).
+//   `flying`: the beans fly (the air layer); `anywhere`: they can be played
+//   anywhere on the field and float down (Brolly Brigade).
 // kind 'spell': `spell` names an effect in sim/spells.js, `radius` is its reach
 //   (also drawn as the aiming circle).
+// kind 'building': `building` is a BUILDINGS id (sim/buildings.js), placed in
+//   your own deploy zone.
 // arena: index of the arena that unlocks the card (0 = you start with it).
 export const CARDS = {
   clubbers: {
@@ -111,7 +116,7 @@ export const CARDS = {
     desc: 'Four Clubbers at once. A wall of bonks.',
   },
 
-  // --- Arena 2: Pointy Pass -----------------------------------------------------
+  // --- Pointy Pass (arena 1) -----------------------------------------------------
   brick: {
     id: 'brick',
     name: 'Brick',
@@ -121,7 +126,7 @@ export const CARDS = {
     mana: 5,
     rarity: 'epic',
     arena: 1,
-    desc: 'A giant block with a hammer. Ignores beans and marches on towers.',
+    desc: 'A giant block with a hammer. Ignores beans, marches on towers and buildings.',
   },
   cheeseWheel: {
     id: 'cheeseWheel',
@@ -146,7 +151,7 @@ export const CARDS = {
     desc: 'An extra-large bean with an extra-large club. Slow, but it hurts.',
   },
 
-  // --- Arena 3: Boom Ridge ------------------------------------------------------
+  // --- Boom Ridge (arena 2) ------------------------------------------------------
   bombSquad: {
     id: 'bombSquad',
     name: 'Bomb Squad',
@@ -182,6 +187,219 @@ export const CARDS = {
     arena: 2,
     desc: 'Three Squires, shields up. Arrows bounce, clubs come down on top.',
   },
+
+  // --- The 18 newer cards (docs/WOBBLE-WAR-CARDS.md), by arena -------------------
+
+  // Green Hills (arena 0)
+  sprouts: {
+    id: 'sprouts',
+    name: 'Sprouts',
+    kind: 'unit',
+    unit: 'sprout',
+    count: 2,
+    spread: [-10, 10],
+    mana: 1,
+    rarity: 'common',
+    arena: 0,
+    desc: 'Two tiny sprouts with toothpicks. One bonk sends them to the moon.',
+  },
+  bananaPeels: {
+    id: 'bananaPeels',
+    name: 'Banana Peels',
+    kind: 'spell',
+    spell: 'bananaPeels',
+    radius: 90,
+    mana: 2,
+    rarity: 'common',
+    arena: 0,
+    desc: 'Five banana peels. Whoever steps on one goes feet-up. A classic.',
+  },
+
+  // Pointy Pass (arena 1)
+  propellerPals: {
+    id: 'propellerPals',
+    name: 'Propeller Pals',
+    kind: 'unit',
+    unit: 'copter',
+    count: 3,
+    spread: [-24, 0, 24],
+    flying: true,
+    mana: 3,
+    rarity: 'common',
+    arena: 1,
+    desc: 'Three beans in propeller caps. Turns out they DO fly. Heads first!',
+  },
+  pogoBean: {
+    id: 'pogoBean',
+    name: 'Pogo Bean',
+    kind: 'unit',
+    unit: 'pogo',
+    count: 1,
+    mana: 4,
+    rarity: 'rare',
+    arena: 1,
+    desc: "Boings over beans, bonks towers and buildings. Can't stop, won't stop.",
+  },
+  netter: {
+    id: 'netter',
+    name: 'Butterfly Netter',
+    kind: 'unit',
+    unit: 'netter',
+    count: 1,
+    mana: 3,
+    rarity: 'rare',
+    arena: 1,
+    desc: 'Catches flying beans like butterflies, then plants them in the dirt.',
+  },
+
+  // Boom Ridge (arena 2)
+  bigSneeze: {
+    id: 'bigSneeze',
+    name: 'Big Sneeze',
+    kind: 'spell',
+    spell: 'bigSneeze',
+    radius: 140,
+    mana: 2,
+    rarity: 'common',
+    arena: 2,
+    desc: 'Ah... ah... ACHOO! Blows enemies back, fliers too, and pops their hats.',
+  },
+  shakenSoda: {
+    id: 'shakenSoda',
+    name: 'Shaken Soda',
+    kind: 'spell',
+    spell: 'shakenSoda',
+    radius: 75,
+    mana: 3,
+    rarity: 'epic',
+    arena: 2,
+    desc: 'Shake, shake, shake... POP! Everything on top goes straight up.',
+  },
+  bombJuggler: {
+    id: 'bombJuggler',
+    name: 'Bomb Juggler',
+    kind: 'unit',
+    unit: 'juggler',
+    count: 1,
+    mana: 5,
+    rarity: 'legendary',
+    arena: 2,
+    desc: 'Juggles three lit bombs and lobs them at crowds. Do NOT knock it over.',
+  },
+
+  // Brick Fortress (arena 3)
+  boingBox: {
+    id: 'boingBox',
+    name: 'Boing Box',
+    kind: 'building',
+    building: 'boingBox',
+    mana: 3,
+    rarity: 'common',
+    arena: 3,
+    desc: "A lovely present! Walk up and open it. (It's a boxing glove. On a spring.)",
+  },
+  beanPatch: {
+    id: 'beanPatch',
+    name: 'Bean Patch',
+    kind: 'building',
+    building: 'beanPatch',
+    mana: 4,
+    rarity: 'rare',
+    arena: 3,
+    desc: 'Plant it and Sprouts pop out of the dirt, shake it off and charge.',
+  },
+  anvil: {
+    id: 'anvil',
+    name: 'Anvil',
+    kind: 'spell',
+    spell: 'anvil',
+    radius: 34,
+    mana: 4,
+    rarity: 'rare',
+    arena: 3,
+    desc: 'Look up. No, further up. CLANG! Squashes one big bean flat.',
+  },
+  nutcracker: {
+    id: 'nutcracker',
+    name: 'Nutcracker',
+    kind: 'unit',
+    unit: 'nutcracker',
+    count: 1,
+    mana: 4,
+    rarity: 'epic',
+    arena: 3,
+    desc: 'One big CRUNCH at a time. Cracks shields, bricks and big beans.',
+  },
+  wreckingCrane: {
+    id: 'wreckingCrane',
+    name: 'Wrecking Crane',
+    kind: 'building',
+    building: 'wreckingCrane',
+    mana: 6,
+    rarity: 'legendary',
+    arena: 3,
+    desc: 'A crane with a swinging wrecking ball. Beans that wander close go FAR.',
+  },
+
+  // Wobble Summit (arena 4)
+  brollyBrigade: {
+    id: 'brollyBrigade',
+    name: 'Brolly Brigade',
+    kind: 'unit',
+    unit: 'brolly',
+    count: 3,
+    spread: [-30, 0, 30],
+    anywhere: true,
+    mana: 4,
+    rarity: 'rare',
+    arena: 4,
+    desc: 'Three beans, three umbrellas. They drop in anywhere... eventually.',
+  },
+  bubbleWrap: {
+    id: 'bubbleWrap',
+    name: 'Bubble Wrap',
+    kind: 'spell',
+    spell: 'bubbleWrap',
+    radius: 120,
+    mana: 3,
+    rarity: 'epic',
+    arena: 4,
+    desc: 'Wraps your beans in bubble wrap. Every hit just goes pop-pop-pop.',
+  },
+  tummyDrummer: {
+    id: 'tummyDrummer',
+    name: 'Tummy Drummer',
+    kind: 'unit',
+    unit: 'drummer',
+    count: 1,
+    mana: 4,
+    rarity: 'epic',
+    arena: 4,
+    desc: 'BOOM-BOOM! Friends nearby march and swing faster to the beat.',
+  },
+  pelican: {
+    id: 'pelican',
+    name: 'Pelican',
+    kind: 'unit',
+    unit: 'pelican',
+    count: 1,
+    flying: true,
+    mana: 5,
+    rarity: 'legendary',
+    arena: 4,
+    desc: 'Scoops up a bean, flies it home and drops it from way up high.',
+  },
+  bigJelly: {
+    id: 'bigJelly',
+    name: 'Big Jelly',
+    kind: 'unit',
+    unit: 'jelly',
+    count: 1,
+    mana: 6,
+    rarity: 'legendary',
+    arena: 4,
+    desc: 'A huge wobbly jelly that swallows small beans whole, then spits them out.',
+  },
 };
 
 export const CARD_ORDER = [
@@ -199,6 +417,25 @@ export const CARD_ORDER = [
   'bombSquad',
   'megaBomb',
   'shieldWall',
+  // The newer 18: by arena, then by rarity
+  'sprouts',
+  'bananaPeels',
+  'propellerPals',
+  'pogoBean',
+  'netter',
+  'bigSneeze',
+  'shakenSoda',
+  'bombJuggler',
+  'boingBox',
+  'beanPatch',
+  'anvil',
+  'nutcracker',
+  'wreckingCrane',
+  'brollyBrigade',
+  'bubbleWrap',
+  'tummyDrummer',
+  'pelican',
+  'bigJelly',
 ];
 
 /** The 8 cards everyone starts with (all Arena 1 cards). */

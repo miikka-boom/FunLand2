@@ -9,8 +9,9 @@
 
 import { WORLD } from '../config.js';
 import { Particle, Dist, springTo } from './physics.js';
-import { BODY, WEAPONS } from './unit-types.js';
+import { BODY, WEAPONS, AIR_MIN, BEAT, SHOVE, MAX_JBOMBS } from './unit-types.js';
 import { levelMul } from './cards.js';
+import { SPELLS } from './spells.js';
 import { Rng } from './rng.js';
 
 const G = WORLD.gravity;
@@ -38,6 +39,10 @@ const BALANCE_K = 55; // hips drift back over the planted feet when standing sti
 const YELL_T = 0.55; // a dropped unit's battle cry, at the end of its deploy time
 const BRACE_T = 0.4; // after a drop landing, for this long...
 const BRACE_C = 2.4; // ...the hips are this much more damped
+const LIFT_K = 260; // fliers: the propeller (or wings) hold the hips at their altitude, pushing and pulling
+const LIFT_C = 14;
+const HARD_LANDING = 320; // ground impact (px/s) that thuds, crashes a flier, or slams a dropped bean
+const WRAP = SPELLS.bubbleWrap; // stunMul and bounce while wrapped
 
 /** Two-bone IK: joint position for a limb from a to b, bending to `side`. */
 function ik(ax, ay, bx, by, l1, l2, side) {
@@ -70,6 +75,12 @@ function blendPose(a, b, k) {
     shieldTilt: lerp(a.shieldTilt || 0, b.shieldTilt || 0, k),
   };
 }
+
+/** Can this kind of unit attack at all? (A Drummer never does; some new kinds attack only through their own mechanics.) */
+const attacks = (type) => !!(type.attack || type.dash || type.blast);
+
+/** A bean that flies, or floats down under an umbrella (low or high: a netter goes for it either way). */
+export const isFlier = (u) => !!u && !u.isTower && (!!u.type.flying || u.floatT > 0);
 
 /** A unit's weapon, scaled to its size (type.weaponScale: longer, heavier, bigger head). */
 function weaponOf(type) {
@@ -169,6 +180,47 @@ export class Unit {
     this.yellT = 0; // own battle-cry pose (dropped units yell after landing)
     this.braceT = 0;
 
+    // Statuses from the newer cards (all off by default; the timers count down in post())
+    this.shoveT = 0; // shoved recently: another shove now is much weaker (anti-lock)
+    this.slipImmuneT = 0; // just got up from a banana peel: can't slip again yet
+    this.liftOffT = 0; // a flier's lift is switched off (netted, anviled, soda'd)
+    this.netImmuneT = 0; // just netted: a new net hit doesn't switch the lift off again
+    this.beatT = 0; // on the Tummy Drummer's beat: tempo() and moveMul() speed up
+    this.wrapHp = 0; // Bubble Wrap: damage it still absorbs...
+    this.wrapMax = 0; // ...out of this much...
+    this.wrapT = 0; // ...for this many more seconds
+    this.squashT = 0; // anvil: drawn as a pancake
+    this.floatT = 0; // > 0 while floating down under an umbrella (Brolly)
+    this.flipped = false; // ...and its umbrella has gone inside out
+    this.heldBy = null; // the unit holding this one (Pelican beak, inside a Big Jelly); `held` is set too
+    this.holding = null; // the unit this one holds
+    this.spawnOf = null; // id of the building that spawned it
+    this.dropSlam = null; // { damage, stun } taken on the first hard landing after a Pelican drop
+    this.altWant = null; // flier: altitude wanted right now (null = its cruise altitude)
+    this.crashed = false; // flier: already crashed into the dirt since its lift was last on
+    this.fumbleT = 0; // Bomb Juggler: no new knockdown fumble until this runs out
+    this.flipFall = false; // Brolly: falling since its umbrella flipped, until it hits the ground
+    // Pogo Bean: the hop think() wants (hopOn, hopVx, hopVy); hopCool runs down while the
+    // stick is on the ground; hopping = from a boing to the next touchdown (enemies don't
+    // push it), hopAir = its stick has left the ground since; hopLanded = the stick touched
+    // down this step (peels read it); stomped = already stomped a head this hop
+    this.hopping = false;
+    this.hopOn = false;
+    this.hopVx = 0;
+    this.hopVy = 0;
+    this.hopCool = 0;
+    this.hopAir = false;
+    this.hopLanded = false;
+    this.stomped = false;
+    this.beatClock = 0; // Tummy Drummer: seconds since its last beat...
+    this.beats = 0; // ...and how many (the mallets alternate)
+    this.scoopT = 0; // Pelican: the scoop cools down (s)
+    this.engulfT = 0; // Big Jelly: seconds its catch has been inside...
+    this.engulfTick = 0; // ...the next digestion tick...
+    this.engulfCool = 0; // ...and the cooldown after a spit
+    this.bumpT = 0; // Big Jelly: the next belly bump...
+    this.bumpPoseT = 0; // ...and the bump pose still showing
+
     this.build(x);
   }
 
@@ -179,7 +231,9 @@ export class Unit {
     const gY = this.ground;
     const B = this.B;
     this.legLen = B.thigh + B.shin;
-    this.standH = this.legLen * B.standFrac;
+    // A Pogo Bean stands on its stick: feet on the pegs, the stick's tip hop.stickBelow under them
+    const hop = this.type.hop;
+    this.standH = hop ? this.legLen * 0.7 + hop.stickBelow : this.legLen * B.standFrac;
     this.armLen = B.upperArm + B.foreArm;
     const cf = B.chestFrac;
     const hipY = gY - this.standH;
@@ -205,7 +259,7 @@ export class Unit {
     this.feet = [];
     for (let i = 0; i < 2; i++) {
       const fx = x + this.footOff[i] * f;
-      const fy = gY - 2;
+      const fy = hop ? hipY + this.legLen * 0.7 : gY - 2;
       const [kx, ky] = ik(x, hipY, fx, fy, B.thigh, B.shin, -f);
       const knee = P(kx, ky, 0.5, 2, 0.3);
       const foot = P(fx, fy, 0.6, 2, 0.5);
@@ -249,7 +303,7 @@ export class Unit {
     this.cons.push(
       new Dist(this.hip, this.chest, L * cf),
       new Dist(this.chest, this.head, L * (1 - cf)),
-      new Dist(this.hip, this.head, L, 0.22),
+      new Dist(this.hip, this.head, L, this.type.spine ?? 0.22),
     );
     this.supportMass = this.parts.reduce((s, p) => s + p.mass, 0) - this.foot[0].mass - this.foot[1].mass;
     this.ux = 0;
@@ -266,12 +320,51 @@ export class Unit {
     return !!this.act;
   }
 
+  /** Height of the hips above where they stand (px; about 0 standing, > 0 in the air). */
+  get alt() {
+    return this.ground - this.standH - this.hip.y;
+  }
+
+  /** High in the air: only sources that hit air can target or hit it. */
+  get air() {
+    return this.alive && !this.held && (!!this.type.flying || this.floatT > 0) && this.alt > AIR_MIN;
+  }
+
+  /** Attack tempo (x1, or faster on the Drummer's beat): multiplies animation and cooldown time. */
+  tempo() {
+    return this.beatT > 0 ? BEAT.tempo : 1;
+  }
+
+  /** Walking speed multiplier (x1, or faster on the Drummer's beat). */
+  moveMul() {
+    return this.beatT > 0 ? BEAT.move : 1;
+  }
+
+  /** Where a unit this one holds hangs: the tip of a Pelican's beak, else the chest (a Big Jelly's middle). */
+  holdPoint() {
+    if (this.type.scoop) return [this.head.x + this.fwx * this.R, this.head.y + this.fwy * this.R];
+    return [this.chest.x, this.chest.y];
+  }
+
+  /** A flier with its lift on: alive, awake and not switched off (netted, anviled, diving). */
+  lifting() {
+    return !!this.type.flying && this.alive && this.liftOffT <= 0 && this.downT <= 0;
+  }
+
+  /** Switch a flier's lift off for t seconds (net, anvil, soda). It never stacks beyond the largest. */
+  liftOff(b, t, from = null) {
+    if (!this.type.flying) return;
+    this.liftOffT = Math.max(this.liftOffT, t);
+    b.emit('liftOff', this.hip.x, this.hip.y, { unit: this, from });
+  }
+
   // ---------------------------------------------------------------------------
   // AI: pick a target, walk to it, attack. Runs ~7 times a second.
 
   think(b) {
     this.charging = false;
     if (!this.alive) return;
+    const speed = this.speed * this.moveMul(); // (faster on a Drummer's beat)
     if (b.phase !== 'battle' || this.held) {
       this.wantVx = 0;
       // Placement: dropped outside our zone? Waddle back in.
@@ -282,7 +375,7 @@ export class Unit {
       if (b.phase === 'place' && !this.held && this.walkTo != null && this.downT <= 0) {
         const dx = this.walkTo - this.hip.x;
         if (Math.abs(dx) > 5) {
-          this.wantVx = Math.sign(dx) * this.speed * 1.25;
+          this.wantVx = Math.sign(dx) * speed * 1.25;
           this.f = Math.sign(dx);
         } else {
           this.walkTo = null;
@@ -292,24 +385,35 @@ export class Unit {
       if (b.phase === 'over' && b.winner === this.team) this.state = 'cheer';
       return;
     }
-    if (this.deployT > 0) {
-      this.wantVx = 0; // just dropped in: land, look around, battle cry
+    if (this.deployT > 0 || this.flipFall) {
+      this.wantVx = 0; // just dropped in (or still falling out of the sky): land, look around, battle cry
       this.state = 'idle';
       return;
     }
     if (this.downT > 0 || this.conscious < 0.3) {
       this.wantVx = 0;
+      this.hopOn = false;
       return;
     }
     if (b.battleTime < this.hopAt + 0.12) {
       this.wantVx = 0; // battle cry first
       return;
     }
+    if (this.type.flying && !this.lifting()) {
+      this.wantVx = 0; // in its own dive, or netted into the dirt: nothing to do until the lift is back
+      return;
+    }
+    if (this.type.follow) {
+      this.follow(b, speed);
+      return;
+    }
+    if (this.type.scoop && (this.act ? this.act.scoop : this.scoopT <= 0 && this.thinkScoop(b, speed))) return;
     const t = b.findTarget(this);
     this.target = t;
     this.charging = false;
     if (!t) {
       this.wantVx = 0;
+      this.hopOn = false;
       return;
     }
     // A tower is a wall: distances are to its near face (engage/reach were tuned
@@ -330,17 +434,21 @@ export class Unit {
     const dist = Math.abs(dx);
     if (!this.act && dx !== 0) this.f = dx > 0 ? 1 : -1;
     const toward = dx > 0 ? 1 : -1;
-    if (this.type.ranged) {
+    if (this.type.hop) this.thinkHop(dist, toward, t.isTower ? 0 : t.R);
+    else if (this.type.ranged) {
       // Shooting a tower: come within its reach (a tower that can't shoot back would fall to one unanswered card)
-      const range = t.isTower ? Math.min(this.preferRange, t.range - t.w / 2 - 25) : this.preferRange;
-      this.wantVx = dist > range ? toward * this.speed : 0;
-      if (dist <= range + 40 && !this.act && this.cooldown <= 0) this.startAttack(b);
+      const range = t.isTower && t.kind !== 'building' ? Math.min(this.preferRange, t.range - t.w / 2 - 25) : this.preferRange;
+      this.wantVx = dist > range ? toward * speed : 0;
+      // (a Bomb Juggler waits while enough of its bombs are still in the air)
+      if (dist <= range + 40 && !this.act && this.cooldown <= 0 && (!this.type.attack.toss || b.bombsInFlight(this) < MAX_JBOMBS)) this.startAttack(b);
     } else {
-      const engage = this.type.engage + grow;
-      const reach = this.type.reach + grow;
+      // Against a flier a netter walks right in under it
+      const air = this.type.engageAir && isFlier(t);
+      const engage = ((air ? this.type.engageAir : this.type.engage) ?? 40) + grow;
+      const reach = ((air ? this.type.reachAir : this.type.reach) ?? 50) + grow;
       // Walk in to duel distance, plant the feet while swinging, step back if crowded.
       // Squires turtle under a raised shield; clubbers break into a yelling charge.
-      let spd = this.guardT > 0 ? this.speed * 0.65 : this.speed;
+      let spd = this.guardT > 0 ? speed * 0.65 : speed;
       if (this.type.charge && dist < 240 && dist > engage + 10) {
         spd *= 1.45;
         this.charging = true;
@@ -348,25 +456,108 @@ export class Unit {
         this.mouthKind = 'o';
       }
       if (this.type.spread && !this.act && b.bombAhead(this, toward)) spd = 0; // let the one in front go first
-      if (this.act && this.act.phase === 'fuse') this.wantVx = toward * this.speed * 1.35; // lit: charge in screaming
+      if (this.act && this.act.phase === 'fuse') this.wantVx = toward * speed * 1.35; // lit: charge in screaming
       else if (this.act) this.wantVx = 0;
       else if (dist > engage) this.wantVx = toward * spd;
-      else if (dist < engage - 14) this.wantVx = -toward * this.speed * 0.45;
+      else if (dist < engage - 14) this.wantVx = -toward * speed * 0.45;
       else this.wantVx = 0;
-      if (dist <= reach && !this.act && (this.cooldown <= 0 || this.type.blast) && this.groundF > 0.6) this.startAttack(b);
+      if (dist <= reach && !this.act && attacks(this.type) && (this.cooldown <= 0 || this.type.blast) && this.groundF > 0.6) this.startAttack(b);
     }
     if (this.dizzy > 0) this.wantVx += Math.sin(this.time * 6) * 35; // staggering about
+    this.state = this.wantVx || this.hopOn ? 'move' : 'idle';
+  }
+
+  /**
+   * Tummy Drummer: it never attacks. It walks follow.behind px behind the own
+   * unit furthest forward (not another follower, not held), or, alone,
+   * follow.home px behind its own Guard Tower (its Castle once that falls).
+   */
+  follow(b, speed) {
+    const F = this.type.follow;
+    const dir = this.team === 'blue' ? 1 : -1;
+    let lead = null;
+    for (const o of b.units) {
+      if (o === this || o.team !== this.team || !o.alive || o.held || o.type.follow) continue;
+      if (!lead || o.hip.x * dir > lead.hip.x * dir) lead = o;
+    }
+    let goal;
+    if (lead) goal = lead.hip.x - dir * F.behind;
+    else {
+      let home = null;
+      for (const t of b.towers) {
+        if (t.team !== this.team || !t.alive || t.kind === 'building') continue;
+        if (!home || t.kind === 'guard') home = t;
+      }
+      goal = home ? home.x - dir * F.home : this.hip.x;
+    }
+    this.target = null;
+    const dx = goal - this.hip.x;
+    if (Math.abs(dx) > 12) {
+      this.wantVx = Math.sign(dx) * speed;
+      this.f = Math.sign(dx);
+    } else {
+      this.wantVx = 0;
+      this.f = dir;
+    }
+    this.lookX = this.hip.x + this.f * 200;
+    this.lookY = -40;
+    if (this.dizzy > 0) this.wantVx += Math.sin(this.time * 6) * 35;
     this.state = this.wantVx ? 'move' : 'idle';
   }
 
+  /**
+   * Pelican, scoop ready: fly at the best liftable enemy (Battle.scoopTarget)
+   * and swoop on it from within `reach` along x. Returns false when there is
+   * nothing to scoop (then it pecks like any diver).
+   */
+  thinkScoop(b, speed) {
+    const v = b.scoopTarget(this);
+    if (!v) return false;
+    this.target = v;
+    const dx = v.hip.x - this.hip.x;
+    this.f = dx >= 0 ? 1 : -1;
+    this.lookX = v.head.x;
+    this.lookY = v.head.y;
+    if (Math.abs(dx) > this.type.reach) {
+      this.wantVx = this.f * speed;
+      this.state = 'move';
+      return true;
+    }
+    this.act = { phase: 'swoop', t: 0, scoop: true, victim: v, hits: new Set(), done: false, alt0: this.alt, x0: 0, goal: 0, dmg: 0 };
+    this.brow = 1;
+    this.mouth = Math.max(this.mouth, 0.3);
+    this.mouthKind = 'o';
+    b.emit('swoop', this.hip.x, this.hip.y, { unit: this, victim: v });
+    return true;
+  }
+
+  /**
+   * Pogo Bean: it never walks, it hops (Unit.hop, at each touchdown). Far off
+   * it hops at its target at full speed; close to it (a structure's face, a
+   * bean's surface) it hops in place, edging in to bonking reach.
+   */
+  thinkHop(dist, toward, tR) {
+    const H = this.type.hop;
+    const gap = dist - tR;
+    const near = gap < H.bonk.reach + 20;
+    this.wantVx = 0;
+    this.hopOn = true;
+    this.hopVy = near ? H.wallVy : H.vy;
+    this.hopVx = near ? toward * clamp((gap - this.R - 2) * 4, 0, H.vx) : toward * H.vx;
+  }
+
   startAttack(b) {
-    if (this.type.ranged) this.nocked = true; // a new draw always has an arrow on the string
-    const variant = this.type.poses.windup2 ? (this.rng.chance(0.45) ? 1 : 0) : 0;
-    const phase = this.type.ranged ? 'draw' : this.type.blast ? 'fuse' : 'windup';
+    const T = this.type;
+    const toss = T.ranged && T.attack.toss;
+    if (T.ranged && !toss) this.nocked = true; // a new draw always has an arrow on the string
+    // The netter scoops fliers (variant 1) and swats beans (variant 0); the squire mixes stab and slash
+    const variant = T.attack && T.attack.air ? (isFlier(this.target) ? 1 : 0) : T.poses.windup2 ? (this.rng.chance(0.45) ? 1 : 0) : 0;
+    const phase = T.ranged ? 'draw' : T.blast ? 'fuse' : 'windup';
     this.act = { phase, t: 0, variant, hits: new Set(), done: false, aim: null, quaked: false };
     this.brow = 1;
-    if (this.type.ranged) b.emit('bowDraw', this.hip.x, this.hip.y, { unit: this });
-    else if (this.type.blast) {
+    if (toss) this.mouth = Math.max(this.mouth, 0.2);
+    else if (T.ranged) b.emit('bowDraw', this.hip.x, this.hip.y, { unit: this });
+    else if (T.blast) {
       b.emit('fuse', this.head.x, this.head.y, { unit: this });
       this.mouth = 1;
       this.mouthKind = 'o';
@@ -384,7 +575,8 @@ export class Unit {
     const hip = this.hip;
     const head = this.head;
     this.time += dt;
-    if (this.cooldown > 0) this.cooldown -= dt;
+    if (this.cooldown > 0) this.cooldown -= dt * this.tempo();
+    if (this.scoopT > 0) this.scoopT -= dt * this.tempo();
 
     if (this.alive) {
       if (this.downT > 0) {
@@ -393,6 +585,7 @@ export class Unit {
         if (this.downT <= 0) {
           this.dizzy = 1.8;
           b.emit('dizzy', this.head.x, this.head.y - this.R, { unit: this });
+          if (this.type.hop) this.hopCool = Math.max(this.hopCool, this.type.hop.remount); // climbing back on the stick
         }
       } else {
         this.wake = this.held ? 0.3 : 1;
@@ -427,26 +620,34 @@ export class Unit {
     const hipVx = hip.vx(dt);
     const hipVy = hip.vy(dt);
     const height = this.ground - hip.y;
-    const gF = clamp((this.legLen + 6 - height) / 12, 0, 1);
+    // A flier with its lift on stands on the air (it walks, turns and attacks up there);
+    // a Pogo stands on its stick's tip
+    const gF = this.lifting() ? 1 : this.type.hop ? clamp((5 - (height - this.standH)) / 5, 0, 1) : clamp((this.legLen + 6 - height) / 12, 0, 1);
     this.groundF = gF;
 
     let pose = this.animate(dt, b);
     if (this.guardT > 0 && this.type.shield && (!this.act || this.act.phase === 'windup')) {
       pose = { ...pose, off: [9, 15], crouch: pose.crouch + 2, lean: pose.lean + 0.06 };
     }
+    if (this.floatT > 0) this.floatDrag(dt, hipVx, hipVy);
+    if (this.type.hop) this.hop(dt, b, gF, hipVx, hipVy);
+    if (this.type.engulf && this.alive) this.jelly(dt, b);
     if (m < 0.01) return;
 
-    // Hold the hips up (legs can only push, never pull: launches stay launches)
-    // Breathing while standing around
-    const breath = !this.wantVx && !this.act ? Math.sin(this.time * 2.3) * 0.9 : 0;
-    const targetH = this.standH - pose.crouch + this.bob + breath;
-    // Just landed from a drop: the knees soak it up (more damping), one soft wobble instead of a trampoline
-    const supC = this.braceT > 0 ? SUP_C * BRACE_C : SUP_C;
-    let fy = this.supportMass * (SUP_K * (this.ground - targetH - hip.y) - supC * hipVy - G);
-    if (fy > 0) fy = 0;
-    const cap = this.supportMass * G * 5;
-    if (fy < -cap) fy = -cap;
-    hip.fy += fy * m * gF;
+    if (this.type.flying) this.lift(hipVy, m);
+    else if (!this.flipFall) {
+      // Hold the hips up (legs can only push, never pull: launches stay launches)
+      // Breathing while standing around
+      const breath = !this.wantVx && !this.act ? Math.sin(this.time * 2.3) * 0.9 : 0;
+      const targetH = this.standH - pose.crouch + this.bob + breath;
+      // Just landed from a drop: the knees soak it up (more damping), one soft wobble instead of a trampoline
+      const supC = this.braceT > 0 ? SUP_C * BRACE_C : SUP_C;
+      let fy = this.supportMass * (SUP_K * (this.ground - targetH - hip.y) - supC * hipVy - G);
+      if (fy > 0) fy = 0;
+      const cap = this.supportMass * G * 5;
+      if (fy < -cap) fy = -cap;
+      hip.fy += fy * m * gF;
+    }
 
     // Keep the head over the hips at the pose's lean (an internal torque pair)
     const lean = pose.lean + this.waddle + clamp((hipVx * f) / 90, -1, 1) * 0.1 + (this.charging ? 0.22 : 0) + (this.dizzy > 0 ? Math.sin(this.time * 7) * 0.12 * Math.min(1, this.dizzy) : 0);
@@ -496,6 +697,112 @@ export class Unit {
     }
   }
 
+  /**
+   * A flier's lift instead of legs: a spring that pushes and pulls the hips
+   * toward the wanted altitude, with a lazy bob. It sags with consciousness (a
+   * stunned flier drops), and is off while liftOffT runs and once it's dead.
+   */
+  lift(hipVy, m) {
+    if (this.liftOffT > 0 || !this.alive) return;
+    const F = this.type.flying;
+    const want = this.altWant ?? F.alt;
+    const ty = this.ground - this.standH - want + Math.sin(this.time * 2.2) * F.bob;
+    const c = this.act && this.act.scoop ? LIFT_C * 2 : LIFT_C; // (a Pelican holds steady in a swoop and a carry: no bouncing into the dirt)
+    let fy = this.supportMass * (LIFT_K * (ty - this.hip.y) - c * hipVy - G);
+    fy = clamp(fy, -4 * G * this.supportMass, 1.5 * G * this.supportMass);
+    this.hip.fy += fy * m;
+  }
+
+  /** Floating down under an umbrella (Brolly): the canopy caps the fall at float.vMax and sways it side to side. */
+  floatDrag(dt, hipVx, hipVy) {
+    const F = this.type.float;
+    if (hipVy > F.vMax) for (const p of this.parts) p.addVel(0, -(hipVy - F.vMax) * 0.5, dt);
+    const sway = F.sway * Math.sin(1.7 * this.time);
+    this.hip.fx += this.supportMass * 4 * (sway - hipVx);
+  }
+
+  /**
+   * Pogo Bean, each substep: notice the stick touching down (hopLanded; a
+   * bonk if it's at a structure's face), rest on it for hop.rest s, then boing
+   * off again (think() says where: hopVx, hopVy). It only hops while awake
+   * and in the fight; after a knockdown it climbs back on first (hop.remount).
+   */
+  hop(dt, b, gF, hipVx, hipVy) {
+    const H = this.type.hop;
+    this.hopLanded = false;
+    if (gF < 0.3) this.hopAir = true;
+    if (gF <= 0.8) return;
+    const able = this.alive && !this.held && this.downT <= 0 && this.conscious > 0.6 && b.phase === 'battle';
+    if (this.hopAir) {
+      this.hopAir = false;
+      this.hopping = false;
+      this.hopLanded = true;
+      if (able && b.towers.length) b.bonk(this);
+    }
+    if (this.hopCool > 0) {
+      this.hopCool -= dt;
+      return;
+    }
+    if (!able || !this.hopOn) return;
+    const vx = this.hopVx * this.moveMul();
+    for (const p of this.parts) p.addVel(vx - hipVx, -this.hopVy - hipVy, dt);
+    this.hopCool = H.rest / this.tempo();
+    this.hopping = true;
+    this.stomped = false;
+    this.sqv -= 5; // stretch up off the spring
+    b.emit('boing', this.tip ? this.tip.x : this.hip.x, this.ground, { unit: this });
+  }
+
+  /**
+   * Big Jelly, each substep. Its catch is digested (dps every tick) and spat
+   * out after engulf.hold s; with nothing inside and the cooldown over it
+   * engulfs a liftable enemy that comes within engulf.gap of it. The belly
+   * bump runs on its own timer. A Drummer's beat speeds all of it up.
+   */
+  jelly(dt, b) {
+    const E = this.type.engulf;
+    const k = dt * this.tempo();
+    if (this.engulfCool > 0) this.engulfCool -= k;
+    if (this.bumpT > 0) this.bumpT -= k;
+    if (this.bumpPoseT > 0) this.bumpPoseT -= dt;
+    const awake = b.phase === 'battle' && this.deployT <= 0 && this.downT <= 0 && this.conscious > 0.5;
+    const v = this.holding;
+    if (v) {
+      this.engulfT += k;
+      this.engulfTick -= k;
+      if (this.engulfTick <= 0) {
+        this.engulfTick += E.tick;
+        v.takeHit(b, { damage: E.dps * E.tick * this.dmgMul, dvx: 0, dvy: 0, x: v.chest.x, y: v.chest.y, stun: 0, kind: 'engulf', from: this, spin: 0 });
+      }
+      if (this.holding === v && this.engulfT >= E.hold) this.spit(b);
+    } else if (awake && this.engulfCool <= 0) {
+      const e = b.engulfTarget(this);
+      if (e) {
+        b.hold(this, e);
+        this.engulfT = 0;
+        this.engulfTick = E.tick;
+        this.sqv += 6; // BLOOP
+        b.emit('engulf', e.chest.x, e.chest.y, { unit: this, victim: e });
+      }
+    }
+    if (awake && this.bumpT <= 0 && b.jellyBump(this)) {
+      this.bumpT = this.type.bump.every;
+      this.bumpPoseT = 0.25;
+    }
+  }
+
+  /** PTOO: the Jelly spits its catch out, flying (a shove: anti-lock applies), and cools down. */
+  spit(b) {
+    const E = this.type.engulf;
+    const v = this.holding;
+    b.letGo(v);
+    v.takeHit(b, { damage: 0, dvx: this.f * E.spit[0], dvy: -E.spit[1], x: v.chest.x, y: v.chest.y, stun: E.spitStun, kind: 'spit', from: this, spin: 0.6, shove: true });
+    b.emit('spit', v.chest.x, v.chest.y, { unit: this, victim: v });
+    this.engulfCool = E.cooldown;
+    this.bumpT = Math.max(this.bumpT, this.type.bump.every); // (no belly bump on top of the spit)
+    this.sqv -= 6;
+  }
+
   /** Hand muscle: spring toward a target, reaction on the chest (arms can't push the body around). */
   muscle(p, tx, ty, k, c, dt, m) {
     if (m <= 0) return;
@@ -528,10 +835,29 @@ export class Unit {
     const f = this.f;
     const hip = this.hip;
     const speed = Math.abs(hipVx);
-    const walking = gF > 0.35 && m > 0.3;
+    const flier = !!this.type.flying; // fliers never plant a foot: their legs paddle lazily
+    const pegs = !!this.type.hop && this.alive; // a Pogo's feet ride on the stick's pegs
+    const walking = !flier && !pegs && gF > 0.35 && m > 0.3;
     this.bob = 0;
     this.waddle = 0;
-    if (walking) {
+    if (pegs || (this.floatT > 0 && this.alive)) {
+      // A Pogo's feet ride on the stick's pegs; a floater's dangle under it. The hips carry
+      // them (the reaction goes into the hips, damped relative to them), so the legs neither
+      // drag a hop down nor push the body along through the air.
+      const hvy = hip.vy(dt);
+      for (let i = 0; i < 2; i++) {
+        this.feet[i].air = true;
+        this.feet[i].plant = false;
+        const p = this.foot[i];
+        const fx = p.fx;
+        const fy = p.fy;
+        const tx = hip.x + (pegs ? (i ? 3 : -3) : this.footOff[i]) * f;
+        const ty = hip.y + this.legLen * (pegs ? 0.7 : 0.88);
+        springTo(p, tx, ty, pegs ? 900 : 600, pegs ? 40 : 30, dt, Math.max(m, 0.15), hipVx, hvy);
+        hip.fx -= p.fx - fx;
+        hip.fy -= p.fy - fy;
+      }
+    } else if (walking) {
       const stepDur = clamp(10.5 / Math.max(speed, 1), 0.12, 0.2);
       const lead = clamp(hipVx * stepDur, -15, 15);
       for (let i = 0; i < 2; i++) {
@@ -595,7 +921,7 @@ export class Unit {
         }
         springTo(p, tx, ty, FOOT_K, FOOT_C, dt, m * gF);
       }
-    } else if (this.dropping) {
+    } else if (this.dropping && !flier) {
       // Dropped in from the sky: feet straight down under the hips, braced for the landing.
       // Damped relative to the hips, so the legs don't act like a sail and push the bean sideways.
       const hvy = hip.vy(dt);
@@ -605,8 +931,8 @@ export class Unit {
         springTo(this.foot[i], hip.x + this.footOff[i] * f, hip.y + this.legLen * 0.88, 600, 30, dt, m, hipVx, hvy);
       }
     } else {
-      // Airborne (or nearly out): cartoon running in the air
-      const ph = this.time * 17;
+      // Airborne (or nearly out): cartoon running in the air (a flier at half the rate)
+      const ph = this.time * (flier ? 8.5 : 17);
       for (let i = 0; i < 2; i++) {
         this.feet[i].air = true;
         this.feet[i].plant = false;
@@ -644,7 +970,9 @@ export class Unit {
     const hand = this.hand[mi];
     const off = this.hand[oi];
     const hk = pose.hk || 1;
-    const flail = (this.groundF < 0.2 || this.wobbleT > 0) && this.alive ? 1 : 0;
+    // (a floater holds its umbrella up, a Pogo its handlebar, unless it's knocked silly)
+    const steady = this.floatT > 0 || (!!this.type.hop && this.downT <= 0 && this.conscious > 0.6);
+    const flail = (this.groundF < 0.2 || this.wobbleT > 0) && this.alive && !steady ? 1 : 0;
     const walkSwing = this.groundF > 0.8 ? Math.sin(this.time * 11) * clamp(Math.abs(this.hip.vx(dt)) / 60, 0, 1) * 3.5 : 0;
 
     let mx;
@@ -712,7 +1040,10 @@ export class Unit {
   animate(dt, b) {
     const P = this.type.poses;
     this.striking = false;
+    // A flier cruises at its own altitude: whatever wants it higher or lower (a dive's climb) says so every substep
+    if (this.type.flying) this.altWant = null;
     if (!this.alive) return P.rest;
+    if (this.floatT > 0 && P.float) return P.float; // umbrella up
     if (this.state === 'cheer' && !this.act) return P.cheer;
     if ((b.yellT > 0 || this.yellT > 0) && !this.act && this.alive) {
       // Battle cry: brandish the weapon
@@ -720,7 +1051,7 @@ export class Unit {
       return blendPose(P.rest, P.cheer, k * 0.8);
     }
     const a = this.act;
-    if (!a) return P.rest;
+    if (!a) return this.idlePose(P);
     if (a.phase === 'fuse') {
       a.t += dt;
       return this.animateFuse(dt, b, a); // a lit fuse burns whatever happens
@@ -730,8 +1061,10 @@ export class Unit {
       this.bowDraw = 0;
       return P.rest;
     }
-    a.t += dt;
-    if (this.type.ranged) return this.animateBow(dt, b, a);
+    // On a Drummer's beat everything goes faster, except a dash's flight (and fuses, above)
+    a.t += a.phase === 'dash' ? dt : dt * this.tempo();
+    if (a.scoop) return this.animateScoop(dt, b, a);
+    if (this.type.ranged) return this.type.attack.toss ? this.animateToss(dt, b, a) : this.animateBow(dt, b, a);
     if (this.type.dash) return this.animateDash(dt, b, a);
 
     const A = this.type.attack;
@@ -784,16 +1117,113 @@ export class Unit {
     return blendPose(strike, P.rest, easeInOut(k));
   }
 
-  /** Spiker: rear back, then leap point-first at the target. */
+  /**
+   * The pose with nothing to do: a Drummer drums (the mallets swap on each
+   * beat), a Pelican flaps (3 Hz), a Big Jelly shows its bump for a moment.
+   */
+  idlePose(P) {
+    if (this.type.beat && this.deployT <= 0) return this.beats % 2 ? P.beatA : P.beatB;
+    if (this.bumpPoseT > 0 && P.bump) return P.bump;
+    if (P.flap && this.lifting()) return blendPose(P.rest, P.flap, 0.5 + 0.5 * Math.sin(this.time * 6 * Math.PI));
+    return P.rest;
+  }
+
+  /**
+   * Pelican's scoop (act.scoop). 'swoop': down to swoopAlt and at the victim,
+   * beak first; the beak on its chest grabs it (battle.hold, a pinch, scoop),
+   * or after `swoop` s it gives up. 'carry': up to carryAlt and carryBack px
+   * home (for at most carryMax s), then it drops it from up there (pelicanDrop,
+   * and the victim's dropSlam). 'recover': back up to cruise.
+   */
+  animateScoop(dt, b, a) {
+    const P = this.type.poses;
+    const S = this.type.scoop;
+    const speed = this.speed * this.moveMul();
+    if (a.phase === 'swoop') {
+      const v = a.victim;
+      if (!v.alive || v.gone || (v.held && v.heldBy !== this) || v.air) return this.endScoop(a, S.cooldown * 0.5);
+      // Down to swoopAlt (the beak scoops from under the chest: a little higher for a tall bean
+      // like a Pogo on its stick), gliding over the first half of the swoop
+      const [bx, by] = this.holdPoint();
+      const low = Math.max(S.swoopAlt, this.alt + by - v.chest.y - S.beak * 0.5);
+      this.altWant = lerp(a.alt0, low, easeInOut(clamp(a.t / (S.swoop * 0.5), 0, 1)));
+      const dx = v.chest.x + clamp(v.hip.vx(dt), -150, 150) * 0.1 - bx;
+      this.f = v.hip.x >= this.hip.x ? 1 : -1;
+      this.wantVx = clamp(dx * 6, -speed * 2.5, speed * 2.5);
+      if (Math.hypot(v.chest.x - bx, v.chest.y - by) <= S.beak) this.scoop(b, a, v);
+      else if (a.t >= S.swoop) return this.endScoop(a, S.cooldown * 0.5);
+      return blendPose(P.rest, P.dash, 0.6 * easeOut(clamp(a.t / 0.25, 0, 1)));
+    }
+    if (a.phase === 'carry') {
+      if (!this.holding) return this.endScoop(a, S.cooldown); // shaken loose (a sneeze, a big hit, its catch died)
+      this.altWant = lerp(a.alt0, S.carryAlt, easeInOut(clamp(a.t / 0.7, 0, 1)));
+      const home = this.team === 'blue' ? -1 : 1;
+      const left = (a.goal - this.hip.x) * home;
+      this.f = home;
+      this.wantVx = left > 6 ? home * speed : 0;
+      if ((left <= 6 && a.t > 0.6) || a.t >= S.carryMax) {
+        const v = this.holding;
+        b.letGo(v, this.f * 60, 40);
+        v.dropSlam = { damage: S.dropDamage * this.dmgMul, stun: S.dropStun };
+        b.emit('pelicanDrop', v.chest.x, v.chest.y, { unit: this, victim: v });
+        return this.endScoop(a, S.cooldown);
+      }
+      return blendPose(P.rest, P.flap, 0.5 + 0.5 * Math.sin(this.time * 6 * Math.PI));
+    }
+    // recover: back up to cruise height
+    this.wantVx = 0;
+    if (a.t >= 0.5) {
+      this.act = null;
+      this.brow = 0;
+    }
+    return P.rest;
+  }
+
+  /** The beak closes on v: it's held (a Bomb lights, a Juggler fumbles), pinched, and the carry starts. */
+  scoop(b, a, v) {
+    const S = this.type.scoop;
+    b.hold(this, v);
+    b.emit('scoop', v.chest.x, v.chest.y, { unit: this, victim: v });
+    v.takeHit(b, { damage: S.pinch * this.dmgMul, dvx: 0, dvy: -60, x: v.chest.x, y: v.chest.y, stun: 0, kind: 'pinch', from: this, spin: 0 });
+    a.phase = 'carry';
+    a.t = 0;
+    a.alt0 = this.alt;
+    a.x0 = this.hip.x;
+    a.goal = b.carryGoal(this, this.hip.x);
+    a.dmg = 0;
+    this.f = this.team === 'blue' ? -1 : 1;
+    this.mouth = 0;
+  }
+
+  /** The scoop is over (dropped, missed or shaken loose): climb back up, the scoop cools down. */
+  endScoop(a, cool) {
+    a.phase = 'recover';
+    a.t = 0;
+    a.victim = null;
+    this.wantVx = 0;
+    this.scoopT = Math.max(this.scoopT, cool);
+    return this.type.poses.rest;
+  }
+
+  /**
+   * Spiker: rear back, then leap point-first at the target. A flier's dive
+   * (dash.kind 'dive') climbs a little instead, then cuts its lift and shoots
+   * head-first at the target's head; the lift comes back on to recover.
+   */
   animateDash(dt, b, a) {
     const P = this.type.poses;
     const D = this.type.dash;
+    const dive = D.kind === 'dive' && !!this.type.flying;
     if (a.phase === 'windup') {
+      if (dive) this.altWant = this.type.flying.alt + D.climb * easeOut(Math.min(1, a.t / D.windup));
       if (a.t >= D.windup) {
         a.phase = 'dash';
         a.t = 0;
-        for (const p of this.parts) p.addVel(this.f * D.speed, -D.up, dt);
-        b.emit('whoosh', this.hip.x, this.hip.y, { unit: this, power: 0.9 });
+        if (dive) this.dive(b, D, dt);
+        else {
+          for (const p of this.parts) p.addVel(this.f * D.speed, -(D.up ?? 0), dt);
+          b.emit('whoosh', this.hip.x, this.hip.y, { unit: this, power: 0.9 });
+        }
         this.mouth = 0.6;
         this.mouthKind = 'o';
         return P.dash;
@@ -803,6 +1233,8 @@ export class Unit {
     if (a.phase === 'dash') {
       this.striking = !a.done;
       if (a.t >= D.time || (a.t > 0.15 && this.groundF > 0.8) || a.done) {
+        // The propeller catches it again (unless a net or an anvil has switched it off for longer meanwhile)
+        if (dive && this.liftOffT <= D.time - a.t + 1e-6) this.liftOffT = 0;
         a.phase = 'recover';
         a.t = 0;
       }
@@ -816,6 +1248,36 @@ export class Unit {
       return P.rest;
     }
     return blendPose(P.dash, P.rest, easeInOut(a.t / D.recover));
+  }
+
+  /**
+   * The dive starts: lift off for the dive's time, and every part shoots at
+   * the target's head (a tower's face at mid-height), aimed a little high
+   * because gravity pulls it down on the way.
+   */
+  dive(b, D, dt) {
+    const t = this.target;
+    let tx;
+    let ty;
+    if (t && t.isTower && t.alive) {
+      tx = t.x + ((this.hip.x < t.x ? -t.w : t.w) / 2);
+      ty = -t.h / 2;
+    } else if (t && !t.isTower && t.alive) {
+      // Lead a walking target a little: where its head will be when the dive gets there
+      const eta = Math.hypot(t.head.x - this.head.x, t.head.y - this.head.y) / D.speed;
+      tx = t.head.x + clamp(t.hip.vx(dt), -150, 150) * eta;
+      ty = t.head.y;
+    } else {
+      tx = this.head.x + this.f * 60; // its target is gone: dive at the dirt ahead
+      ty = this.ground;
+    }
+    const dx = tx - this.head.x;
+    const d = Math.hypot(dx, ty - this.head.y) || 1;
+    const dy = ty - this.head.y - 0.5 * G * (d / D.speed) ** 2;
+    const l = Math.hypot(dx, dy) || 1;
+    this.liftOffT = Math.max(this.liftOffT, D.time);
+    for (const p of this.parts) p.setVel((dx / l) * D.speed, (dy / l) * D.speed, dt);
+    b.emit('dive', this.hip.x, this.hip.y, { unit: this });
   }
 
   /** Bomb: the fuse fizzes, the bomb panics, then BOOM. */
@@ -853,7 +1315,8 @@ export class Unit {
       const pull = lerp(reach * 0.75, -4, k);
       const lean = clamp(-(Math.abs(dy) * 0.25), -0.25, 0) - 0.05 * k;
       if (a.t >= A.draw) {
-        b.fireArrow(this, sol);
+        if (A.toss) b.fireBomb(this, sol);
+        else b.fireArrow(this, sol);
         this.nocked = false;
         a.phase = 'recover';
         a.t = 0;
@@ -900,32 +1363,77 @@ export class Unit {
     };
   }
 
+  /**
+   * Bomb Juggler: the bow's timing with an underarm lob. The throwing arm
+   * goes back while it aims (draw), the bomb flies at the end of the draw
+   * (battle.fireBomb), then the arm comes back up to juggle (recover).
+   */
+  animateToss(dt, b, a) {
+    const P = this.type.poses;
+    const A = this.type.attack;
+    const t = this.target;
+    if (a.phase === 'draw') {
+      if (!t || !t.alive) {
+        this.act = null;
+        return P.rest;
+      }
+      const sol = b.solveAim(this, t);
+      a.aim = sol;
+      this.aimAng = sol.ang;
+      if (a.t >= A.draw) {
+        b.fireBomb(this, sol);
+        a.phase = 'recover';
+        a.t = 0;
+        // The throwing hand flicks forward and up
+        this.hand[this.mainHand].addVel(Math.cos(sol.ang) * 240, Math.sin(sol.ang) * 240 - 80, dt);
+        this.mouth = Math.max(this.mouth, 0.2);
+        return P.toss;
+      }
+      return blendPose(P.rest, P.toss, easeOut(clamp(a.t / A.draw, 0, 1)));
+    }
+    if (a.t >= A.recover) {
+      this.act = null;
+      this.cooldown = A.cooldown * this.rng.range(0.8, 1.6);
+      this.brow = 0;
+      return P.rest;
+    }
+    return blendPose(P.toss, P.rest, easeInOut(a.t / A.recover));
+  }
+
   // ---------------------------------------------------------------------------
   // Getting hit
 
   /**
-   * hit: { damage, dvx, dvy, x, y, stun, kind, from, spin }
+   * hit: { damage, dvx, dvy, x, y, stun, kind, from, spin, flip, shove }
    * dvx/dvy is the launch velocity (px/s) given to the whole body; the struck
-   * part gets extra so the bean spins.
+   * part gets extra so the bean spins. shove: a push from a shoving card
+   * (a second one soon after is much weaker, see SHOVE).
    */
   takeHit(b, hit) {
+    if (hit.shove) hit = this.shoved(hit);
     const heft = this.type.heft || 1; // heavy beans slide less, and fly a bit lower (but still fly)
     this.knock(hit.dvx * heft, hit.dvy * (this.type.heftUp || 1), hit.x, hit.y, hit.spin == null ? 0.7 : hit.spin, b.dt, hit.flip || 0, hit.from ? hit.from.f : 0);
     this.sqv += 6 * Math.min(1.5, Math.hypot(hit.dvx, hit.dvy) / 300);
     if (!this.alive) return;
-    this.hp -= hit.damage;
+    // Bubble Wrap soaks the damage first and cushions the stun (the knock still lands: wrapped beans fly)
+    const wrapped = this.wrapHp > 0;
+    const soft = wrapped ? WRAP.stunMul : 1;
+    const damage = wrapped ? this.soak(b, hit.damage) : hit.damage;
+    this.hp -= damage;
     this.hurtT = 0.1;
     // Big hits knock the hat off
     if (this.hat && (Math.hypot(hit.dvx, hit.dvy) > 320 || this.hp <= 0 || hit.stun >= 0.8)) b.popHat(this, hit.dvx, hit.dvy);
     this.lastHitBy = hit.from || null;
-    const stun = hit.stun * (this.type.poise || 1);
+    const stun = hit.stun * (this.type.poise || 1) * soft;
     this.conscious = Math.max(0, this.conscious - stun);
+    if (this.floatT > 0 && hit.damage > 0) this.flip(b); // the umbrella goes inside out
+    if (this.holding && this.type.scoop && this.hp > 0) this.shaken(b, damage, stun);
     if (this.hp <= 0) {
       this.die(b, hit);
       return;
     }
     // Full-speed club bonks floor even armoured beans; poise only saves them from weak ones
-    const downStun = hit.kind === 'club' ? hit.stun * Math.min(1, (this.type.poise || 1) + 0.12) : stun;
+    const downStun = hit.kind === 'club' ? hit.stun * Math.min(1, (this.type.poise || 1) + 0.12) * soft : stun;
     const lit = this.act && this.act.phase === 'fuse'; // nothing puts out a lit fuse
     if (downStun >= 0.85 || this.conscious < 0.12) {
       this.downT = this.rng.range(0.75, 1.25);
@@ -934,6 +1442,7 @@ export class Unit {
       this.mouth = 0.8;
       this.mouthKind = 'o';
       b.emit('knockdown', this.head.x, this.head.y, { unit: this });
+      if (this.type.fumble) b.fumble(this); // uh-oh: a juggled bomb lands on its toes
     } else {
       if (stun >= 0.5 && this.act && this.act.phase !== 'recover' && !lit) {
         this.act = null; // interrupted
@@ -942,11 +1451,92 @@ export class Unit {
       }
       if (stun >= 0.25) this.wobbleT = 0.45; // whoa-whoa-whoa
     }
-    if (hit.damage >= 12) {
+    if (damage >= 12) {
       this.mouth = Math.max(this.mouth, 0.35);
       this.mouthKind = 'o';
-      b.emit('hitVoice', this.head.x, this.head.y, { unit: this, power: hit.damage / 40 });
+      b.emit('hitVoice', this.head.x, this.head.y, { unit: this, power: damage / 40 });
     }
+  }
+
+  /** A hit on a floating Brolly turns its umbrella inside out: it falls freely, and lands hard (post). */
+  flip(b) {
+    this.floatT = 0;
+    this.flipped = true;
+    this.flipFall = true;
+    this.deployT = 0; // (it takes fall damage, and towers keep shooting)
+    this.mouth = 1;
+    this.mouthKind = 'o';
+    b.emit('canopyFlip', this.hip.x, this.hip.y - this.L, { unit: this });
+  }
+
+  /**
+   * A Pelican hit while it holds a bean lets go: at once on a stunning hit
+   * (scoop.letGoStun), or once a carry has taken scoop.letGoDamage in all.
+   */
+  shaken(b, damage, stun) {
+    const S = this.type.scoop;
+    const a = this.act;
+    if (a && a.scoop) a.dmg += damage;
+    if (stun >= S.letGoStun) b.letGoOf(this, 'stun');
+    else if (a && a.scoop && a.dmg >= S.letGoDamage) b.letGoOf(this, 'damage');
+  }
+
+  /** Anti-lock: a shove that lands while the last one is still fresh keeps only a little of its push and stun. */
+  shoved(hit) {
+    const again = this.shoveT > 0;
+    this.shoveT = SHOVE.time;
+    if (!again) return hit;
+    return { ...hit, dvx: hit.dvx * SHOVE.knock, dvy: hit.dvy * SHOVE.knock, stun: hit.stun * SHOVE.stun };
+  }
+
+  /** Bubble Wrap absorbs what it can of a hit (pop-pop-pop). Returns the damage that gets through. */
+  soak(b, damage) {
+    const a = Math.min(this.wrapHp, damage);
+    if (!(a > 0)) return damage;
+    this.wrapHp -= a;
+    b.emit('wrapPop', this.chest.x, this.chest.y, { unit: this, left: this.wrapHp });
+    return damage - a;
+  }
+
+  /** Bubble Wrap ends (time up, popped, or its bean died): the body stops bouncing like a ball. */
+  unwrap(b) {
+    const popped = this.wrapHp <= 0;
+    this.wrapHp = 0;
+    this.wrapT = 0;
+    for (const p of this.body) p.bounce = this.alive ? 0.32 : 0.4;
+    b.emit('wrapEnd', this.chest.x, this.chest.y, { unit: this, popped });
+  }
+
+  /**
+   * Banana peel underfoot: the feet shoot forward and up, the head goes back,
+   * a beat flat in mid-air, WHUMP (a knockdown). A heavy bean only skids.
+   * Either way it can't slip again until it's up and SPELLS.bananaPeels.immune
+   * s have passed. peel: the peel item (its dmgMul is the caster's card level).
+   */
+  slip(b, peel) {
+    if (!this.alive) return;
+    const P = SPELLS.bananaPeels;
+    const dir = this.f;
+    const dt = b.dt;
+    if (this.mass >= P.heavyMass) {
+      this.hip.addVel(dir * P.skid, 0, dt);
+      this.wobbleT = Math.max(this.wobbleT, P.skidWobble);
+      this.slipImmuneT = P.immune;
+      b.emit('skid', this.hip.x, this.ground, { unit: this });
+      return;
+    }
+    for (let i = 0; i < 2; i++) {
+      this.foot[i].addVel(dir * P.feet, -220, dt);
+      this.knee[i].addVel(dir * P.feet, -220, dt);
+    }
+    this.head.addVel(-dir * P.head, -60, dt);
+    this.chest.addVel(-dir * P.head, -60, dt);
+    this.hip.addVel(dir * 60, -P.hipUp, dt);
+    b.emit('slip', this.hip.x, this.ground, { unit: this });
+    const dmg = P.damage * ((peel && peel.dmgMul) || 1);
+    this.takeHit(b, { damage: dmg, dvx: 0, dvy: 0, x: this.hip.x, y: this.ground, stun: 1.0, kind: 'slip', from: null, spin: 0 });
+    // (downT counts down at the same rate: immune from now until 1.5 s after it gets up)
+    this.slipImmuneT = Math.max(0, this.downT) + P.immune;
   }
 
   knock(dvx, dvy, x, y, spin, dt, flip = 0, dir = 0) {
@@ -990,6 +1580,20 @@ export class Unit {
     // A bomb that dies still goes off: its fuse burns while it flies
     if (this.type.blast && !this.exploded) this.deathFuse = this.type.blast.chain;
     b.emit('death', this.head.x, this.head.y, { unit: this, power: hit ? Math.hypot(hit.dvx, hit.dvy) / 400 : 0.5 });
+    if (this.wrapT > 0) this.unwrap(b);
+    this.floatT = 0; // (the umbrella falls with it)
+    this.flipFall = false;
+    this.hopOn = false;
+    if (this.holding) b.letGoOf(this, 'death');
+    if (this.heldBy) {
+      // Died in a beak or inside a jelly: dropped (a jelly pops the body out)
+      const h = this.heldBy;
+      const out = h.type.engulf ? 1 : 0;
+      b.letGoOf(h, 'death', h.f * 160 * out, -220 * out);
+    }
+    if (this.type.beat) b.dropDrum(this); // the drum rolls away ringing
+    if (this.type.id === 'copter') b.popCap(this); // the lift dies with it; the cap flutters down on its own
+    if (this.type.fumble) b.fumble(this, true); // all its juggled bombs come down around it
   }
 
   // ---------------------------------------------------------------------------
@@ -1066,15 +1670,20 @@ export class Unit {
       }
     }
 
-    // Landings: thud + dust, fall damage for big drops
+    // Landings: thud + dust, fall damage for big drops (a flier that fell without its lift crashes)
     this.landT -= dt;
+    if (this.crashed && this.lifting()) this.crashed = false;
+    if (this.dropSlam) this.slamCheck(b, vy);
     for (const p of this.body) {
-      if (p.onGround && p.impact > 320 && this.landT <= 0) {
+      if (p.onGround && p.impact > HARD_LANDING && this.landT <= 0) {
         this.landT = 0.25;
         const power = clamp(p.impact / 900, 0, 1.5);
-        b.emit('land', p.x, this.ground, { unit: this, power });
+        if (this.type.flying && !this.crashed && !this.ownFlight()) {
+          this.crashed = true;
+          b.emit('crash', p.x, this.ground, { unit: this, power });
+        } else b.emit('land', p.x, this.ground, { unit: this, power });
         this.sqv += power * 5;
-        if (this.alive && b.phase === 'battle' && p.impact > 650 && this.deployT <= 0) {
+        if (this.alive && b.phase === 'battle' && p.impact > 650 && this.deployT <= 0 && !this.cushioned()) {
           const dmg = (p.impact - 650) * 0.12;
           this.hp -= dmg;
           this.conscious = Math.max(0, this.conscious - 0.4);
@@ -1084,9 +1693,13 @@ export class Unit {
       }
     }
 
+    if (this.floatT > 0 || this.flipFall) this.touchdown(b);
+    if (this.type.hop && !this.stomped && this.alive && this.tip && this.downT <= 0 && this.tip.vy(dt) > 0 && b.phase === 'battle') b.stomp(this);
+    if (this.holding) this.keepHold(b);
+
     // Flying -> scream
     const fast = Math.hypot(hip.vx(dt), vy);
-    if (this.groundF < 0.05 && fast > 280) this.airT += dt;
+    if (this.groundF < 0.05 && fast > 280 && !(this.type.flying && this.ownFlight()) && !this.onPurpose()) this.airT += dt; // (a dive or a hop is on purpose)
     else this.airT = 0;
     this.screamT -= dt;
     if (this.alive && this.airT > 0.08 && this.screamT <= 0 && this.deployT <= 0) {
@@ -1098,7 +1711,9 @@ export class Unit {
 
     // Timers
     if (this.deployT > 0) {
-      if (this.dropping && this.groundF > 0.5) {
+      if (this.dropping && this.type.flying) {
+        if (vy < 30) this.dropping = false; // its propeller caught it: hovering in, no landing
+      } else if (this.dropping && this.groundF > 0.5) {
         // Touchdown: thud + dust (the legs take it, so the body never hits the ground itself)
         this.dropping = false;
         this.braceT = BRACE_T;
@@ -1120,6 +1735,8 @@ export class Unit {
     }
     if (this.yellT > 0) this.yellT -= dt;
     if (this.braceT > 0) this.braceT -= dt;
+    this.statusTimers(dt);
+    if (this.wrapT > 0) this.wrapTick(b, dt);
     if (this.mouth > 0) this.mouth -= dt;
     if (this.hurtT > 0) this.hurtT -= dt;
     if (this.dizzy > 0) this.dizzy -= dt;
@@ -1153,6 +1770,95 @@ export class Unit {
         this.lookY = hip.y + this.rng.range(-200, 40);
       }
     }
+  }
+
+  /**
+   * A Brolly reaches the ground. Floating, it lands softly (brollyLand) and
+   * goes 0.4 s later. Fallen from a flipped umbrella, once its body hits the
+   * dirt (after any fall damage, above) it lies there float.landStun s, then 0.4.
+   */
+  touchdown(b) {
+    const F = this.type.float;
+    if (this.floatT > 0) {
+      if (this.groundF <= 0.5) return;
+      this.floatT = 0;
+      this.deployT = 0.4;
+      this.braceT = BRACE_T;
+      b.emit('brollyLand', this.hip.x, this.ground, { unit: this });
+      return;
+    }
+    let down = false;
+    for (const p of this.body) if (p.onGround) down = true;
+    if (!down) return;
+    this.flipFall = false;
+    if (!this.alive) return;
+    this.downT = Math.max(this.downT, F.landStun);
+    this.deployT = F.landStun + 0.4;
+  }
+
+  /** A holder keeps its catch only while it means to: a Pelican in its carry, a Big Jelly (until it spits). */
+  keepHold(b) {
+    const v = this.holding;
+    if (v.heldBy !== this) {
+      this.holding = null; // (taken from it)
+      return;
+    }
+    if (this.type.scoop && !(this.act && this.act.scoop && this.act.phase === 'carry')) b.letGoOf(this, 'stun');
+  }
+
+  /** Count down the newer cards' status timers (each stays at 0 when unused). */
+  statusTimers(dt) {
+    if (this.shoveT > 0) this.shoveT -= dt;
+    if (this.slipImmuneT > 0) this.slipImmuneT -= dt;
+    if (this.liftOffT > 0) this.liftOffT -= dt;
+    if (this.netImmuneT > 0) this.netImmuneT -= dt;
+    if (this.beatT > 0) this.beatT -= dt;
+    if (this.squashT > 0) this.squashT -= dt;
+    if (this.fumbleT > 0) this.fumbleT -= dt;
+  }
+
+  /** Bubble Wrap, each step it holds: the body bounces like a rubber ball. It ends when time's up or it's popped. */
+  wrapTick(b, dt) {
+    this.wrapT -= dt;
+    if (this.wrapT <= 0 || this.wrapHp <= 0 || !this.alive) {
+      this.unwrap(b);
+      return;
+    }
+    for (const p of this.body) p.bounce = WRAP.bounce;
+  }
+
+  /** A flier held up by its own lift, or in its own dive. */
+  ownFlight() {
+    return this.lifting() || (!!this.type.flying && !!this.act && this.act.phase === 'dash');
+  }
+
+  /** A Pogo hopping (not knocked flying): no screaming, it meant to. */
+  onPurpose() {
+    return !!this.type.hop && this.downT <= 0 && this.conscious > 0.6;
+  }
+
+  /** No fall damage: Bubble Wrap holds, or a flier is flying (a netted or knocked-out one isn't). */
+  cushioned() {
+    return this.wrapHp > 0 || this.ownFlight();
+  }
+
+  /**
+   * Dropped from a Pelican's beak (dropSlam = { damage, stun }): it remembers
+   * how fast it fell, and when it first touches the ground (body or feet: its
+   * legs only soften it) after falling faster than HARD_LANDING it takes the
+   * slam on top of any fall damage. A gentle drop is no slam.
+   */
+  slamCheck(b, vy) {
+    const S = this.dropSlam;
+    if (this.held) return; // (still in the beak)
+    S.fell = Math.max(S.fell || 0, vy);
+    let down = false;
+    for (const p of this.body) if (p.onGround) down = true;
+    for (const p of this.foot) if (p.onGround) down = true;
+    if (!down) return;
+    this.dropSlam = null;
+    if (!this.alive || S.fell <= HARD_LANDING) return;
+    this.takeHit(b, { damage: S.damage, dvx: 0, dvy: 0, x: this.hip.x, y: this.ground, stun: S.stun, kind: 'slam', from: null, spin: 0 });
   }
 
   /** The shield as a segment (center, half-axis), or null. */

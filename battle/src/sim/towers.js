@@ -56,6 +56,17 @@ export const CASTLE = {
 // (spell 0.5: a Boulder and an Arrow Rain can finish a tower that is nearly down)
 export const TOWER_TAKES = { melee: 1, spike: 1, arrow: 1, blast: 0.5, quake: 0.5, spell: 0.5 };
 
+/**
+ * Share of a kind of damage that structure t takes. Stone (towers) takes
+ * TOWER_TAKES, or the source's own override (X.vsTower, Q.vsTower,
+ * attack.vsTower); a building is wood and takes its own table (t.takes, which
+ * is BUILDING_TAKES from sim/buildings.js), overrides or not.
+ */
+export function takesOf(t, kind, override) {
+  if (t.kind === 'building') return t.takes[kind] ?? 1;
+  return override ?? TOWER_TAKES[kind] ?? 1;
+}
+
 export class Tower {
   /** hpMul: a practice tower (the Training Dummy's castle) has less health. */
   constructor(kind, team, x, level = 1, id = 0, hpMul = 1) {
@@ -63,7 +74,7 @@ export class Tower {
     this.id = id;
     this.isTower = true; // units, towers and spells all show up as `target` / `from`
     this.team = team;
-    this.kind = kind; // 'guard' | 'castle'
+    this.kind = kind; // 'guard' | 'castle' | 'building'
     this.x = x;
     this.w = S.w;
     this.h = S.h;
@@ -83,6 +94,16 @@ export class Tower {
     this.hitT = 99; // seconds since last damaged (flash / shake)
     this.downT = -1; // seconds since destroyed (collapse animation), -1 while standing
     this.arrows = []; // arrows stuck in it (also in battle.arrows, state 'tower')
+    if (kind === 'building') {
+      // Placed by a card (sim/buildings.js makeBuilding fills in bid, def, size,
+      // health, damage table and its working parts). Never shoots, never sleeps.
+      this.building = true;
+      this.active = true;
+      this.range = 0;
+      this.reload = Infinity;
+      this.age = 0; // seconds since placed (it decays over def.life)
+      this.landT = 0; // seconds since placed, for the crate drop
+    }
   }
 }
 
@@ -301,9 +322,18 @@ export function updateTowers(b, dt) {
   if (b.shots.length) updateShots(b, dt);
 }
 
+/** Shots in flight, by kind: castle cannonballs ('cannon') and Bomb Juggler bombs ('jbomb'). */
 function updateShots(b, dt) {
   for (let i = b.shots.length - 1; i >= 0; i--) {
     const s = b.shots[i];
+    if (s.kind === 'jbomb') {
+      const at = stepJBomb(b, s, dt);
+      if (at) {
+        b.shots.splice(i, 1);
+        if (Number.isFinite(at.x) && Number.isFinite(at.y)) b.blastAt(at.x, at.y, s.X, s.team, s.dmgMul, null, { power: 0.5, small: true });
+      }
+      continue;
+    }
     s.age += dt;
     s.vy += G * dt;
     const nx = s.x + s.vx * dt;
@@ -332,6 +362,51 @@ function updateShots(b, dt) {
     s.x = nx;
     s.y = ny;
   }
+}
+
+/**
+ * One step of a Bomb Juggler's bomb (shot kind 'jbomb', battle.fireBomb):
+ * it falls, bursts on the first enemy body (fliers too) or enemy structure it
+ * touches, else bounces once off the ground, rolls, and goes off its fuse s
+ * after that first touch (a fumbled bomb's fuse is already burning), or at
+ * maxAge. Returns where it bursts, or null while it's still going.
+ */
+function stepJBomb(b, s, dt) {
+  const X = s.X;
+  s.age += dt;
+  s.vy += G * dt;
+  const nx = s.x + s.vx * dt;
+  const ny = s.y + s.vy * dt;
+  for (const e of b.units) {
+    if (e.team === s.team || !e.alive || Math.abs(e.hip.x - nx) > 60) continue;
+    if (closestOnBody(e, s.x, s.y, nx, ny) < (e.R + s.r) ** 2) return { x: hit.x, y: hit.y };
+  }
+  for (const t of b.towers) {
+    if (t.team === s.team || !t.alive || Math.abs(t.x - nx) > t.w / 2 + 40) continue;
+    const h = segRect(s.x, s.y, nx, ny, t.x - t.w / 2 - s.r, -t.h - s.r, t.x + t.w / 2 + s.r, WORLD.laneDepth + 10);
+    if (h) return { x: h.x, y: h.y };
+  }
+  s.x = nx;
+  s.y = ny;
+  const floor = s.ground - s.r;
+  if (s.y >= floor) {
+    s.y = floor;
+    if (!s.bounced) {
+      s.bounced = true;
+      s.vy = -Math.abs(s.vy) * X.bounce;
+      s.vx *= 0.75;
+      if (s.fuseT < 0) s.fuseT = X.fuse;
+    } else {
+      s.vy = 0; // rolling
+      s.vx *= Math.exp(-dt * 2.5);
+    }
+  }
+  if (s.fuseT >= 0) {
+    s.fuseT -= dt;
+    if (s.fuseT <= 0) return { x: s.x, y: s.y };
+  }
+  if (s.age >= X.maxAge || !Number.isFinite(s.x) || !Number.isFinite(s.y)) return { x: s.x, y: s.y };
+  return null;
 }
 
 const hit = { x: 0, y: 0 };

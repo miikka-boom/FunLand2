@@ -18,22 +18,23 @@ export const CHEST_GRACE = 0.25;
 
 // gold: range before arena scaling; cards: total before scaling; rare: chance
 // each stack is rare; minRare: rare stacks guaranteed; epic: chance one stack
-// is epic; beans: Jellybeans (flat).
+// is epic; legendary: chance of a legendary copy (none drop yet); beans:
+// Jellybeans (flat).
 export const CHESTS = {
-  small: { id: 'small', name: 'Small Chest', period: 3 * HOUR, gold: [25, 45], cards: 8, stacks: 2, rare: 0.15, minRare: 0, epic: 0, beans: 0 },
-  big: { id: 'big', name: 'Big Chest', period: 12 * HOUR, gold: [120, 200], cards: 30, stacks: 4, rare: 0.15, minRare: 1, epic: 0.35, beans: 10 },
+  small: { id: 'small', name: 'Small Chest', period: 3 * HOUR, gold: [25, 45], cards: 8, stacks: 2, rare: 0.15, minRare: 0, epic: 0, legendary: 0, beans: 0 },
+  big: { id: 'big', name: 'Big Chest', period: 12 * HOUR, gold: [120, 200], cards: 30, stacks: 4, rare: 0.15, minRare: 1, epic: 0.35, legendary: 0, beans: 10 },
 };
 export const CHEST_KINDS = ['small', 'big'];
 // Per arena reached: +25% gold, +20% cards.
 export const CHEST_SCALE = { gold: 0.25, cards: 0.2 };
 
-const DOWN = { epic: 'rare', rare: 'common', common: null };
+const DOWN = { legendary: 'epic', epic: 'rare', rare: 'common', common: null };
 // Callers pass `now`; a missing one means the real clock (never 1970, which
 // would look like a clock rollback and clamp the timers).
 const clock = (now) => (Number.isFinite(now) ? now : Date.now());
 
 function poolOf(p) {
-  const pool = { common: [], rare: [], epic: [] };
+  const pool = { common: [], rare: [], epic: [], legendary: [] };
   for (const id of unlockedCards(p)) pool[CARDS[id].rarity].push(id);
   return pool;
 }
@@ -63,7 +64,7 @@ function stackRarities(c, rareFlags, epicFlag, sizes) {
     const i = rar.lastIndexOf('rare');
     if (i >= 0 && rar.filter((r) => r === 'rare').length > c.minRare) rar[i] = 'common';
   }
-  const used = { common: 0, rare: 0, epic: 0 };
+  const used = { common: 0, rare: 0, epic: 0, legendary: 0 };
   return rar.map((r0) => {
     let r = r0;
     while (r && used[r] >= sizes[r]) r = DOWN[r];
@@ -88,7 +89,7 @@ export function rollChest(p, kind) {
   const rng = rngFrom(p.seed, 'chest', kind, p.chests.opened[kind]);
   const sc = scaleOf(p);
   const pool = poolOf(p);
-  const sizes = { common: pool.common.length, rare: pool.rare.length, epic: pool.epic.length };
+  const sizes = { common: pool.common.length, rare: pool.rare.length, epic: pool.epic.length, legendary: pool.legendary.length };
   const gold = Math.round(rng.int(c.gold[0], c.gold[1]) * sc.gold);
   const total = Math.round(c.cards * sc.cards);
   const rareFlags = Array.from({ length: c.stacks }, () => rng.chance(c.rare));
@@ -170,7 +171,7 @@ export const readyChests = (p, now) => CHEST_KINDS.filter((k) => chestState(p, k
 
 /**
  * For the info popup, exact for this profile:
- * { kind, name, period, gold: [lo, hi], beans, cards, stacks, odds: { common, rare, epic }, pool: { common: [ids], rare, epic } }
+ * { kind, name, period, gold: [lo, hi], beans, cards, stacks, odds: { common, rare, epic, legendary }, pool: { common: [ids], rare, epic, legendary } }
  * cards = about how many cards in total; odds = chance the chest has at
  * least one stack of that rarity (0..1).
  */
@@ -179,8 +180,8 @@ export function chestOdds(p, kind) {
   if (!c) return null;
   const sc = scaleOf(p);
   const pool = poolOf(p);
-  const sizes = { common: pool.common.length, rare: pool.rare.length, epic: pool.epic.length };
-  const odds = { common: 0, rare: 0, epic: 0 };
+  const sizes = { common: pool.common.length, rare: pool.rare.length, epic: pool.epic.length, legendary: pool.legendary.length };
+  const odds = { common: 0, rare: 0, epic: 0, legendary: 0 };
   const epicP = sizes.epic > 0 ? c.epic : 0;
   for (let mask = 0; mask < 1 << c.stacks; mask++) {
     const flags = Array.from({ length: c.stacks }, (_, i) => !!(mask & (1 << i)));

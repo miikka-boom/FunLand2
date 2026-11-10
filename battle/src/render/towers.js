@@ -17,9 +17,14 @@
 //
 // Static art lives in offscreen caches (one per kind/team/colour/damage stage,
 // shared by every match), so a tower costs a drawImage plus its weapon and flag.
+//
+// Buildings (kind 'building': Boing Box, Bean Patch, Wrecking Crane) live in
+// battle.towers too; draw() hands them to render/buildings.js, and drawBars()
+// gives them a smaller HP bar with a clock pie for the life they have left.
 
 import { TEAMS } from '../config.js';
 import { muzzle as simMuzzle } from '../sim/towers.js';
+import { createBuildingRenderer } from './buildings.js';
 import {
   Cached,
   CASTLE_BOX,
@@ -51,6 +56,7 @@ const SHAKE_T = 0.22;
 const SMOKE_BELOW = 0.34; // hp share below which a tower smokes
 const INK = '#2a1d14';
 const FONT = '"Arial Black", "Segoe UI Black", system-ui, sans-serif';
+const BUILD_BW = 42; // a building's HP bar width (bar units; a guard tower's is 56)
 
 const face = (t) => (t.f ? Math.sign(t.f) : t.team === 'red' ? -1 : 1);
 
@@ -816,6 +822,7 @@ export function createTowerRenderer(opts = {}) {
   const shown = new WeakMap(); // tower -> hp share shown by the trailing damage chip
   const barCache = new WeakMap(); // tower -> { cv, key }: its HP bar, repainted only on change
   const zCache = new Map(); // px size -> 'z' sprite
+  const builds = createBuildingRenderer({ seed });
   let lastT = null;
 
   const R = {
@@ -995,7 +1002,8 @@ export function createTowerRenderer(opts = {}) {
     for (const tw of towers) {
       ctx.save();
       try {
-        drawTower(ctx, tw, t, need, fr);
+        if (tw.kind === 'building') builds.draw(ctx, tw, t, pal(tw.team), need, fr);
+        else drawTower(ctx, tw, t, need, fr);
       } catch (e) {
         R.lastError = e; // scenery must never break a frame (kept for debugging)
       }
@@ -1005,6 +1013,7 @@ export function createTowerRenderer(opts = {}) {
 
   /** World y of the top of a tower's art (flag / pennant tip). */
   function artTop(tw) {
+    if (tw.kind === 'building') return builds.artTop(tw);
     return tw.kind === 'castle' ? CASTLE_BOX.y - 2 : -num(tw.h, 150) - 48;
   }
 
@@ -1083,6 +1092,89 @@ export function createTowerRenderer(opts = {}) {
     g.fillText(lv, cx, 0.7);
   }
 
+  /**
+   * A building's HP bar, smaller than a tower's, with a clock pie where the
+   * level badge would be: the team-colour wedge is the life it has left.
+   */
+  function paintBuildingBar(g, T, frac, s, hit, txt, life) {
+    const BW = BUILD_BW;
+    const BH = 9;
+    const gx = -(BW + 13) / 2;
+    const bx = gx + 13;
+    g.fillStyle = 'rgba(26,20,38,0.82)';
+    g.beginPath();
+    rrect(g, bx - 2, -BH / 2 - 2, BW + 4, BH + 4, 4.5);
+    g.fill();
+    g.fillStyle = '#3d3752';
+    g.beginPath();
+    rrect(g, bx, -BH / 2, BW, BH, 3);
+    g.fill();
+    g.save();
+    g.beginPath();
+    rrect(g, bx, -BH / 2, BW, BH, 3);
+    g.clip();
+    if (s > frac) {
+      g.fillStyle = '#ffe7b0';
+      g.fillRect(bx, -BH / 2, BW * s, BH);
+    }
+    g.fillStyle = hit ? '#ffffff' : T.body;
+    g.fillRect(bx, -BH / 2, BW * frac, BH);
+    if (!hit) {
+      g.fillStyle = rgba(T.light, 0.75);
+      g.fillRect(bx, -BH / 2, BW * frac, BH * 0.38);
+    }
+    g.restore();
+    g.font = `900 8px ${FONT}`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineJoin = 'round';
+    g.lineWidth = 2.4;
+    g.strokeStyle = 'rgba(20,14,30,0.9)';
+    g.strokeText(txt, bx + BW / 2, 0.6);
+    g.fillStyle = '#ffffff';
+    g.fillText(txt, bx + BW / 2, 0.6);
+    // The clock: elapsed life stays pale, what is left is the team wedge, a hand between them
+    const cx = gx + 5.5;
+    const r = 7.2;
+    const a0 = -Math.PI / 2 + clamp(life, 0, 1) * TAU;
+    g.fillStyle = INK;
+    g.beginPath();
+    g.arc(cx, 0, r + 1.4, 0, TAU);
+    g.fill();
+    g.fillStyle = '#f2efe6';
+    g.beginPath();
+    g.arc(cx, 0, r, 0, TAU);
+    g.fill();
+    if (life < 0.999) {
+      g.fillStyle = T.body;
+      g.beginPath();
+      g.moveTo(cx, 0);
+      g.arc(cx, 0, r - 0.6, a0, -Math.PI / 2 + TAU);
+      g.closePath();
+      g.fill();
+    }
+    g.strokeStyle = INK;
+    g.lineCap = 'round';
+    g.lineWidth = 1.4;
+    g.beginPath();
+    g.moveTo(cx, 0);
+    g.lineTo(cx + Math.cos(a0) * (r - 1), Math.sin(a0) * (r - 1));
+    g.moveTo(cx, -r + 0.4);
+    g.lineTo(cx, -r + 2.2);
+    g.stroke();
+    g.fillStyle = INK;
+    g.beginPath();
+    g.arc(cx, 0, 1.3, 0, TAU);
+    g.fill();
+  }
+
+  /** Local box of a bar group (badge or clock, crown, bar) in bar units, origin at its anchor. */
+  function barBox(tw) {
+    if (tw.kind === 'building') return { x0: -(BUILD_BW + 13) / 2 - 4, y0: -12, w: BUILD_BW + 21, h: 22 };
+    const BW = tw.kind === 'castle' ? 74 : 56;
+    return { x0: -(BW + 15) / 2 - 4, y0: -20, w: BW + 23, h: 30 };
+  }
+
   /** One tower's HP bar: repainted into its own little canvas only when it changes. */
   function bar(ctx, tw, u, X, Y, dt) {
     const castle = tw.kind === 'castle';
@@ -1097,16 +1189,15 @@ export function createTowerRenderer(opts = {}) {
       alpha = 1 - clamp(num(tw.downT, 9) / 0.5, 0, 1);
       if (alpha <= 0) return;
     }
-    const BW = castle ? 74 : 56;
+    const building = tw.kind === 'building';
+    const BW = castle ? 74 : building ? BUILD_BW : 56;
     const hit = num(tw.hitT, 99) < 0.08;
     const txt = String(Math.max(0, Math.ceil(num(tw.hp, 0))));
     const lv = String(Math.max(1, num(tw.level, 1) | 0));
-    // Local box of the whole group (badge, crown, bar) in bar units
-    const x0 = -(BW + 15) / 2 - 4;
-    const y0 = -20;
-    const w = BW + 23;
-    const h = 30;
-    const key = `${u.toFixed(3)}|${T.body}|${castle}|${txt}|${lv}|${Math.round(frac * BW * 3)}|${Math.round(s * BW * 3)}|${hit}`;
+    // A building's clock: the share of its life used, in 1/48 steps
+    const life = building ? Math.round(builds.lifeShare(tw) * 48) / 48 : 0;
+    const { x0, y0, w, h } = barBox(tw);
+    const key = `${u.toFixed(3)}|${T.body}|${castle}|${building}|${txt}|${lv}|${life}|${Math.round(frac * BW * 3)}|${Math.round(s * BW * 3)}|${hit}`;
     let c = barCache.get(tw);
     if (!c || c.key !== key) {
       if (!c) c = { cv: document.createElement('canvas'), key: '' };
@@ -1120,7 +1211,8 @@ export function createTowerRenderer(opts = {}) {
       g.setTransform(1, 0, 0, 1, 0, 0);
       g.clearRect(0, 0, W, H);
       g.setTransform(u, 0, 0, u, -x0 * u, -y0 * u);
-      paintBar(g, castle, T, frac, s, hit, txt, lv);
+      if (building) paintBuildingBar(g, T, frac, s, hit, txt, life);
+      else paintBar(g, castle, T, frac, s, hit, txt, lv);
       c.key = key;
       barCache.set(tw, c);
     }
@@ -1179,12 +1271,29 @@ export function createTowerRenderer(opts = {}) {
       }
       // HP bars in screen space, a fixed-ish size so they read at any zoom
       const u = clamp(zoom / 0.55, 0.9, 1.6) * dpr; // device px per bar unit
-      for (const tw of towers) {
-        const wx = num(tw.x, 0);
-        const wy = artTop(tw);
-        const X = m.a * wx + m.c * wy + m.e;
-        const Y = m.b * wx + m.d * wy + m.f - 10 * u;
-        bar(ctx, tw, u, X, Y, dt);
+      const placed = [];
+      // Towers first, where they always are; then buildings, each nudged down
+      // below any bar it would cover (a crane next to a guard tower)
+      for (const pass of [0, 1]) {
+        for (const tw of towers) {
+          if ((tw.kind === 'building') !== (pass === 1)) continue;
+          const wx = num(tw.x, 0);
+          const wy = artTop(tw);
+          const X = m.a * wx + m.c * wy + m.e;
+          let Y = m.b * wx + m.d * wy + m.f - 10 * u;
+          const B = barBox(tw);
+          const r = { x0: X + B.x0 * u, x1: X + (B.x0 + B.w) * u, y0: Y + B.y0 * u, y1: Y + (B.y0 + B.h) * u };
+          for (let k = 0; pass && k < 4; k++) {
+            const hit = placed.find((o) => r.x0 < o.x1 && r.x1 > o.x0 && r.y0 < o.y1 && r.y1 > o.y0);
+            if (!hit) break;
+            const dy = hit.y1 + 2 * u - r.y0;
+            Y += dy;
+            r.y0 += dy;
+            r.y1 += dy;
+          }
+          if (tw.alive !== false) placed.push(r);
+          bar(ctx, tw, u, X, Y, dt);
+        }
       }
     } catch (e) {
       R.lastError = e; // UI chrome must never break a frame

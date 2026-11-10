@@ -6,12 +6,13 @@
 // beans flying, the Arrow Rain fires real arrows that stick (pincushions), the
 // Cheese Wheel bowls beans over as it rolls past.
 //
-// Spells only hurt the other team. Towers take TOWER_TAKES.spell of the damage.
+// Spells only hurt the other team (Bubble Wrap only helps your own). Towers and
+// buildings take their share of spell damage (takesOf in towers.js).
 // Every number here is gameplay: the balance tests tune these constants.
 
 import { WORLD } from '../config.js';
 import { levelMul } from './cards.js';
-import { TOWER_TAKES, damageTower, rectDist } from './towers.js';
+import { takesOf, damageTower, rectDist } from './towers.js';
 
 const G = WORLD.gravity;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -43,10 +44,36 @@ export const SPELLS = {
     launch: [200, 340], // bowled over: away and up, cartwheeling
     stun: 1.25, // knocks down even an armoured Squire (not a Brick)
   },
+  // The newer five (docs/WOBBLE-WAR-CARDS.md section 4)
+  bananaPeels: { peels: 5, toss: 0.4, life: 8, uses: 2, maxSlips: 10, trigger: 9, laneTol: 8, damage: 8, feet: 260, head: 180, hipUp: 160, immune: 1.5, kick: 170, heavyMass: 3, skid: 120, skidWobble: 0.4, minAge: 0.4 },
+  bigSneeze: { inhale: 0.4, damage: 20, push: 420, up: 140, falloff: 0.4, stun: 0.3, air: 1.8 },
+  shakenSoda: { fuse: 1.2, damage: 50, lift: 900, side: 80, stun: 0.6, airLiftOff: 0.6, erupt: 0.6 },
+  anvil: { fall: 0.9, height: 620, damage: 310, shield: 0.4, stun: 1.2, squash: 1.0, carry: 900, liftOff: 1.2, rest: 2.0 },
+  bubbleWrap: { time: 8, absorb: 70, stunMul: 0.5, bounce: 0.6 },
 };
 
 /** Card spell names -> entity kinds. */
-const KIND = { boulder: 'boulder', arrowRain: 'arrowRain', cheeseWheel: 'wheel', wheel: 'wheel' };
+const KIND = {
+  boulder: 'boulder',
+  arrowRain: 'arrowRain',
+  cheeseWheel: 'wheel',
+  wheel: 'wheel',
+  bananaPeels: 'peels',
+  bigSneeze: 'sneeze',
+  shakenSoda: 'soda',
+  anvil: 'anvil',
+  bubbleWrap: 'wrap',
+};
+
+// How long the newer spells' entities stay around until their effects land
+// (for now they are only their entity: nothing happens on the field yet).
+const PLACEHOLDER_T = {
+  peels: SPELLS.bananaPeels.life,
+  sneeze: SPELLS.bigSneeze.inhale + 0.5,
+  soda: SPELLS.shakenSoda.fuse + SPELLS.shakenSoda.erupt,
+  anvil: SPELLS.anvil.fall + SPELLS.anvil.rest,
+  wrap: 0.5,
+};
 
 /**
  * Cast a spell card at world x for `team`. Returns the spell entity (also in
@@ -68,6 +95,16 @@ export function castSpell(b, card, team, x, level = 1) {
     s = { ...base, x: x0, y: y0, r, rot: 0, vx: (x - x0) / S.fall, vy: (yEnd - y0 - 0.5 * G * S.fall * S.fall) / S.fall, state: 'fall', tx: x, restT: 0, alpha: 1 };
   } else if (kind === 'arrowRain') {
     s = { ...base, x, y: groundY(), volley: 0, landed: 0 };
+  } else if (kind === 'peels') {
+    s = { ...base, x, y: groundY(), slips: 0 };
+  } else if (kind === 'sneeze') {
+    s = { ...base, x, y: groundY(), state: 'inhale' };
+  } else if (kind === 'soda') {
+    s = { ...base, x, y: groundY(), state: 'fizz', shake: 0 };
+  } else if (kind === 'anvil') {
+    s = { ...base, x, y: -SPELLS.anvil.height, vx: 0, vy: 0, r: 18, state: 'fall', alpha: 1 };
+  } else if (kind === 'wrap') {
+    s = { ...base, x, y: groundY() };
   } else {
     const r = card.radius || 40;
     s = { ...base, x, y: groundY() - r, r, rot: 0, vx: f * SPELLS.wheel.speed, dist: 0, hit: new Set() };
@@ -85,6 +122,7 @@ export function updateSpells(b, dt) {
     if (s.kind === 'boulder') boulder(b, s, dt);
     else if (s.kind === 'arrowRain') arrowRain(b, s, dt);
     else if (s.kind === 'wheel') wheel(b, s, dt);
+    else if (s.t >= (PLACEHOLDER_T[s.kind] ?? 0)) s.done = true;
     if (s.done) b.spells.splice(i, 1);
   }
 }
@@ -159,7 +197,7 @@ function boulderImpact(b, s) {
   }
   for (const t of b.towers) {
     if (t.team === s.team || !t.alive || rectDist(t, x, y) > R) continue;
-    damageTower(b, t, S.damage * s.dmgMul * TOWER_TAKES.spell, clamp(x, t.x - t.w / 2, t.x + t.w / 2), clamp(y, -t.h, 0), 'spell', s);
+    damageTower(b, t, S.damage * s.dmgMul * takesOf(t, 'spell'), clamp(x, t.x - t.w / 2, t.x + t.w / 2), clamp(y, -t.h, 0), 'spell', s);
   }
 }
 
@@ -219,7 +257,7 @@ function rainLand(b, s) {
   }
   for (const t of b.towers) {
     if (t.team === s.team || !t.alive || Math.abs(t.x - s.x) > s.radius + t.w / 2) continue;
-    damageTower(b, t, S.damage * s.dmgMul * TOWER_TAKES.spell, clamp(s.x, t.x - t.w / 2, t.x + t.w / 2), -t.h, 'spell', s);
+    damageTower(b, t, S.damage * s.dmgMul * takesOf(t, 'spell'), clamp(s.x, t.x - t.w / 2, t.x + t.w / 2), -t.h, 'spell', s);
   }
   for (const it of b.items) if (Math.abs((it.a.x + it.b.x) / 2 - s.x) < s.radius) it.b.addVel(0, -60, dt);
 }
@@ -255,7 +293,7 @@ function wheel(b, s, dt) {
     if (t.team === s.team || !t.alive || s.hit.has(t.id)) continue;
     if (Math.abs(t.x - s.x) > t.w / 2 + s.r * 0.5) continue;
     s.hit.add(t.id); // it dents the wall and rolls on past it
-    damageTower(b, t, S.damage * s.dmgMul * TOWER_TAKES.spell, s.x, s.y, 'spell', s);
+    damageTower(b, t, S.damage * s.dmgMul * takesOf(t, 'spell'), s.x, s.y, 'spell', s);
   }
   if (s.dist >= S.dist || s.x < s.r || s.x > WORLD.width - s.r) {
     s.done = true;

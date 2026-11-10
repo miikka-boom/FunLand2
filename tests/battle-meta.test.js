@@ -387,16 +387,22 @@ test('notices: queued for the UI, taken once', () => {
 // --- collection ------------------------------------------------------------------------
 
 test('collection: upgrade tables are the spec tables', () => {
-  assert.deepEqual(UPGRADE_COPIES, { common: [2, 4, 10, 20, 50, 100, 200, 400], rare: [1, 2, 4, 10, 20, 50, 100, 200], epic: [1, 1, 2, 4, 10, 20, 40, 80] });
+  assert.deepEqual(UPGRADE_COPIES, {
+    common: [2, 4, 10, 20, 50, 100, 200, 400],
+    rare: [1, 2, 4, 10, 20, 50, 100, 200],
+    epic: [1, 1, 2, 4, 10, 20, 40, 80],
+    legendary: [1, 1, 1, 2, 3, 5, 8, 12],
+  });
   assert.deepEqual(UPGRADE_GOLD, {
     common: [5, 20, 50, 150, 400, 1000, 2000, 4000],
     rare: [20, 50, 150, 400, 1000, 2000, 4000, 8000],
     epic: [50, 150, 400, 1000, 2000, 4000, 8000, 15000],
+    legendary: [100, 300, 800, 2000, 4000, 8000, 15000, 25000],
   });
   assert.deepEqual(KING_XP, [4, 5, 6, 10, 25, 50, 100, 200]);
   assert.deepEqual(KING_LEVELS, [20, 60, 140, 300, 600, 1200, 2400, 4800]);
   assert.equal(MAX_KING_LEVEL, 9);
-  for (const t of [UPGRADE_COPIES, UPGRADE_GOLD]) for (const r of ['common', 'rare', 'epic']) assert.equal(t[r].length, MAX_LEVEL - 1);
+  for (const t of [UPGRADE_COPIES, UPGRADE_GOLD]) for (const r of ['common', 'rare', 'epic', 'legendary']) assert.equal(t[r].length, MAX_LEVEL - 1);
   assert.equal(ARENAS_C, ARENAS, 'ladder re-exports the same arena table');
   assert.equal(arenaIndexC, arenaIndex);
 });
@@ -493,10 +499,14 @@ test('collection: deck editing keeps 8 unique owned cards', () => {
 
 test('collection: cards unlock by the best arena reached', () => {
   const p = newProfile(1);
-  assert.deepEqual(unlockedCards(p), STARTER_DECK.slice().sort((a, b) => CARD_ORDER.indexOf(a) - CARD_ORDER.indexOf(b)));
-  assert.deepEqual(lockedCards(p), ['bruiser', 'brick', 'cheeseWheel', 'bombSquad', 'megaBomb', 'shieldWall']);
+  assert.deepEqual(unlockedCards(p), [...STARTER_DECK.slice().sort((a, b) => CARD_ORDER.indexOf(a) - CARD_ORDER.indexOf(b)), 'sprouts', 'bananaPeels']);
+  const later = ['brollyBrigade', 'bubbleWrap', 'tummyDrummer', 'pelican', 'bigJelly'];
+  const fortress = ['boingBox', 'beanPatch', 'anvil', 'nutcracker', 'wreckingCrane', ...later];
+  const ridge = ['bombSquad', 'megaBomb', 'shieldWall'];
+  const ridge2 = ['bigSneeze', 'shakenSoda', 'bombJuggler'];
+  assert.deepEqual(lockedCards(p), ['bruiser', 'brick', 'cheeseWheel', ...ridge, 'propellerPals', 'pogoBean', 'netter', ...ridge2, ...fortress]);
   p.best = 300;
-  assert.deepEqual(lockedCards(p), ['bombSquad', 'megaBomb', 'shieldWall']);
+  assert.deepEqual(lockedCards(p), [...ridge, ...ridge2, ...fortress]);
   p.best = 2000;
   assert.deepEqual(unlockedCards(p), CARD_ORDER);
   assert.deepEqual(lockedCards(p), []);
@@ -589,7 +599,7 @@ test('ladder: crossing a gate opens the arena and its cards once', () => {
   const p = at(290);
   const r = recordMatch(p, { outcome: 'win', crowns: 1, enemyCrowns: 0 });
   assert.equal(r.newArena, 1);
-  assert.deepEqual(r.newCards, ['bruiser', 'brick', 'cheeseWheel']);
+  assert.deepEqual(r.newCards, ['bruiser', 'brick', 'cheeseWheel', 'propellerPals', 'pogoBean', 'netter']);
   assert.equal(r.arena, 1);
   assert.ok(unlockedCards(p).includes('brick'));
   recordMatch(p, { outcome: 'loss' });
@@ -597,11 +607,11 @@ test('ladder: crossing a gate opens the arena and its cards once', () => {
   assert.equal(again.newArena, -1);
   assert.deepEqual(again.newCards, []);
   const q = at(640);
-  assert.deepEqual(recordMatch(q, { outcome: 'win', crowns: 3 }).newCards, ['bombSquad', 'megaBomb', 'shieldWall']);
+  assert.deepEqual(recordMatch(q, { outcome: 'win', crowns: 3 }).newCards, ['bombSquad', 'megaBomb', 'shieldWall', 'bigSneeze', 'shakenSoda', 'bombJuggler']);
   const top = at(1490);
   const t = recordMatch(top, { outcome: 'win', crowns: 3 });
   assert.equal(t.newArena, 4);
-  assert.deepEqual(t.newCards, [], 'the top arenas unlock no new cards');
+  assert.deepEqual(t.newCards, ['brollyBrigade', 'bubbleWrap', 'tummyDrummer', 'pelican', 'bigJelly'], 'the top arena unlocks its cards');
 
   const pr = arenaProgress(at(475));
   assert.deepEqual([pr.arena, pr.name, pr.from, pr.to, pr.next], [1, 'Pointy Pass', 300, 650, 2]);
@@ -674,8 +684,8 @@ test('trophy trail: new arena cards come with enough copies to reach about level
 });
 
 test('trophy trail: well-formed, every new card handed out after its gate', () => {
-  assert.ok(TRAIL.length >= 28 && TRAIL.length <= 36, `${TRAIL.length} milestones`);
-  assert.equal(TRAIL[TRAIL.length - 1].at, 1600);
+  assert.ok(TRAIL.length >= 46 && TRAIL.length <= 56, `${TRAIL.length} milestones`);
+  assert.equal(TRAIL[TRAIL.length - 1].at, 1750);
   const hatIds = new Map(HATS.map((h) => [h.id, h]));
   let prev = 0;
   for (const m of TRAIL) {
@@ -692,10 +702,10 @@ test('trophy trail: well-formed, every new card handed out after its gate', () =
     for (const id of Object.keys(r.cards || {})) assert.ok(CARDS[id] && CARDS[id].arena <= arenaIndex(m.at), `${m.at}: ${id} unlocked there`);
     if (r.random) assert.ok(cardsUpTo(arenaIndex(m.at)).some((id) => CARDS[id].rarity === r.random), `${m.at}: a ${r.random} exists there`);
   }
-  for (const id of CARD_ORDER.filter((c) => CARDS[c].arena > 0)) {
+  for (const id of CARD_ORDER.filter((c) => CARDS[c].arena > 0 || !STARTER_DECK.includes(c))) {
     const m = TRAIL.find((x) => x.reward.cards && x.reward.cards[id]);
     assert.ok(m, `${id} is on the trail`);
-    assert.ok(m.at < ARENAS[CARDS[id].arena].trophies + 100, `${id} comes soon after its gate`);
+    assert.ok(m.at >= ARENAS[CARDS[id].arena].trophies && m.at < ARENAS[CARDS[id].arena].trophies + 300, `${id} comes soon after its gate`);
   }
   assert.ok(TRAIL.some((m) => m.reward.beans) && TRAIL.some((m) => m.reward.gold) && TRAIL.some((m) => m.reward.random));
 });
@@ -705,7 +715,7 @@ test('trophy trail: claim reached milestones once, by best trophies', () => {
   assert.equal(claimableTrail(p), 0);
   assert.equal(claimTrail(p, 10), null);
   p.trophies = p.best = 150;
-  assert.equal(claimableTrail(p), 5);
+  assert.equal(claimableTrail(p), 7);
   const st = trailStatus(p);
   assert.equal(st.length, TRAIL.length);
   assert.deepEqual(Object.keys(st[0]).sort(), ['arena', 'at', 'claimable', 'claimed', 'gate', 'i', 'reached', 'reward']);
@@ -717,7 +727,7 @@ test('trophy trail: claim reached milestones once, by best trophies', () => {
   assert.equal(p.gold, 50);
   assert.equal(claimTrail(p, 10), null, 'once');
   assert.equal(claimTrail(p, 11), null, 'no such milestone');
-  assert.equal(claimableTrail(p), 4);
+  assert.equal(claimableTrail(p), 6);
 
   // Random-card rewards resolve to one unlocked card of that rarity, the same way every time
   const q = clone(p);
@@ -733,7 +743,7 @@ test('trophy trail: claim reached milestones once, by best trophies', () => {
   p.trophies = 0;
   assert.ok(claimTrail(p, 100));
   // Everything at once at the top, each card reward valid
-  const top = at(1600, 11);
+  const top = at(1750, 11);
   let n = 0;
   for (const m of TRAIL) if (claimTrail(top, m.at)) n++;
   assert.equal(n, TRAIL.length);
@@ -895,7 +905,7 @@ test('chests: sizes, gold and arena scaling follow the spec, only unlocked cards
     }
     assert.ok(Math.abs(rareSmall / N - odds.small.odds.rare) < 0.08, `small rare rate ${rareSmall / N}`);
     assert.deepEqual(odds.big.gold, [Math.round(120 * sc.gold), Math.round(200 * sc.gold)]);
-    assert.deepEqual([...odds.big.pool.common, ...odds.big.pool.rare, ...odds.big.pool.epic].sort(), [...unlocked].sort());
+    assert.deepEqual([...odds.big.pool.common, ...odds.big.pool.rare, ...odds.big.pool.epic, ...odds.big.pool.legendary].sort(), [...unlocked].sort());
   }
 });
 

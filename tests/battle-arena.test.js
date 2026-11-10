@@ -326,7 +326,8 @@ test('a dropped unit falls from the sky, lands on its feet without fall damage, 
     assert.equal(u.deployT, 0);
     assert.equal(u.hp, u.maxHp, `${type} took fall damage`);
     assert.ok(Math.abs(u.ground - u.hip.y - u.standH) < 12, `${type} not standing (${u.ground - u.hip.y} vs ${u.standH})`);
-    assert.ok(u.hip.x > x0 + 15, `${type} never set off (${u.hip.x - x0})`);
+    const off = u.type.speed >= 44 ? 15 : 10; // (the Big Jelly, at 36 px/s, is slower than anything else)
+    assert.ok(u.hip.x > x0 + off, `${type} never set off (${u.hip.x - x0})`);
     assert.ok(finite(b));
   }
 });

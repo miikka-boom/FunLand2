@@ -17,7 +17,8 @@
 // within about y = 0.25 (outline included). Static shapes are Path2D objects in
 // R units, built once on first use, so a hat costs 4-18 fills and strokes and
 // allocates nothing per frame. Optional extras: hatAnchor(u) (where a unit's
-// hat goes) and the cx field of hatExtent (lopsided hats).
+// hat goes), hatSeat(shape) (how high it sits on each body shape) and the cx
+// field of hatExtent (lopsided hats).
 
 export const HATS = [
   { id: 'none', name: 'No hat', price: 0, blurb: 'The classic bare bean.' },
@@ -1137,7 +1138,15 @@ export function drawHat(ctx, id, x, y, ang, size, pal, t, f = 1) {
 // How far above the shape's base particle (head; chest for the ball) a hat sits, in R.
 // The spiker's apex is rounded off by its arcTo, so its visible tip is only ~0.6R above
 // the head: 1.0 left a gap, 0.45 lets the point poke just inside the brim.
-const SEAT = { bean: 0.92, brick: 0.95, triangle: 0.45, ball: 1.0 };
+// The Big Jelly's dome tops out just above its head particle (units.js draws
+// it to 0.92R), so a hat sits at 0.9R. Every seat here must match popHat in
+// sim/battle.js, so a hat that gets knocked off leaves from where it sat.
+const SEAT = { bean: 0.92, brick: 0.95, triangle: 0.45, ball: 1.0, jelly: 0.9 };
+
+/** The hat seat of a body shape, in R above its base particle (beans and birds use the bean's). */
+export function hatSeat(shape) {
+  return SEAT[shape] ?? SEAT.bean;
+}
 
 /**
  * Optional helper: where a unit's hat goes -> out = { x, y, ang } (ang for drawHat).
@@ -1149,7 +1158,7 @@ export function hatAnchor(u, out = {}) {
   const shape = (u.type && u.type.shape) || 'bean';
   const base = shape === 'ball' ? u.chest : u.head;
   const R = u.R;
-  const k = (SEAT[shape] ?? SEAT.bean) * R;
+  const k = hatSeat(shape) * R;
   const ux = u.ux;
   const uy = u.uy;
   let x = base.x + ux * k;

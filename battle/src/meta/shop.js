@@ -30,7 +30,7 @@ export function dayKey(now) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const DOWN = { epic: 'rare', rare: 'common', common: null };
+const DOWN = { legendary: 'epic', epic: 'rare', rare: 'common', common: null };
 
 const dayNum = (key) => {
   const m = /^(\d+)-(\d\d)-(\d\d)$/.exec(key);
@@ -51,7 +51,7 @@ function rollover(p, now) {
 
 function stock(p, day, arena) {
   const rng = rngFrom(p.seed, 'shop', day);
-  const pool = { common: [], rare: [], epic: [] };
+  const pool = { common: [], rare: [], epic: [], legendary: [] };
   for (const id of cardsUpTo(arena)) pool[CARDS[id].rarity].push(id);
 
   // The free gift: mostly gold, sometimes common cards, now and then a rare.

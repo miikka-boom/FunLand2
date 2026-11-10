@@ -12,7 +12,7 @@
 
 // BUMP THIS on every deploy that changes ANY file under battle/ (code, CSS, HTML, icons).
 // If it stays the same, players who already have the game keep the old files forever.
-const VERSION = '2026-11-05.3';
+const VERSION = '2026-11-09.1';
 
 const CACHE_PREFIX = 'wobble-war-';
 const CACHE = CACHE_PREFIX + VERSION;
@@ -51,9 +51,11 @@ const PRECACHE = [
   './src/render/hats.js',
   './src/render/spells.js',
   './src/render/towers.js',
+  './src/render/buildings.js',
   './src/render/units.js',
   './src/sim/battle.js',
   './src/sim/bot.js',
+  './src/sim/buildings.js',
   './src/sim/cards.js',
   './src/sim/match.js',
   './src/sim/physics.js',

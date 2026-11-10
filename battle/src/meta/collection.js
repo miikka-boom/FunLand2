@@ -37,11 +37,13 @@ export const UPGRADE_COPIES = {
   common: [2, 4, 10, 20, 50, 100, 200, 400],
   rare: [1, 2, 4, 10, 20, 50, 100, 200],
   epic: [1, 1, 2, 4, 10, 20, 40, 80],
+  legendary: [1, 1, 1, 2, 3, 5, 8, 12],
 };
 export const UPGRADE_GOLD = {
   common: [5, 20, 50, 150, 400, 1000, 2000, 4000],
   rare: [20, 50, 150, 400, 1000, 2000, 4000, 8000],
   epic: [50, 150, 400, 1000, 2000, 4000, 8000, 15000],
+  legendary: [100, 300, 800, 2000, 4000, 8000, 15000, 25000],
 };
 // King XP for an upgrade to the new level 2..9 (index = new level - 2).
 export const KING_XP = [4, 5, 6, 10, 25, 50, 100, 200];
