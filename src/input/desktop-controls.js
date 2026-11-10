@@ -35,7 +35,6 @@ export class DesktopControls {
         e.preventDefault();
         return;
       }
-      if (e.repeat) return;
       const map = {
         Space: 'shove', KeyF: 'shove', KeyV: 'shove',
         KeyR: 'reload',
@@ -44,9 +43,13 @@ export class DesktopControls {
       };
       const ev = map[e.code];
       if (ev) {
+        // A held key is still the game's: Space must not page-scroll (when the
+        // game is embedded, that scrolls the page around it), Tab must not
+        // walk the focus away.
+        e.preventDefault();
+        if (e.repeat) return;
         this.events.push(ev);
         this.lastUsed = now;
-        e.preventDefault();
       }
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -84,6 +87,9 @@ export class DesktopControls {
     canvas.addEventListener(
       'wheel',
       (e) => {
+        // The wheel over the game swaps weapons; it must not also scroll the
+        // page the game is embedded in.
+        e.preventDefault();
         const now = performance.now();
         if (now - wheelLast > 250) wheelAcc = 0;
         wheelLast = now;
@@ -95,7 +101,7 @@ export class DesktopControls {
           wheelAcc = 0;
         }
       },
-      { passive: true },
+      { passive: false },
     );
     window.addEventListener('blur', () => this.reset());
   }
