@@ -10,7 +10,7 @@
 
 import { WORLD, enemyOf } from '../config.js';
 import { Particle, Dist, integrate, collideGround, clampGround, hingeLimit, segSeg, springTo } from './physics.js';
-import { UNIT_TYPES } from './unit-types.js';
+import { UNIT_TYPES, LIGHT_KNOCK } from './unit-types.js';
 import { Unit, isFlier } from './unit.js';
 import { Rng } from './rng.js';
 import { Tower, takesOf, updateTowers, damageTower, rectDist, segRect } from './towers.js';
@@ -539,12 +539,25 @@ export class Battle {
         const minD = (a.R + b.R) * 1.05 + 3;
         if (dx < minD) {
           const share = 0.7 * (minD - dx);
-          moveTorso(a, (-share * b.mass) / (a.mass + b.mass), 0);
-          moveTorso(b, (share * a.mass) / (a.mass + b.mass), 0);
+          let da = (-share * b.mass) / (a.mass + b.mass);
+          let db = (share * a.mass) / (a.mass + b.mass);
+          // A lightweight walking into a much heavier bean hardly moves it: it
+          // gives way itself instead (a Sprout can't hold a Brick back)
+          const ka = lightShove(b, a);
+          const kb = lightShove(a, b);
+          if (ka < 1) {
+            da *= ka;
+            db = share + da;
+          } else if (kb < 1) {
+            db *= kb;
+            da = db - share;
+          }
+          moveTorso(a, da, 0);
+          moveTorso(b, db, 0);
           const closing = a.hip.vx(dt) - b.hip.vx(dt);
           if (closing > 0) {
-            for (const p of a.body) p.addVel(-closing * 0.25, 0, dt);
-            for (const p of b.body) p.addVel(closing * 0.25, 0, dt);
+            for (const p of a.body) p.addVel(-closing * 0.25 * ka, 0, dt);
+            for (const p of b.body) p.addVel(closing * 0.25 * kb, 0, dt);
           }
         }
         // Leaning upper bodies too: no heads inside heads
@@ -636,6 +649,51 @@ export class Battle {
         }
         if (hit > 300) this.emit('land', u.hip.x, u.ground, { unit: u, power: Math.min(1.2, hit / 900) });
       }
+    }
+    if (this.towers.some((t) => t.kind === 'building')) this.unpinch();
+  }
+
+  /**
+   * A building stood up closer to another structure of its side than a bean
+   * is wide: the last wall pushes a bean caught in the gap back into the one
+   * before, every step. A bean the walls leave inside an enemy structure goes
+   * out past the whole row of that side's structures with gaps narrower than
+   * itself, on its own side (blue beans to -x, red to +x), all of it at once.
+   */
+  unpinch() {
+    for (const u of this.units) {
+      if (u.asleep || u.gone || u.heldBy) continue;
+      const h = u.hip;
+      let t = null;
+      for (const s of this.towers) {
+        if (!s.alive || s.team === u.team) continue;
+        const top = s.kind === 'castle' ? -Infinity : -s.h;
+        if (h.y + h.r >= top && Math.abs(h.x - s.x) < s.w / 2 + h.r - 1) {
+          t = s;
+          break;
+        }
+      }
+      if (!t) continue;
+      const side = u.team === 'blue' ? -1 : 1;
+      let edge = t.x + (side * t.w) / 2;
+      for (let more = true; more; ) {
+        more = false;
+        for (const s of this.towers) {
+          if (!s.alive || s.team !== t.team) continue;
+          const near = s.x - (side * s.w) / 2;
+          const far = s.x + (side * s.w) / 2;
+          if ((far - edge) * side > 0 && (near - edge) * side < 2 * u.R + 2) {
+            edge = far;
+            more = true;
+          }
+        }
+      }
+      const dx = edge + side * h.r - h.x;
+      for (const p of u.parts) {
+        p.x += dx;
+        p.px += dx;
+      }
+      for (const ft of u.feet) ft.x += dx;
     }
   }
 
@@ -1052,8 +1110,9 @@ export class Battle {
         const kx = u.f * 0.82 + (tvx / tl) * 0.25;
         const ky = -0.6 + Math.min(0, tvy / tl) * 0.2;
         const kl = Math.hypot(kx, ky);
-        dvx = (kx / kl) * knock;
-        dvy = (ky / kl) * knock;
+        const light = lightShove(u, e); // (a toothpick barely shoves a Brick)
+        dvx = (kx / kl) * knock * light;
+        dvy = (ky / kl) * knock * light;
       }
       const dl = Math.hypot(dvx, dvy) || 1;
       const kx = dvx / dl;
@@ -1177,7 +1236,7 @@ export class Battle {
     u.act.hits.add(e.id);
     u.act.done = true;
     const dmg = A.damage * (0.55 + 0.45 * sf) * (A.shieldPierce ?? 0.3) * u.dmgMul;
-    const knock = A.knock * sf * 0.45;
+    const knock = A.knock * sf * 0.45 * lightShove(u, e);
     e.takeHit(this, { damage: dmg, dvx: u.f * knock, dvy: -knock * 0.25, x, y, stun: A.stun * 0.3, kind: 'block', from: u, spin: 0.2 });
     // Weapon bounces off, attacker wobbles
     const t = u.tip;
@@ -1910,6 +1969,11 @@ const swoopsAt = (a, b) => !!a.act && a.act.victim === b;
  */
 export function liftable(e, maxMass) {
   return e.alive && !e.gone && !e.held && !e.holding && !e.air && !e.type.flying && !(e.floatT > 0) && !e.flipFall && e.deployT <= 0 && e.mass <= maxMass;
+}
+
+/** How much of a push from `from` lands on `on`: x1, much less from a lightweight on a bean much heavier than it (LIGHT_KNOCK). */
+function lightShove(from, on) {
+  return from.type.light ? Math.min(1, ((LIGHT_KNOCK * from.mass) / on.mass) ** 2) : 1;
 }
 
 /** Move a bean's torso without changing its velocity; planted feet follow halfway. */

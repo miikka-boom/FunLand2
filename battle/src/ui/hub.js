@@ -11,8 +11,7 @@
 // The profile is mutated in place by the meta modules; every change here is
 // followed by persist().
 
-import { h, icon, coin, bean, fmt, fmtShort, fmtTime, clamp, canvas, cardCanvas, cardW, rewardView, tickSheens, ARENAS, CARDS } from './hub-kit.js';
-import { BUILDINGS } from '../sim/buildings.js';
+import { h, icon, coin, bean, fmt, fmtShort, fmtTime, clamp, canvas, cardCanvas, cardW, rewardView, tickSheens, legendWords, newCardsLine, firstTipLines, ARENAS, CARDS } from './hub-kit.js';
 import { drawChest } from '../render/chests.js';
 import { CHESTS, chestState, readyChests } from '../meta/chests.js';
 import { arenaProgress, arenaIndex, claimableTrail } from '../meta/ladder.js';
@@ -515,7 +514,7 @@ export function createHub(deps) {
         kicker: 'WELCOME TO THE ARENA',
         title: 'Thanks for playing the campaign!',
         body: [
-          h('p', {}, `Here's ${fmt(gold)} gold for your ${fmt(n.stars || 0)} stars. Spend it on card upgrades and shop cards.`),
+          h('p', {}, `Here's ${fmt(gold)} gold for your ${fmt(n.stars || 0)} ${n.stars === 1 ? 'star' : 'stars'}. Spend it on card upgrades and shop cards.`),
           h('div', { class: 'hb-rewards' }, h('span', { class: 'hb-amt hb-amt-gold big' }, coin(), num)),
         ],
         buttons: [btn('Thanks!', () => closeTop(), 'primary big', null)],
@@ -550,12 +549,7 @@ export function createHub(deps) {
   function firstTip(n) {
     const card = CARDS[n.card];
     const what = Array.isArray(n.what) ? n.what : [];
-    const legChance = Math.round(CHESTS.big.legendary * 100);
-    const lines = {
-      legendary: `${card.name} is a Legendary: the rarest kind of card, in a shining teal frame. It levels up with only a few copies. Big Chests have a ${legChance}% chance of one, and some days the shop has one too.`,
-      building: `${card.name} is a building. Play it on your side of the field: it stays put, ${BUILDINGS[card.building] ? `works for ${BUILDINGS[card.building].life} seconds, ` : 'works for a while, '}then falls apart. Enemy beans stop to bash it, and losing it never costs a crown.`,
-      flier: `${card.name} ${card.count > 1 ? 'fly' : 'flies'}! Up there only Archers, Arrow Rain, towers and a few other cards can hit ${card.count > 1 ? 'them' : 'it'}: clubs and swords swing right under. Keep an air answer in your deck too, for the enemy's fliers.`,
-    };
+    const lines = firstTipLines(card, Math.round(CHESTS.big.legendary * 100));
     const order = ['legendary', 'building', 'flier'].filter((k) => what.includes(k));
     const kicker = { legendary: 'YOUR FIRST LEGENDARY!', building: 'YOUR FIRST BUILDING!', flier: 'YOUR FIRST FLIER!' }[order[0]] || 'NEW CARD';
     const w = cardW(0.3, 80, 130);
@@ -628,15 +622,9 @@ export function createHub(deps) {
   /** A line for the arena celebration when arena i unlocks a Legendary. */
   function legendNote(i, ids) {
     const legs = (ids || []).filter((id) => CARDS[id] && CARDS[id].rarity === 'legendary').map((id) => CARDS[id].name);
-    if (!legs.length) return null;
     const first = !Object.values(CARDS).some((c) => c.rarity === 'legendary' && c.arena < i);
-    const names = legs.length > 1 ? `${legs.slice(0, -1).join(', ')} and ${legs[legs.length - 1]}` : legs[0];
-    return h(
-      'p',
-      { class: 'hb-cel-leg' },
-      h('b', {}, legs.length > 1 ? 'Legendaries! ' : 'A Legendary! '),
-      first ? `${names}: in Big Chests (${Math.round(CHESTS.big.legendary * 100)}%) and the shop some days.` : `${names} join the Big Chests and the shop.`,
-    );
+    const words = legendWords(legs, first, Math.round(CHESTS.big.legendary * 100));
+    return words ? h('p', { class: 'hb-cel-leg' }, h('b', {}, words[0]), words[1]) : null;
   }
 
   function celebrateArena(i, newCards) {
@@ -665,7 +653,7 @@ export function createHub(deps) {
         { class: 'hb-cel' + ((newCards || []).length > 4 ? ' many' : ''), style: `--arena:${ar.color}` },
         h('div', { class: 'hb-kicker light' }, 'NEW ARENA UNLOCKED!'),
         h('div', { class: 'hb-cel-banner' }, h('small', {}, `Arena ${i + 1}`), h('h2', {}, ar.name), h('span', { class: 'hb-cel-tro' }, icon('trophy'), fmt(ar.trophies))),
-        row.childElementCount ? h('p', {}, 'New cards! In chests and the shop now, and on the Trophy Trail.') : null,
+        row.childElementCount ? h('p', {}, newCardsLine(row.childElementCount)) : null,
         row.childElementCount ? row : null,
         legendNote(i, newCards),
         h('div', { class: 'hb-row' }, btn('See the Trail', () => (closeTop(), switchTab('trail'))), btn('Awesome!', () => closeTop(), 'primary big', null)),

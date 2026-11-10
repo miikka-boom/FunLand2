@@ -173,43 +173,72 @@ export class Match {
     const dir = team === 'blue' ? 1 : -1;
     if (card.anywhere) {
       if (!Number.isFinite(x)) return [];
-      // The group keeps its spacing: it slides as a block until every bean is
-      // clear (beans nudged one by one would all land on the same edge)
-      const os = offs.slice(0, n);
-      let c = x;
-      for (let k = 0; k < 4; k++) {
-        let m = 0;
+      // The group keeps its spacing: its centre is the one nearest x (the lower
+      // on a tie) where every bean is clear, tried at x and wherever a bean sits
+      // right on the edge of a blocked span. (Beans nudged one by one would all
+      // land on the same edge, and a block slid off one structure could land on
+      // the next.) With no room anywhere for the spacing, each bean takes its
+      // own clear spot.
+      const os = offs.slice(0, n).map((o) => o * dir);
+      const spans = this.blockedSpans();
+      const free = (v) => spans.every(([a, b]) => !(v > a + 1e-6 && v < b - 1e-6));
+      let best = null;
+      const tryAt = (c) => {
+        const d = Math.abs(c - x);
+        if (best != null && (d > Math.abs(best - x) || (d === Math.abs(best - x) && c >= best))) return;
+        if (os.every((o) => free(c + o))) best = c;
+      };
+      tryAt(x);
+      for (const [a, b] of spans) {
         for (const o of os) {
-          const d = this.clearSpot(c + o * dir) - (c + o * dir);
-          if (Math.abs(d) > Math.abs(m)) m = d;
+          if (Number.isFinite(a)) tryAt(a - o);
+          if (Number.isFinite(b)) tryAt(b - o);
         }
-        if (Math.abs(m) < 0.5) break;
-        c += m;
       }
-      return os.map((o) => this.clearSpot(c + o * dir));
+      return best == null ? os.map((o) => this.clearSpot(x + o)) : os.map((o) => best + o);
     }
     const [z0, z1] = this.zone(team);
     return offs.slice(0, n).map((o) => Math.min(z1, Math.max(z0, x + o * dir)));
   }
 
   /**
-   * A deploy-anywhere bean's x: out of every standing tower and building
-   * footprint (to its nearer side, ANYWHERE_CLEAR px off it), out of both
-   * Castles (to the field side), then inside ANYWHERE.
+   * Where a deploy-anywhere bean may not land, as open [a, b] spans of x:
+   * every standing tower and building footprint ANYWHERE_CLEAR px wide of it
+   * each side, each Castle (standing or not) out to the world's edge behind
+   * it, and outside ANYWHERE.
+   */
+  blockedSpans() {
+    const spans = [
+      [-Infinity, ANYWHERE[0]],
+      [ANYWHERE[1], Infinity],
+    ];
+    for (const t of this.battle.towers) {
+      const half = t.w / 2 + ANYWHERE_CLEAR;
+      if (t.kind === 'castle') spans.push(t.f > 0 ? [-Infinity, t.x + half] : [t.x - half, Infinity]);
+      else if (t.alive) spans.push([t.x - half, t.x + half]);
+    }
+    return spans;
+  }
+
+  /**
+   * A deploy-anywhere bean's x: out of every blocked span (blockedSpans) to
+   * the nearer edge of the overlapping spans it is in, taken together, so two
+   * structures close together count as one (a Castle's edge is always its
+   * field side). The answer is always clear.
    */
   clearSpot(x) {
-    const towers = this.battle.towers;
-    for (const t of towers) {
-      if (!t.alive || t.kind === 'castle') continue;
-      const half = t.w / 2 + ANYWHERE_CLEAR;
-      if (Math.abs(x - t.x) < half) x = x < t.x ? t.x - half : t.x + half;
+    const spans = this.blockedSpans().sort((p, q) => p[0] - q[0]);
+    let a = -Infinity;
+    let b = -Infinity;
+    for (const s of spans.concat([[Infinity, Infinity]])) {
+      if (s[0] < b) {
+        b = Math.max(b, s[1]); // (overlaps the run so far)
+        continue;
+      }
+      if (x > a && x < b) return a === -Infinity ? b : b === Infinity || x - a < b - x ? a : b;
+      [a, b] = s;
     }
-    for (const t of towers) {
-      if (t.kind !== 'castle') continue;
-      const half = t.w / 2 + ANYWHERE_CLEAR;
-      if (Math.abs(x - t.x) < half) x = t.x + t.f * half;
-    }
-    return Math.min(ANYWHERE[1], Math.max(ANYWHERE[0], x));
+    return x;
   }
 
   /** Drop a unit card's beans in their formation around x (random lanes); deploy-anywhere ones float in. */

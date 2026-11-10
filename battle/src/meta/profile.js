@@ -4,9 +4,13 @@
 //
 // v2 (Arena): gold + Jellybeans, a card collection and deck, King Level,
 // trophies, the Trophy Trail, the two menu chests, the daily shop and badges.
-// v1 saves (the campaign game) migrate: Jellybeans, cosmetics, settings,
-// supporter, stats and still-existing badges carry over, campaign stars turn
-// into a veteran gift of gold, the rest of the campaign is dropped.
+// v3 (the 32 cards): the same shape plus `firsts`. The number only changed so
+// that a window still running the 14-card game, which drops every card id it
+// doesn't know, reads as older (main.js writes ours back over its saves).
+// v2 saves load as they are; v1 saves (the campaign game) migrate:
+// Jellybeans, cosmetics, settings, supporter, stats and still-existing badges
+// carry over, campaign stars turn into a veteran gift of gold, the rest of the
+// campaign is dropped.
 //
 // Every random roll in the meta game comes from rngFrom(p.seed, ...) so it
 // is reproducible (and testable); only newProfile() without a seed uses
@@ -16,7 +20,7 @@ import { cardById, STARTER_DECK, DECK_SIZE, MAX_LEVEL } from '../sim/cards.js';
 import { ARENAS, arenaIndex, addCards, cardState, kingLevelForXp, KING_LEVELS } from './collection.js';
 
 export const PROFILE_KEY = 'wobblewar.profile.v1'; // same key as v1: the save upgrades in place
-export const PROFILE_VERSION = 2;
+export const PROFILE_VERSION = 3;
 // Unit types that can wear a hat (sim/unit-types.js ids). The Sprout, Propeller
 // Pal, Nutcracker and Pelican have their own headgear (noHat) and never do.
 export const UNIT_IDS = ['clubber', 'squire', 'archer', 'spiker', 'bomb', 'brick', 'bruiser', 'megabomb', 'pogo', 'netter', 'juggler', 'brolly', 'drummer', 'jelly'];
@@ -182,8 +186,8 @@ function cleanNotices(raw) {
 export const looksV2 = (raw) => isObj(raw) && ((isObj(raw.cards) && Array.isArray(raw.deck)) || isObj(raw.king) || isObj(raw.road));
 
 /**
- * Bring any saved data up to a valid v2 profile without losing progress.
- * v1 (or unversioned) saves are migrated, v2 saves are filled in and
+ * Bring any saved data up to a valid profile without losing progress.
+ * v1 (or unversioned) saves are migrated, v2 and v3 saves are filled in and
  * sanitized, junk gives a fresh profile.
  */
 export function migrate(raw) {
@@ -256,6 +260,10 @@ function fromV2(raw) {
   p.shop.bought = Array.from(new Set((Array.isArray(shop.bought) ? shop.bought : []).filter((i) => Number.isInteger(i) && i >= 0 && i < 10)));
   p.shop.free = shop.free === true;
   p.shop.arena = Math.min(ARENAS.length - 1, num(shop.arena));
+  // A shop day the 14-card game began (its saves have no `firsts`) keeps that game's
+  // stock until the day ends (shop.js), so what was bought and the gift claimed still
+  // mark the same offers. (rollover() starts the next day without the flag.)
+  if (p.shop.day && (!isObj(raw.firsts) || shop.cards14 === true)) p.shop.cards14 = true;
 
   for (const [id, b] of Object.entries(obj(raw.badges))) if (isObj(b) && b.claimed) p.badges[id] = { claimed: true };
   p.stats = cleanStats(raw.stats);

@@ -9,6 +9,7 @@ import { SPELLS } from '../sim/spells.js';
 import { TOWER_TAKES } from '../sim/towers.js';
 import { BUILDINGS } from '../sim/buildings.js';
 import { Battle, DT } from '../sim/battle.js';
+import { WORLD } from '../config.js';
 import { UnitRenderer } from '../render/units.js';
 import { cardFace, drawLegendarySheen } from '../render/cards.js';
 import { HATS, drawHat } from '../render/hats.js';
@@ -323,6 +324,18 @@ function beatWords() {
 }
 
 /**
+ * How far in front of the Wrecking Crane's mast (from its face, like the Box's
+ * reach) the ball still hits: it hits only while it moves at minHit or faster,
+ * so on a full swing (maxAng) not past the angle where it has slowed to that.
+ * (sense is where it wakes up and starts to pump: farther, and hits nothing.)
+ */
+function craneReach(B) {
+  const P = B.pendulum;
+  const c = Math.cos(P.maxAng) + (P.minHit * P.minHit) / (2 * WORLD.gravity * P.L);
+  return Math.round(P.pivotFwd + P.L * Math.sin(Math.acos(clamp(c, -1, 1))) + P.r - B.w / 2);
+}
+
+/**
  * Rows for the card detail: [{ label, value, next }] at `level`; next = the
  * value one level up (null when maxed or not scaling).
  */
@@ -356,14 +369,15 @@ export function cardStats(id, level) {
       rows.push({ label: 'Reach', value: B.punch.reach });
     } else if (B.pendulum) {
       rows.push({ label: 'Swing damage', value: sc(B.pendulum.damage), next: nx(B.pendulum.damage) });
-      rows.push({ label: 'Reach', value: B.pendulum.sense });
+      rows.push({ label: 'Reach', value: craneReach(B) });
     }
     if (B.spawn) {
       const kid = UNIT_TYPES[B.spawn.unit];
       rows.push({ label: 'Spawns', value: `${kid ? kid.name : B.spawn.unit} / ${B.spawn.every} s` });
       rows.push({ label: 'At once', value: `Up to ${B.spawn.max}` });
     }
-    rows.push({ label: 'Targets', value: 'Ground' });
+    // (the crane's ball hits whatever it sweeps through, fliers at Propeller Pal height too)
+    rows.push({ label: 'Targets', value: B.pendulum ? 'Air & ground' : 'Ground' });
   } else {
     const S = SPELLS[SPELL_KEY[card.spell] || card.spell];
     if (!S) return rows;
@@ -412,6 +426,35 @@ export function demoStyle(arena, rng) {
   const newest = all.filter((id) => (ARCHETYPES[id].arena || 0) === top);
   const rest = all.filter((id) => (ARCHETYPES[id].arena || 0) !== top);
   return rng.chance(DEMO_NEWEST) || !rest.length ? rng.pick(newest) : rng.pick(rest);
+}
+
+// --- celebration words ---------------------------------------------------------------------
+
+/** Names for a sentence: "A", "A and B", "A, B and C". */
+export const andList = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0] || '');
+
+/** The line over the cards a new arena unlocks (n of them). */
+export const newCardsLine = (n) => `${n > 1 ? 'New cards!' : 'A new card!'} In chests and the shop now, and on the Trophy Trail.`;
+
+/**
+ * The arena celebration's words for the Legendaries it unlocks: [lead, text],
+ * or null for none. first: the game's first ones (then the Big Chest odds, pct %).
+ */
+export function legendWords(names, first, pct) {
+  if (!names.length) return null;
+  const many = names.length > 1;
+  return [many ? 'Legendaries! ' : 'A Legendary! ', first ? `${andList(names)}: in Big Chests (${pct}%) and the shop some days.` : `${andList(names)} ${many ? 'join' : 'joins'} the Big Chests and the shop.`];
+}
+
+/** The one-time tip's lines about a first flier, building or legendary: { legendary, building, flier } (legPct: the Big Chest's legendary %). */
+export function firstTipLines(card, legPct) {
+  const B = BUILDINGS[card.building];
+  const many = card.count > 1; // (Propeller Pals fly, a Pelican flies)
+  return {
+    legendary: `${card.name} is a Legendary: the rarest kind of card, in a shining teal frame. It levels up with only a few copies. Big Chests have a ${legPct}% chance of one, and some days the shop has one too.`,
+    building: `${card.name} is a building. Play it on your side of the field: it stays put, ${B ? `works for ${B.life} seconds, ` : 'works for a while, '}then falls apart. Enemy beans stop to bash it, and losing it never costs a crown.`,
+    flier: `${card.name} ${many ? 'fly' : 'flies'}! Up there only Archers, Arrow Rain, towers and a few other cards can hit ${many ? 'them' : 'it'}: clubs and swords swing right under. Keep an air answer in your deck too, for the enemy's fliers.`,
+  };
 }
 
 /** The small line under a card's name: what kind of card it is. */

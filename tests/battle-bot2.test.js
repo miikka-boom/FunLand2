@@ -11,7 +11,7 @@ import { DT } from '../battle/src/sim/battle.js';
 import { Bot, CLASS, CLASSES, COUNTER, airValue } from '../battle/src/sim/bot.js';
 import { CARDS, CARD_ORDER } from '../battle/src/sim/cards.js';
 import { UNIT_TYPES } from '../battle/src/sim/unit-types.js';
-import { BUILDINGS, BUILD_GAP } from '../battle/src/sim/buildings.js';
+import { BUILDINGS, BUILD_GAP, fitBuilding } from '../battle/src/sim/buildings.js';
 import { GUARD } from '../battle/src/sim/towers.js';
 import { WORLD } from '../battle/src/config.js';
 import { Rng } from '../battle/src/sim/rng.js';
@@ -129,13 +129,49 @@ test('buildings: with nothing coming and mana to spare the bot plants a Bean Pat
   assertLegal(calls[0]);
   assert.ok(l.x < WORLD.towerX.red && l.x > WORLD.towerX.red - GUARD.range, `patch at ${l.x}`);
 
-  // Three fresh buildings of its own standing: a 4th would crumble one, so it keeps the card
-  const f = match(112, DECK, DECK);
-  for (const x of [1060, 990, 920]) f.battle.addBuilding('boingBox', 'red', x, 1);
-  for (let k = 0; k < 3; k++) f.battle.addUnit('clubber', 'blue', 760 + k * 22, 0.5);
-  const keep = redBot(f, ['beanPatch', 'boingBox', 'wreckingCrane', 'pogoBean']);
-  run(f, [keep], 6);
-  assert.ok(!keep.log.some((p) => CARDS[p.card].kind === 'building'), `built a 4th: ${JSON.stringify(keep.log)}`);
+  // Three fresh buildings of its own standing, out of the way (the Patch's spot in front of the tower is free): a 4th
+  // would crumble one, so it keeps the card. Once the oldest is nearly gone anyway, down goes the Patch.
+  for (const weak of [false, true]) {
+    const f = match(112, DECK, DECK);
+    const blds = [];
+    for (const x of [810, 870, 930]) {
+      const fx = fitBuilding(f.battle, 'red', 'boingBox', x);
+      assert.ok(fx != null && Math.abs(fx - x) < 1, `a legal spot at ${x}`);
+      blds.push(f.battle.addBuilding('boingBox', 'red', fx, 1));
+    }
+    if (weak) blds[0].hp = blds[0].maxHp * 0.25;
+    const keep = redBot(f, ['beanPatch', 'pogoBean', 'tummyDrummer', 'bubbleWrap'], { mana: 9 });
+    assert.ok(keep.buildAt({ id: 'beanPatch', card: CARDS.beanPatch }, keep.view(), 100) != null, 'there is a spot for the Patch');
+    run(f, [keep], 3);
+    const built = keep.log.filter((p) => CARDS[p.card].kind === 'building');
+    if (weak) assert.ok(built.length === 1 && built[0].card === 'beanPatch' && built[0].why === 'build', `the oldest at 25%: ${JSON.stringify(keep.log)}`);
+    else assert.equal(built.length, 0, `built a 4th over a fresh one: ${JSON.stringify(keep.log)}`);
+  }
+});
+
+test('full mana with no unit in hand (spells and buildings only, one of its buildings standing): it still spends, legally, within 2 s', () => {
+  for (const [hand, seed, more] of [
+    [['bananaPeels', 'boingBox', 'cheeseWheel', 'bubbleWrap'], 113, []],
+    [['wreckingCrane', 'boingBox', 'anvil', 'arrowRain'], 114, []],
+    // (three fresh ones: no room for a 4th and no spell for a tower: the peels go down in front of its own tower)
+    [['bananaPeels', 'bubbleWrap', 'boingBox', 'beanPatch'], 115, [['boingBox', 1000], ['wreckingCrane', 920]]],
+  ]) {
+    for (const skill of [0.3, 0.6, 0.9]) {
+      const m = match(seed, DECK, [...hand, 'clubbers', 'squire', 'archers', 'spikers']);
+      const calls = spyPlays(m);
+      for (const [bid, x] of [['beanPatch', 1080], ...more]) m.battle.addBuilding(bid, 'red', x, 1);
+      const bot = redBot(m, hand, { skill });
+      run(m, [bot], 2, () => {
+        m.sides.blue.mana = 0; // (blue plays nothing)
+        return !bot.log.length;
+      });
+      const l = firstPlay(bot);
+      assert.ok(l && l.t < 2, `${hand} (skill ${skill}): sat on full mana, ${JSON.stringify(bot.log)}`);
+      assertLegal(calls.find((c) => c.team === 'red'), `${hand}`);
+      if (l.card === 'bananaPeels' && skill >= 0.6) assert.ok(l.x > WORLD.towerX.red - GUARD.range && l.x < WORLD.towerX.red, `peels at ${l.x.toFixed(0)}`);
+      if (more.length) assert.ok(!bot.log.some((p) => CARDS[p.card].kind === 'building'), 'never a 4th building over a fresh one');
+    }
+  }
 });
 
 test('anywhere: Brollies float down onto a lone back line, a tower that is nearly down, or a building, always inside the field', () => {
@@ -217,10 +253,20 @@ test('own side: a Tummy Drummer joins a big push from behind; never alone', () =
   const front = Math.min(...m.battle.units.filter((u) => u.team === 'red' && u.type.id !== 'drummer').map((u) => u.hip.x));
   assert.ok(l.x > front && l.x - front < 260, `drummer at ${l.x.toFixed(1)}, push front at ${front.toFixed(1)}`);
 
+  // Nobody of its own out there: no Drummer sent on its own (only a full-mana leak may spill one)
   const f = match(142, DECK, DECK);
   const lone = redBot(f, ['tummyDrummer', 'pogoBean', 'bubbleWrap', 'bananaPeels'], { mana: 8 });
   run(f, [lone], 3);
-  assert.ok(!lone.log.some((p) => p.card === 'tummyDrummer' && p.why === 'support'), 'drummed for nobody');
+  assert.ok(!lone.log.some((p) => p.card === 'tummyDrummer' && p.why !== 'leak'), `drummed for nobody: ${JSON.stringify(lone.log)}`);
+  // A push too small to drum for (two Clubbers, under DRUM_PUSH mana): it keeps the Drummer
+  for (const seed of [301, 302, 303]) {
+    const g = match(seed, DECK, DECK);
+    g.battle.addUnit('clubber', 'red', 830, 0.3);
+    g.battle.addUnit('clubber', 'red', 850, 0.7);
+    const small = redBot(g, ['tummyDrummer', 'pogoBean', 'bubbleWrap', 'bananaPeels'], { mana: 8, seed });
+    run(g, [small], 2);
+    assert.ok(!small.log.some((p) => p.card === 'tummyDrummer'), `seed ${seed}: drummed for two Clubbers: ${JSON.stringify(small.log)}`);
+  }
 });
 
 test('lead: a Big Jelly leads its deck\'s pushes: a careful bot waits for its mana rather than pushing with something smaller, then sends it from the back', () => {
@@ -279,6 +325,28 @@ test('air: Propeller Pals get an answer that reaches them (Archers or a Netter u
       }
     });
   }
+  // A push of its own on its way and fliers coming with no answer in hand: it holds back its support too
+  // (holdAir), unless its attention has lapsed or an answer is in hand at the time
+  let held = 0;
+  for (const seed of [201, 202, 203]) {
+    const m = match(seed, DECK, ['clubbers', 'bruiser', 'archers', 'squire', 'spikers', 'bomb', 'boulder', 'cheeseWheel']);
+    m.battle.addUnit('bruiser', 'red', 760, 0.3);
+    m.battle.addUnit('clubber', 'red', 780, 0.6);
+    m.battle.addUnit('clubber', 'red', 790, 0.8);
+    for (let k = 0; k < 3; k++) m.battle.addUnit('copter', 'blue', 700 + k * 24, k / 3);
+    const bot = redBot(m, ['clubbers', 'squire', 'spikers', 'bomb'], { mana: 8, seed });
+    for (let s = 0; s < 3 / DT && m.phase !== 'over'; s++) {
+      const hand = m.sides.red.hand.slice();
+      const n = bot.log.length;
+      bot.update(DT);
+      const blind = bot.alarm && m.time >= bot.busyUntil && !hand.some((id) => airValue(id) > 0);
+      if (blind) held++;
+      for (const l of bot.log.slice(n)) assert.ok(!(blind && l.why === 'support'), `seed ${seed}: supported with ${l.card} at ${l.t.toFixed(2)} s, fliers coming and no answer in hand`);
+      m.step();
+      m.battle.events.length = 0;
+    }
+  }
+  assert.ok(held > 0, 'the alarm was on with no answer in hand');
 });
 
 test('traps: Banana Peels go down in front of an incoming push, inside the tower range, and trip it', () => {
@@ -382,6 +450,7 @@ test('random 32-card bot matches: no throw, no NaN, every play legal, every new 
   for (const [g, skills] of [
     [0, [0.6, 0.6]],
     [1, [0.85, 0.35]],
+    [2, [0.6, 0.6]],
   ]) {
     const [d0, d1, d2, d3] = decks(700 + g);
     for (const [blue, red] of [

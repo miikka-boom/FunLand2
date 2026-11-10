@@ -54,7 +54,7 @@ export const SPELLS = {
   bananaPeels: { peels: 5, toss: 0.4, life: 8, uses: 2, maxSlips: 10, trigger: 9, laneTol: 8, damage: 8, feet: 260, head: 180, hipUp: 160, immune: 1.5, kick: 170, heavyMass: 3, skid: 120, skidWobble: 0.4, minAge: 0.4 },
   bigSneeze: { inhale: 0.4, damage: 32, push: 500, up: 140, falloff: 0.4, stun: 0.3, air: 1.8 },
   shakenSoda: { fuse: 1.2, damage: 65, lift: 900, side: 80, stun: 0.6, airLiftOff: 0.6, erupt: 0.6 },
-  anvil: { fall: 0.9, height: 620, damage: 310, shield: 0.4, stun: 1.2, squash: 1.0, carry: 900, liftOff: 1.2, rest: 2.0 },
+  anvil: { fall: 0.9, height: 620, damage: 270, shield: 0.4, stun: 1.2, squash: 1.0, carry: 900, liftOff: 1.2, rest: 2.0 },
   bubbleWrap: { time: 8, absorb: 85, stunMul: 0.5, bounce: 0.6 },
 };
 
@@ -500,7 +500,11 @@ function anvilFloor(b, s) {
   return y;
 }
 
-/** Straight down at x, landing at t = fall (CLANG), then it rests and fades. */
+/**
+ * Straight down at x, landing at t = fall (CLANG), then it rests and fades.
+ * A resting anvil whose roof goes (it finished the structure, or that one
+ * fell or decayed later) drops on down to whatever is under it, quietly.
+ */
 function anvil(b, s, dt) {
   const S = SPELLS.anvil;
   if (s.state === 'fall') {
@@ -514,6 +518,12 @@ function anvil(b, s, dt) {
     anvilImpact(b, s);
     return;
   }
+  const floor = anvilFloor(b, s);
+  if (s.y < floor) {
+    s.vy += G * dt;
+    s.y = Math.min(floor, s.y + s.vy * dt);
+    if (s.y >= floor) s.vy = 0;
+  }
   s.restT += dt;
   s.alpha = clamp((S.rest - s.restT) / ANVIL_FADE, 0, 1);
   if (s.restT >= S.rest) s.done = true;
@@ -522,7 +532,8 @@ function anvil(b, s, dt) {
 /**
  * CLANG: everything of the enemy's in the column, at any height, takes the
  * big hit (a Squire's shield takes most of it). Fliers are slammed down with
- * their lift off, survivors are squashed flat, structures take their share.
+ * their lift off, survivors are floored whatever their poise and squashed
+ * flat (Bubble Wrap cushions both), structures take their share.
  */
 function anvilImpact(b, s) {
   const S = SPELLS.anvil;
@@ -541,10 +552,15 @@ function anvilImpact(b, s) {
       kind: 'anvil',
       from: s,
       spin: 0.2,
+      floor: true,
     });
     hits++;
     if (!e.alive) continue;
-    e.squashT = S.squash;
+    if (e.downT > 0) {
+      // Drawn flat, then peeling back up, only while it really is down
+      e.squashT = S.squash;
+      e.downT = Math.max(e.downT, S.squash);
+    }
     e.liftOff(b, S.liftOff, s); // (fliers only)
   }
   for (const t of b.towers) {

@@ -536,8 +536,35 @@ export class Bot {
       }
       const h = this.pickCheap(ok);
       if (h && this.tryPlay(h, this.leakAt(h, V), 'leak')) return;
-      if (!h) this.leakRest(ok, V);
+      if (!h && !this.leakRest(ok, V)) this.leakSpare(ok, V, threat);
     }
+  }
+
+  /**
+   * Full mana and no unit in hand to spill it on (only spells and buildings,
+   * while one of ours stands): another building if there's room and nothing
+   * is coming, else the cheapest spell that reaches a tower, at its best spot
+   * or their front tower, else Banana Peels in front of our own tower. Cycles
+   * the hand instead of sitting on full mana for a building's whole life.
+   */
+  leakSpare(ok, V, threat) {
+    if (threat.need <= 0 && this.roomToBuild(V)) {
+      for (const h of ok) {
+        if (h.card.kind !== 'building') continue;
+        const x = this.buildAt(h, V);
+        if (x != null && this.tryPlay(h, x, 'leak')) return true;
+      }
+    }
+    let sp = null;
+    for (const h of ok) if (h.card.kind === 'spell' && !NO_TOWER[h.card.spell] && (!sp || h.card.mana < sp.card.mana)) sp = h;
+    if (sp) {
+      const s = this.bestSpellSpot(sp, V);
+      const t = V.towers.theirs.find((o) => o.kind === 'guard') || V.towers.theirs[0];
+      const x = s && s.value > 0 ? s.x : t ? this.spellAt(sp, t) : null;
+      if (x != null && this.tryPlay(sp, x, 'leak')) return true;
+    }
+    const peels = ok.find((h) => h.card.spell === 'bananaPeels');
+    return !!peels && this.tryPlay(peels, this.wx(V.frontP + 90), 'leak');
   }
 
   /** Training Dummy: now and then a random unit somewhere on its half. No spells, no plan. */

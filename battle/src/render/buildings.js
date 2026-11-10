@@ -5,7 +5,7 @@
 // clod of dirt), wilts as it ages and collapses into planks when it goes down.
 //
 //   const bld = createBuildingRenderer({ seed });      // towers.js owns one
-//   bld.draw(ctx, building, t, T, need, frame);         // world space, base on y = 0
+//   bld.draw(ctx, building, t, T, need, frame, battle); // world space, base on y = 0 (battle: optional)
 //   bld.artTop(building);                               // world y of the top of its art
 //   drawBuildingArt(ctx, bid, x, y, s, team, pose);     // card faces: the full-health pose
 //   drawBuildingGhost(ctx, bid, x, team, ok, t, opts);  // aiming: footprint, reach, see-through art
@@ -15,7 +15,7 @@
 // Only plain building fields are read (contract 3.3 / 6.3): bid, def, team, x,
 // w, h, f, hp, maxHp, alive, age, landT, hitT, downT, punch { phase, t, ext,
 // dir }, spawn { next, kids }, ball { ang, x, y, vx, vy }. Missing ones fall
-// back to BUILDING_LOOK (the contract's starting numbers).
+// back to BUILDING_LOOK (the sim's numbers).
 //
 // The bodies live in offscreen caches (per building kind, team colour, wilt
 // stage and damage stage); the moving parts (lid, glove, spring, tufts,
@@ -42,15 +42,16 @@ const DOWN_FADE = [1.8, 3]; // the wreck fades out between these downT (reap() a
 const wiltStage = (w) => (w < 0.42 ? 0 : w < 0.74 ? 1 : 2);
 
 /**
- * Fallback looks: the contract's starting numbers, used when a building
- * carries no `def` (fake states, card art, aim ghosts). `top`: art above h.
+ * Fallback looks, used when a building carries no `def` (fake states, card
+ * art): the sim's numbers (sim/buildings.js BUILDINGS; a test keeps them the
+ * same). The aim ghost passes the sim's def. `top`: art above h.
  */
 export const BUILDING_LOOK = {
-  boingBox: { w: 46, h: 46, life: 25, arm: 1, top: 16, punch: { reach: 90 } },
-  beanPatch: { w: 64, h: 40, life: 24, arm: 1, top: 14, spawn: { every: 3.4 } },
+  boingBox: { w: 46, h: 46, life: 28, arm: 1, top: 16, punch: { reach: 90 } },
+  beanPatch: { w: 64, h: 40, life: 24, arm: 1, top: 14, spawn: { every: 3, max: 3 } },
   wreckingCrane: {
-    w: 36, h: 170, life: 28, arm: 1, top: 30,
-    pendulum: { pivotUp: 170, pivotFwd: 34, L: 125, r: 20, sense: 190, maxAng: 1.2, minHit: 260 },
+    w: 36, h: 170, life: 36, arm: 1, top: 30,
+    pendulum: { pivotUp: 170, pivotFwd: 34, L: 125, r: 20, sense: 230, maxAng: 1.2, minHit: 260 },
   },
 };
 
@@ -118,7 +119,8 @@ function makeLook(b) {
     arm: num(D.arm, L.arm),
     top: L.top,
     reach: num(D.punch && D.punch.reach, L.punch ? L.punch.reach : 90),
-    every: num(D.spawn && D.spawn.every, L.spawn ? L.spawn.every : 3.4),
+    every: num(D.spawn && D.spawn.every, L.spawn ? L.spawn.every : 3),
+    max: num(D.spawn && D.spawn.max, L.spawn ? L.spawn.max : 3),
     P,
   };
 }
@@ -1232,7 +1234,7 @@ function drawReach(ctx, G, x, f, T, t, px) {
     ctx.arc(cx, cy, L, Math.PI / 2 - m, Math.PI / 2 + m);
     ctx.stroke();
     // Sense range: ticks on the grass where it starts to swing
-    const sense = num(P.sense, 190);
+    const sense = num(P.sense, 230);
     ctx.setLineDash([]);
     ctx.globalAlpha = 0.6;
     ctx.strokeStyle = T.light;
@@ -1424,7 +1426,7 @@ export function createBuildingRenderer(opts = {}) {
     ctx.globalAlpha = 1;
   }
 
-  function draw(ctx, b, t, T, need, fr) {
+  function draw(ctx, b, t, T, need, fr, battle) {
     const G = lookOf(b);
     const f = faceOf(b);
     const x = num(b.x, 0);
@@ -1466,7 +1468,7 @@ export function createBuildingRenderer(opts = {}) {
       ctx.globalAlpha = 1;
     }
     if (G.bid === 'boingBox') drawBoxLive(ctx, b, G, T, ws, need, fr);
-    else if (G.bid === 'beanPatch') drawPatchLive(ctx, b, G, f, wilt, age, t);
+    else if (G.bid === 'beanPatch') drawPatchLive(ctx, b, G, f, wilt, age, t, battle);
     ctx.restore();
     if (G.bid === 'wreckingCrane') drawCraneLive(ctx, b, G, f, x + shake);
   }
@@ -1488,7 +1490,7 @@ export function createBuildingRenderer(opts = {}) {
     ctx.restore();
   }
 
-  function drawPatchLive(ctx, b, G, f, wilt, age, t) {
+  function drawPatchLive(ctx, b, G, f, wilt, age, t, battle) {
     const S = b.spawn || {};
     // spawn.next: seconds to the next pop (a countdown, reset to `every` by a pop); an
     // absolute age works too (it is then later than `every`, so it reads as one)
@@ -1496,11 +1498,29 @@ export function createBuildingRenderer(opts = {}) {
     const next = raw > G.every + 1e-6 && raw < 90 ? raw - age : raw;
     const kids = Array.isArray(S.kids) ? S.kids.length : 0;
     const armed = age >= G.arm - 0.45;
-    // Shakes just before a pop; the front tuft is the one that pops, then regrows
-    const shake = armed && next > 0 && next < 0.45 ? 1 - next / 0.45 : 0;
+    // Shakes just before a pop; the front tuft is the one that pops, then regrows. A full
+    // patch (max Sprouts alive) pops nothing when its countdown runs out, it only waits
+    // another half second: no shake then. (Without the battle every kid counts as alive.)
+    const full = liveKids(S, battle, kids) >= G.max;
+    const shake = armed && !full && next > 0 && next < 0.45 ? 1 - next / 0.45 : 0;
     const since = G.every - next;
     const grow = kids > 0 && since >= 0 && since < 1 ? easeOut(since) : 1;
     drawTufts(ctx, f, wilt, shake, t, grow);
+  }
+
+  /** How many of a patch's Sprouts are alive, as the sim counts them (spawn.kids holds unit ids). */
+  function liveKids(S, battle, kids) {
+    const units = battle && battle.units;
+    if (!kids || !Array.isArray(units)) return kids;
+    let n = 0;
+    for (const id of S.kids) {
+      for (const u of units) {
+        if (u.id !== id) continue;
+        if (u.alive) n++;
+        break;
+      }
+    }
+    return n;
   }
 
   function drawCraneLive(ctx, b, G, f, x) {

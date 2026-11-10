@@ -488,6 +488,20 @@ test('Wrecking Crane: it pumps up when an enemy walks in, launches it, loses ene
   assert.ok(finite(b2));
 });
 
+test('Wrecking Crane: a lone Nutcracker never gets a bite on the mast: the ball keeps it off and finishes it', () => {
+  for (const seed of [1, 2, 3]) {
+    const b = arena(seed);
+    for (const t of b.towers) t.cool = 1e9;
+    const crane = b.addBuilding('wreckingCrane', 'blue', fitBuilding(b, 'blue', 'wreckingCrane', 420), 1);
+    run(b, 1.2);
+    const n = b.addUnit('nutcracker', 'red', crane.x + 420, 0.5, seed * 3, { drop: true });
+    const ev = run(b, 30, () => n.alive && crane.alive);
+    const bites = ev.filter((e) => e.type === 'towerHit' && e.tower === crane && e.from === n).length;
+    assert.equal(bites, 0, `seed ${seed}: bit the mast ${bites} times`);
+    assert.ok(!n.alive && crane.alive, `seed ${seed}: the Crane wins`);
+  }
+});
+
 test('Wrecking Crane: a wreck drops its ball as a rolling item that comes to rest on the ground', () => {
   const b = arena(17, false);
   const crane = b.addBuilding('wreckingCrane', 'red', 1000, 1);
@@ -592,6 +606,84 @@ test('deploy-anywhere: Brolly Brigade plays anywhere in [40, 1460] and floats in
     assert.ok(u.ground - u.hip.y > 300, 'high up');
   }
   assert.ok(b.events.some((e) => e.type === 'cardPlayed' && e.card === 'brollyBrigade'));
+});
+
+test('deploy-anywhere: the Brolly formation is always clear and spaced, with structures close together (a building at the bot spot by a Guard Tower, two side by side)', () => {
+  const deck = ['brollyBrigade', 'boingBox', 'beanPatch', 'wreckingCrane'];
+  const layouts = [[], [['wreckingCrane', -70]], [['beanPatch', -77]], [['boingBox', -70], ['beanPatch', -210]], [['beanPatch', -77], ['boingBox', -154]], [['wreckingCrane', -70], ['boingBox', -125], ['beanPatch', -190]]];
+  for (const layout of layouts) {
+    const m = new Match({ seed: 1, blue: { deck }, red: { deck } });
+    const b = m.battle;
+    const rg = tower(b, 'red', 'guard');
+    for (const [bid, dx] of layout) b.addBuilding(bid, 'red', fitBuilding(b, 'red', bid, rg.x + dx), 1);
+    const name = layout.map(([bid, dx]) => `${bid}@${dx}`).join('+') || 'lone towers';
+    for (const team of ['blue', 'red']) {
+      for (let x = ANYWHERE[0]; x <= ANYWHERE[1]; x += 2) {
+        const xs = m.formation(team, 'brollyBrigade', x);
+        const s = xs.slice().sort((p, q) => p - q);
+        for (let i = 1; i < s.length; i++) assert.ok(Math.abs(s[i] - s[i - 1] - 30) < 1e-6, `${name}, ${team} aim ${x}: spacing ${xs}`);
+        for (const v of xs) {
+          assert.ok(v >= ANYWHERE[0] && v <= ANYWHERE[1], `${name}, ${team} aim ${x}: ${v} off the field`);
+          for (const t of b.towers) {
+            if (t.kind === 'castle' ? (v - t.x) * t.f < t.w / 2 + ANYWHERE_CLEAR - 1e-6 : t.alive && Math.abs(v - t.x) < t.w / 2 + ANYWHERE_CLEAR - 1e-6) assert.fail(`${name}, ${team} aim ${x}: ${v} in ${t.bid || t.kind} (${xs})`);
+          }
+        }
+      }
+    }
+    // clearSpot alone: always a clear spot, whatever stands where
+    for (let x = 0; x <= 1500; x += 3) {
+      const v = m.clearSpot(x);
+      assert.ok(v >= ANYWHERE[0] && v <= ANYWHERE[1] && b.towers.every((t) => (t.kind === 'castle' ? (v - t.x) * t.f >= t.w / 2 + ANYWHERE_CLEAR - 1e-6 : !t.alive || Math.abs(v - t.x) >= t.w / 2 + ANYWHERE_CLEAR - 1e-6)), `${name}: clearSpot(${x}) = ${v}`);
+    }
+  }
+  // The contract's examples still hold
+  const m = new Match({ seed: 1, blue: { deck }, red: { deck } });
+  assert.deepEqual(m.formation('blue', 'brollyBrigade', 60), [201, 231, 261]);
+  assert.deepEqual(m.formation('blue', 'brollyBrigade', 1440), [1239, 1269, 1299]);
+  assert.deepEqual(m.formation('blue', 'brollyBrigade', 1130), [1062, 1092, 1122]);
+});
+
+test('walls: a building played on enemies at your Guard Tower puts them out past the building, never pinned half inside the tower', () => {
+  for (const unit of ['clubber', 'bruiser', 'brick', 'squire']) {
+    for (const bid of ['beanPatch', 'boingBox', 'wreckingCrane']) {
+      const m = match([bid, 'clubbers', 'archers', 'squire'], undefined, 31);
+      const b = m.battle;
+      const g = tower(b, 'blue', 'guard');
+      const e = b.addUnit(unit, 'red', g.x + 140, 0.5);
+      for (let k = 0; k < 8 / DT && e.hip.x >= g.x + g.w / 2 + e.R + 25; k++) m.step();
+      assert.equal(m.play('blue', 0, e.hip.x), true);
+      const t = b.towers.find((o) => o.kind === 'building');
+      const gap = t.x - t.w / 2 - (g.x + g.w / 2);
+      assert.ok(gap < 2 * e.R, `${bid} stands ${gap.toFixed(1)} px off the tower: less than a ${unit}`);
+      let pinned = 0;
+      for (let i = 0; i < 6 / DT && e.alive; i++) {
+        m.step();
+        if (i * DT > 0.1 && e.hip.x < g.x + g.w / 2 + e.R * 0.5) pinned++;
+      }
+      assert.equal(pinned, 0, `${unit} by a ${bid}: hip inside the tower for ${(pinned * DT).toFixed(2)} s`);
+      if (e.alive) assert.ok(e.hip.x > t.x, `${unit} by a ${bid}: out on its own side (${e.hip.x.toFixed(0)})`);
+      assert.ok(finite(b));
+    }
+  }
+});
+
+test('Bean Patch: a Brick walks through its Sprouts and bashes it (its listed counter); the Sprouts never shove it back', () => {
+  for (const seed of [1, 2, 3]) {
+    const b = arena(seed);
+    const patch = b.addBuilding('beanPatch', 'blue', fitBuilding(b, 'blue', 'beanPatch', 600), 1);
+    for (let i = 0; i < 1.5 / DT; i++) b.step(DT);
+    const br = b.addUnit('brick', 'red', 860, 0.5, null, { level: 1, drop: true });
+    let dmg = 0;
+    let back = 0;
+    for (let i = 0; i < 20 / DT && br.alive; i++) {
+      b.step(DT);
+      for (const e of b.events) if (e.type === 'towerHit' && e.from === br && e.tower === patch) dmg += e.damage;
+      b.events.length = 0;
+      back = Math.max(back, br.hip.x - 860);
+    }
+    assert.ok(dmg > 100, `seed ${seed}: the Brick did ${dmg.toFixed(0)} to the Patch`);
+    assert.ok(back < 20, `seed ${seed}: pushed ${back.toFixed(0)} px back`);
+  }
 });
 
 test('determinism: a match with all three buildings replays identically', () => {

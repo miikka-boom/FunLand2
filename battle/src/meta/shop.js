@@ -12,7 +12,7 @@
 // collect extra gifts, like they could with any timer kept on the device. This
 // is an offline game against bots: only an honest clock is protected.)
 
-import { CARDS } from '../sim/cards.js';
+import { CARDS, CARD_ORDER } from '../sim/cards.js';
 import { bestArena, cardsUpTo } from './collection.js';
 import { grant, rngFrom, spendGold } from './profile.js';
 
@@ -52,10 +52,14 @@ function rollover(p, now) {
   return p.shop.day;
 }
 
+// The 14 cards of the game before the 32 (the first 14 of CARD_ORDER): a shop day
+// begun by that game (p.shop.cards14, set by profile.js) rolls from these, exactly as it did.
+const CARDS14 = CARD_ORDER.slice(0, 14);
+
 function stock(p, day, arena) {
   const rng = rngFrom(p.seed, 'shop', day);
   const pool = { common: [], rare: [], epic: [], legendary: [] };
-  for (const id of cardsUpTo(arena)) pool[CARDS[id].rarity].push(id);
+  for (const id of cardsUpTo(arena)) if (!p.shop.cards14 || CARDS14.includes(id)) pool[CARDS[id].rarity].push(id);
 
   // The free gift: mostly gold, sometimes common cards, now and then a rare.
   const roll = rng.next();

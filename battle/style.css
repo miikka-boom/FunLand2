@@ -574,7 +574,9 @@ button {
   }
   .cards {
     width: 100%;
-    justify-content: center;
+    /* (safe: a row wider than the screen starts at its left edge, so every card can be
+       scrolled to; plain centring would push the first ones out of reach) */
+    justify-content: safe center;
   }
   .is-touch .card-unit {
     min-width: 54px;

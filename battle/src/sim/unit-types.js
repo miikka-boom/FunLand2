@@ -339,6 +339,7 @@ export const UNIT_TYPES = {
     noHat: true, // the leaves are its hat
     engage: 24,
     reach: 32,
+    light: true, // its pokes and bumps shove only as hard as its weight allows (LIGHT_KNOCK)
     attack: { windup: 0.16, strike: 0.08, recover: 0.18, cooldown: 0.22, damage: 11, knock: 90, stun: 0.15, shieldPierce: 0.35, cleave: false },
     poses: {
       // the Squire's stab, x0.6
@@ -625,6 +626,16 @@ export const AIR_MIN = 60;
 
 /** The Tummy Drummer's beat: attack tempo and walking speed while beatT > 0 (never stacks). */
 export const BEAT = { tempo: 1.5, move: 1.5 };
+
+/**
+ * A lightweight (type.light: the Sprout) shoves an enemy only as hard as its
+ * own weight allows: its weapon's knock, and the push when it runs into one,
+ * are x (LIGHT_KNOCK x its mass / the other's mass) squared, at most x1. That
+ * is x1 on anything up to a Clubber's weight, x0.6 on a Nutcracker, x0.2 on a
+ * Bruiser and x0.06 on a Brick, so Sprouts poke a Brick's ankles instead of
+ * pushing it back up the field (it gives way itself).
+ */
+export const LIGHT_KNOCK = 2.25;
 
 /**
  * Shoves (Big Sneeze, Boing Box, Wrecking Crane, Jelly spit): one that lands

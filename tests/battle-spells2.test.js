@@ -150,7 +150,7 @@ test('Banana Peels: a walking Clubber trips within 2 s (knocked down, 8 x level)
   assert.ok(c.maxHp - c.hp >= S.damage * levelMul(2) * hits - 1e-6, `took ${c.maxHp - c.hp}`);
   // Immune while down and for S.immune s after getting up
   if (second != null) assert.ok(second - upAt >= S.immune - 0.05, `slipped again ${(second - upAt).toFixed(2)} s after getting up`);
-  assert.ok(px > 0);
+  assert.ok(Math.abs(px - 600) <= CARDS.bananaPeels.radius + 12, `it tripped on a peel of this cast (at ${px.toFixed(0)})`);
   assert.ok(finite(b));
   // A bean still immune walks the whole row of peels on its feet
   const b2 = arena(2);
@@ -193,6 +193,27 @@ test('Banana Peels: heavies only skid (no damage, no knockdown); fliers and the 
     assert.ok(crossed, `the ${id} went over them (at ${u.hip.x.toFixed(0)})`);
     assert.equal(s2.slips, 0);
     assert.ok(!ev2.some((e) => e.type === 'slip' || e.type === 'skid'));
+  }
+});
+
+test('Banana Peels: armoured beans (Squire, Bruiser, Nutcracker, Pogo) go feet-up like anyone: poise never saves them from a slip', () => {
+  for (const id of ['squire', 'bruiser', 'nutcracker', 'pogo']) {
+    let slipped = 0;
+    for (const seed of [11, 12]) {
+      const b = arena(seed);
+      castSpell(b, CARDS.bananaPeels, 'blue', 820, 1);
+      run(b, 0.6);
+      const u = b.addUnit(id, 'red', 950, 0.5);
+      let downs = 0;
+      const ev = run(b, 4, () => {
+        if (u.downT > 0) downs++;
+      });
+      const slips = ev.filter((e) => e.type === 'slip' && e.unit === u).length;
+      const knocks = ev.filter((e) => e.type === 'knockdown' && e.unit === u).length;
+      slipped += slips;
+      assert.ok(knocks >= slips && (slips === 0 || downs * DT > 0.7), `${id} (seed ${seed}): ${slips} slips, ${knocks} knockdowns, down ${(downs * DT).toFixed(2)} s`);
+    }
+    assert.ok(slipped >= 1, `${id}: stepped on ${slipped}`);
   }
 });
 
@@ -394,7 +415,7 @@ test('Shaken Soda: fizzes 1.2 s (shake 0 -> 1, nothing hurt), then erupts once: 
 
 // --- Anvil ----------------------------------------------------------------------------------
 
-test('Anvil: straight down for 0.9 s, CLANG: kills a Bruiser, a Squire\'s shield takes 60%, a survivor is squashed; towers take half, buildings three quarters', () => {
+test('Anvil: straight down for 0.9 s, CLANG: kills a Bruiser, a Squire\'s shield takes 60%, a survivor is floored and squashed; towers take half, buildings three quarters', () => {
   const S = SPELLS.anvil;
   const b = arena(12);
   const br = still(b, 'bruiser', 'red', 600);
@@ -417,11 +438,17 @@ test('Anvil: straight down for 0.9 s, CLANG: kills a Bruiser, a Squire\'s shield
   const x0 = a.x;
   let landAt = null;
   let squash = 0;
+  let flatUp = 0;
+  const downAt = new Map();
   const ev = run(b, 3.2, (i) => {
     const now = (i + 1) * DT;
     if (a.state === 'fall') assert.equal(a.x, x0, 'straight down');
     if (landAt == null && a.state === 'rest') landAt = now;
     if (bk.squashT > squash) squash = bk.squashT;
+    for (const u of [sq, bk]) {
+      if (!downAt.has(u) && u.hp < hp0[targets.indexOf(u)]) downAt.set(u, u.downT);
+      if (u.alive && u.squashT > 0 && u.downT <= 0) flatUp++; // drawn flat while up and about
+    }
   });
   const impacts = ev.filter((e) => e.type === 'anvilImpact');
   assert.ok(Math.abs(landAt - S.fall) < DT * 1.5, `landed at ${landAt}`);
@@ -433,6 +460,9 @@ test('Anvil: straight down for 0.9 s, CLANG: kills a Bruiser, a Squire\'s shield
   assert.ok(Math.abs(hp0[1] - sq.hp - S.damage * S.shield) < 1e-6, `the Squire took ${hp0[1] - sq.hp}`);
   assert.ok(bk.alive && Math.abs(hp0[2] - bk.hp - S.damage) < 1e-6, `the Brick took ${hp0[2] - bk.hp}`);
   assert.ok(squash > S.squash - 0.05, 'and is squashed flat');
+  // Survivors are floored whatever their poise (Brick 0.25, Squire 0.7), for at least the squash
+  for (const u of [sq, bk]) assert.ok(downAt.get(u) >= S.squash - 1e-9, `${u.type.id} down for ${downAt.get(u)} s at the CLANG`);
+  assert.equal(flatUp, 0, 'drawn as a pancake only while it is down');
   assert.ok(Math.abs(hp0[3] - g.hp - S.damage * TOWER_TAKES.spell) < 1e-6, `the tower took ${hp0[3] - g.hp}`);
   // (the box decays a little meanwhile, silently)
   const decay = (box.maxHp / BUILDINGS.boingBox.life) * 3.2;
@@ -470,9 +500,75 @@ test('Anvil: a Propeller Pal in its column, high up, is hit and dragged out of t
   assert.ok(finite(b));
 });
 
+test('Anvil: one that finishes the structure it lands on (or outlives it) drops on down to the ground, with no second CLANG', () => {
+  const S = SPELLS.anvil;
+  const ground = WORLD.groundY + WORLD.laneDepth / 2 - 18;
+  // (a) It finishes a Guard Tower at 100 hp: CLANG on the roof, then down onto the rubble
+  const b = arena(16);
+  const g = tower(b, 'red', 'guard');
+  g.hp = 100;
+  const a = castSpell(b, CARDS.anvil, 'blue', g.x, 1);
+  let roof = null;
+  let downAt = null;
+  const ev = run(b, S.fall + S.rest + 0.5, (i) => {
+    if (roof == null && a.state === 'rest') roof = a.y;
+    if (roof != null && downAt == null && a.y >= ground - 1e-6) downAt = (i + 1) * DT;
+  });
+  assert.ok(roof < -g.h, `it CLANGs on the roof (${roof})`);
+  assert.ok(!g.alive, 'and finishes the tower');
+  assert.ok(downAt != null && downAt < S.fall + 0.8, `down on the ground at ${downAt && downAt.toFixed(2)} s`);
+  assert.equal(ev.filter((e) => e.type === 'anvilImpact').length, 1, 'one CLANG');
+  // (b) A Boing Box it does not finish holds it up until the box goes
+  const b2 = arena(17);
+  const box = b2.addBuilding('boingBox', 'red', 1000, 1);
+  box.punch = null;
+  const a2 = castSpell(b2, CARDS.anvil, 'blue', box.x, 1);
+  run(b2, S.fall + 0.3);
+  assert.ok(box.alive && a2.state === 'rest' && Math.abs(a2.y - (-box.h - a2.r)) < 1e-6, `on the roof (${a2.y})`);
+  box.hp = 1e-3; // (it decays away under the anvil)
+  const ev2 = run(b2, 0.8);
+  assert.ok(!box.alive && Math.abs(a2.y - ground) < 1e-6 && a2.vy === 0, `then on the ground (${a2.y})`);
+  assert.ok(!ev2.some((e) => e.type === 'anvilImpact'), 'quietly');
+  assert.ok(finite(b) && finite(b2));
+});
+
+test('Anvil: a flier is squashed flat where it flies, not down on the lane', async () => {
+  // A recording canvas: the pancake is the first thing drawn, so its pivot is the first translate
+  globalThis.Path2D ??= class {
+    constructor() {
+      return new Proxy(this, { get: (o, k) => (k in o ? o[k] : () => {}) });
+    }
+  };
+  globalThis.document ??= { createElement: () => ({ getContext: () => null }) };
+  const { UnitRenderer } = await import('../battle/src/render/units.js');
+  const pivot = (u, b) => {
+    let first = null;
+    const ctx = new Proxy({ globalAlpha: 1 }, {
+      get: (o, k) => (k in o ? o[k] : k === 'translate' ? (x, y) => (first ??= { x, y }) : k.startsWith('create') ? () => ({ addColorStop() {} }) : () => {}),
+      set: (o, k, v) => ((o[k] = v), true),
+    });
+    new UnitRenderer().drawUnit(ctx, u, b, 0);
+    return first;
+  };
+  const b = arena(13, false);
+  const cp = pal(b, 'red', 600);
+  cp.hp = cp.maxHp = 1e4;
+  run(b, 1);
+  castSpell(b, CARDS.anvil, 'blue', cp.hip.x, 1);
+  run(b, 2.5, () => cp.squashT <= 0);
+  assert.ok(cp.squashT > 0.9 && cp.alt > 60, `hit high up (alt ${cp.alt.toFixed(0)}, squashT ${cp.squashT})`);
+  const p = pivot(cp, b);
+  assert.ok(p && Math.abs(p.y - (cp.hip.y + cp.standH)) < 1, `squashed about its own feet (${p && p.y.toFixed(0)}), not the lane (${cp.ground})`);
+  // A bean on the ground is squashed about the lane, as before
+  const c = still(b, 'squire', 'red', 900);
+  run(b, 1);
+  c.squashT = 1;
+  assert.ok(Math.abs(pivot(c, b).y - c.ground) < 3);
+});
+
 // --- Bubble Wrap ----------------------------------------------------------------------------
 
-test('Bubble Wrap: wraps only its own team in the circle (ground, air, still dropping) for 8 s with 70 x level; a recast refreshes it, never stacks', () => {
+test(`Bubble Wrap: wraps only its own team in the circle (ground, air, still dropping) for ${SPELLS.bubbleWrap.time} s with ${SPELLS.bubbleWrap.absorb} x level; a recast refreshes it, never stacks`, () => {
   const S = SPELLS.bubbleWrap;
   const b = arena(15);
   const mine = [b.addUnit('clubber', 'blue', 580, 0.5), pal(b, 'blue', 620), b.addUnit('squire', 'blue', 640, 0.5, null, { drop: true })];

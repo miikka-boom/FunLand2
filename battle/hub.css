@@ -2042,7 +2042,9 @@
 
 .hb-stat b {
   font: 900 clamp(13px, 3.9vh, 16px) Georgia, serif;
-  white-space: nowrap;
+  /* (a long value, like the Drummer's "Nothing (buffs friends)", wraps inside its box) */
+  line-height: 1.15;
+  overflow-wrap: break-word;
 }
 
 .hb-stat em {

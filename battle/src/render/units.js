@@ -1305,18 +1305,26 @@ function heldInDrawing(u) {
 /**
  * Anvil: squash the whole unit flat about its feet (ctx.save() included; the
  * caller restores). Flat for the first 0.3 s, then it peels back up with an
- * accordion wobble.
+ * accordion wobble. The feet are where the bean is, not the lane: a flier
+ * slammed down from on high is squashed where it flies.
  */
 function pancake(ctx, u) {
   const k = clamp(u.squashT / 0.7, 0, 1);
   const acc = k < 1 ? Math.sin(u.squashT * 38) * 0.14 * (1 - k) * Math.min(1, k * 3) : 0;
   const sy = 1 - 0.72 * k + acc;
   const sx = 1 + 0.55 * k - acc * 0.5;
+  const feet = pancakeFeet(u);
   ctx.save();
-  ctx.translate(u.hip.x, u.ground);
+  ctx.translate(u.hip.x, feet);
   ctx.scale(sx, sy);
-  ctx.translate(-u.hip.x, -u.ground);
+  ctx.translate(-u.hip.x, -feet);
   return true;
+}
+
+/** The y the Anvil pancake squashes a unit toward: its lane, or under it while it is up in the air. */
+function pancakeFeet(u) {
+  const alt = u.alt;
+  return Number.isFinite(alt) && alt > 0 ? u.ground - alt : u.ground;
 }
 
 /**

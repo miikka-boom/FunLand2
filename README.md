@@ -100,7 +100,7 @@ rainbow sheen and a crown on the frame). Each arena unlocks its own cards.
 | Wrecking Crane | 6 | Legendary | Brick Fortress | Building: a wrecking ball that swings harder as beans come near and sends them FAR |
 | Brolly Brigade | 4 | Rare | Wobble Summit | Three beans float down under umbrellas anywhere on the field (towers can shoot them on the way) |
 | Bubble Wrap | 3 | Epic | Wobble Summit | Spell on your own beans: wraps them for 8 s, every hit just pops bubbles |
-| Tummy Drummer | 3 | Epic | Wobble Summit | BOOM-BOOM: friends nearby march and swing 50% faster to its beat |
+| Tummy Drummer | 3 | Epic | Wobble Summit | BOOM-BOOM: friends nearby march 50% faster and swing faster to its beat |
 | Pelican | 5 | Legendary | Wobble Summit | Flies high, scoops up a light bean, carries it home and drops it from way up |
 | Big Jelly | 7 | Legendary | Wobble Summit | A huge wobbly tank that swallows a small bean whole, then spits it out |
 
@@ -112,8 +112,9 @@ number lives in `battle/src/sim/cards.js` (cards), `sim/unit-types.js` (units),
 floats down). A flier high up can only be hit by what hits air: Archers, the
 Netter (low fliers only), the Juggler's bombs, the towers' bolts and
 cannonballs, Arrow Rain, Big Sneeze, Shaken Soda and the Anvil, plus blasts
-that reach it. Once it is knocked, netted or diving low, anyone can bat it out
-of the sky. Every arena has an air answer, and fliers never fight fliers.
+and the Wrecking Crane's ball when they reach it. Once it is knocked, netted
+or diving low, anyone can bat it out of the sky. Every arena has an air
+answer, and fliers never fight fliers.
 
 **Buildings.** The Boing Box, the Bean Patch and the Wrecking Crane go up on
 your own half (never past it, even after their Guard Tower falls; a spot too
@@ -127,8 +128,8 @@ three quarters (towers take half). At most 3 stand per side (a 4th crumbles
 your oldest), they never give crowns, and they stop when the match ends.
 
 **Deploy-anywhere.** The Brolly Brigade can be played anywhere between the two
-Castles (x 40–1460); next to a tower, a building or a Castle the three slide
-over together, keeping their spacing, until every one is clear. They float
+Castles (x 40–1460); next to a tower, a building or a Castle the three land,
+keeping their spacing, at the clear spot nearest to where you aimed. They float
 down for about 2.7 s while the towers shoot at them; a hit turns an umbrella
 inside out and that bean drops.
 
@@ -213,7 +214,9 @@ The phone's back button steps back inside the game (closes a card, returns to
 the Battle tab, pauses a match); only on the bare main menu does it leave.
 The game installs to the home screen, plays offline through a service worker,
 and only updates itself while you are in the menus. Progress is saved in
-`localStorage` (`wobblewar.profile.v1`, now version 2).
+`localStorage` (`wobblewar.profile.v1`, now version 3, so a window still
+running an older build can't overwrite it; Trophy Trail cards an older build's
+save dropped come back on the next load).
 
 **Sandbox** (More → Sandbox): the original toy. Pick a unit card, tap the left
 side for blue or the right side for red, press **FIGHT!**. Drag a bean to grab
@@ -278,7 +281,7 @@ battle/src/sim/                  the match, pure and seeded (no DOM)
   match.js                       rules: mana, hand and deck cycle, zones, building and anywhere plays, crowns, overtime, tiebreak
   bot.js                         the computer player (plays only through match.play(), never peeks)
 battle/src/meta/                 the free-to-play meta game, pure functions of the profile
-  profile.js                     the save (v2), migration from v1, currencies, rewards, notices, seeded RNG
+  profile.js                     the save (v3), migration from v1 and v2, currencies, rewards, notices, seeded RNG
   collection.js                  cards, levels, copies, upgrades, King Level, deck, arenas and unlocks
   ladder.js                      trophies, match rewards, arena floors, the Trophy Trail
   chests.js, shop.js, badges.js  the two menu chests, the daily shop, badges
@@ -286,7 +289,7 @@ battle/src/meta/                 the free-to-play meta game, pure functions of t
 battle/src/render/               canvas drawing
   units.js, hats.js              beans, weapons, arrows, faces, corpse fade, HP bars; the hats
   towers.js, buildings.js        towers (damage, collapse, HP bars); the buildings (crate drop, glove, patch, crane, wreck)
-  spells.js                      spells, cannonballs, Juggler bombs, aim circle, deploy ghosts, building footprints, drop markers
+  spells.js                      spells, cannonballs, Juggler bombs, aim circle, aim checks and tips, deploy ghosts, building footprints, drop markers
   background.js, camera.js       sky, hills, castles, arena themes; framing, shake
   effects.js                     starbursts, dust, debris, confetti, comic words, crowns
   cards.js, chests.js            card faces (a real settled ragdoll as art, the legendary frame); chest art and its opening
@@ -332,15 +335,16 @@ CPU-s of each simulated minute; `tests/battle-perf.test.js` checks the same
 budget relative to the machine.
 
 With the shipped numbers (two `--n 40` card tables pooled, 960 matches),
-equal-skill matches with random 32-card decks end by a castle falling in 23%
+equal-skill matches with random 32-card decks end by a castle falling in 20%
 of cases and go to the tiebreak in 20%, one level up still wins 91–93%, and
 the scripted new player beats the Training Dummy 99% of the time. Each newer
-card's win rate with it against without is 42–56% (the four Legendaries
-47–55%), and each original card's 40–59%, except Archers at 64% (they hit
-fliers now). The five newer opponent styles average 46–54% against the other
-ten decks (the five classic ones 38–60%), though a few single matchups are
-still above 65%. A match costs about 0.22 CPU-s per simulated minute, and the
-busiest minute of the worst case about 1.6. The targets and the full tables
+card's win rate with it against without is 43–60% (the Legendaries 51–55%,
+except the Wrecking Crane at 43–45%), and each original card's 43–58%, except
+Archers at 64% (they hit fliers now) and the Bomb at 39–40%. The five newer
+opponent styles average 45–53% against the other ten decks (the five classic
+ones 38–62%), though a few single matchups are still above 65%. A match costs
+about 0.21 CPU-s per simulated minute, and the busiest minute of the worst
+case about 1.8. The targets and the full tables
 are in `docs/WOBBLE-WAR-CARDS.md` sections 10 and 13.
 
 # Prototype 0: "HORDE"

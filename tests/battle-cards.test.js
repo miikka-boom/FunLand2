@@ -135,7 +135,7 @@ test('every unit, spell and building a card names exists, and casting each spell
     assert.equal(s.team, 'blue');
   }
   assert.equal(SPELLS.bananaPeels.peels, 5);
-  assert.equal(SPELLS.anvil.damage, 310);
+  assert.equal(SPELLS.anvil.damage, 270); // (310 in the contract; balance: three no longer finish a Guard Tower)
   assert.equal(SPELLS.bubbleWrap.absorb, 85); // (70 in the contract; balance)
   // Every spell entity runs its course and goes away without throwing
   for (let i = 0; i < 12 / DT; i++) b.step(DT);

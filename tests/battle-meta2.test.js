@@ -7,14 +7,14 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CARDS, CARD_ORDER, RARITIES, MAX_LEVEL } from '../battle/src/sim/cards.js';
+import { CARDS, CARD_ORDER, RARITIES, MAX_LEVEL, STARTER_DECK, DECK_SIZE } from '../battle/src/sim/cards.js';
 import { UNIT_TYPES } from '../battle/src/sim/unit-types.js';
 import { BUILDINGS } from '../battle/src/sim/buildings.js';
-import { newProfile, migrate, grant, UNIT_IDS, FIRSTS, firstsOf } from '../battle/src/meta/profile.js';
+import { newProfile, migrate, grant, loadProfile, saveProfile, UNIT_IDS, FIRSTS, firstsOf, PROFILE_KEY, PROFILE_VERSION } from '../battle/src/meta/profile.js';
 import { UPGRADE_COPIES, UPGRADE_GOLD, AIR_ANSWERS, cardsUpTo, deckNeedsAir, fliersUnlocked, upgradeCard, bestArena } from '../battle/src/meta/collection.js';
-import { ARENAS, TRAIL, claimTrail } from '../battle/src/meta/ladder.js';
+import { ARENAS, TRAIL, claimTrail, restoreTrailCards } from '../battle/src/meta/ladder.js';
 import { CHESTS, MAX_LEGENDARY, chestOdds, rollChest, openChest } from '../battle/src/meta/chests.js';
-import { SHOP, shopToday, buyOffer } from '../battle/src/meta/shop.js';
+import { SHOP, shopToday, buyOffer, claimFree } from '../battle/src/meta/shop.js';
 import { BADGES, badgeStatus, claimBadge } from '../battle/src/meta/badges.js';
 import { ARCHETYPES, archetypesFor, buildDeck, makeOpponent } from '../battle/src/meta/opponents.js';
 import { HAT_UNITS } from '../battle/src/meta/cosmetics.js';
@@ -272,6 +272,127 @@ test('trophy trail: the 19 milestones of the contract, no old one moved, copies 
     assert.equal(m.reward.cards[id], COPIES[CARDS[id].rarity], `${id} copies`);
     assert.ok(m.at >= ARENAS[CARDS[id].arena].trophies, `${id} after its gate`);
   }
+});
+
+// --- saves from the 14-card game ------------------------------------------------------------
+
+const memStore = () => {
+  const m = new Map();
+  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) };
+};
+const clone = (p) => JSON.parse(JSON.stringify(p));
+/** What the 14-card game writes back after adopting a save: v2, no `firsts`, the cards it doesn't know dropped (and the deck refilled with starter cards), the Trail kept. */
+function oldWindowSave(p) {
+  const raw = clone(p);
+  raw.v = 2;
+  delete raw.firsts;
+  const known = CARD_ORDER.slice(0, 14);
+  for (const id of Object.keys(raw.cards)) if (!known.includes(id)) delete raw.cards[id];
+  const deck = raw.deck.filter((id) => raw.cards[id]);
+  for (const id of STARTER_DECK) if (deck.length < DECK_SIZE && !deck.includes(id)) deck.push(id);
+  raw.deck = deck;
+  return raw;
+}
+
+test('saves: v3, so a 14-card window\'s v2 write reads as older; v1 and v2 saves still load', () => {
+  // main.js's storage handler writes ours back over a save whose v is below PROFILE_VERSION
+  const older = (raw) => !(Number(raw.v) >= PROFILE_VERSION);
+  const p = at(1750, 61);
+  for (const m of TRAIL) claimTrail(p, m.at);
+  assert.equal(p.v, 3);
+  assert.equal(older(clone(p)), false, 'our own saves are adopted');
+  assert.equal(older(oldWindowSave(p)), true, 'a 14-card window\'s write is older: ours goes back over it');
+  // A v2 save (the 14-card game's) still loads as it is
+  const v2 = oldWindowSave(at(700, 62));
+  v2.cards.bruiser = { level: 3, count: 4 };
+  v2.gold = 900;
+  const q = migrate(clone(v2));
+  assert.deepEqual([q.v, q.gold, q.cards.bruiser.level, q.best, q.deck.length], [3, 900, 3, 700, DECK_SIZE]);
+  assert.deepEqual(q.firsts, { flier: false, building: false, legendary: false });
+  // ... and so does a v1 one (the campaign game)
+  const v1 = migrate({ v: 1, beans: 40, stars: { 0: 3, 1: 2 }, stats: { wins: 3 } });
+  assert.deepEqual([v1.v, v1.beans, v1.gold, v1.stats.wins], [3, 40, 100, 3]);
+});
+
+test('saves: the Trail\'s cards come back when a 14-card window\'s save dropped them', () => {
+  const p = at(1750, 63);
+  for (const m of TRAIL) claimTrail(p, m.at);
+  const newer = CARD_ORDER.slice(14);
+  assert.ok(newer.every((id) => p.cards[id]));
+  p.cards.wreckingCrane.level = 3; // (levels bought since can't come back)
+  const s = memStore();
+  s.setItem(PROFILE_KEY, JSON.stringify(oldWindowSave(p)));
+  const q = loadProfile(s);
+  assert.ok(!q.cards.pelican && q.road.claimed[1650], 'the save lost the Pelican, its milestone stays claimed');
+  const notices = q.notices.length;
+  assert.deepEqual(restoreTrailCards(q).sort(), newer.slice().sort(), 'all 18 newer cards come back');
+  for (const id of newer) {
+    const m = TRAIL.find((x) => x.reward.cards && x.reward.cards[id]);
+    assert.deepEqual(q.cards[id], { level: 1, count: m.reward.cards[id] - 1 }, `${id}: as the milestone gave it`);
+  }
+  assert.deepEqual(q.firsts, { flier: true, building: true, legendary: true }, 'no "first legendary" tip for a card owned before');
+  assert.equal(q.notices.length, notices, 'and no new notices');
+  assert.deepEqual(restoreTrailCards(q), [], 'once only');
+  // Cards still owned keep their level; a milestone not claimed gives nothing
+  const r = at(1300, 64);
+  for (const m of TRAIL) if (m.at <= 1110) claimTrail(r, m.at);
+  r.cards.anvil.level = 4;
+  const r2 = migrate(oldWindowSave(r));
+  r2.cards.anvil = { level: 4, count: 2 };
+  restoreTrailCards(r2);
+  assert.deepEqual(r2.cards.anvil, { level: 4, count: 2 });
+  assert.ok(r2.cards.boingBox && !r2.cards.nutcracker && !r2.cards.wreckingCrane);
+  // A profile with nothing missing is left exactly as it is
+  const t = clone(p);
+  restoreTrailCards(p);
+  assert.deepEqual(p, t);
+  // Saved and loaded again, it stays put
+  saveProfile(q, s);
+  assert.deepEqual(loadProfile(s).cards, q.cards);
+});
+
+// The 14-card game's shop on 2026-11-05 for these profiles (its gift, then its three offers)
+const OLD_DAY = [
+  [1, 700, { cards: { spikers: 11 } }, [['spikers', 12], ['clubbers', 15], ['megaBomb', 1]]],
+  [2, 1100, { gold: 54 }, [['squire', 11], ['clubbers', 13], ['shieldWall', 1]]],
+  [3, 1700, { gold: 52 }, [['arrowRain', 10], ['bomb', 11], ['bruiser', 5]]],
+  [4, 1700, { cards: { bomb: 9 } }, [['bomb', 16], ['boulder', 4], ['bruiser', 4]]],
+  [5, 1100, { gold: 70 }, [['spikers', 18], ['bruiser', 5], ['megaBomb', 1]]],
+];
+
+test('shop: on the day of the update, a shop day the 14-card game began keeps its stock and its Sold marks', () => {
+  for (const [seed, trophies, free, offers] of OLD_DAY) {
+    const p = at(trophies, seed);
+    shopToday(p, NOW); // the day began in the 14-card game...
+    p.shop.bought = [2];
+    p.shop.free = true;
+    const q = migrate(oldWindowSave(p)); // ... and the update loads the same day
+    const s = shopToday(q, NOW);
+    assert.deepEqual(s.free, { reward: free, claimed: true }, `seed ${seed}: the gift claimed is the gift it gave`);
+    assert.deepEqual(s.offers.map((o) => [o.cardId, o.count]), offers, `seed ${seed}: the same offers`);
+    assert.deepEqual(s.offers.map((o) => o.bought), [false, false, true], `seed ${seed}: Sold is the one bought`);
+    assert.equal(buyOffer(q, 2, NOW), 'bought');
+    // Saved and loaded again the same day: still that stock
+    const q2 = migrate(clone(q));
+    assert.deepEqual(shopToday(q2, NOW).offers.map((o) => o.cardId), offers.map((o) => o[0]));
+    // The next day rolls from all 32 cards
+    shopToday(q2, NOW + DAY);
+    assert.equal(q2.shop.cards14, undefined);
+  }
+  // Within a few days at Wobble Summit a newer card is on offer again
+  const p = at(1700, 65);
+  shopToday(p, NOW);
+  const q = migrate(oldWindowSave(p));
+  const seen = new Set();
+  for (let d = 1; d <= 10; d++) for (const o of shopToday(q, NOW + d * DAY).offers) seen.add(o.cardId);
+  assert.ok([...seen].some((id) => CARD_ORDER.indexOf(id) >= 14), [...seen].join());
+  // A shop day this game began never takes the 14-card stock
+  const r = at(1700, 66);
+  shopToday(r, NOW);
+  claimFree(r, NOW);
+  const r2 = migrate(clone(r));
+  assert.equal(r2.shop.cards14, undefined);
+  assert.deepEqual(shopToday(r2, NOW), shopToday(r, NOW));
 });
 
 // --- opponents ----------------------------------------------------------------------------

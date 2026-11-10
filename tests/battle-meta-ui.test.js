@@ -11,7 +11,10 @@ import { UNIT_TYPES, BEAT, MAX_JBOMBS } from '../battle/src/sim/unit-types.js';
 import { SPELLS } from '../battle/src/sim/spells.js';
 import { BUILDINGS } from '../battle/src/sim/buildings.js';
 import { TOWER_TAKES } from '../battle/src/sim/towers.js';
-import { cardStats, cardKindLine, demoStyle } from '../battle/src/ui/hub-kit.js';
+import { Battle, DT } from '../battle/src/sim/battle.js';
+import { cardStats, cardKindLine, demoStyle, legendWords, newCardsLine, firstTipLines, andList } from '../battle/src/ui/hub-kit.js';
+import { ARENAS } from '../battle/src/meta/collection.js';
+import { firstsOf } from '../battle/src/meta/profile.js';
 import { ARCHETYPES, archetypesFor } from '../battle/src/meta/opponents.js';
 import { rngFrom } from '../battle/src/meta/profile.js';
 
@@ -140,6 +143,73 @@ test('card details: the Drummer, Juggler, buildings and newer spells read exactl
   assert.equal(row('bananaPeels', 'Lasts').value, `${SPELLS.bananaPeels.life} s`);
   assert.equal(row('bubbleWrap', 'Absorbs').value, SPELLS.bubbleWrap.absorb);
   assert.equal(row('bubbleWrap', 'Lasts').value, `${SPELLS.bubbleWrap.time} s`);
+});
+
+/** A still enemy `unit` with its hip `d` px in front of a blue crane's face: { hit, air } after up to 10 s (hit: the ball hit it; air: it was high air then). */
+function craneVs(unit, d, seed = 7) {
+  const b = new Battle(seed, { mode: 'arena' });
+  const crane = b.addBuilding('wreckingCrane', 'blue', 500, 1);
+  const u = b.addUnit(unit, 'red', crane.x + crane.f * (crane.w / 2 + d), 0.5);
+  u.speed = 0;
+  u.hp = u.maxHp = 1e6;
+  for (let i = 0; i < 10 / DT; i++) {
+    u.cooldown = 1e9;
+    b.step(DT);
+    const hit = b.events.some((e) => e.type === 'hit' && e.kind === 'crane' && e.unit === u);
+    b.events.length = 0;
+    if (hit) return { hit: true, air: u.air };
+  }
+  return { hit: false, air: u.air };
+}
+
+test('card details: the Crane\'s Reach is how far its ball hits, not where it wakes, and it hits fliers it sweeps', () => {
+  const B = BUILDINGS.wreckingCrane;
+  const reach = cardStats('wreckingCrane', 1).find((r) => r.label === 'Reach').value;
+  assert.ok(reach < B.pendulum.sense - B.w / 2, `Reach ${reach} is inside the wake-up range`);
+  assert.ok(reach <= B.pendulum.pivotFwd + B.pendulum.L * Math.sin(B.pendulum.maxAng) + B.pendulum.r - B.w / 2, 'and never past the full swing');
+  // In play (hip from the mast's face, the Box's measure): well inside it is hit, past it never
+  // (a big Bruiser is hit a little farther out than a Clubber or an Archer)
+  for (const [unit, past] of [['clubber', 25], ['archer', 25], ['bruiser', 40]]) {
+    assert.equal(craneVs(unit, reach - 30).hit, true, `${unit} at Reach - 30`);
+    assert.equal(craneVs(unit, reach + past).hit, false, `${unit} at Reach + ${past}`);
+  }
+  // Targets: the ball sweeps Propeller Pals out of the air at their cruise height
+  assert.equal(cardStats('wreckingCrane', 1).find((r) => r.label === 'Targets').value, 'Air & ground');
+  assert.deepEqual(craneVs('copter', reach - 30), { hit: true, air: true }, 'a Pal in high air is hit');
+});
+
+test('celebrations and tips: one card reads singular, two to six plural', () => {
+  const NAMES = ['Wrecking Crane', 'Pelican', 'Big Jelly', 'Bomb Juggler', 'Boing Box', 'Bean Patch'];
+  for (let n = 1; n <= 6; n++) {
+    const names = NAMES.slice(0, n);
+    const [lead, text] = legendWords(names, false, 5);
+    assert.equal(lead, n > 1 ? 'Legendaries! ' : 'A Legendary! ', `${n}`);
+    assert.equal(text, `${andList(names)} ${n > 1 ? 'join' : 'joins'} the Big Chests and the shop.`, `${n}`);
+    assert.ok(legendWords(names, true, 5)[1].startsWith(`${andList(names)}: in Big Chests (5%)`), `${n}`);
+    assert.ok(newCardsLine(n).startsWith(n > 1 ? 'New cards! ' : 'A new card! '), `${n}`);
+  }
+  assert.equal(andList(NAMES.slice(0, 3)), 'Wrecking Crane, Pelican and Big Jelly');
+  assert.equal(legendWords([], false, 5), null);
+  // Every arena that unlocks a Legendary, as the celebration says it
+  const said = [];
+  for (let i = 0; i < ARENAS.length; i++) {
+    const legs = CARD_ORDER.filter((id) => CARDS[id].arena === i && CARDS[id].rarity === 'legendary').map((id) => CARDS[id].name);
+    const first = !CARD_ORDER.some((id) => CARDS[id].rarity === 'legendary' && CARDS[id].arena < i);
+    if (legs.length) said.push(legendWords(legs, first, 5).join(''));
+  }
+  assert.ok(said.includes('A Legendary! Wrecking Crane joins the Big Chests and the shop.'), said.join(' | '));
+  assert.ok(said.includes('Legendaries! Pelican and Big Jelly join the Big Chests and the shop.'), said.join(' | '));
+  // The first-flier tip: "fly ... them" for a group, "flies ... it" for one, whatever the count
+  for (let count = 1; count <= 6; count++) {
+    const t = firstTipLines({ ...CARDS.propellerPals, count }, 5).flier;
+    assert.ok(count > 1 ? / fly! .* hit them:/.test(t) : / flies! .* hit it:/.test(t), `${count}: ${t}`);
+  }
+  for (const id of CARD_ORDER) {
+    const card = CARDS[id];
+    const lines = firstTipLines(card, 5);
+    for (const k of firstsOf(card)) assert.ok(lines[k].startsWith(card.name + ' ') && !/undefined|NaN/.test(lines[k]), `${id} ${k}: ${lines[k]}`);
+    if (card.flying) assert.ok(lines.flier.includes(card.count > 1 ? ' fly!' : ' flies!'), id);
+  }
 });
 
 test('card text: the counts a card\'s blurb spells out ("Three beans...") match its tables', () => {

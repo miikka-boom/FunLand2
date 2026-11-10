@@ -8,6 +8,7 @@
 // (node --test runs each file in its own process, so the fake DOM globals stay here.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 const calls = {};
 let bad = 0; // non-finite numbers handed to the canvas
@@ -319,9 +320,115 @@ test('the legendary sheen sweeps over the frame for 1.4 s of every 2 s; card bad
   bad = 0;
   for (const kind of ['flying', 'building', 'anywhere', null]) drawCardBadge(ctx, kind, 50, 50, 8);
   assert.equal(bad, 0);
-  // Every flying, building and anywhere card gets its badge on the face (more drawing than the art alone)
-  for (const id of ['propellerPals', 'pelican', 'boingBox', 'beanPatch', 'wreckingCrane', 'brollyBrigade']) {
-    const c = CARDS[id];
-    assert.ok(c.flying || c.kind === 'building' || c.anywhere, id);
+  // Every flying, building and anywhere card gets its badge on the face, and no other card does:
+  // each face is painted afresh on a canvas that counts the badge's purple disc
+  const doc = globalThis.document;
+  try {
+    for (const id of CARD_ORDER) {
+      let discs = 0;
+      globalThis.document = {
+        createElement: () => {
+          const cv = mockCanvas();
+          const spy = new Proxy(cv.getContext('2d'), {
+            set(o, k, v) {
+              if (k === 'fillStyle' && v === '#4a3d6e') discs++;
+              o[k] = v;
+              return true;
+            },
+          });
+          cv.getContext = () => spy;
+          return cv;
+        },
+      };
+      clearCardCache();
+      cardFace(id, 120, 156, {});
+      const c = CARDS[id];
+      const badged = !!(c.flying || c.kind === 'building' || c.anywhere);
+      assert.equal(discs > 0, badged, `${id}: ${badged ? 'no badge on the face' : 'a badge on a card without one'}`);
+    }
+  } finally {
+    globalThis.document = doc;
+    clearCardCache();
+  }
+});
+
+/** main.js's lerpIn / lerpOut (it runs only in a page: read out of its source). */
+function mainLerp() {
+  const src = readFileSync(new URL('../battle/src/main.js', import.meta.url), 'utf8');
+  const m = /const lerped = \[\];[\s\S]*?\nfunction lerpOut\(\) \{[\s\S]*?\n\}/.exec(src);
+  assert.ok(m, 'main.js has lerpIn and lerpOut');
+  return new Function('DT', `${m[0]}\nreturn { lerpIn, lerpOut };`)(DT);
+}
+
+test('drawn between two sim steps, a bean reads the same speed at any point of the frame (Sprout leaves, BOING lines)', () => {
+  const { lerpIn, lerpOut } = mainLerp();
+  const deck = ['beanPatch', 'pogoBean', 'clubbers', 'squire', 'archers', 'spikers', 'bomb', 'arrowRain'];
+  const side = { deck, levels: Object.fromEntries(deck.map((id) => [id, 1])), kingLevel: 1 };
+  const m = new Match({ seed: 2, blue: side, red: side });
+  const b = m.battle;
+  m.sides.blue.hand = ['beanPatch', 'pogoBean', 'clubbers', 'squire'];
+  m.sides.blue.mana = 10;
+  m.play('blue', 0, 300);
+  m.sides.blue.mana = 10;
+  m.play('blue', m.sides.blue.hand.indexOf('pogoBean'), 320);
+  const speed = (u) => Math.hypot(u.hip.x - u.hip.px, u.hip.y - u.hip.py) / DT;
+  let found = false;
+  for (let i = 0; i < 120 * 12 && !found; i++) {
+    m.step();
+    const sprout = b.units.some((u) => u.type.id === 'sprout' && u.alive && !u.dropping && speed(u) > 70);
+    found = sprout && b.units.some((u) => u.type.id === 'pogo' && u.alive && u.alt > 14 && speed(u) > 150);
+  }
+  assert.ok(found, 'a running Sprout and a Pogo flying through a hop');
+  const parts = b.units.filter((u) => !u.asleep).flatMap((u) => u.parts);
+  const before = parts.map((p) => [p.x, p.y, p.px, p.py]);
+  const R = new UnitRenderer({ seed: 1 });
+  const strokes = () => {
+    const ctx = mockCanvas(1688, 780).getContext('2d');
+    const s0 = calls.stroke || 0;
+    R.drawUnits(ctx, b, b.time);
+    return (calls.stroke || 0) - s0;
+  };
+  const drawn = [];
+  for (const alpha of [1, 0.67, 0.33, 0.05]) {
+    lerpIn(b, alpha);
+    parts.forEach((p, i) => {
+      const [x, y, px, py] = before[i];
+      assert.ok(Math.abs(p.x - (px + (x - px) * alpha)) < 1e-9 && Math.abs(p.y - (py + (y - py) * alpha)) < 1e-9, `drawn ${alpha} of the way`);
+      assert.ok(Math.abs(p.x - p.px - (x - px)) < 1e-9 && Math.abs(p.y - p.py - (y - py)) < 1e-9, `alpha ${alpha}: the step's motion is the sim's`);
+    });
+    drawn.push(strokes());
+    lerpOut();
+    parts.forEach((p, i) => assert.deepEqual([p.x, p.y, p.px, p.py], before[i], 'put back exactly'));
+  }
+  assert.ok(drawn.every((n) => n === drawn[0]), `the same strokes at every alpha (BOING lines on or off): ${drawn}`);
+});
+
+test('drawn between two sim steps, an Anvil dropping off a tower it finished moves like a falling one; one resting on a roof stays put', () => {
+  const { lerpIn, lerpOut } = mainLerp();
+  const deck = ['anvil', 'clubbers', 'squire', 'archers', 'spikers', 'bomb', 'arrowRain', 'boulder'];
+  const side = { deck, levels: Object.fromEntries(deck.map((id) => [id, 1])), kingLevel: 1 };
+  for (const finish of [true, false]) {
+    const m = new Match({ seed: 7, blue: side, red: side });
+    const b = m.battle;
+    const g = b.towers.find((t) => t.team === 'red' && t.kind === 'guard');
+    if (finish) g.hp = 50;
+    m.sides.blue.hand[0] = 'anvil';
+    m.sides.blue.mana = 10;
+    assert.ok(m.play('blue', 0, g.x), 'the Anvil is cast on the Guard Tower');
+    const s = b.spells.find((e) => e.kind === 'anvil');
+    let seen = 0;
+    for (let i = 0; i < 120 * 3 && !s.done; i++) {
+      m.step();
+      if (s.state !== 'rest') continue;
+      const [y, vy] = [s.y, s.vy];
+      lerpIn(b, 0.25);
+      const want = vy > 0 ? y - vy * DT * 0.75 : y;
+      assert.ok(Math.abs(s.y - want) < 1e-9, `${finish ? 'dropping' : 'on the roof'}: drawn at ${s.y.toFixed(2)}, want ${want.toFixed(2)} (vy ${vy.toFixed(0)})`);
+      lerpOut();
+      assert.equal(s.y, y, 'put back exactly');
+      if (vy > 0) seen++;
+    }
+    if (finish) assert.ok(seen > 10, `it dropped off the wreck over ${seen} steps`);
+    else assert.equal(seen, 0, 'it never moves on a standing roof');
   }
 });

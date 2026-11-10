@@ -196,6 +196,7 @@ A building is a **`Tower` with `kind: 'building'`**. It lives in `battle.towers`
 
 - **Zone.** Only inside your own `WORLD.deploy[team]`, never in the pocket, even after the enemy Guard Tower falls.
 - **Fitting.** `fitBuilding(battle, team, bid, x)` (in `sim/buildings.js`) returns a legal centre x or `null`. It searches from x outward in 4 px steps up to `BUILD_SNAP = 80`, in the order x, x + 4, x − 4, x + 8, x − 8, … The first x wins where the footprint `[x − w/2, x + w/2]` is inside the deploy zone and at least `BUILD_GAP = 12` px from every standing tower and building of either team. `null` makes `canPlay` return `'zone'`.
+- **Pinches.** `BUILD_GAP` (12 px) is narrower than any bean, so a building played beside a structure of its side can leave a bean in a gap it doesn't fit: each wall pushes it out of its own footprint into the other's, every step. So `towerWalls` ends with **`Battle.unpinch()`**, which runs only while a building stands (`battle.towers` holds one; the 14 original cards never get there). A bean the walls leave overlapping an enemy structure (hip within `w/2 + r − 1` of its centre, below its roof) moves out past the whole row of that side's structures whose gaps are narrower than `2R + 2`, to the row's outer face on the bean's own side (blue beans to −x, red to +x), all its parts and feet at once (x and px together, so it keeps its speed). Held beans are skipped.
 - **Cap.** At most **`MAX_BUILDINGS = 3` standing buildings per side.** Playing a 4th makes the oldest one crumble (`destroyTower(b, oldest, true)`, cause `'crumbled'`).
 - A building card places exactly one building. `Match.formation()` returns `[fitX]` for ghosts, or `[]` when the spot is illegal.
 
@@ -242,7 +243,9 @@ export function takesOf(t, kind, override) {   // towers.js (re-exported); repla
 
 - **Card flag.** `anywhere: true`.
 - **Where it can be played.** `Match.canPlay` accepts x in `[40, 1460]` for these cards, at any time.
-- **Formation.** `Match.formation()` takes the card's `spread` offsets around x and slides the whole group as a block, keeping its spacing, until every bean is clear. One bean's spot is `Match.clearSpot(x)`: out of every standing tower or building footprint (`|x − t.x| < t.w/2 + 16` moves it to the nearer side, at `t.x ± (t.w/2 + 16)`), out of both Castles' rectangles (to the field side), then clamped to `[40, 1460]`. The group's centre moves by the largest nudge any bean needs, up to 4 passes; then each bean gets a final `clearSpot`, so every bean is clear even where there is no room for the full spacing. Aimed at x 60 the three land at 201 / 231 / 261, at 1440 at 1239 / 1269 / 1299. (Nudged one by one, they all landed on the same edge.)
+- **Where a bean may not land.** `Match.blockedSpans()` lists open `[a, b]` spans of x: every standing tower or building footprint widened by 16 px each side (`|x − t.x| < t.w/2 + 16`, so a clear bean sits at `t.x ± (t.w/2 + 16)` or further), each Castle (standing or not) from 16 px past its field-side face out to the world's edge behind it, and everything outside `[40, 1460]`.
+- **Formation.** `Match.formation()` keeps the card's `spread` offsets around one centre: the centre **nearest the aim** (the lower x on a tie) at which every bean is clear. The candidates are the aim itself and every span edge minus each bean's offset (a bean sitting exactly on an edge), so the answer is exact, not a slide that can bounce between two structures. Only when no centre has room for the full spacing does each bean take its own `Match.clearSpot(aim + offset)`. Aimed at x 60 the three land at 201 / 231 / 261, at 1440 at 1239 / 1269 / 1299, at 1130 (on the red Guard Tower) at 1062 / 1092 / 1122. (Nudged one by one, they all landed on the same edge; slid as a block, off one structure and onto the next, they could still stack or wedge between two structures standing closer than a bean is wide.)
+- **One bean's spot.** `Match.clearSpot(x)` merges the overlapping spans first, so two structures close together count as one, and moves x to the nearer edge of the merged span it is in (a Castle's edge is always its field side). Its answer is always clear.
 - **Deploy.** `addUnit(card.unit, team, x, lane, seed, { level, float: true })` calls `battle.floatIn(u)` instead of `dropIn(u)`.
 - **Towers can shoot them.** Floating units are not `dropping`, so towers can shoot them all the way down. That is the counterplay.
 - **Seen on the way in.** The renderer fades a Brolly in over its first 0.35 s and keeps it see-through while its umbrella is still under the match HUD's top row (at 844×390 the drop height is right under the clock, so it drifts out from under it about 0.5 s after the play). Render only: in the sim it is solid and shootable from the first step, and its ground shadow and the aim markers show from the first frame.
@@ -257,7 +260,7 @@ export function takesOf(t, kind, override) {   // towers.js (re-exported); repla
 | `netImmuneT` | Netter (3.0) | a new net hit gives only the ground payload (no `liftOff`) |
 | `beatT` | Tummy Drummer (0.6 per beat) | `tempo()` = 1.5, `moveMul()` = 1.5 |
 | `wrapHp`, `wrapMax`, `wrapT` | Bubble Wrap | absorbs damage first; stun ×0.5 (if wrapped when the hit lands, judged before the absorb); no fall damage; body bounce 0.6 (re-applied every step while it holds); it also ends when its bean dies |
-| `squashT` | Anvil (1.0) | render: pancake squash; the bean is `downT` anyway |
+| `squashT` | Anvil (1.0) | render: pancake squash, about the bean's own feet (a flier is squashed where it flies, not down on the lane). Set only on a survivor that is down, whose `downT` becomes at least `squash`: it is drawn flat exactly while it lies there (a wrapped bean that stays up is not squashed) |
 | `floatT`, `flipped`, `flipFall` | Brolly (`floatIn`) | drag-capped fall; `air` while high; `flipped` = umbrella inside out; `flipFall` = falling after a flip (`think()` idles) |
 | `held`, `heldBy`, `holding` | Pelican, Big Jelly | see 3.6 |
 | `spawnOf` | Bean Patch spawns | id of the building that spawned it |
@@ -270,8 +273,10 @@ tempo() { return this.beatT > 0 ? BEAT.tempo : 1; }      // BEAT from unit-types
 moveMul() { return this.beatT > 0 ? BEAT.move : 1; }
 ```
 
-- **Where `tempo()` applies.** `a.t` in `animate()`, `animateDash()` (windup and recover only, never the flight), `animateBow()`, the Juggler toss, the Nutcracker bite, the Pelican and Jelly act timers, `cooldown` countdown, and Pogo hop rest.
-- **Where it never applies.** Fuses (`a.phase === 'fuse'` and `deathFuse`), `deployT`, `downT`, dash flight time, and building timers.
+- **Where `tempo()` applies.** `a.t` in `animate()` (every phase but a melee `'strike'` and a dash's flight), `animateDash()` (windup and recover only, never the flight), `animateBow()`, the Juggler toss, the Nutcracker bite, the Pelican and Jelly act timers, `cooldown` countdown, and Pogo hop rest.
+- **Where it never applies.** Fuses (`a.phase === 'fuse'` and `deathFuse`), `deployT`, `downT`, dash flight time, a melee strike (`a.phase === 'strike'`) and building timers. A heavy weapon needs its whole strike to sweep through the target: swept 1.5× faster, the Brick's hammer and the Bruiser's club whiffed (0 hammer blows on a tower with a Drummer beside the Brick). So on the beat a swing (windup to the end of its recover) takes `(swing − strike)/1.5 + strike`: a Clubber's 1.05 → 0.74 s, a Brick's 1.53 → 1.07 s. With the cooldown also ×1.5, that is about 1.4× as many swings.
+
+**Hits that floor** (`hit.floor: true`, set only by a peel's slip and the Anvil). In `takeHit` their knockdown check uses the hit's stun **without poise** (only Bubble Wrap's ×0.5 still applies), so armoured beans (Squire, Shield Wall, Bruiser, Nutcracker, Pogo) go down like anyone. Other hits keep the existing rule: poise scales the stun, and only a full-speed club bonk mostly ignores it.
 - **`moveMul()`** multiplies `this.speed` everywhere `think()` uses it.
 
 ### 3.6 Holding (Pelican beak, Big Jelly)
@@ -379,6 +384,7 @@ sprout: {
   body: { thigh: 9.5, shin: 9.5, upperArm: 6.5, foreArm: 6.5 },
   noHat: true,                                       // the leaves are its hat
   engage: 24, reach: 32,
+  light: true,                                       // its pokes and bumps shove only as hard as its weight allows (LIGHT_KNOCK)
   attack: { windup: 0.16, strike: 0.08, recover: 0.18, cooldown: 0.22, damage: 11, knock: 90, stun: 0.15, shieldPierce: 0.35, cleave: false },
   poses: { // the Squire's stab, ×0.6
     rest: { main: [4, -4], off: [6, 0], ang: -38, lean: 0.05, crouch: 0, wk: 1 },
@@ -389,7 +395,8 @@ sprout: {
 ```
 
 - **Behaviour.** A standard melee bean: the nearest enemy ground bean in sight, else the nearest structure. It is also what the **Bean Patch** spawns.
-- **Physics beat.** It weighs nothing (mass 0.45, heft 1.5), so any club hit sends it cartwheeling half the field, squeaking. It bounces, gets up and sprints straight back in. Two Sprouts poking a Brick's ankles while it ignores them.
+- **A lightweight** (`light: true`, `LIGHT_KNOCK = 2.25` in `unit-types.js`). It shoves another bean only as hard as its own weight allows: its weapon's knock (a hit or a shield block) and its push in `separate()` (the overlap share and the closing-speed bleed) are ×`min(1, (2.25 · its mass / the other's mass)²)`. That is ×1 on anything up to a Clubber's weight, ×0.6 on a Nutcracker, ×0.21 on a Bruiser and ×0.06 on a Brick. In an overlap the Sprout takes the rest of the push itself: it gives way. (Before, a pair of Sprouts, or a Bean Patch's three, shoved a walking Brick 100–150 px back up the field, so the Brick never reached the Patch it is listed against.) The factor is exactly 1 for every other unit.
+- **Physics beat.** It weighs nothing (mass 0.45, heft 1.5), so any club hit sends it cartwheeling half the field, squeaking. It bounces, gets up and sprints straight back in. Two Sprouts poking a Brick's ankles while it ignores them and walks on.
 - **Job.** Cycle and bait. For 1 mana it soaks a Bruiser's windup, a Nutcracker bite, a Bomb's fuse or a Pelican scoop. It pulls the Guard Tower's aim off a push and finishes an Archer.
 - **Counters.** Any splash (Arrow Rain, Big Sneeze, Bomb, Juggler, Clubbers' cleave), tower bolts (4 each), Boing Box.
 - **Art.** A tiny team-colour bean (about 18 px on a phone) with **two big bright-green leaves** (`#5fbf3a`, dark `#2f7a1e`) on a short stem from the head top. They flap when it runs and wilt when it dies. The toothpick is pale wood `#d9b26a` with a green olive at the tip.
@@ -430,7 +437,7 @@ bananaPeels: { peels: 5, toss: 0.4, life: 8, uses: 2, maxSlips: 10, trigger: 9, 
 **`Unit.slip(b, peel)`** (`unit.js`). Here `dir` = the unit's walking direction (its `f`).
 
 - **The slip.** Feet and knees get `addVel(dir·feet, −220)`, head and chest `addVel(−dir·head, −60)`, the hip `addVel(dir·60, −hipUp)`.
-- **The hit.** Then `takeHit(b, { damage: damage·peel.dmgMul, dvx: 0, dvy: 0, stun: 1.0, kind: 'slip', x, y })`. That floors it, with the existing `downT` roll of about 1 s. `slipImmuneT` is set at once to `downT + immune`, so it runs out `immune` s after the bean gets up.
+- **The hit.** Then `takeHit(b, { damage: damage·peel.dmgMul, dvx: 0, dvy: 0, stun: 1.0, kind: 'slip', floor: true, x, y })`. That floors it, with the existing `downT` roll of about 1 s, **whatever its poise** (`floor`, 3.5): the Squire, Shield Wall, Bruiser, Nutcracker and Pogo go feet-up like anyone. Only Bubble Wrap's stun ×0.5 keeps a wrapped bean up. `slipImmuneT` is set at once to `downT + immune`, so it runs out `immune` s after the bean gets up.
 - **Heavies** (`mass ≥ heavyMass`: Brick, Big Jelly) don't fall. They skid: hip `addVel(dir·skid, 0)` and `wobbleT = skidWobble`, with no damage, and `slipImmuneT = immune` (else a Brick standing on one peel would skid every step).
 - **Events.** `slip {unit}`, or `skid {unit}`.
 
@@ -694,7 +701,7 @@ juggler: {
 
 - **Physics beat.** The nervous grin while three fizzing bombs loop overhead. Lobbed bombs boing and roll. When a Clubber bonks it, the "uh-oh" face, one bomb on its own toes, BOOM. Kill it inside its own push and the push takes three in the face.
 - **Job.** Splash support behind a tank. It shreds swarms (Sprouts, Spikers, Gang) and hits air (Propeller Pals, Pelican).
-- **Counters.** Archers outrange it. The Anvil one-shots it (310 against 230). Brollies drop on it, and the Pelican lifts it (it fumbles). Kill it near its own push. Spikers dive it. It throws one bomb every 2.6–4.2 s (a 0.55 s draw, a 0.45 s recover, then its 2.0 s cooldown ×0.8–1.6), so a swarm that reaches it gets its hits in.
+- **Counters.** Archers outrange it. The Anvil one-shots it (270 against 230). Brollies drop on it, and the Pelican lifts it (it fumbles). Kill it near its own push. Spikers dive it. It throws one bomb every 2.6–4.2 s (a 0.55 s draw, a 0.45 s recover, then its 2.0 s cooldown ×0.8–1.6), so a swarm that reaches it gets its hits in.
 - **Art.** A bean in a **jester ruff** (a white zig-zag collar) with a team-colour and white diamond pattern on the body (render overlay, like the Brick's mortar). Three small black bombs (r 6, about 2.5 px each on a phone) with orange sparks, looping over its head. That loop is the silhouette.
 - **Card art.** The Juggler mid-juggle, three bombs in a loop, eyes nervous.
 
@@ -732,7 +739,7 @@ boingBox: { name: 'Boing Box', hp: 380, w: 46, h: 46, life: 28, arm: 1.0,
 - **Who attacks it.** It is a structure, so everything that goes for structures attacks it. Melee beans walk right up to it, and that's the joke.
 - **Physics beat.** Beans walk up to inspect a present… BOING, a cartwheel back into their friends like bowling pins. A Pogo punched clean out of the air.
 - **Job.** A cheap reset against a single melee unit, a Pogo or Bombs. Bait for the Brick and the Pogo, held under your tower. It combos with Banana Peels: slip, slide into the box, punch.
-- **Counters.** Ranged units outrange it (Archers, Juggler). Swarms (one punch per 1.8 s, at most 2 beans). Fliers. Spells (it takes 0.75: an Anvil takes 233 of its 380 hp). The Brick barely moves. `shoveT` makes back-to-back punches weak. Its glove (reach 90 from its face) outreaches every melee bean's swing (reach 32–80), so in a duel a lone Clubber pair or Bruiser never gets a swing in: it takes a push, a ranged unit or a spell. (In bot play melee decks are not hard-countered: the Box's side wins 41–52% against decks with Clubbers, a Clubber Gang or a Bruiser.)
+- **Counters.** Ranged units outrange it (Archers, Juggler). Swarms (one punch per 1.8 s, at most 2 beans). Fliers. Spells (it takes 0.75: an Anvil takes 203 of its 380 hp). The Brick barely moves. `shoveT` makes back-to-back punches weak. Its glove (reach 90 from its face) outreaches every melee bean's swing (reach 32–80), so in a duel a lone Clubber pair or Bruiser never gets a swing in: it takes a push, a ranged unit or a spell. (In bot play melee decks are not hard-countered: the Box's side wins 41–52% against decks with Clubbers, a Clubber Gang or a Bruiser.)
 - **Art.** A **team-colour gift box** with a big white bow on top. The glove is red (`#e0352b`) on a zig-zag silver spring. The lid lifts on the windup. Wilting with age: the bow droops. Footprint 46×46 is about 20 px on a phone, so keep the bow chunky.
 - **Card art.** The glove mid-punch, a bean flying out of frame.
 
@@ -769,7 +776,7 @@ anvil: { id: 'anvil', name: 'Anvil', kind: 'spell', spell: 'anvil', radius: 34, 
 ```
 
 ```js
-anvil: { fall: 0.9, height: 620, damage: 310, shield: 0.4, stun: 1.2, squash: 1.0, carry: 900, liftOff: 1.2, rest: 2.0 },
+anvil: { fall: 0.9, height: 620, damage: 270, shield: 0.4, stun: 1.2, squash: 1.0, carry: 900, liftOff: 1.2, rest: 2.0 },
 ```
 
 The entity is `{ kind: 'anvil', team, f, x, y, vy, t, r: 18, state: 'fall' | 'rest', alpha, done }`. It falls straight down at x, timed to land at `t = fall`. The renderer draws a shadow that grows the whole time. Over a standing structure (a tower or a building, either side) it comes to rest on the roof, so it CLANGs a little before `t = fall` there; beans in its column are hit at any height either way.
@@ -777,17 +784,17 @@ The entity is `{ kind: 'anvil', team, f, x, y, vy, t, r: 18, state: 'fall' | 're
 **Impact.** Emits `anvilImpact {spell, power: 1.4, hits}`. Every enemy unit with `|e.hip.x − x| ≤ radius + e.R`, **at any height**, takes:
 
 ```js
-takeHit(b, { damage: 310·dmgMul·(e.type.shield ? shield : 1), dvx: 0, dvy: e.air ? +carry : 60, stun: 1.2, kind: 'anvil', spin: 0.2 })
+takeHit(b, { damage: 270·dmgMul·(e.type.shield ? shield : 1), dvx: 0, dvy: e.air ? +carry : 60, stun: 1.2, kind: 'anvil', floor: true, spin: 0.2 })
 ```
 
-- **Squash.** Survivors get `squashT = 1.0`: the renderer pancakes them, and they are knocked down anyway.
+- **Squash.** The hit floors (`floor: true`, 3.5): a survivor goes down whatever its poise (the Brick, Big Jelly, Nutcracker and Squire too), unless Bubble Wrap's stun ×0.5 keeps it up. Survivors that are down get `squashT = 1.0` and `downT = max(downT, 1.0)`: the renderer pancakes them, about their own feet, exactly while they lie there. A wrapped bean that stays up is neither floored nor squashed.
 - **Fliers in the column** also get `liftOffT = 1.2`. They are slammed down with it.
 - **Shields.** A Squire always gets its shield up in time (it sees the shadow): only 40% gets through (BONG).
-- **Structures.** Towers take `310·0.5`, buildings `310·0.75`.
-- **Afterwards.** The anvil rests for 2 s (cosmetic; not solid), then fades.
+- **Structures.** Towers take `270·0.5`, buildings `270·0.75` (135 and 203): three Anvils don't finish a 420 hp Guard Tower.
+- **Afterwards.** The anvil rests for 2 s (cosmetic; not solid), then fades. Its floor is read again every step: when the structure under it goes (it finished it, or that one fell or decayed later) it drops on down under gravity to whatever is under it, quietly (no second CLANG).
 
 - **Physics beat.** A whistle, a growing shadow, CLANG. A pancaked bean peels itself off the ground with an accordion squeak. A Propeller Pal or Pelican dragged out of the sky.
-- **Job.** The big single-target answer. It kills the Juggler (230), Bruiser (250), Netter (250), Drummer (280) and Archers (64). It takes about a third off a Brick (950), almost half off a Big Jelly (680), nearly all of a Pelican's 320 hp, 233 of a Boing Box's 380 and of a Bean Patch's 360, and finishes towers and buildings.
+- **Job.** The big single-target answer. It kills the Juggler (230), Bruiser (250), Netter (250), Pogo (260) and Archers (64), but not a Drummer (280). It takes over a quarter off a Brick (950), two fifths off a Big Jelly (680), most of a Pelican's 320 hp, 203 of a Boing Box's 380 and of a Bean Patch's 360, and finishes towers and buildings.
 - **Counters.** It is slow and visible (0.9 s), so fast units step out (Pogo, Spikers, charging Clubbers). Swarms make it a terrible trade. Shields. Bubble Wrap soaks 85.
 - **Art.** Dark iron (`#4a4f57`, highlight `#8a919b`), the classic silhouette (horn on one side). A dark ellipse shadow that grows. On impact: a dust ring, stars and a big white "CLANG" word.
 - **Card art.** The anvil mid-air above a worried bean, with its shadow.
@@ -827,7 +834,7 @@ The attack uses the normal windup → hold → strike → recover phases, with n
 
 - **Physics beat.** The victim's head squeezed between the jaws, googly eyes bulging, the hat popping off. A lethal bite spits it out spinning. The jaw chatters while it walks.
 - **Job.** The tank- and armour-killer: Brick (5 bites of 192, about 8 s; less with tower help), Bruiser, Big Jelly, Shield Wall. It catches a Pogo that lands in front of it.
-- **Counters.** Swarms (one slow bite per bean: Sprouts, Spikers, Clubber Gang). Air (Propeller Pals, Pelican). Kiting ranged (Archers, Juggler). Knockdowns that reset its long windup (Cheese Wheel, Boulder, Peels, Boing Box). The Anvil.
+- **Counters.** Swarms (one slow bite per bean: Sprouts, Spikers, Clubber Gang). Air (Propeller Pals, Pelican). Kiting ranged (Archers, Juggler). Knockdowns that reset its long windup (Cheese Wheel, Boulder, Peels, Boing Box). The Anvil. The Wrecking Crane: its ball keeps a lone Nutcracker off the mast (0 bites in 16 duels; it dies at the Crane every time).
 - **Art.** A **tall bean (1.2×)** with a **tall black shako** (`#1e1e28`), a gold plate (`#e8c04a`) and a red plume. Its biggest feature is a **big square white jaw and beard** (`#f2efe6`) that hinges open. The coat is team colour with gold buttons. The silhouette is the tall hat plus the square jaw.
 - **Card art.** Jaw wide open, a nut (or a tiny Brick) in front.
 
@@ -872,7 +879,7 @@ It pumps while the swing's **amplitude** is below `maxAng`, not while `|ang| < m
 
 - **Physics beat.** The crane creaks, the ball winds up, and beans get golf-swung across the field in huge screaming arcs. The Brick takes the ball on the nose and just keeps hammering the post.
 - **Job.** A fortress piece: it wrecks melee pushes and swarms that walk into it, and it pulls everything that hunts structures.
-- **Counters.** Ranged units outside its reach (Archers at 230+, the Juggler at 200+: the ball swings out to about 150 px in front of the mast). Spells (Anvil, Boulder; it takes 0.75). The Brick (heft 0.3 shrugs off the ball, and its hp soaks it). The Nutcracker bites the mast between swings. Sprouts (each one eats a pass's energy). It decays over 36 s.
+- **Counters.** Ranged units outside its reach (Archers at 230+, the Juggler at 200+: the ball swings out to about 150 px in front of the mast). Spells (Anvil, Boulder; it takes 0.75). The Brick (heft 0.3 shrugs off the ball, and its hp soaks it). Sprouts (each one eats a pass's energy). (Not the Nutcracker: the ball meets it before its bite reaches the mast.) It decays over 36 s.
 - **Art.** A **yellow lattice mast** (`#f2b632`) with black-and-yellow hazard stripes at the foot, a short jib toward the enemy, a dark cable and a **dark iron ball** (`#3b3f46`, white highlight, r 20, about 17 px on a phone). Speed lines on the ball when `v ≥ minHit`.
 - **Card art.** The ball mid-swing, a bean flying away.
 
@@ -950,7 +957,7 @@ The cast only sets `wrapHp`, `wrapMax` and `wrapT` and emits `wrap`; `unit.js` d
 
 - **Physics beat.** Every hit goes POP-POP-POP with little puffs. A wrapped bean flung by a Boulder bounces three times like a rubber ball and gets straight back up.
 - **Job.** Protect a push from splash. It fully absorbs one Arrow Rain (63), most of a Boulder (95), about 8 tower bolts, a Big Sneeze (32) or a Soda (65). Cast it on Sprouts, Propeller Pals or a Clubber Gang just before their spell lands.
-- **Counters.** Big single hits (the Anvil's 310, a Nutcracker bite). Waiting out the 8 s. The Pelican (a carry ignores it). Displacement: the knockback still lands. It does nothing on defence against one big unit.
+- **Counters.** Big single hits (the Anvil's 270, a Nutcracker bite). Waiting out the 8 s. The Pelican (a carry ignores it). Displacement: the knockback still lands. It does nothing on defence against one big unit.
 - **Art.** A translucent sheet (`#dff4ff`, alpha 0.45) with a grid of round bubbles and white highlights hugging the body. Bubbles vanish as `wrapHp/wrapMax` drops; little white "pop" stars on hits.
 - **Card art.** A wrapped bean mid-bounce over a dust puff.
 
@@ -990,7 +997,7 @@ export const BEAT = { tempo: 1.5, move: 1.5 };
 - Two Drummers don't stack: `tempo()` is a constant 1.5.
 
 - **Physics beat.** Everyone nearby bobs and steps in time, pupils bouncing on the beat. Hits make the drum BONG. When it dies the drum rolls away ringing: a `'drum'` item, `{ kind: 'drum', team, f, R, a, b, con, age }` (bounce 0.45), a short stick drawn as a disc.
-- **Job.** A push amplifier: the Clubber Gang, Bruiser and Brick hit 50% faster, and the Pogo and Sprouts get there sooner. It is the Parade deck's engine. Alone it does nothing.
+- **Job.** A push amplifier: the Clubber Gang, Bruiser and Brick wind up and recover 50% faster, about 1.4× as many swings (the strike itself keeps its time, so a heavy swing still lands, 3.5), and the Pogo and Sprouts get there sooner. It is the Parade deck's engine. Alone it does nothing.
 - **Counters.** Kill it: Pelican, Archers, Brollies, Spikers, the Anvil, the Juggler. Splash on the push. Big Sneeze separates it from the push.
 - **Art.** A bean with a **big bass drum on its belly**: a white drumhead (`#f4ead8`), a team-colour shell, a gold rim and zig-zag cord. Two mallets with white heads. Rings pulse out on each beat (render, from `beat`).
 - **Card art.** Mid-beat, two "BOOM" rings.
@@ -1163,9 +1170,9 @@ New unit fields:
 | `engulf`, `bump` | Big Jelly |
 | `spine` | hip–head rod stiffness |
 
-`UNIT_ORDER` appends `'sprout', 'copter', 'pogo', 'netter', 'juggler', 'nutcracker', 'brolly', 'drummer', 'pelican', 'jelly'`. The new shapes are `'bird'` and `'jelly'`. Also exported: `SHOVE = { time: 1.6, knock: 0.25, stun: 0.3 }` (3.5) and `MAX_JBOMBS = 3` (card 22).
+`UNIT_ORDER` appends `'sprout', 'copter', 'pogo', 'netter', 'juggler', 'nutcracker', 'brolly', 'drummer', 'pelican', 'jelly'`. The new shapes are `'bird'` and `'jelly'`. Also exported: `SHOVE = { time: 1.6, knock: 0.25, stun: 0.3 }` (3.5), `MAX_JBOMBS = 3` (card 22) and `LIGHT_KNOCK = 2.25` (the lightweight rule, card 15; `type.light` is set only on the Sprout).
 
-**`sim/unit.js` (W1).** Fields from 3.5. Getters `alt` and `air`. Methods `tempo()`, `moveMul()`, `holdPoint()`, `slip(b, peel)`, `lifting()`, `liftOff(b, t, from)` (max-stacks `liftOffT`, emits `liftOff`). Exported `isFlier(u)` (a flier, or a Brolly still floating). Act phases are `'windup' | 'strike' | 'recover' | 'dash' | 'draw' | 'fuse'` plus the new `'swoop' | 'carry'` (the Juggler's toss runs `'draw'` → `'recover'`; `toss` is only its pose). The renderer may read `act.phase` and `act.t`, and also `beatClock` (the drumhead), `netImmuneT` (the net tangle, while it is above `attack.air.immune − 0.3`) and `bumpPoseT`. Other new unit fields: `crashed`, `fumbleT`, `flipFall`, `hopping`, `hopCool`, `hopLanded`, `beatClock`, `scoopT`, `engulfT`, `engulfCool`, `bumpT`.
+**`sim/unit.js` (W1).** Fields from 3.5. Getters `alt` and `air`. Methods `tempo()`, `moveMul()`, `holdPoint()`, `slip(b, peel)`, `lifting()`, `liftOff(b, t, from)` (max-stacks `liftOffT`, emits `liftOff`). `takeHit` honours `hit.floor` (3.5: the knockdown check ignores poise; set only by a slip and the Anvil). Exported `isFlier(u)` (a flier, or a Brolly still floating). Act phases are `'windup' | 'strike' | 'recover' | 'dash' | 'draw' | 'fuse'` plus the new `'swoop' | 'carry'` (the Juggler's toss runs `'draw'` → `'recover'`; `toss` is only its pose). The renderer may read `act.phase` and `act.t`, and also `beatClock` (the drumhead), `netImmuneT` (the net tangle, while it is above `attack.air.immune − 0.3`) and `bumpPoseT`. Other new unit fields: `crashed`, `fumbleT`, `flipFall`, `hopping`, `hopCool`, `hopLanded`, `beatClock`, `scoopT`, `engulfT`, `engulfCool`, `bumpT`.
 
 **`sim/battle.js` (W1)**
 
@@ -1190,8 +1197,9 @@ Changes to existing methods:
 
 - `findArenaTarget`: `canTarget`, `targets: 'structures'`, `prefersAir`, and the nearest structure including buildings.
 - `towerBetween` counts buildings.
-- `separate`: skips held units and hopping Pogos.
-- `resolveMelee` and `resolveDash`: air filters, the net payload, `vsTower`.
+- `separate`: skips held units and hopping Pogos; a lightweight's push on a heavier bean is scaled down (card 15) and it gives way itself.
+- `resolveMelee` and `resolveDash`: air filters, the net payload, `vsTower`; a lightweight's knock (a hit or a shield block) is scaled by the same factor.
+- `towerWalls`: ends with the new `unpinch()` while a building stands (3.3).
 - `step`: the beat pass, the hold springs, and the pending queue at the end.
 
 **`sim/buildings.js` (new, W2)**
@@ -1225,13 +1233,13 @@ export { takesOf }                                                    // re-expo
 
 **`sim/spells.js` (W2).** New `SPELLS` entries (section 4). `KIND` gains `bananaPeels → 'peels'`, `bigSneeze → 'sneeze'`, `shakenSoda → 'soda'`, `anvil → 'anvil'` and `bubbleWrap → 'wrap'`. There are `castSpell` branches and an `updateSpells` tick for each, plus `updatePeels(b, dt)`.
 
-**Moving entities** expose `x, y, vx, vy` so `main.js` can interpolate them. These are falling anvils, `jbomb` shots and the Crane's `t.ball`.
+**Moving entities** expose `x, y, vx, vy` so `main.js` can interpolate them. These are falling anvils (and a resting one dropping off a structure it finished: `vy > 0`), `jbomb` shots and the Crane's `t.ball`. For body parts and items, `main.js` `lerpIn` moves each particle's last spot (`px, py`) by the same amount as its `x, y`, so `x − px`, the step's motion that the Sprout's leaves and the Pogo's BOING lines read as speed, stays what the sim made it at any point of the frame; `lerpOut` puts all four back exactly.
 
 **`sim/match.js` (W2)**
 
 - `canPlay`: the building rule (`WORLD.deploy`, `fitBuilding`) and the anywhere rule.
 - `play` for buildings: `build(team, card, x, level)` calls `battle.addBuilding` at the fitted x, and the oldest crumbles above `MAX_BUILDINGS`. `cardPlayed` carries the fitted x.
-- `formation` for buildings and anywhere cards (the block slide, 3.4), with `clearSpot(x)` for one bean.
+- `formation` for buildings and anywhere cards (the nearest clear centre, 3.4), with `blockedSpans()` (where a deploy-anywhere bean may not land) and `clearSpot(x)` for one bean.
 - `weakest` skips buildings.
 - New `buildZone(team)`, which returns `WORLD.deploy[team]`.
 - `deploy`: `float: true` for `anywhere` cards.
@@ -1340,6 +1348,8 @@ King XP is unchanged. Matchmaking already mirrors your deck's levels card by car
 
 **`meta/shop.js`.** It gets `price.legendary = 1500` and `count.legendary = [1, 1]`. Once a legendary is unlocked, the third offer becomes a legendary on 8% of days (`SHOP.legendary = 0.08`). Draw that extra `rng.chance(0.08)` **only when `pool.legendary.length > 0`**, after every existing draw, so today's shop doesn't change for players in arenas 0–1. On a hit, `rng.int(1, 1)` and `rng.pick(pool.legendary)` replace the offer with `i = 2` (the third). `DOWN.legendary = 'epic'`. (`meta/ladder.js` `RARITY_DOWN` gains `legendary → 'epic'` too; no random-legendary reward exists.)
 
+**The day of the update.** A shop day the 14-card game began keeps that game's stock until the day ends, so the offers bought and the gift claimed still mark the same cards. `profile.js` sets `p.shop.cards14` when it reads a save with a shop day and no `firsts` (only the 14-card game writes those), later loads keep it while the day is unchanged, and `shop.js` `stock()` then rolls from `CARD_ORDER.slice(0, 14)` alone (so no legendary draw either); `rollover()` starts the next day without it. (Re-rolled from the 32 cards, about 6 shop days in 10 showed a different card as Sold in the slot that was bought, a Legendary about 1 time in 20.)
+
 **`meta/ladder.js` Trophy Trail.** New milestones are inserted without changing any existing `at` value. A player who already passed one can claim it at once. Each gives enough copies to reach about level 4 right away: commons 20, rares 12, epics 8, legendaries 4.
 
 | at | reward | at | reward |
@@ -1357,6 +1367,8 @@ King XP is unchanged. Matchmaking already mirrors your deck's levels card by car
 | | | 1750 | `{ gold: 1500, beans: 200 }` (the new end of the Trail) |
 
 The existing test ("every card of arena > 0 is on the Trail") is extended to arena 0 cards that aren't in `STARTER_DECK`. None of the old milestones' `at` values moved (tested), and a legendary's 4 copies reach level 4 for 1,200 gold.
+
+**Saves** (`meta/profile.js`). This build writes `PROFILE_VERSION = 3` (the same shape as 2, under the same key); v1 and v2 saves still load. The version is what a window's `storage` handler compares (`main.js`: an older version in storage is overwritten with its own save, a newer or equal one is loaded), so a window still running the 14-card game, whose save drops every card id it doesn't know but keeps the Trail milestones marked claimed, can no longer overwrite a 32-card save in an open window. As a backstop for a save written while no 32-card window was open, every load (`main.js` `loadSave()`, at start-up and when another window's save is adopted) runs `ladder.js` `restoreTrailCards(p)`: a card from a claimed `cards` milestone that the profile lacks comes back as the milestone gave it (level 1 with n − 1 spare copies), its `firsts` sort is marked told, and no notice is queued. Levels bought since are not restored.
 
 **`meta/opponents.js` ARCHETYPES** (five new styles; of the five original ones only Turtle changed, see below). These rules apply:
 
@@ -1400,14 +1412,14 @@ What changed in the newer lists, and why:
 **UI** (`ui/hub-kit.js`, `ui/cards-screen.js`, `ui/hub.js`, `main.js`):
 
 - **`cardKindLine`:** `'Building · lasts 28 s'` (the Boing Box; read from `BUILDINGS[card.building].life`), `'Unit card · flies'`, `'Unit card · lands anywhere'`, and spells as today.
-- **`cardStats` rows:** every number is read from `UNIT_TYPES`, `BUILDINGS`, `SPELLS`, `TOWER_TAKES` and `BEAT` (a test patches every table number and checks each row follows). Buildings: Health, Lifetime, Punch or Swing damage and Reach (Box, Crane), or Spawns and At once (Patch), and Targets. Peels: Slip damage, Peels ×5, Lasts 8 s. Soda: Pops after 1.2 s. Wrap: Absorbs (× level), Lasts, Radius, Targets. Drummer: Beat "Friends ×1.5 faster" (from `BEAT`; "Friends swing ×a, walk ×b" if the two ever differ) and Range "Beat 150". The damage row is named per unit (Dive, Peck, Bite, Bomb, Bonk, Bump damage). Fliers show "Speed: Fast · flies", the Brolly Brigade "Units: ×3 · anywhere".
-- **"Targets"** for all 32 cards: `'Air & ground'` (`hitsAir`, and the air-answer spells Arrow Rain, Big Sneeze, Shaken Soda and Anvil), `'Ground'`, `'Buildings & towers'` (`targets: 'structures'`: the Brick and the Pogo), `'Nothing (buffs friends)'` (the Drummer), `'Your own beans'` (Bubble Wrap). The Netter reads "Air & ground" although it reaches only low fliers (`airReach`).
+- **`cardStats` rows:** every number is read from `UNIT_TYPES`, `BUILDINGS`, `SPELLS`, `TOWER_TAKES` and `BEAT` (a test patches every table number and checks each row follows). Buildings: Health, Lifetime, Punch or Swing damage and Reach (Box, Crane), or Spawns and At once (Patch), and Targets. Reach is how far in front of the building's face it still hits: the Box's `punch.reach` (90), and for the Crane how far its ball reaches while it is still fast enough to hit (`minHit`), `pivotFwd + L·sin θ + r − w/2` with `cos θ = cos(maxAng) + minHit²/(2·G·L)` (136; not its `sense` of 230, which is only where it wakes up and starts to pump; measured, Clubbers, Archers and Jugglers are hit out to 110–120 px from the face, a Bruiser to 150). Peels: Slip damage, Peels ×5, Lasts 8 s. Soda: Pops after 1.2 s. Wrap: Absorbs (× level), Lasts, Radius, Targets. Drummer: Beat "Friends ×1.5 faster" (from `BEAT`; "Friends swing ×a, walk ×b" if the two ever differ) and Range "Beat 150". The damage row is named per unit (Dive, Peck, Bite, Bomb, Bonk, Bump damage). Fliers show "Speed: Fast · flies", the Brolly Brigade "Units: ×3 · anywhere".
+- **"Targets"** for all 32 cards: `'Air & ground'` (`hitsAir`, and the air-answer spells Arrow Rain, Big Sneeze, Shaken Soda and Anvil), `'Ground'`, `'Buildings & towers'` (`targets: 'structures'`: the Brick and the Pogo), `'Nothing (buffs friends)'` (the Drummer), `'Your own beans'` (Bubble Wrap). The Netter reads "Air & ground" although it reaches only low fliers (`airReach`). The Wrecking Crane reads "Air & ground" too: its ball hits whatever its swept path meets, Propeller Pals at cruise height included (3.2; it is still not on the deck list of air answers). Stat values may wrap onto a second line (the Drummer's "Nothing (buffs friends)" does at 844×390).
 - **Card badges:** a small wing (flying), a brick (building) and a target (anywhere), drawn by `render/cards.js` in the art window's top-right corner.
 - **"No air answer in this deck":** shown in the Collection header (where the cure is), once a flier is unlocked and the deck holds none of the air answers listed above; tapping it lists the air answers unlocked so far. (Under the deck it would be out of sight: at 667×375 the deck panel shows exactly its 8 cards.)
 - **Locked cards** show their arena, as today.
-- **Aim tips and refusals** (`main.js`): tapping a card says "Tap your side to build it" (buildings), "Tap anywhere: they float down" (the Brolly Brigade) or "Tap your own beans to wrap them" (Bubble Wrap); a refused building says "Build on your side" or "No room to build here". A building card lights your own half and marks the rest as blocked; the Brolly Brigade lights the field between the two Castles' field-side edges. The ghost is the building's footprint at its fitted spot (red at the finger with no legal spot), the Brollies' drop markers sit where `formation()` puts them, Banana Peels shows 5 peel icons, the Anvil a see-through anvil 150 px above its circle with a dashed drop line, and the Soda a see-through bottle in its circle.
+- **Aim tips and refusals** (`render/spells.js` `aimCheck(m, team, i, wx)` and `aimTip(c)`, with `ZONE_SNAP = 40`; `main.js` `aim.check` and `aim.reason` call them): tapping a card says "Tap your side to build it" (buildings), "Tap anywhere: they float down" (the Brolly Brigade) or "Tap your own beans to wrap them" (Bubble Wrap); a refused building says "Build on your side" or "No room to build here". A tip shows only when the play would be refused (`aimTip` is '' whenever `aimCheck` says `ok`, which is exactly `canPlay`): a building that `fitBuilding` slides into your zone from just past the midline reads as in its zone, so the tip, the ghost and the play always agree. A building card lights your own half and marks the rest as blocked; the Brolly Brigade lights the field between the two Castles' field-side edges. The ghost is the building's footprint at its fitted spot (red at the finger with no legal spot), the Brollies' drop markers sit where `formation()` puts them, Banana Peels shows 5 peel icons, the Anvil a see-through anvil 150 px above its circle with a dashed drop line, and the Soda a see-through bottle in its circle.
 - **One-time tips.** `profile.js` gains `firsts: { flier, building, legendary }` (`FIRSTS`, `firstsOf(card)`). `grant()` queues one `{ kind: 'first', card, what: [...] }` notice per newly owned card whose sort hasn't been told yet (a Pelican, the first of both a flier and a legendary, says both in one tip, e.g. "YOUR FIRST LEGENDARY!"). The hub shows these notices whenever its modal stack empties (after a chest show or a reward), not only at start-up. `migrate()` keeps the flags and marks a sort as told when the save already owns such a card, so old saves get no tip.
-- **Arena celebration.** It lists all of the arena's new cards, smaller when there are 5–6 so its buttons stay on a 375 px screen; an arena with a Legendary gets a line saying where it comes from (Big Chests 5%, the shop some days). Its intro line is "New cards! In chests and the shop now, and on the Trophy Trail."
+- **Arena celebration.** It lists all of the arena's new cards, smaller when there are 5–6 so its buttons stay on a 375 px screen; an arena with a Legendary gets a line saying where it comes from (Big Chests 5%, the shop some days). Its intro line is "New cards! In chests and the shop now, and on the Trophy Trail." ("A new card! …" for one). The legendary line says "X joins the Big Chests and the shop." for one name and "X and Y join …" for more (`hub-kit` `andList`, `legendWords`, `newCardsLine`, and `firstTipLines` for the one-time tips).
 - **"How it's fair"** gains "Legendaries are earned too." Its chest hours and Trail copies are read from `CHESTS` and `TRAIL`.
 
 **Badges** (W5, counted by W6 in `main.js` into `profile.stats`; the five stats are in `STATS`, so they start at 0): "Slip 'n' Slide" (`slips`, red beans slipping on peels: 25, 100 Jellybeans), "Home Run" (`homeRuns`, red fliers netted or clubbed down, each once: 10, 125 Jellybeans), "Air Mail" (`airMail`, beans dropped by your Pelican: 20, 150 Jellybeans), "Jelly Belly" (`jellySpits`, your Big Jelly's spits: 20, 150 Jellybeans), "Crane Game" (`craneLaunches`, your crane's hits on red beans: 30, 150 Jellybeans). A Juggler bomb counts toward `booms` but never toward Chain Reaction (three in one second is its everyday juggling).
@@ -1490,6 +1502,8 @@ wreckingCrane: [0.9, 0.7, 0.8, 1.0, 0.9, 0.2, 0.7, 0.4],
 
 **Build ahead** (added: before it, the Crane sat in hand 87% of a match). A big ground push (worth ≥ 5, under 50% air) walking over on their half gets the building `buildingFor` accepts, in front of our tower (a Box only against ≥ 35% siege), when none of ours stands, at most one per 12 s. If it can't afford it yet, a careful bot keeps its mana for it (no support, drop, punish, Patch or push meanwhile). At the leak point, with nothing coming and none of ours standing, a building in hand goes down instead of spilling mana.
 
+**Full mana with no unit in hand** (`leakSpare`, added: with a hand of only spells and buildings while one of its buildings stood, the bot sat on 10 mana for up to that building's whole life, 24 s). When step 8's leak finds no unit to play (`pickCheap` and `leakRest` come up empty), it plays, in order: a building, if nothing is coming, `roomToBuild` allows one (never a 4th over a fresh one) and `buildAt` finds a spot; else the cheapest spell that can hurt a tower (never Peels or Wrap) at `bestSpellSpot` when that is worth anything, else at their front Guard Tower (`spellAt`); else Banana Peels 90 px in front of its own front tower. Never Bubble Wrap. The 14 original cards always leave a unit in hand to leak, so they never get here.
+
 **Saving up for air (`holdAir`).** Alarm on, a threat ≥ 50% in the air, nothing in hand that reaches it, and an air answer in its own deck: a careful bot (skill > 0.35, aggro < 0.5) skips support, Brolly drops, punishes, the proactive Patch and pushes until an answer turns up. Spells and leaks still run.
 
 **`anywhereAt(V)`** (Brolly Brigade): score each enemy target, highest first.
@@ -1507,7 +1521,7 @@ A drop needs a target worth ≥ 2.5 mana, at most one every 5 s. On defence (its
 | bananaPeels | 8 (stall) | 0.4 | **Defence only**, on the threat group in our half (from defence and from the cluster-spell step). Value = 0.35 mana per expected slip: a walker (not heavy, ranged, air or held) that will cross the whole circle counts 2 slips, one standing in it now 1, capped at `maxSlips`. Cast at `threat.lead − vp·0.6` (in front of them), clamped inside our tower's range (≤ `frontP + range − R/2`). Never where 3 or more of our live peels already lie |
 | bigSneeze | 32 | 0.4 | What it blows back from within 220 px of our front tower is worth 0.6 × worth × min(1, heft) (air ×1; heavies barely move); a bean its 32 × level kills counts its full worth; +2 per held bean of ours it frees. The rescue is step 0 (before finishing towers): our bean worth ≥ 1 held by a noticed enemy holder, cast at the holder's x 0.4 s ahead (`'rescue'`) |
 | shakenSoda | 85 (65 + fall) | 1.2 | 85 against beans, 65 against towers and buildings. Cluster value with heavies (mass ≥ 3) at ×0.3; aim at where the push will be in 1.2 s, so it is cast ahead of a push |
-| anvil | 310 | 0.9 | The best **single** spot: each enemy's predicted spot and each enemy building, worth × kill share, ×0.5 for a target moving faster than 70 px/s. Enemy buildings count as `card mana × the hp share it takes`. Finisher: `310 × 0.5 × lvl`. Aimed with half the spell noise (0.25 instead of 0.5: with 0.5 its 34 px column missed about 20% of casts) |
+| anvil | 270 | 0.9 | The best **single** spot: each enemy's predicted spot and each enemy building, worth × kill share, ×0.5 for a target moving faster than 70 px/s. Enemy buildings count as `card mana × the hp share it takes`. Finisher: `270 × 0.5 × lvl`. Aimed with half the spell noise (0.25 instead of 0.5: with 0.5 its 34 px column missed about 20% of casts) |
 | bubbleWrap | – | – | **Own push** (`'wrap'`). Cast during step 4 (support) when our push value ≥ 5 is within 260 px of enemies or inside their front tower's range and at least 3 of our units not already more than half wrapped fit the circle. At most once per push (10 s). Also at once on a bunch of ours (≥ 2, worth ≥ 2.5) under an enemy spell still coming down (a falling Boulder, an Arrow Rain before its last volley, a fizzing Soda, an inhaling Sneeze): it sees the entity as a person sees the rock. A wrap doesn't hold back the bot's next damage spell |
 
 Non-air spells (Boulder, Cheese Wheel, Peels) value fliers, and Brollies still floating high when the spell lands, at 0. Finishing and overtime chipping never use Peels or Wrap. `takesOf(t, 'spell')` is used wherever a spell's damage to a tower or building is estimated.
@@ -1586,16 +1600,16 @@ Six workstreams. **Only the owner edits a file.** Other streams read it, and req
 
 | Measure | Target | At ship |
 | --- | --- | --- |
-| Each new card's win rate with/without (random legal decks with an air answer, equal skill 0.6, equal levels) | **40–60%** | **Met:** 42–56% |
-| Each legendary's with/without | **45–55%** (a side-grade, never a must-have; over 55% is nerfed first) | **Met:** Juggler 50%, Crane 47%, Pelican 55%, Jelly 53% |
-| Any new archetype deck against any other deck (DECKS + archetypes) | ≤ 60% | **Not met** in single cells (worst: Hop Cycle vs Big Boom 75%); each newer style averages 46–54% against the other ten |
-| **Any single matchup** | **≤ 65%** | **Not met:** 9 cells with a newer style above 65% (68–75%), and 5 among the original styles |
-| Existing cards' with/without after the 18 arrive | still 40–62% (today 42–61%) | 40–59%, except Archers at 64% (they hit air now; an original card, so left alone) |
-| Match shape at equal skill | about 20–30% end by castle, ≤ 25% tiebreak (today about 23% / 21%) | **Met:** 23% castle, 20% tiebreak (random decks) |
+| Each new card's win rate with/without (random legal decks with an air answer, equal skill 0.6, equal levels) | **40–60%** | **Met:** 43–60% |
+| Each legendary's with/without | **45–55%** (a side-grade, never a must-have; over 55% is nerfed first) | Juggler 51%, Pelican 55%, Jelly 54%; **the Crane 43%** (45% on four seeds, 47% before the review fixes): at or just under the band |
+| Any new archetype deck against any other deck (DECKS + archetypes) | ≤ 60% | **Not met** in single cells (worst: Jelly Parade vs Fizz Pop 83%); each newer style averages 45–53% against the other ten |
+| **Any single matchup** | **≤ 65%** | **Not met:** 10 cells with a newer style above 65% (68–83%), and 5 among the original styles |
+| Existing cards' with/without after the 18 arrive | still 40–62% (today 42–61%) | 43–58%, except Archers at 64% (they hit air now) and the Bomb at 39% (40% on four seeds); original cards, so left alone |
+| Match shape at equal skill | about 20–30% end by castle, ≤ 25% tiebreak (today about 23% / 21%) | **Met:** 20% castle, 20% tiebreak (random decks) |
 | +1 card level | still wins about 90–97% (today about 95%) | **Met:** 91% (level 2 vs 1), 93% (6 vs 5) |
 | Newbie section (a player who only drags units) | still loses clearly to skill 0.3 (no card that "plays itself") | Already false with the 14 original cards: with starter decks the newbie beats a 0.3 bot 73% of the time. With random 32-card decks it wins 57%, so no new card plays itself. It still beats the Training Dummy 99% |
-| CPU | ≤ 2.2 CPU-s per simulated minute on average over the cards section; worst-case perf scenarios ≤ 3.0 for the peak minute | **Met:** 0.22 on average; worst perf minute 1.63 (the air scenario), the busy 14-card baseline 2.18 |
-| Brick after its retarget | ≥ 40% with/without (it now has building counters) | **Met:** 49% |
+| CPU | ≤ 2.2 CPU-s per simulated minute on average over the cards section; worst-case perf scenarios ≤ 3.0 for the peak minute | **Met:** 0.21 on average; worst perf minute 1.75 (the air scenario), the busy 14-card baseline 1.80 |
+| Brick after its retarget | ≥ 40% with/without (it now has building counters) | **Met:** 48% |
 
 **Tuning knobs, in this order** (the first numbers to move), and what moved at ship:
 
@@ -1613,7 +1627,7 @@ Six workstreams. **Only the owner edits a file.** Other streams read it, and req
 | Bean Patch | `every`, `max` | `spawn.every` 3.4 → 3.0, `mana` 4 → 3 (bigger spawns all read 42–45% and made 8–11 Sprouts a patch) |
 | Drummer | `BEAT` (1.3 → 1.25) | `BEAT` 1.3 → 1.5 (it was the weakest card, so up, not down), `hp` 240 → 280, `mana` 4 → 3 |
 | Propeller Pals | `hp`, `dash.damage` | `hp` 60 → 50, `dash.damage` 22 → 20 |
-| Not on the list | | Netter `hp` 230 → 250, `attack.damage` 30 → 42, `attack.cooldown` 0.5 → 0.35; Nutcracker `attack.windup` 0.55 → 0.45, `attack.damage` 110 → 120; Shaken Soda `damage` 50 → 65 |
+| Not on the list | | Netter `hp` 230 → 250, `attack.damage` 30 → 42, `attack.cooldown` 0.5 → 0.35; Nutcracker `attack.windup` 0.55 → 0.45, `attack.damage` 110 → 120; Shaken Soda `damage` 50 → 65; Anvil `damage` 310 → 270 (after the review fixes floored its survivors it read 61.5%) |
 
 ---
 
@@ -1762,6 +1776,7 @@ The sections above describe the game as shipped. This section is the list of wha
 | Pelican | `flying.alt` 160 → 200 | at 160 its feet dipped below a Guard Tower's roof in every lane (the first sum left out the lane depth and the bob), so it bounced off every tower |
 | Pelican | peck `dash.damage` 40 → 30 | 56–57% after the other changes (legendary cap 55%); peck 28 read 50%, hp 280 53%, `dropDamage` 25 55%, `carryMax` 1.5 58% |
 | Big Jelly | card `mana` 6 → 7, `hp` 900 → 680, `engulf.hold` 2.2 → 1.6, `bump.every` 1.2 → 1.6 | 71%. The bump every 1.2 s knocked its listed counter, the Nutcracker, out of every bite; hp and hold moved it 2–4 points each, so it took the third knob, mana. Then the bot's `LEAD` rule made it 56–58% and hp came down again |
+| Anvil | `damage` 310 → 270 | once its survivors were floored (13.2) it read 61.5% on two seeds, and three Anvils finished a 420 hp Guard Tower; 290 read 62%, 260 55%, 270 56–59% on three seeds (58% pooled). It no longer kills a Drummer (280) |
 | The newer 18 | average mana 3.67 → 3.61, range 1–6 → 1–7 | from the three mana changes |
 
 ### 13.2 Rules settled during the build
@@ -1783,6 +1798,9 @@ The sections above describe the game as shipped. This section is the list of wha
 - **Walls skip a held bean** (3.6): the wall pinned a catch while the beak pulled it (parts up to 3,900 px/s).
 - **The Jelly's bump spares the bean it is about to swallow, any release starts its engulf cooldown, and it engulfs and bumps only while awake** (card 32): the bump reached 2 px further than the engulf, and a Sneeze freed nothing when it re-swallowed a step later.
 - **The Drummer beats only while it is up and in the fight; its lead may be a flier** (card 30).
+- **The beat speeds every phase of a swing but the strike** (3.5, card 30): swept 1.5× faster, the Brick's hammer and the Bruiser's club passed through their target between two substeps, so the "swing faster" buff cut their damage by 75–80% (a Brick with a Drummer landed 0 hammer blows on a Guard Tower). Now a Brick with a Drummer takes the tower down.
+- **A peel's slip and the Anvil floor whatever the poise (`hit.floor`)** (3.5, cards 16 and 25): `takeHit` scaled their stun by poise, under the knockdown line, so the Squire, Shield Wall, Bruiser, Nutcracker and Pogo never fell on a peel, and every ground survivor of an Anvil (all of them have poise) walked and fought on while drawn as a pancake. Survivors are now down at least `squash` (1.0 s), and only a down bean is squashed.
+- **The Sprout is a lightweight (`type.light`, `LIGHT_KNOCK = 2.25`)** (card 15): two Sprouts shoved a walking Brick 100–150 px back up the field (the closing-speed bleed in `separate()` ignored mass), so the Brick, the Bean Patch's listed counter, did 0 damage to it. Now the Brick walks through and bashes the Patch (150–210 damage where it did 0).
 - **The Brolly's sway is a velocity target; a flip sets `deployT` 0 at once and the landing sets `downT = max(downT, landStun)`** (card 28).
 - **The Pogo's `groundF` comes from the hip, a boing sets (not adds) velocity, it edges in at a structure, and `separate()` skips it for the whole hop** (card 18): a stick flopped by a knockdown faked touchdowns, and landings varied every hop.
 
@@ -1798,7 +1816,9 @@ The sections above describe the game as shipped. This section is the list of wha
 - **`buildingLand` pops beans touching the footprint, not only inside it** (3.3): the walls have already pushed them out by the time the crate lands.
 - **Wrecks are removed by `updateTowers`, not `reap()`; decay and work stop when the match ends; the Patch counts its live kids itself** (3.3, card 24).
 - **The Boing Box glove's geometry is pinned (y −21, r 10), and it tests the Pogo's stick** (card 23): the glove missed nearly every Pogo (2 hits in 18 punches while the Pogo bonked the box 34 times over 5 seeds); now 2 hits on every seed and the box survives. Box and Pogo re-measured 46% and 47%: nothing retuned.
-- **Brolly formation slides as a block** (3.4): beans nudged one by one all landed on the same edge, three umbrellas on one spot.
+- **Brolly formation: the nearest clear centre** (3.4): beans nudged one by one all landed on the same edge, three umbrellas on one spot; slid as a block, the group could swing between two structures closer than a bean is wide and still stack, or land inside a footprint (in a scan of every aim, 90–450 stacked aims per layout of structures). The centre is now searched exactly, and `clearSpot` merges overlapping spans.
+- **`Battle.unpinch()`** (3.3): `BUILD_GAP` (12 px) is narrower than any bean, so a building played on enemies at your tower pinned them half inside the tower (up to 8 s; the last wall in `battle.towers` won every step). `BUILD_GAP` stays 12.
+- **A resting Anvil drops when the structure under it goes** (card 25): one that finished a tower or building hung at roof height for about 2 s.
 - **The golden replays print one line per checkpoint at 6 decimals** (6.1): 3 decimals missed a 1e-6 damage change.
 
 **Bot** (section 8)
@@ -1810,6 +1830,7 @@ The sections above describe the game as shipped. This section is the list of wha
 - **Bubble Wrap also goes on our beans under an incoming enemy spell.**
 - **Brollies skip back-line targets behind walls, need a target worth ≥ 2.5, at most one drop per 5 s.**
 - **The Pogo never rushes a building above 30% health; the Brick takes −0.3 as a leader while one stands; the Drummer can be a last-resort leak; Propeller Pals defend only against threats with under 20% shooters; a high Pelican counts half for the Netter.**
+- **Full mana with no unit in hand spends anyway (`leakSpare`)**: with only spells and buildings in hand while one of its buildings stood, the bot sat on 10 mana for up to a building's life (24 s; 14–20 s a match for Fortress against a side that never plays). Now it spends within about 0.7 s.
 - **`LEAD = { bigJelly: 1 }`**: the 7-mana Jelly was a dead slot (0.4 plays a match in Jelly Parade). Two Pogo variants (punish from 6 mana, follow a push over the bridge) gained nothing and were not landed; nor were Crane variants that played it twice as often but won less (38%).
 
 **Meta and menus** (section 7)
@@ -1824,6 +1845,10 @@ The sections above describe the game as shipped. This section is the list of wha
 - **The five badges pay 100–150 Jellybeans; W6 chose the stat names.**
 - **The legendary sheen sweeps on every legendary face, in step**, not only on the deck screen.
 - **The hub's demo match plays the newest style(s) half the time**: Summit cards showed up in about 1 demo deck in 24.
+- **Saves are v3, and every load gives back the Trail cards a 14-card window dropped**: both builds wrote v2, so a window still running the 14-card game (a match or the Sandbox defers its update) overwrote the save with all 18 new cards stripped, for good.
+- **The shop day of the update keeps the 14-card stock** (`shop.cards14`): re-rolled from 32 cards, the Sold marks and the claimed gift moved to other offers, sometimes a Legendary.
+- **The Crane's card detail reads Reach 136 (where its ball still hits, from the face, like the Box's) and Targets "Air & ground"**: it showed its wake-up `sense` (230) and "Ground", though the ball never hits past about 160 px from the mast and does hit fliers.
+- **One card or one legendary reads singular** ("A new card!", "Wrecking Crane joins …"), and the veteran notice says "your 1 star".
 
 **Render and integration**
 
@@ -1835,6 +1860,13 @@ The sections above describe the game as shipped. This section is the list of wha
 - **New heavy hits use the bonk juice; Juggler bombs get a quiet boom with no hit-stop or word; the Anvil a 0.07 s hit-stop.**
 - **Juggler bombs and `fx.follow` run in the Sandbox too; Sandbox keys 1–9 work again** (the old string compare broke 2–9 at 18 unit types).
 - **The balance tool reads `ARCHETYPES` and `AIR_ANSWERS` from `meta/`**: its copy had already drifted.
+- **The Anvil's pancake pivots on the bean's own feet**: a squashed flier jumped about 150 px down toward the lane, away from its HP bar and shadow.
+- **`lerpIn` moves `px/py` with `x/y`** (6.3): the Sprout's leaves and the Pogo's BOING lines read speed from `x − px`, so they flickered with the interpolation phase.
+- **A full Bean Patch doesn't shake its tufts** (the renderer counts live Sprouts as the sim does), and the building looks' fallback numbers equal the sim's (a test checks every one): the Crane's aim ghost marked its wake-up range at 190 px, the sim's is 230.
+- **The aim tip shows only on a play that would be refused** (`aimCheck`/`aimTip` in `render/spells.js`): a building aimed just past the midline said "Build on your side" in red and then built.
+- **A Brolly play sounds only its umbrella**: each of its three beans also played the hand-of-god "drop".
+- **The Sandbox's card row scrolls to its first card on an upright phone** (`justify-content: safe center`), and desktop key labels show only on the 9 cards a key picks.
+- **Spell renderers record what they catch** (`render/spells.js` `spellErrors`): a frame still never breaks, but a test can now see a spell that throws.
 
 ### 13.3 Measured balance
 
@@ -1842,49 +1874,50 @@ The sections above describe the game as shipped. This section is the list of wha
 
 | Card | With/without | Card | With/without |
 | --- | --- | --- | --- |
-| clubbers | 53% [48–58] 4.2 | sprouts* | 44% [39–49] 5.0 |
-| squire | 47% [42–52] 4.3 | bananaPeels* | 42% [37–47] 1.4 |
-| archers | **64%** [59–69] 4.1 | propellerPals* | 56% [51–61] 4.0 |
-| spikers | 58% [53–63] 4.6 | pogoBean* | 47% [42–52] 1.3 |
-| bomb | 40% [35–45] 3.9 | netter* | 46% [41–51] 4.4 |
-| arrowRain | 53% [48–57] 2.1 | bigSneeze* | 45% [40–50] 2.4 |
-| boulder | 50% [44–55] 1.8 | shakenSoda* | 45% [40–50] 3.3 |
-| clubberGang | 59% [54–65] 2.8 | bombJuggler* L | 50% [45–55] 3.0 |
-| bruiser | 44% [39–50] 3.8 | boingBox* | 47% [42–52] 1.6 |
-| brick | 49% [44–54] 1.6 | beanPatch* | 48% [43–53] 2.0 |
-| cheeseWheel | 48% [42–53] 1.1 | anvil* | 56% [51–61] 3.3 |
-| bombSquad | 47% [42–51] 3.0 | nutcracker* | 56% [51–62] 3.7 |
-| megaBomb | 51% [46–56] 2.8 | wreckingCrane* L | 47% [42–52] 1.0 |
-| shieldWall | 59% [54–64] 1.5 | brollyBrigade* | 52% [47–57] 2.1 |
-| | | bubbleWrap* | 46% [41–51] 2.4 |
-| | | tummyDrummer* | 43% [38–48] 3.0 |
+| clubbers | 54% [49–60] 4.3 | sprouts* | 43% [38–48] 5.0 |
+| squire | 48% [43–53] 4.3 | bananaPeels* | 44% [39–50] 1.5 |
+| archers | **64%** [59–69] 4.3 | propellerPals* | 60% [55–65] 4.1 |
+| spikers | 57% [52–62] 4.8 | pogoBean* | 44% [39–49] 1.4 |
+| bomb | 39% [34–45] 4.0 | netter* | 46% [41–51] 4.5 |
+| arrowRain | 52% [47–57] 2.2 | bigSneeze* | 48% [43–53] 2.5 |
+| boulder | 51% [46–57] 1.8 | shakenSoda* | 43% [38–48] 3.3 |
+| clubberGang | 58% [53–63] 2.8 | bombJuggler* L | 51% [46–57] 3.0 |
+| bruiser | 48% [43–54] 3.9 | boingBox* | 52% [46–57] 1.6 |
+| brick | 48% [43–53] 1.6 | beanPatch* | 46% [41–51] 2.1 |
+| cheeseWheel | 47% [42–52] 1.2 | anvil* | 52% [47–57] 3.3 |
+| bombSquad | 49% [44–54] 3.1 | nutcracker* | 55% [49–60] 3.8 |
+| megaBomb | 43% [38–48] 3.0 | wreckingCrane* L | 43% [38–48] 1.1 |
+| shieldWall | 58% [53–63] 1.6 | brollyBrigade* | 46% [41–51] 2.1 |
+| | | bubbleWrap* | 48% [42–53] 2.4 |
+| | | tummyDrummer* | 52% [47–57] 3.0 |
 | | | pelican* L | 55% [50–60] 2.9 |
-| | | bigJelly* L | 53% [48–58] 2.4 |
+| | | bigJelly* L | 54% [49–59] 2.5 |
 
-- **The newer 18:** 42–56%, all inside 40–60%. **The legendaries:** 47–55%, inside 45–55%.
-- **The original 14:** 40–59%, except Archers at 64%, above their 40–62% band. They are the most common air answer now; as an original card they were left alone.
-- **Near the edges:** Banana Peels (42%), Tummy Drummer (43%) and Sprouts (44%) at the bottom; the Pelican (55%) at the legendary cap.
+- **The newer 18:** 43–60%, all inside 40–60% (Propeller Pals at the top edge). **The legendaries:** 51–55%, except the Wrecking Crane at 43%, under its 45–55% band; on four seeds (1, 3, 5 and 7, about 1,900 matches) it reads 45% [41–48], at the edge.
+- **The original 14:** 43–58%, except Archers at 64%, above their 40–62% band, and the Bomb at 39%, just under it (40% on four seeds). Both are original cards and play bit-identically; they were left alone.
+- **What the review fixes moved** (the same seeds on the code before them; four seeds): the Tummy Drummer 44 → 54% (its beat no longer makes heavy swings miss), the Wrecking Crane 50 → 45%, the Mega Bomb 47 → 43%, the Nutcracker 57 → 53% and the Anvil 57 → 54%; every other card by 4 points or less.
+- **Near the edges:** Sprouts, Shaken Soda, Mega Bomb and the Crane (43%) at the bottom; Propeller Pals (60%) at the top; the Pelican (55%) at the legendary cap.
 
 **Styles.** Each style's average win rate against the other ten decks (starter plus the ten `ARCHETYPES`, all cards unlocked, 40 matches a pair, about ±15% a cell):
 
 | Deck | Average | Deck | Average |
 | --- | ---: | --- | ---: |
-| starter | 49% | **Hop Cycle** | **53%** |
-| Bonk Rush | 60% | **Fizz Pop** | **46%** |
-| Siege | 48% | **Fortress** | **50%** |
-| Big Boom | 38% | **Sky Circus** | **49%** |
-| Turtle | 53% | **Jelly Parade** | **54%** |
-| Swarm | 51% | | |
+| starter | 48% | **Hop Cycle** | **52%** |
+| Bonk Rush | 62% | **Fizz Pop** | **45%** |
+| Siege | 50% | **Fortress** | **51%** |
+| Big Boom | 38% | **Sky Circus** | **46%** |
+| Turtle | 53% | **Jelly Parade** | **53%** |
+| Swarm | 52% | | |
 
-Before the polish the newer styles averaged Hop 38%, Fizz 31%, Fortress 25%, Sky 53% and Parade 49%.
+Before the polish the newer styles averaged Hop 38%, Fizz 31%, Fortress 25%, Sky 53% and Parade 49%; before the review fixes (the same matrix, same seeds) Hop 53%, Fizz 46%, Fortress 50%, Sky 49% and Parade 54%. Every cell between two original styles replayed identically.
 
 **Single matchups still above 65%** (row beats column). The contract asks ≤ 65% (and ≤ 60% for a newer deck); not met, and left for the next round, because every card in these decks is inside its band:
 
-- With a newer style: Hop Cycle vs Big Boom 75%, Bonk Rush vs Fizz Pop 73%, Jelly Parade vs Fizz Pop 73%, Fortress vs Swarm 70%, Jelly Parade vs Bonk Rush 70%, and 68% each for Bonk Rush vs Fortress, Turtle vs Fortress, Fortress vs Big Boom and Jelly Parade vs Siege.
+- With a newer style: Jelly Parade vs Fizz Pop 83%, Hop Cycle vs Big Boom 75%, Turtle vs Fortress 75%, Bonk Rush vs Fizz Pop 73%, Fortress vs Big Boom 73%, Fortress vs Swarm 70%, Fortress vs Sky Circus 70%, and 68% each for Bonk Rush vs Hop Cycle, Siege vs Fortress and Jelly Parade vs Sky Circus.
 - Among the original styles: Turtle vs Siege 90%, Bonk Rush vs Siege 85%, Siege vs Big Boom 80%, Swarm vs Turtle 73%, Swarm vs Big Boom 68%.
 
-**Match shape** (random 32-card decks, equal skill): castle 23%, tiebreak 20%, time 38%, overtime 20%.
+**Match shape** (random 32-card decks, equal skill): castle 20%, tiebreak 20%, time 37%, overtime 23%.
 
 **Levels and skill** (the starter-only sections can't move: the 14 original cards are bit-identical): one level up wins 91% (level 2 vs 1) and 93% (6 vs 5). Skill 0.9 beats 0.3 88% of the time, 0.6 beats 0.3 84%, 0.5 beats 0.05 99%, 0.3 beats 0.05 94%. The newbie beats the Training Dummy 99%; it also beats a skill-0.3 bot 73% with starter decks (already so with the 14 original cards) but only 57% with random 32-card decks, so no new card plays itself.
 
-**CPU.** Random-deck matches cost 0.22 CPU-s per simulated minute on average (the worst single match read 2.57 on a loaded machine). `--only perf`, minute 1 / minute 2: the busy 14-card baseline 2.18 / 1.07, two Bean Patches a side 1.31 / 1.43, the Jelly push against a Crane 1.14 / 0.54, the sky full of fliers 1.51 / 1.63. Every worst minute is under the 3.0 budget, so `MAX_LIVE` and the Patch `max` stayed as they are.
+**CPU.** Random-deck matches cost 0.21 CPU-s per simulated minute on average (the worst single match read 2.15 on a busy machine). `--only perf`, minute 1 / minute 2: the busy 14-card baseline 1.80 / 1.00, two Bean Patches a side 1.22 / 1.18, the Jelly push against a Crane 1.06 / 0.55, the sky full of fliers 1.49 / 1.75. Every worst minute is under the 3.0 budget, so `MAX_LIVE` and the Patch `max` stayed as they are.

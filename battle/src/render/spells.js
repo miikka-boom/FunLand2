@@ -6,12 +6,15 @@
 //
 //   drawSpellsBack(ctx, battle, t);   // ground marks: shadows, target and warning circles (before the units)
 //   drawSpells(ctx, battle, t);       // the spells themselves (after the units)
+//   spellErrors                       // { last, count }: what they caught (a spell never breaks a frame)
 //   drawShots(ctx, battle);           // cannonballs and Juggler bombs in flight (after the units)
 //   drawZone(ctx, x0, x1, ok, { team, t, zoom });
 //   drawSpellAim(ctx, x, radius, team, ok, t);
 //   drawAnywhereMarkers(ctx, xs, team, ok, t, { zoom });
 //   const ghosts = new DeployGhosts(unitRenderer);
 //   ghosts.draw(ctx, cardId, x, team, { ok, t, zone, hats, level, xs, zoom });
+//   const c = aimCheck(match, team, i, x);  // can hand card i go there? (the ghost, the tip
+//   aimTip(c);                              //  and the play all read this one answer)
 //
 // Shared with the card art and the unit renderer: drawBoulderShape,
 // drawCheeseWheel, drawCannonball, drawPeel / drawPeelItem (the 'peel' item),
@@ -22,9 +25,11 @@
 // Banana Peels are items (battle.items, kind 'peel'), drawn with drawPeelItem.
 
 import { WORLD, TEAMS } from '../config.js';
-import { CARDS } from '../sim/cards.js';
+import { CARDS, cardById } from '../sim/cards.js';
 import { Battle, DT } from '../sim/battle.js';
+import { ANYWHERE } from '../sim/match.js';
 import { SPELLS } from '../sim/spells.js';
+import { BUILDINGS } from '../sim/buildings.js';
 import { drawBuildingGhost } from './buildings.js';
 
 const TAU = Math.PI * 2;
@@ -1407,6 +1412,16 @@ export function drawAnywhereMarkers(ctx, xs, team = 'blue', ok = true, t = 0, op
 // --- Spell entities ------------------------------------------------------------------------
 
 /**
+ * What the spells' drawing threw: { last, count }. Each error is caught (a spell's look
+ * must never break a frame) and kept here, for debugging and for the tests.
+ */
+export const spellErrors = { last: null, count: 0 };
+function spellFailed(e) {
+  spellErrors.last = e;
+  spellErrors.count++;
+}
+
+/**
  * Ground marks under the spells: boulder and anvil shadows, target and warning
  * circles, the wheel's shadow, the soda's splash. Before the units.
  */
@@ -1426,7 +1441,7 @@ export function drawSpellsBack(ctx, battle, t = 0) {
       else if (s.kind === 'anvil') anvilBack(ctx, s, t);
       else if (s.kind === 'wrap') wrapBack(ctx, s);
     } catch (e) {
-      // a spell's look must never break a frame
+      spellFailed(e); // (a spell's look must never break a frame)
     }
   }
   ctx.restore();
@@ -1469,7 +1484,7 @@ export function drawSpells(ctx, battle, t = 0) {
       else if (s.kind === 'anvil') anvilFront(ctx, s);
       else if (s.kind === 'wrap') wrapFront(ctx, s, battle);
     } catch (e) {
-      // a spell's look must never break a frame
+      spellFailed(e); // (a spell's look must never break a frame)
     }
     ctx.globalAlpha = 1;
   }
@@ -1645,6 +1660,47 @@ function sodaMark(ctx, x, ok, t) {
   ctx.restore();
 }
 
+// --- the aim: where a dragged card goes, and whether it can --------------------------------
+
+export const ZONE_SNAP = 40; // world px: a unit card or building released this close outside its zone snaps in
+
+/**
+ * Can `team` play hand card i of Match m at world x? { id, card, x (snapped), ok, why, inZone, missing }.
+ * Unit cards drop in the unit zone, buildings go up in your own half (never the pocket),
+ * deploy-anywhere cards float down anywhere in ANYWHERE, spells go anywhere. ok is exactly
+ * m.canPlay at x (so m.play(team, i, x) works when it is true); inZone says x is in the card's
+ * zone, or for a building that it fits there (fitBuilding slides it in from up to BUILD_SNAP away).
+ */
+export function aimCheck(m, team, i, wx) {
+  const side = m.sides[team];
+  const id = side.hand[i];
+  const card = cardById(id);
+  const missing = card ? Math.max(0, card.mana - side.mana) : 0;
+  if (!card || !Number.isFinite(wx)) return { id, card, x: wx, ok: false, why: card ? 'zone' : 'card', inZone: false, missing };
+  let x = wx;
+  let inZone = true;
+  if ((card.kind === 'unit' && !card.anywhere) || card.kind === 'building') {
+    const [z0, z1] = card.kind === 'building' ? m.buildZone(team) : m.zone(team);
+    if (x < z0 && x > z0 - ZONE_SNAP) x = z0 + 1;
+    if (x > z1 && x < z1 + ZONE_SNAP) x = z1 - 1;
+    inZone = x >= z0 && x <= z1;
+  } else if (card.anywhere) x = Math.min(ANYWHERE[1], Math.max(ANYWHERE[0], x));
+  else x = Math.min(WORLD.width, Math.max(0, x));
+  const why = m.canPlay(team, i, x);
+  if (card.kind === 'building' && why === '') inZone = true; // (it goes up where it fits: on your side)
+  return { id, card, x, ok: why === '', why, inZone, missing };
+}
+
+/** Why an aim can't be played, in words for the tip ('' when it can: never a red tip on a card that plays). */
+export function aimTip(c) {
+  if (!c.card || c.ok) return '';
+  const building = c.card.kind === 'building';
+  if (!c.inZone) return building ? 'Build on your side' : 'Play units on your side';
+  if (c.why === 'mana') return `Not enough mana: need ${Math.ceil(c.missing - 1e-6)} more 💧`;
+  if (building && c.why === 'zone') return 'No room to build here';
+  return '';
+}
+
 /**
  * See-through beans showing where a unit card will land: the card's formation
  * (mirrored for red, like Match.deploy), each bean settled once and cached.
@@ -1702,7 +1758,8 @@ export class DeployGhosts {
     if (card.kind === 'building') {
       const xs = Array.isArray(opts.xs) ? opts.xs : null;
       const legal = ok && (!xs || (xs.length > 0 && Number.isFinite(xs[0])));
-      drawBuildingGhost(ctx, card.building, legal && xs ? xs[0] : x, team, legal, t, { T: pal, zoom: opts.zoom, cache: this.sprites });
+      // (the sim's numbers: the crane's wake-up ticks, the glove's reach)
+      drawBuildingGhost(ctx, card.building, legal && xs ? xs[0] : x, team, legal, t, { T: pal, def: BUILDINGS[card.building], zoom: opts.zoom, cache: this.sprites });
       return;
     }
     const n = card.count || 1;

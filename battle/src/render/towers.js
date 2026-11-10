@@ -1006,7 +1006,7 @@ export function createTowerRenderer(opts = {}) {
     for (const tw of towers) {
       ctx.save();
       try {
-        if (tw.kind === 'building') builds.draw(ctx, tw, t, pal(tw.team), need, fr);
+        if (tw.kind === 'building') builds.draw(ctx, tw, t, pal(tw.team), need, fr, battle);
         else drawTower(ctx, tw, t, need, fr);
       } catch (e) {
         R.lastError = e; // scenery must never break a frame (kept for debugging)

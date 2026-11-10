@@ -131,7 +131,7 @@ test('Bubble Wrap: absorbs damage first (wrapPop), halves stun, no fall damage, 
   assert.deepEqual(end2.map((e) => e.popped), [false]);
 });
 
-test('slip: a banana peel floors a bean (feet up), then it is immune until 1.5 s after it gets up; a heavy only skids', () => {
+test('slip: a banana peel floors a bean (feet up), then it is immune until 1.5 s after it gets up; armour (poise) never saves it, Bubble Wrap does; a heavy only skids', () => {
   const b = arena(3, { towers: false });
   const u = dummy(b, 'clubber', 'blue', 600);
   run(b, 0.5);
@@ -149,6 +149,23 @@ test('slip: a banana peel floors a bean (feet up), then it is immune until 1.5 s
     if (upAt != null && i * DT < upAt + P.immune - 0.05) assert.ok(u.slipImmuneT > 0, 'still immune');
   });
   assert.ok(u.slipImmuneT <= 0 && upAt != null);
+  // Armoured beans go feet-up too: poise only softens blows, never a slip
+  for (const [k, id] of ['squire', 'bruiser', 'nutcracker', 'pogo'].entries()) {
+    const a = dummy(b, id, 'blue', 300 + k * 150);
+    assert.ok(a.type.poise < 1 && a.mass < P.heavyMass, id);
+    run(b, 0.5);
+    b.events.length = 0;
+    a.slip(b, { dmgMul: 1 });
+    assert.ok(a.downT > 0 && b.events.some((e) => e.type === 'knockdown' && e.unit === a), `${id}: floored`);
+    assert.ok(Math.abs(a.slipImmuneT - (a.downT + P.immune)) < 1e-9, `${id}: immune until 1.5 s after it gets up`);
+  }
+  // Bubble Wrap cushions the fall: a wrapped bean wobbles and walks on
+  const w = dummy(b, 'clubber', 'blue', 1000);
+  run(b, 0.5);
+  w.wrapHp = w.wrapMax = 50;
+  w.wrapT = 5;
+  w.slip(b, { dmgMul: 1 });
+  assert.ok(w.downT <= 0, 'wrapped: still up');
   // A Brick only skids: no damage, no knockdown, a little wobble
   const brick = dummy(b, 'brick', 'blue', 900);
   run(b, 0.5);
@@ -562,6 +579,28 @@ test('Sprouts: two of them poke an Archer to death; a club bonk sends one cartwh
   assert.ok(sp.hip.x - 700 - x0[0] > (cl.hip.x - 900 - x0[1]) * 1.3, 'flies much further than a clubber');
 });
 
+test('Sprouts: poking a Brick\'s ankles never shoves it back up the field: it walks on through them (a lightweight shoves by its weight)', () => {
+  for (const seed of [1, 2, 3]) {
+    const walk = (sprouts) => {
+      const b = arena(seed);
+      const br = b.addUnit('brick', 'red', 860, 0.5, seed);
+      const s = sprouts ? [b.addUnit('sprout', 'blue', 690, 0.3, seed + 1), b.addUnit('sprout', 'blue', 710, 0.7, seed + 2)] : [];
+      let hits = 0;
+      let back = 0;
+      run(b, 8, (i, step) => {
+        for (const e of step) if (e.type === 'hit' && e.unit === br) hits++;
+        back = Math.max(back, br.hip.x - 860);
+      });
+      return { gone: 860 - br.hip.x, hits, back, alive: s.filter((u) => u.alive).length };
+    };
+    const free = walk(false);
+    const poked = walk(true);
+    assert.ok(poked.hits >= 8 && poked.alive === 2, `seed ${seed}: ${poked.hits} pokes`);
+    assert.ok(poked.back < 15, `seed ${seed}: shoved ${poked.back.toFixed(0)} px back`);
+    assert.ok(poked.gone > free.gone * 0.6, `seed ${seed}: walked ${poked.gone.toFixed(0)} px through them (${free.gone.toFixed(0)} alone)`);
+  }
+});
+
 // --- buildings: the hooks every unit uses ------------------------------------------------------
 
 test('buildings: addBuilding stands one up at once (buildingPlaced); units go for the nearest structure, the Brick too', () => {
@@ -609,19 +648,25 @@ test('buildings: walls to enemy bodies, and Archers shoot one from their own ran
 });
 
 test('separate: a held bean is never pushed (nor pushes) while it is held', () => {
-  const b = arena(29, { towers: false });
-  const v = dummy(b, 'clubber', 'red', 700);
-  const e = dummy(b, 'clubber', 'blue', 700);
-  v.held = true;
-  run(b, 0.2);
-  const x0 = v.hip.x;
-  const before = e.hip.x;
-  run(b, 1);
-  assert.ok(Math.abs(e.hip.x - before) < 2, 'the enemy standing inside it is not shoved');
+  // The held bean sways a little by itself: inside an enemy it must drift exactly as it does alone
+  const drift = (withEnemy) => {
+    const b = arena(29, { towers: false });
+    const v = dummy(b, 'clubber', 'red', 700);
+    const e = withEnemy ? dummy(b, 'clubber', 'blue', 700) : null;
+    v.held = true;
+    run(b, 0.2);
+    const x0 = v.hip.x;
+    const before = e && e.hip.x;
+    run(b, 1);
+    if (e) assert.ok(Math.abs(e.hip.x - before) < 2, 'the enemy standing inside it is not shoved');
+    return { b, v, e, dx: v.hip.x - x0 };
+  };
+  const alone = drift(false);
+  const { b, v, e, dx } = drift(true);
+  assert.ok(Math.abs(dx - alone.dx) < 1, `held inside an enemy it moved ${dx.toFixed(2)} px, alone ${alone.dx.toFixed(2)} px`);
   v.held = false;
   run(b, 1);
   assert.ok(Math.abs(e.hip.x - v.hip.x) > (e.R + v.R) * 0.9, 'let go: solid again');
-  assert.ok(Number.isFinite(x0));
 });
 
 // --- the deferred queue and determinism ----------------------------------------------------------
@@ -910,7 +955,7 @@ test('Pelican: a scooped Bomb is lit and goes off in the beak; a scooped Juggler
   assert.ok(j.ev.some((e) => e.type === 'fumble' && e.unit === j.v && e.n === 1), 'the Juggler fumbles');
 });
 
-test('Big Jelly: engulfs a Clubber that walks in, digests it for 2.2 s, spits it out flying, then cools down', () => {
+test(`Big Jelly: engulfs a Clubber that walks in, digests it in ticks for ${UNIT_TYPES.jelly.engulf.hold} s, spits it out flying, then cools down`, () => {
   const b = arena(51, { towers: false });
   const j = b.addUnit('jelly', 'blue', 600, 0.5);
   const c = b.addUnit('clubber', 'red', 720, 0.5);
@@ -919,7 +964,11 @@ test('Big Jelly: engulfs a Clubber that walks in, digests it for 2.2 s, spits it
   let spit = null;
   let hpIn = 0;
   let again = null;
-  const ev = run(b, 6, (i, step) => {
+  let ticks = 0;
+  let hpWas = c.hp;
+  run(b, 6, (i, step) => {
+    if (eng != null && !spit && c.hp < hpWas) ticks++; // (a digest tick: hp drops only on those steps)
+    hpWas = c.hp;
     for (const e of step) {
       if (e.type === 'engulf' && e.unit === j) {
         if (!eng) {
@@ -941,9 +990,8 @@ test('Big Jelly: engulfs a Clubber that walks in, digests it for 2.2 s, spits it
   });
   assert.ok(eng != null && spit != null, 'engulfed, then spat');
   assert.ok(Math.abs(spit.t - eng - E.hold) < 0.1, `held ${(spit.t - eng).toFixed(3)} s`);
-  const ticks = ev.filter((e) => e.type === 'hitVoice' && e.unit === c).length;
   assert.ok(Math.abs(hpIn - spit.hp - E.dps * E.hold) < E.dps * E.tick + 1e-6, `digested ${(hpIn - spit.hp).toFixed(1)}`);
-  assert.ok(ticks >= 0);
+  assert.ok(Math.abs(ticks - E.hold / E.tick) <= 1, `${ticks} digest ticks in ${E.hold} s (one every ${E.tick} s)`);
   assert.ok(again == null || again - spit.t >= E.cooldown - 0.05, 'the cooldown');
   assert.ok(finite(b));
 });
@@ -1086,14 +1134,17 @@ function swingCycle(offsets) {
   return { acts, beatT: c.beatT, ds };
 }
 
-test('Drummer: a Clubber inside 150 px swings faster on the beat (BEAT.tempo) and walks faster (BEAT.move); outside, no change; two never stack', () => {
+test('Drummer: a Clubber inside 150 px swings faster on the beat (BEAT.tempo, all but the strike) and walks faster (BEAT.move); outside, no change; two never stack', () => {
   const plain = swingCycle([]);
   const one = swingCycle([60]);
   const two = swingCycle([60, 80]);
   const far = swingCycle([200]);
   const avg = (a) => a.slice(1).reduce((s, x) => s + x, 0) / (a.length - 1);
   assert.ok(plain.acts.length >= 4 && one.acts.length >= 4);
-  assert.ok(Math.abs(avg(one.acts) - avg(plain.acts) / BEAT.tempo) < 0.02, `cycle ${avg(one.acts).toFixed(3)} vs ${avg(plain.acts).toFixed(3)} / ${BEAT.tempo}`);
+  // Windup, hold and recover run BEAT.tempo times faster; the strike itself keeps its own time
+  const S = UNIT_TYPES.clubber.attack.strike;
+  const want = (avg(plain.acts) - S) / BEAT.tempo + S;
+  assert.ok(Math.abs(avg(one.acts) - want) < 0.02, `cycle ${avg(one.acts).toFixed(3)} vs ${want.toFixed(3)} ((${avg(plain.acts).toFixed(3)} - strike) / ${BEAT.tempo} + strike)`);
   assert.deepEqual(two.acts.slice(1), one.acts.slice(1), 'two Drummers: the same beat');
   assert.deepEqual(far.acts, plain.acts, 'out of range: no beat');
   // Walking: on the beat for 1.5 s it covers BEAT.move times the ground
@@ -1109,6 +1160,44 @@ test('Drummer: a Clubber inside 150 px swings faster on the beat (BEAT.tempo) an
   };
   const r = walk(true) / walk(false);
   assert.ok(Math.abs(r - BEAT.move) < 0.08, `walked x${r.toFixed(2)}`);
+});
+
+/** A bean swinging at a target for `secs` s, on the beat every step or not: its swings, its landed blows and the damage done. */
+function beatBlows(kind, beat, seed, { tower = false, secs = 15 } = {}) {
+  const b = arena(seed, { towers: tower });
+  const g = tower && b.towers.find((t) => t.team === 'red' && t.kind === 'guard');
+  const a = b.addUnit(kind, 'blue', tower ? g.x - 300 : 400, 0.5, seed);
+  const v = !tower && b.addUnit('clubber', 'red', 520, 0.5, seed + 50);
+  if (v) {
+    v.hp = v.maxHp = 1e6; // a punching bag that never swings back
+    v.type = { ...v.type, attack: { ...v.type.attack, damage: 0 } };
+  }
+  const hp0 = tower ? g.hp : v.hp;
+  let swings = 0;
+  let blows = 0;
+  run(b, secs, (i, step) => {
+    if (beat) a.beatT = 0.6;
+    for (const e of step) {
+      if (e.type === 'whoosh' && e.unit === a) swings++;
+      if (tower ? e.type === 'towerHit' && e.tower === g && e.kind === 'hammer' : e.type === 'hit' && e.from === a && e.unit === v) blows++;
+    }
+  });
+  return { swings, blows, dmg: hp0 - (tower ? g.hp : v.hp) };
+}
+
+test('Drummer: on the beat a Brick still lands its hammer on a tower and a Bruiser still lands its club (the strike keeps its time)', () => {
+  for (const seed of [11, 12]) {
+    const plain = beatBlows('brick', false, seed, { tower: true, secs: 12 });
+    const beat = beatBlows('brick', true, seed, { tower: true, secs: 12 });
+    assert.ok(plain.blows >= 3, `Brick alone: ${plain.blows} hammer blows`);
+    assert.ok(beat.blows >= plain.blows && beat.dmg > plain.dmg, `Brick on the beat: ${beat.blows} hammer blows, ${beat.dmg.toFixed(0)} dmg (alone ${plain.blows}, ${plain.dmg.toFixed(0)})`);
+  }
+  for (const seed of [1, 2, 3]) {
+    const plain = beatBlows('bruiser', false, seed);
+    const beat = beatBlows('bruiser', true, seed);
+    assert.ok(beat.swings >= 1 && beat.blows >= beat.swings * 0.8, `Bruiser on the beat: ${beat.blows} blows from ${beat.swings} swings`);
+    assert.ok(beat.dmg >= plain.dmg * 0.9, `Bruiser on the beat: ${beat.dmg.toFixed(0)} dmg (alone ${plain.dmg.toFixed(0)})`);
+  }
 });
 
 test('Drummer: follows behind the friend furthest forward, never attacks, beats every 0.5 s; alone it waits behind its own Guard Tower', () => {
@@ -1143,7 +1232,7 @@ test('Drummer: follows behind the friend furthest forward, never attacks, beats 
   assert.ok(Math.abs(d.hip.x - (castle.x - F.home)) < 20 || d.hip.x < g.x - F.home - 60, 'falls back to the Castle');
 });
 
-test('tempo: the beat speeds windups, swings and cooldowns, never a fuse, a dive in flight, deploy or knockdown time', () => {
+test('tempo: the beat speeds windups, recovers and cooldowns, never a strike, a fuse, a dive in flight, deploy or knockdown time', () => {
   const b = arena(60, { towers: false });
   const c = dummy(b, 'clubber', 'blue', 500);
   const s = dummy(b, 'spiker', 'blue', 560);
@@ -1162,6 +1251,8 @@ test('tempo: the beat speeds windups, swings and cooldowns, never a fuse, a dive
   };
   const near = (a, x) => Math.abs(a - x) < 1e-9;
   assert.ok(near(rate(c, { phase: 'windup', t: 0, variant: 0, hits: new Set(), done: false }), BEAT.tempo), 'windup on the beat');
+  assert.ok(near(rate(c, { phase: 'strike', t: 0, variant: 0, hits: new Set(), done: false }), 1), 'the strike keeps its time (a heavy weapon needs all of it)');
+  assert.ok(near(rate(c, { phase: 'recover', t: 0.1, variant: 0, hits: new Set(), done: false }), BEAT.tempo), 'recover on the beat');
   assert.ok(near(rate(s, { phase: 'windup', t: 0, variant: 0, hits: new Set(), done: false }), BEAT.tempo), 'dash windup on the beat');
   assert.ok(near(rate(s, { phase: 'dash', t: 0, variant: 0, hits: new Set(), done: false }), 1), 'the flight keeps its pace');
   assert.ok(near(rate(bomb, { phase: 'fuse', t: 0, variant: 0, hits: new Set(), done: false }), 1), 'a fuse burns at its own pace');

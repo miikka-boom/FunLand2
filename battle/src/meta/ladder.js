@@ -7,8 +7,8 @@
 // right after the gate.
 
 import { CARDS, CARD_ORDER } from '../sim/cards.js';
-import { ARENAS, arenaIndex, bestArena, unlockedCards } from './collection.js';
-import { addGold, grant, pushNotice, rngFrom } from './profile.js';
+import { ARENAS, arenaIndex, bestArena, unlockedCards, addCards } from './collection.js';
+import { addGold, grant, pushNotice, rngFrom, firstsOf } from './profile.js';
 
 export { ARENAS, arenaIndex, bestArena };
 
@@ -237,6 +237,27 @@ function resolveRandom(p, m) {
     if (ids.length) return { cards: { [rng.pick(ids)]: m.reward.n || 1 } };
   }
   return { gold: 50 * (m.reward.n || 1) };
+}
+
+/**
+ * Give back cards a claimed milestone handed out that the profile no longer has.
+ * A window still running the 14-card game drops every card id it doesn't know
+ * but keeps the milestones marked claimed, so its save would lose those cards
+ * for good. The game runs this on every save it loads (main.js; profile.js
+ * can't, as this module builds on it). The cards come back as the milestone
+ * gave them; levels bought since are gone. Returns the card ids given back.
+ */
+export function restoreTrailCards(p) {
+  const back = [];
+  for (const m of TRAIL) {
+    if (!p.road.claimed[m.at] || !m.reward.cards) continue;
+    for (const [id, n] of Object.entries(m.reward.cards)) {
+      if (p.cards[id] || !addCards(p, id, n)) continue;
+      back.push(id);
+      for (const k of firstsOf(CARDS[id])) p.firsts[k] = true; // (its tip was given when it first came)
+    }
+  }
+  return back;
 }
 
 /**

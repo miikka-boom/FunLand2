@@ -1064,8 +1064,10 @@ export class Unit {
       this.bowDraw = 0;
       return P.rest;
     }
-    // On a Drummer's beat everything goes faster, except a dash's flight (and fuses, above)
-    a.t += a.phase === 'dash' ? dt : dt * this.tempo();
+    // On a Drummer's beat everything goes faster, except a dash's flight and a
+    // melee strike (and fuses, above): a heavy weapon needs its whole strike to
+    // reach the target, so a faster sweep would whiff
+    a.t += a.phase === 'dash' || a.phase === 'strike' ? dt : dt * this.tempo();
     if (a.scoop) return this.animateScoop(dt, b, a);
     if (this.type.ranged) return this.type.attack.toss ? this.animateToss(dt, b, a) : this.animateBow(dt, b, a);
     if (this.type.dash) return this.animateDash(dt, b, a);
@@ -1442,8 +1444,9 @@ export class Unit {
       this.die(b, hit);
       return;
     }
-    // Full-speed club bonks floor even armoured beans; poise only saves them from weak ones
-    const downStun = hit.kind === 'club' ? hit.stun * Math.min(1, (this.type.poise || 1) + 0.12) * soft : stun;
+    // Full-speed club bonks floor even armoured beans; poise only saves them from weak ones.
+    // A hit that floors (a peel's slip, the Anvil) ignores poise: only Bubble Wrap cushions it
+    const downStun = hit.kind === 'club' ? hit.stun * Math.min(1, (this.type.poise || 1) + 0.12) * soft : hit.floor ? hit.stun * soft : stun;
     const lit = this.act && this.act.phase === 'fuse'; // nothing puts out a lit fuse
     if (downStun >= 0.85 || this.conscious < 0.12) {
       this.downT = this.rng.range(0.75, 1.25);
@@ -1548,7 +1551,7 @@ export class Unit {
     this.hip.addVel(dir * 60, -P.hipUp, dt);
     b.emit('slip', this.hip.x, this.ground, { unit: this });
     const dmg = P.damage * ((peel && peel.dmgMul) || 1);
-    this.takeHit(b, { damage: dmg, dvx: 0, dvy: 0, x: this.hip.x, y: this.ground, stun: 1.0, kind: 'slip', from: null, spin: 0 });
+    this.takeHit(b, { damage: dmg, dvx: 0, dvy: 0, x: this.hip.x, y: this.ground, stun: 1.0, kind: 'slip', from: null, spin: 0, floor: true });
     // (downT counts down at the same rate: immune from now until 1.5 s after it gets up)
     this.slipImmuneT = Math.max(0, this.downT) + P.immune;
   }

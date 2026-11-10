@@ -44,6 +44,8 @@ const { Effects, fxForEvent } = await import(R + 'render/effects.js');
 const { UnitRenderer } = await import(R + 'render/units.js');
 const { CARDS } = await import(R + 'sim/cards.js');
 const { Battle, DT } = await import(R + 'sim/battle.js');
+const { BUILDINGS } = await import(R + 'sim/buildings.js');
+const { WORLD } = await import(R + 'config.js');
 
 const count = (k) => calls[k] || 0;
 const ctxOf = () => mockCanvas(1688, 780).getContext('2d');
@@ -131,7 +133,7 @@ test('buildings: the life clock share, the art top and the crane above the box',
   assert.equal(br.lifeShare(building('boingBox', 'blue', { age: 12.5 })), 0.5);
   assert.equal(br.lifeShare(building('boingBox', 'blue', { age: 40 })), 1);
   assert.equal(br.lifeShare(building('beanPatch', 'blue', { age: 6, def: { life: 12 } })), 0.5, 'reads def.life');
-  assert.equal(br.lifeShare({ kind: 'building', bid: 'wreckingCrane', age: 14 }), 0.5, 'falls back to the contract life');
+  assert.equal(br.lifeShare({ kind: 'building', bid: 'wreckingCrane', age: BUILDINGS.wreckingCrane.life / 2 }), 0.5, "falls back to the sim's life");
   const box = br.artTop(building('boingBox'));
   const crane = br.artTop(building('wreckingCrane'));
   assert.ok(crane < box && box < -46, 'tops sit above the art (y up is negative)');
@@ -143,6 +145,92 @@ test('buildings: the life clock share, the art top and the crane above the box',
   ];
   tr.drawBars(ctxOf(), { towers }, { t: 1, dpr: 1 });
   assert.equal(tr.lastError, null);
+});
+
+test('buildings: the fallback looks are the sim\'s numbers, and the Crane\'s aim ghost marks where it wakes up', () => {
+  // Every number BUILDING_LOOK repeats is the sim's (a balance change can't leave the art behind)
+  const same = (look, sim, at) => {
+    for (const [k, v] of Object.entries(look)) {
+      if (v && typeof v === 'object') same(v, sim[k], `${at}.${k}`);
+      else if (k !== 'top') assert.equal(v, sim[k], `${at}.${k}`);
+    }
+  };
+  for (const bid of Object.keys(BL.BUILDING_LOOK)) same(BL.BUILDING_LOOK[bid], BUILDINGS[bid], bid);
+  // The ghost the hand draws while a Crane is aimed: ticks on the grass at the wake-up range
+  const P = BUILDINGS.wreckingCrane.pendulum;
+  const ticks = (sense) => {
+    const moves = [];
+    const ctx = ctxOf();
+    const moveTo = ctx.moveTo.bind(ctx);
+    ctx.moveTo = (x, y) => {
+      moves.push([x, y]);
+      moveTo(x, y);
+    };
+    const old = P.sense;
+    P.sense = sense;
+    try {
+      new SP.DeployGhosts(new UnitRenderer({ seed: 1 })).draw(ctx, 'wreckingCrane', 400, 'blue', { ok: true, t: 1, xs: [400] });
+    } finally {
+      P.sense = old;
+    }
+    return moves.filter(([, y]) => y === WORLD.groundY - 10).map(([x]) => Math.round(x - (400 + P.pivotFwd)));
+  };
+  assert.deepEqual(ticks(P.sense), [-P.sense, P.sense]);
+  assert.deepEqual(ticks(P.sense + 37), [-P.sense - 37, P.sense + 37], 'it follows the sim');
+});
+
+/** A canvas context that writes down every call and every style set, numbers rounded: draw twice, compare. */
+function recorder() {
+  const log = [];
+  const grad = { addColorStop() {} };
+  const r = (v) => (typeof v === 'number' ? Math.round(v * 1000) / 1000 : typeof v === 'object' ? '#' : v);
+  const ctx = new Proxy({ canvas: mockCanvas(1688, 780), globalAlpha: 1 }, {
+    get(o, k) {
+      if (k in o) return o[k];
+      if (k === 'getTransform') return () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
+      if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => grad;
+      return (...args) => log.push(`${String(k)}(${args.map(r).join(',')})`);
+    },
+    set(o, k, v) {
+      if (k !== 'canvas') log.push(`${String(k)}=${r(v)}`);
+      o[k] = v;
+      return true;
+    },
+  });
+  return { ctx, log };
+}
+
+test('buildings: a full Bean Patch holds its pop without the "about to pop" shake', () => {
+  const b = new Battle(5, { mode: 'arena' });
+  const patch = b.addBuilding('beanPatch', 'blue', 300, 1);
+  const S = patch.spawn;
+  for (let i = 0; i < 12 / DT && S.kids.length < BUILDINGS.beanPatch.spawn.max; i++) b.step(DT);
+  const kids = b.units.filter((u) => S.kids.includes(u.id));
+  assert.equal(kids.length, BUILDINGS.beanPatch.spawn.max, 'the patch is full');
+  assert.ok(kids.every((u) => u.alive));
+  const tr = createTowerRenderer({ seed: 2 });
+  const frame = (next) => {
+    S.next = next;
+    const { ctx, log } = recorder();
+    tr.draw(ctx, { towers: [patch], units: b.units }, { t: 3.3 });
+    assert.equal(tr.lastError, null, String(tr.lastError && tr.lastError.stack));
+    return log.join(' ');
+  };
+  frame(2); // (the first frame paints the caches)
+  const calm = frame(2);
+  // Full: the countdown runs out into a half-second wait, again and again; nothing pops, nothing shakes
+  assert.equal(frame(0.2), calm, 'a full patch does not shake');
+  assert.equal(frame(0.4), calm);
+  // One Sprout down: the next pop is real, and the tufts shake before it
+  kids[0].alive = false;
+  assert.equal(frame(2), calm);
+  assert.notEqual(frame(0.2), calm, 'a pop is coming: it shakes');
+  // The sim agrees: the patch pops only once a Sprout has gone
+  kids[0].alive = true;
+  S.next = DT / 2;
+  b.step(DT);
+  assert.equal(S.kids.length, BUILDINGS.beanPatch.spawn.max);
+  assert.ok(S.next > 0.4 && S.next <= 0.5, 'full: it waits, no Sprout');
 });
 
 test('buildings: card art, glove, crane ball and aim ghosts', () => {
@@ -199,15 +287,47 @@ function smallBattle() {
 test('spells: every new spell draws across its whole timeline (back and front)', () => {
   const ctx = ctxOf();
   const b = smallBattle();
-  b.spells = spellStates();
+  const states = spellStates();
+  const errors = SP.spellErrors.count;
+  // Each state on its own: none throws (the draw would swallow it), and every kind draws
+  const drew = {};
+  for (const s of states) {
+    b.spells = [s];
+    const n0 = count('stroke') + count('fill');
+    for (const t of [0, 0.5, 3]) {
+      SP.drawSpellsBack(ctx, b, t);
+      SP.drawSpells(ctx, b, t);
+    }
+    assert.equal(SP.spellErrors.count, errors, `${s && s.kind} t=${s && s.t}: ${SP.spellErrors.last && SP.spellErrors.last.stack}`);
+    if (s && s.team) drew[s.kind] = (drew[s.kind] || 0) + count('stroke') + count('fill') - n0;
+  }
+  for (const kind of ['peels', 'sneeze', 'soda', 'anvil', 'wrap']) assert.ok(drew[kind] > 10, `${kind} draws (${drew[kind]})`);
+  b.spells = states;
   const s0 = count('stroke') + count('fill');
   for (const t of [0, 0.5, 3]) {
     SP.drawSpellsBack(ctx, b, t);
     SP.drawSpells(ctx, b, t);
   }
   assert.ok(count('stroke') + count('fill') > s0 + 100, 'the spells drew');
+  assert.equal(SP.spellErrors.count, errors, 'nothing thrown');
   assert.equal(ctx.globalAlpha, 1, 'alpha restored');
   assert.equal(calls.nonFinite || 0, 0, 'no NaN reaches the canvas');
+});
+
+test('spells: a spell whose drawing throws is caught (the frame goes on) and kept in spellErrors', () => {
+  const ctx = ctxOf();
+  const b = smallBattle();
+  const bad = { kind: 'soda', team: 'blue', f: 1, x: 700, y: 9, state: 'fizz', shake: 0.5, done: false };
+  Object.defineProperty(bad, 't', { get() { throw new Error('broken soda'); } });
+  b.spells = [bad, { kind: 'anvil', team: 'red', f: -1, x: 800, y: -9, t: 1, r: 18, state: 'rest', alpha: 1, radius: 34 }];
+  const n = SP.spellErrors.count;
+  const s0 = count('stroke') + count('fill');
+  assert.doesNotThrow(() => {
+    SP.drawSpellsBack(ctx, b, 1);
+    SP.drawSpells(ctx, b, 1);
+  });
+  assert.ok(SP.spellErrors.count > n && /broken soda/.test(SP.spellErrors.last.message), 'the error is on record');
+  assert.ok(count('stroke') + count('fill') > s0, 'the anvil after it still drew');
 });
 
 test('spells: shared art exports (W3 uses them) and the peel item', () => {

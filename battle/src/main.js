@@ -17,14 +17,14 @@ import { Camera } from './render/camera.js';
 import { UnitRenderer } from './render/units.js';
 import { createBackground } from './render/background.js';
 import { createTowerRenderer } from './render/towers.js';
-import { drawSpellsBack, drawSpells, drawShots, drawZone, DeployGhosts } from './render/spells.js';
+import { drawSpellsBack, drawSpells, drawShots, drawZone, DeployGhosts, aimCheck, aimTip } from './render/spells.js';
 import { cardFace } from './render/cards.js';
 import { Effects, fxForEvent } from './render/effects.js';
 import { BattleAudio } from './audio.js';
 import { Input } from './input.js';
 import { loadProfile, saveProfile, newProfile, rngFrom, PROFILE_KEY, PROFILE_VERSION } from './meta/profile.js';
 import { ARENAS, arenaIndex, kingLevelForXp } from './meta/collection.js';
-import { recordMatch, startPending, updatePending, settlePending } from './meta/ladder.js';
+import { recordMatch, startPending, updatePending, settlePending, restoreTrailCards } from './meta/ladder.js';
 import { readyChests } from './meta/chests.js';
 import { makeOpponent, buildDeck, BOT_NAMES } from './meta/opponents.js';
 import { armyPalette } from './meta/cosmetics.js';
@@ -41,7 +41,6 @@ const uiSeed = () => ((Math.random() * 2 ** 31) | 0) + 1;
 const INTRO_T = 2.3; // VS screen before a match
 const RESULT_DELAY = 2.2; // seconds from the final whistle to the result screen
 const FINAL_SLOW = 1.1; // slow-mo on the blow that ends a match
-const ZONE_SNAP = 40; // world px: a unit card released this close outside the zone snaps in
 const DRAG_SLOP = 9; // CSS px a finger may wander on a card and still count as a tap
 const GUARD_MS = 400; // a second tap this soon must not hit what just appeared under it
 const LIFT_BAND = 56; // CSS px above the hand: a card just lifted out of it says nothing yet about where it goes
@@ -56,7 +55,13 @@ const store = (() => {
     return null; // blocked storage: play on, just without saving
   }
 })();
-let profile = loadProfile(store);
+/** The saved profile, with any Trail cards an older window's save dropped given back. */
+function loadSave() {
+  const p = loadProfile(store);
+  restoreTrailCards(p);
+  return p;
+}
+let profile = loadSave();
 // A match that never finished (reload, app killed): left while behind counts as a loss,
 // otherwise it is dropped; a notice says which (ladder.js settlePending).
 settlePending(profile);
@@ -903,38 +908,16 @@ const aim = {
   trayRect: null,
 
   /**
-   * Can hand card i be played at world x? { id, card, x (snapped), ok, why, inZone, missing }.
-   * Unit cards drop in the unit zone, buildings go up in your own half (never the pocket),
-   * deploy-anywhere cards float down anywhere in ANYWHERE, spells go anywhere.
+   * Can hand card i be played at world x? { id, card, x (snapped), ok, why, inZone, missing }
+   * (render/spells.js aimCheck: ok is exactly what the match's play will do).
    */
   check(i, wx) {
-    const m = game.match;
-    const side = m.sides.blue;
-    const id = side.hand[i];
-    const card = cardById(id);
-    const missing = card ? Math.max(0, card.mana - side.mana) : 0;
-    if (!card || !Number.isFinite(wx)) return { id, card, x: wx, ok: false, why: card ? 'zone' : 'card', inZone: false, missing };
-    let x = wx;
-    let inZone = true;
-    if ((card.kind === 'unit' && !card.anywhere) || card.kind === 'building') {
-      const [z0, z1] = card.kind === 'building' ? m.buildZone('blue') : m.zone('blue');
-      if (x < z0 && x > z0 - ZONE_SNAP) x = z0 + 1;
-      if (x > z1 && x < z1 + ZONE_SNAP) x = z1 - 1;
-      inZone = x >= z0 && x <= z1;
-    } else if (card.anywhere) x = clamp(x, ANYWHERE[0], ANYWHERE[1]);
-    else x = clamp(x, 0, WORLD.width);
-    const why = m.canPlay('blue', i, x);
-    return { id, card, x, ok: why === '', why, inZone, missing };
+    return aimCheck(game.match, 'blue', i, wx);
   },
 
-  /** Why a check failed, in words ('' if it didn't). */
+  /** Why a check failed, in words ('' if it didn't, so a card that plays never shows a red tip). */
   reason(c) {
-    if (!c.card) return '';
-    const building = c.card.kind === 'building';
-    if (!c.inZone) return building ? 'Build on your side' : 'Play units on your side';
-    if (c.why === 'mana') return `Not enough mana: need ${Math.ceil(c.missing - 1e-6)} more 💧`;
-    if (building && c.why === 'zone') return 'No room to build here';
-    return '';
+    return aimTip(c);
   },
 
   cardDown(e, i) {
@@ -1685,7 +1668,8 @@ const ui = {
       el.type = 'button';
       el.className = 'card-unit';
       el.title = `${t.name}: ${t.blurb || ''}`;
-      el.innerHTML = `<span class="key">${i + 1}</span><canvas width="112" height="112"></canvas><span class="name">${t.name}</span>`;
+      // (number keys 1-9 pick the first nine: only those cards show their key)
+      el.innerHTML = `${i < 9 ? `<span class="key">${i + 1}</span>` : ''}<canvas width="112" height="112"></canvas><span class="name">${t.name}</span>`;
       el.addEventListener('click', () => {
         game.selected = id;
         game.erase = false;
@@ -2109,8 +2093,10 @@ window.addEventListener('pagehide', persist);
 window.addEventListener('storage', (e) => {
   if (e.key !== PROFILE_KEY || e.newValue == null) return;
   // An older version of the game in another window wrote an older kind of save (an old v1
-  // window re-saves what it adopted as v1, mangled): ours is newer, so ours stays and is
-  // written back. (A save like that met at start-up is read as v2: profile.js looksV2.)
+  // window re-saves what it adopted as v1, mangled; a 14-card window writes v2 without the
+  // cards it doesn't know): ours is newer, so ours stays and is written back. (A save like
+  // that met at start-up still loads: profile.js looksV2 reads a mangled one as v2, and
+  // loadSave gives back the Trail cards a 14-card window dropped.)
   let raw = null;
   try {
     raw = JSON.parse(e.newValue);
@@ -2125,7 +2111,7 @@ window.addEventListener('storage', (e) => {
   const unsaved = {};
   for (const [k, v] of Object.entries(profile.stats)) if (typeof v === 'number' && v > (savedStats[k] || 0)) unsaved[k] = v - (savedStats[k] || 0);
   const ours = profile.pending;
-  const fresh = loadProfile(store);
+  const fresh = loadSave();
   savedStats = { ...fresh.stats };
   for (const [k, d] of Object.entries(unsaved)) fresh.stats[k] = (fresh.stats[k] || 0) + d;
   // Our match in progress stays on record (unless that window counted it already)
@@ -2396,8 +2382,9 @@ function handleEvents() {
         sfx('grab', soundOpts(e));
         break;
       case 'drop':
-        // (cards drop beans from the sky too: those land with 'land' and 'deploy')
-        if (!e.unit || !e.unit.dropping) sfx('drop', soundOpts(e));
+        // (cards drop beans from the sky too: those land with 'land' and 'deploy'; a Brolly
+        // floats down with its umbrella sound, from cardPlayed)
+        if (!e.unit || (!e.unit.dropping && !(e.unit.floatT > 0))) sfx('drop', soundOpts(e));
         break;
       case 'hatOff':
         sfx('pop', soundOpts(e));
@@ -2803,14 +2790,23 @@ function tickFrame(realDt) {
  * draw and restored right after, so the sim never sees them.
  */
 const lerped = [];
+const lerpedPrev = []; // [particle, px, py, ...]: their last spots, put back too
 function lerpIn(b, alpha) {
   lerped.length = 0;
+  lerpedPrev.length = 0;
   const k = 1 - alpha;
   if (k <= 0.001) return;
+  // (a particle's last spot moves with it: x - px, the step's motion that the Sprout's
+  // leaves and the Pogo's BOING lines read as speed, stays what the sim made it)
   const add = (p) => {
+    const dx = (p.x - p.px) * k;
+    const dy = (p.y - p.py) * k;
     lerped.push(p, p.x, p.y);
-    p.x -= (p.x - p.px) * k;
-    p.y -= (p.y - p.py) * k;
+    lerpedPrev.push(p, p.px, p.py);
+    p.x -= dx;
+    p.y -= dy;
+    p.px -= dx;
+    p.py -= dy;
   };
   const vel = (o) => {
     lerped.push(o, o.x, o.y);
@@ -2824,7 +2820,8 @@ function lerpIn(b, alpha) {
   }
   for (const a of b.arrows) if (a.state === 'fly') vel(a);
   for (const s of b.shots) vel(s); // (cannonballs and Juggler bombs)
-  for (const s of b.spells) if (((s.kind === 'boulder' || s.kind === 'anvil') && s.state === 'fall') || (s.kind === 'wheel' && !s.done)) vel(s);
+  // (an anvil also drops on down, resting, when the structure under it goes: vy > 0 only then)
+  for (const s of b.spells) if (((s.kind === 'boulder' || s.kind === 'anvil') && s.state === 'fall') || (s.kind === 'anvil' && s.vy > 0) || (s.kind === 'wheel' && !s.done)) vel(s);
   // The Wrecking Crane's ball swings on a pendulum (its last step's spot is kept)
   for (const t of b.towers) if (t.ball && t.alive && Number.isFinite(t.ball.px)) add(t.ball);
 }
@@ -2833,7 +2830,12 @@ function lerpOut() {
     lerped[i].x = lerped[i + 1];
     lerped[i].y = lerped[i + 2];
   }
+  for (let i = 0; i < lerpedPrev.length; i += 3) {
+    lerpedPrev[i].px = lerpedPrev[i + 1];
+    lerpedPrev[i].py = lerpedPrev[i + 2];
+  }
   lerped.length = 0;
+  lerpedPrev.length = 0;
 }
 
 function render() {
