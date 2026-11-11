@@ -2656,7 +2656,10 @@ button.slot:active {
 }
 
 .pick-hunt .ic {
-  font-size: 17px;
+  font-size: 18px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--paper);
 }
 
 .pick-hunt b {
