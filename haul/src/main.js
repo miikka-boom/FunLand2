@@ -8,7 +8,7 @@
 import { Game, newState } from './rules.js';
 import { loadState, saveState, clearState, loadTuning, saveTuning, clearTuning, migrate } from './save.js';
 import { Clock } from './clock.js';
-import { CAST, TUNING_DEFAULTS, BARKS } from './config.js';
+import { CAST, TUNING_DEFAULTS, BARKS, HOME_TALK } from './config.js';
 import { Sfx } from './audio.js';
 import { Fx, countUp, buzz } from './fx.js';
 import { Toasts, Sheets, tickCountdowns, esc, wait } from './ui.js';
@@ -324,6 +324,23 @@ async function backHome(next, res = null) {
   refresh();
   if (next.open && game.has(next.open)) openSurvivor(next.open);
   else if (next.next === 'again') play();
+  else if (res) setTimeout(() => homeTalk(res), 650);
+}
+
+/** Someone from the squad has a word about how it went. */
+function homeTalk(res) {
+  if (busy || sheets.isOpen || dev.open) return;
+  const any = (list) => list[Math.floor(Math.random() * list.length)];
+  const down = res.squad.filter((id, i) => !res.standing[i] && state.squad.includes(id));
+  const up = res.squad.filter((id, i) => res.standing[i] && state.squad.includes(id));
+  if (!up.length && down.length) camp.say(any(down), any(HOME_TALK.none));
+  else if (down.length) {
+    const id = any(down);
+    camp.say(id, any(CAST[id].look.dog ? HOME_TALK.dog : HOME_TALK.down));
+  } else if (up.length && Math.random() < 0.5) {
+    const id = any(up);
+    if (!CAST[id].look.dog) camp.say(id, any(HOME_TALK.all));
+  }
 }
 
 /** The run's stars fly from the truck to the road, and the bar fills up to where it now is. */

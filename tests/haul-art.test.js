@@ -10,7 +10,7 @@ import { SOUND_NAMES, Sfx } from '../haul/src/audio.js';
 import { welcomeSheet, survivorSheet, peopleSheet, roadSheet, radioSheet, stand } from '../haul/src/sheets.js';
 import { face, tokenBar, stars } from '../haul/src/ui.js';
 import { Game, newState } from '../haul/src/rules.js';
-import { CAST, CAST_ORDER, AREAS, GIFT, BARKS, RACK_SIZE, SQUAD_SIZE, TUNING_DEFAULTS, MAX_LEVEL } from '../haul/src/config.js';
+import { CAST, CAST_ORDER, AREAS, GIFT, BARKS, HOME_TALK, RACK_SIZE, SQUAD_SIZE, TUNING_DEFAULTS, MAX_LEVEL } from '../haul/src/config.js';
 
 const VOID = new Set(['br', 'hr', 'img', 'input', 'meta', 'link']);
 
@@ -227,6 +227,10 @@ test('camp talk and sounds: every line has a speaker, every sound played is one 
     assert.ok(CAST[b.who], `${b.who} is in the cast`);
     assert.ok(b.say.length <= 36, `"${b.say}" fits in a bubble`);
     if (b.then) assert.ok(CAST[b.then[0]] && b.then[1].length <= 36);
+  }
+  for (const k of ['down', 'dog', 'all', 'none']) {
+    assert.ok(HOME_TALK[k].length >= 1, `something to say: ${k}`);
+    for (const line of HOME_TALK[k]) assert.ok(line.length <= 36, `"${line}" fits in a bubble`);
   }
   assert.equal(new Set(SOUND_NAMES).size, SOUND_NAMES.length);
   const dir = new URL('../haul/src/', import.meta.url);

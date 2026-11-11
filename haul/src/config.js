@@ -283,6 +283,17 @@ export const BARKS = [
   { who: 'tinkerer', say: 'Who keeps adding eyes to my mark?' },
 ];
 
+/**
+ * A word from the squad as they get home. It says once more why there were
+ * that many crates: whoever went down dropped theirs.
+ */
+export const HOME_TALK = {
+  down: ['Dropped my crate. Sorry.', 'Ow.', 'They got my good side.', 'I had a crate. Had.'],
+  dog: ['*whimper*'],
+  all: ['A crate each!', 'All three of us.', 'Easy.'],
+  none: ['Nobody say anything.', 'We don\u2019t talk about that one.'],
+};
+
 // --- A crate at the gate ---------------------------------------------------------------------
 
 /**
