@@ -80,7 +80,7 @@ export function updateBen(game, dt) {
       G.steamT -= dt;
       if (G.steamT <= 0) {
         G.steamT = 0.32;
-        game.effects.steam(n.can.x, n.can.y - 3);
+        game.effects.steam(n.can.x, n.can.y, 5);
       }
     }
   }

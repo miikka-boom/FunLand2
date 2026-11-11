@@ -81,7 +81,7 @@ export function updateWorldEvents(game, dt) {
       if (!pointInRect(b.x, b.y, vr, b.r)) continue;
       const a = rand(0, Math.PI * 2);
       const d = rand(0, b.r * 0.8);
-      game.effects.smoke(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d - 6, rand(10, 18));
+      game.effects.smoke(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d, rand(10, 18), 14);
       game.effects.ember(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d);
     }
   }

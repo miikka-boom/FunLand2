@@ -216,6 +216,9 @@ function outsideOf(world, A, dx, dy, nx, ny) {
     const y = dy + ny * k;
     const i = world.navIndex(x, y);
     if (world.blocked[i] || A.fs.dist[i] >= INF || !world.isFree(x, y, 14)) continue;
+    // Nothing between the door and that spot: a fence a few steps off the wall
+    // would put "outside" on its far side, and the door in a dead sliver.
+    if (!world.segmentClear(dx + nx * 3, dy + ny * 3, x, y, world.moveBlockers)) return null;
     return { x, y, i };
   }
   return null;
@@ -245,7 +248,7 @@ function carveCityRooms(map, world, A, rnd, T, awayFromEnds) {
   const r = (a, b) => a + rnd() * (b - a);
   const out = [];
   const buildings = shuffle(
-    map.obstacles.filter((o) => o.kind === 'building' && !o.safe && Math.max(o.w, o.h) >= 230 && Math.min(o.w, o.h) >= 180),
+    map.obstacles.filter((o) => o.kind === 'building' && !o.safe && !o.nocarve && Math.max(o.w, o.h) >= 230 && Math.min(o.w, o.h) >= 180),
     rnd,
   );
   for (const b of buildings) {

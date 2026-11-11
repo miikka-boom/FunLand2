@@ -5,7 +5,7 @@ build step and no dependencies.
 
 | Prototype | Folder | What it's testing |
 |---|---|---|
-| 0: HORDE | [`/`](index.html) | Twin-stick touch controls for top-down zombie horde survival |
+| 0: HORDE | [`/`](index.html) | Twin-stick touch controls for zombie horde survival, in 3D |
 | 1: WOBBLE WAR | [`battle/`](battle/) | A real-time card battler with funny, satisfying 2D physics units and a fair free-to-play meta game |
 | Thrill Hill | [`thrill/`](thrill) | A Clash-Royale-inspired metagame: two static chests, a theme-park base, randomly generated survivors, a squad of three, three-crown raids |
 | Hope Street | [`hope/`](hope) | A metagame with base building and randomly generated people: take them in, pick a crew of four for each run |
@@ -260,10 +260,11 @@ still wins 94-100%. Every card's win rate sits between about 42% and 61%.
 
 # Prototype 0: "WE LEFT BEN"
 
-A top-down 2D zombie horde survival game for mobile browsers, going for a
+A 3D zombie horde survival game for mobile browsers, going for a
 Left 4 Dead feel. **Prototype 0** is about nailing down the **twin-stick touch
 controls** and how fighting a horde feels in single player. (It was called
-HORDE until it got its name and logo.)
+HORDE until it got its name and logo, and it was flat and seen from straight
+above until it got its third dimension.)
 
 **The premise:** the squad (Odile, Teo, Mags, Lou, Biscuit the dog, and you)
 left the first safe room on day 2. Ben wasn't with them. Since then: signs.
@@ -271,14 +272,71 @@ Small lowercase words in orange crayon, a stuffed rabbit with sewn-on eyes,
 and two little eyes scratched near vents and hidden ways through. Nobody
 explains who Ben is, how he got where he got, or whose side he's on.
 
+**The setting:** roughly Philadelphia, 2020. The way out is a ferry from
+Pier 9 on the Delaware, and the maps are the places on the way to it: the
+lawns of Delco, a hillside cemetery, a salvage yard in Southwest Philly,
+Center City after dark, an office floor on Market Street, the docks.
+
 Play it on a phone in landscape. It runs as a static site with no build step
 and no dependencies.
 
 ## What's in it
 
+- **A world in 3D.** Buildings have facades,
+  windows and parapet roofs, warehouses have pitched roofs, cars have cabins
+  and wheels, the office floor is furnished down to the monitors, containers
+  are stacked two high, the ferry has decks; survivors and the infected are
+  little articulated figures that walk, reach, stagger, crouch and pounce.
+  - It is still one plain 2D canvas, with no build step and no dependencies:
+    the camera is orthographic, so every box is three parallelograms, every
+    limb is a round-capped line and every painted surface (the graffiti, a
+    poster on a wall, the words on a roof) is an affine transform away.
+    [`src/iso.js`](src/iso.js) is the whole camera.
+  - **Two 3D cameras, and every map type keeps its own.** On most maps the
+    streets run along the screen: the camera looks north from high up (75°
+    above the horizon), up on the stick is north, and you see roofs and the
+    fronts of south-facing walls. The **Building** comes in the isometric
+    view instead: the map turned 45°, seen from the south-west, with the west
+    and south faces of everything showing, and from as high as that view
+    goes (70°), which is how its corridors and rooms read best.
+  - **The camera belongs to the map.** The **Camera** group in the tuning
+    panel edits the camera of the map type you're playing (its heading says
+    which: "Camera · Building"). View, the **Streets along the screen**
+    switch, both tilts and the zoom are kept separately for Streets, the
+    Building, Pier 9, Suburbia, the Graveyard and the Junkyard, so tuning one
+    leaves the others alone. Look-ahead, follow stiffness and screen shake
+    are one setting for all of them (**Camera feel**).
+  - **Nothing hides you:** whatever stands between the camera and you fades
+    out while you're behind it. A zombie you could see from above but the
+    camera can't (it's round the back of a building) shows through as a red
+    outline, so the view never costs you information the flat one gave. With
+    line-of-sight shadows on, only the ones in your own sight do. Your
+    teammate shows through in green.
+  - **Night works in 3D:** the same lights fall on the ground and on
+    whatever stands on it. Walls are lit along their length by your
+    flashlight, bodies by the light at their feet. With **Line-of-sight
+    shadows** on (under Presentation, off by default) bodies out of your
+    sight aren't drawn at all, and fade in as they round a corner.
+  - **Camera** in the tuning panel: **View** switches between *3D* and
+    *Top-down* (the same world seen from straight above, flat, for comparing
+    how the controls feel).
+  - **Streets along the screen** (a switch under Camera, on by default
+    everywhere but the Building) is the 3D view without a 45° turn: streets run left-right and up-down,
+    the sticks are map directions, and the camera looks north. Its tilt has
+    its own slider (30° to 75°; 75° by default, nearly overhead). The price:
+    only walls that face south show their fronts. A wall that runs up the
+    screen is seen along its length, so a boarded door in one is marked as
+    on a floor plan (the dark of the doorway with the planks across, where
+    the door is on the ground). The top-down view marks them the same way.
+  - With the switch off you get the isometric view. **Isometric tilt** goes
+    from 25° (low, cinematic) to 70° (nearly overhead, where the Building
+    starts); 35° is true isometric.
 - **Twin virtual sticks**: the left thumb moves and the right thumb aims.
-  Push past the dashed fire ring to shoot; tap the aim side to **shove**. The
-  full spec and the reasoning are in [docs/CONTROLS.md](docs/CONTROLS.md).
+  Push past the dashed fire ring to shoot; tap the aim side to **shove**.
+  Sticks are screen directions: push up and you run up the screen (north
+  with the streets along the screen; north-east in the isometric view, which
+  is how the Building comes). The full
+  spec and the reasoning are in [docs/CONTROLS.md](docs/CONTROLS.md).
 - **Live feel tuning**: the sliders button (top right) pauses the game and
   opens every feel parameter: stick modes and size, dead zones, fire ring, aim
   assist, smoothing, camera, speed, horde size and so on. There are presets
@@ -295,24 +353,24 @@ and no dependencies.
   out (45 s). Stand next to it without shooting for 3 s to revive it. It never
   shoots through you and never sets off alarms. The **Teammate** section also
   sets its gun and accuracy.
-- **Three levels**, picked on the title card or in the tuning panel:
-  - **Streets:** a run across a dark city, from a safe room (bottom left) to
-    the green safe room across town.
-  - **Building:** one dark floor of an office/hospital-style building:
-    corridors, offices, wards, cafeterias, lobbies, warehouse aisles and
+- **Six map types**, picked on the title card or in the tuning panel:
+  - **Streets:** a run across Center City after dark, from a safe room
+    (bottom left) to the green safe room across town.
+  - **Building:** one dark floor of an office/hospital-style building on
+    Market Street: corridors, offices, wards, cafeterias, lobbies, warehouse aisles and
     restrooms, all furnished. Hallways are blocked by barricades of piled
     furniture, so the route winds through rooms and doorways. Some offices
     have glass fronts, so you see the horde before it reaches the door, and
     some rooms are pitch dark. A shootable fire alarm is the indoor version
     of the car alarm.
-  - **Pier 9** (the finale): Port Halvard's docks. From the harbour office
+  - **Pier 9** (the finale): the docks on the Delaware. From the harbour office
     through the warehouse lots, a container yard (stacks in rows, every lane
     open, reach stackers parked across some), and the quay apron under the
     gantry cranes, to Pier 9, the long pier in the north-east. Piers 6 to 8
     are dead-end side trips (stashes like dead ends). At the end of Pier 9,
     stand at the **flare post** for a second to fire the flare. It burns red
     overhead and every drowser on the docks sees it: waves come down the pier
-    while the ferry, the HALVARD STAR, answers on the radio and sails in
+    while the ferry, the LIBERTY BELLE, answers on the radio and sails in
     (60 s by default; **Pier 9: ferry arrives after** in the **Level** group
     sets 30 to 120 s). When she's alongside, the gangway comes down a little
     way back along the pier: get to it ("ALL ABOARD!") to win. Her
@@ -320,15 +378,43 @@ and no dependencies.
     and landmarks are Streets/Building features; Pier 9 has the ferry
     instead (stashes, boarded warehouse rooms, the secret and the graffiti
     all work there).
+  - **Suburbia:** a Delco subdivision. Blocks of lots, each with a house
+    (twins and singles, pitched roofs, a porch light still on here and
+    there), a driveway, a garage and a fenced backyard: pools, sheds,
+    trampolines, swing sets, vegetable beds. The fences have gates, so the
+    backyards and the alleys behind them are shortcuts as well as dead ends
+    ("CUT THROUGH THE YARDS"). One block is a park with a ballfield and a
+    closed playground, one a strip mall behind its parking lot, one an
+    elementary school with the buses still lined up. Somewhere an ice-cream
+    truck is still playing: it is an alarm, like the cars with a red light.
+  - **Graveyard:** Wissahickon Hill Cemetery (est. 1836; made up, like every
+    venue here). Sections of headstones in rows between gravel paths, two
+    avenues that cross by the chapel (the only ones with lanterns), rows of
+    mausoleums, a pond, the war memorial, a columbarium court, woods, and
+    the maintenance yard in the far corner. Headstones stop feet but neither
+    bullets nor eyes: you shoot across the rows while the horde files
+    through them. Ground mist, and darker than town.
+  - **Junkyard:** Cracked Bell Auto Salvage, Southwest Philly. From the
+    office trailer and the weighbridge through a grid of lanes between
+    stacks of wrecks (two to four cars high: they block sight and bullets),
+    heaps of scrap, tyres and dead appliances, to the clearing in the middle
+    where the crusher stands under its crane, and out through the back lot.
+    The rows are lettered, most of the lights are dead, and the floodlights
+    over the crusher mark halfway.
+
+  Suburbia, the Graveyard and the Junkyard have the scavenging, the writing
+  and Ben like the rest, but no holdout gate, second route or landmarks
+  (yet). All three come with the streets along the screen.
 
   On every level, a green arrow at the screen edge points to the goal (safe
   room, PIER 9, then GANGWAY) and shows the walking distance.
 - **Scavenging off the route**: heading straight for the safe room isn't the
   only way through. Each map hides finds in the detours, spread along the run:
-  - **Supply stashes** (olive crates, 5 on the streets, 4 in the building) in
-    alleys, courtyards, parking lots and back rooms. Stand on one for 0.7 s to
+  - **Supply stashes** (olive crates, 4 in the building and 5 everywhere
+    else) in alleys, courtyards, parking lots, backyards and back rooms. Stand on one for 0.7 s to
     search it.
-  - **Boarded rooms** (2 per map): a dead-end room with its door nailed shut.
+  - **Boarded rooms** (2 per map in town, 1 or 2 elsewhere: the cemetery's
+    office, the yard's workshop): a dead-end room with its door nailed shut.
     Shove the boards three times (or shoot them) to break in. It's loud, and
     whatever was shut in there comes out. Inside is a better stash.
   - **One secret per map**: a loose manhole cover (streets) or floor hatch
@@ -363,37 +449,56 @@ and no dependencies.
   - **Default**, **Everything** and **Bare map** buttons set all the World
     switches at once.
 - **A world to read** (on by default; **Graffiti, posters & survivor notes**
-  under **World**): Port Halvard, a harbor city taken by "the Drowse", people
-  who stopped sleeping. The walls tell the rest:
+  under **World**): roughly Philadelphia, 2020, and on top of everything
+  else that year "the Drowse": people who stopped sleeping. The place names
+  are real; the sleep aid everybody blames (SLUMBRA, by Lullan Labs) and
+  every venue are made up. The walls tell the rest:
   - **Graffiti** on streets and floors, half of it along the way: running
     jokes between survivors (Teo & Mags argue on every wall, Big Lou counts
     his kills generously), dark lines ("SLUMBRA DID THIS"), and tips that
     happen to be how the game works ("RED LIGHT CARS = DINNER BELLS",
-    "SHOVE FIRST. ASK NEVER."). Spray-painted "PIER 9 →" arrows point the way.
+    "SHOVE FIRST. ASK NEVER."), and the town itself ("GO BIRDS", "PPA STILL
+    TICKETING", "YOU'RE ON MUTE", "EARLY TO BED, EARLY TO RISE — B.
+    FRANKLIN"). Spray-painted "PIER 9 →" arrows point the way. No line ever
+    runs into another.
   - **The safe rooms** have their own wall of messages: the first thing you
     read when a run starts, and a welcome at the end.
-  - **Posters** on building fronts and corridor walls: the sleep aid that
-    started it all ("Sleep like the dead."), curfew notices, the evacuation
-    promise ("Boats every hour." someone added "(LIE?)"), a missing dog, a
-    cancelled gig, office motivational posters with notes added.
-  - **Rooftop messages** you see from above: SOS, HELP, 4 ALIVE, PIER 9 →.
+  - **Posters** hanging on building fronts and corridor walls (those on a
+    wall that faces away from the camera lie on the ground at its foot): the
+    sleep aid that started it all ("Sleep like the dead."), the city's
+    stay-home and curfew notices, masks ("It will not help with this one."
+    "WORTH A TRY"), six feet apart ("Farther, if they are drowsing."), the
+    evacuation promise ("Delaware Ave · boats every hour." someone added
+    "(LIE?)"), a missing dog, a cancelled gig at Penn's Landing, a postponed
+    Broad Street run ("Run anyway."), office motivational posters with notes
+    added.
+  - **Rooftop messages** painted on the flat roofs: SOS, HELP, 4 ALIVE, GO
+    BIRDS, SEND HOAGIES, PIER 9 →.
   - **Survivor dens**, hidden off the route and lit by candles: bedding, a
     stove, cans, a radio, the Tinkerer's gear-and-eye mark, scribbled advice,
     a joke wall, and a journal page with its line written out on the floor
     beside it (Odile's diary in the streets, office notes in the building,
-    the harbour log on the docks).
+    the harbour log on the docks, the caretaker's count in the cemetery, the
+    yard log in the junkyard, a neighbour's diary in the suburbs).
   - **Little scenes**: a bus stop piled with suitcases, a lemonade stand, a
     car that says HONK IF ALIVE (DON'T), a wedding car (JUST MARRIED / STILL
     TOGETHER), a last stand, "MY YOGURT. I KNOW. — DEB" in front of a fridge,
     "NOW SERVING: NOBODY" by a ticket machine, office whiteboards.
   - **On the docks**: harbour graffiti ("NO FLARE, NO FERRY", "DROWSERS
     CAN'T SWIM. PROBABLY.", "GARY STILL OWES ME A BOAT"), the harbour
-    master's log in a den (the HALVARD STAR keeps coming while anyone on
+    master's log in a den (the LIBERTY BELLE keeps coming while anyone on
     Pier 9 has a flare), a ferry queue, a fish stall, and painted lines along
     the pier ("NO RUNNING ON THE GANGWAY" … "(RUN.)").
+  - **Out of town** each place has its own lines, scenes and painted words.
+    Suburbia: "HOA SAYS NO DROWSERS ON THE LAWN", "WE CLAPPED AT 7. THEY CAME
+    AT 8.", "CLASS OF 2020" yard signs, chalk on the driveways, a lemonade
+    stand ("HUGS FREE"). The Graveyard: "REST IN PEACE (NOBODY ELSE CAN)",
+    "STONES STOP YOU. NOT BULLETS.", ledgers with epitaphs to read, a flower
+    stall ("TODAY: FREE"). The Junkyard: "RUST NEVER SLEEPS. NEITHER DO
+    THEY.", "U-PULL-IT. THEY-PULL-YOU.", "STACKS STOP BULLETS. USE THEM.".
   - **No inspect text:** everything is drawn in the world, big enough to read
-    from above when your light is on it. There is no caption box and nothing
-    to press, so every player sees the same things.
+    when your light is on it. There is no caption box and nothing to press,
+    so every player sees the same things.
 - **Ben's traces** (on by default; **Ben's traces (the one we left behind)**
   under **World**). Visual only, with a few sounds; nothing ever explains him:
   - **The first room:** under the squad's "DAY 1 HERE. DAY 2 LEAVING." someone
@@ -451,7 +556,8 @@ and no dependencies.
 - **Common infected** that shamble, notice you, sprint in packs, path around
   buildings with a flow field, crowd you and claw. Getting hit slows you down,
   and under 40 HP you limp.
-- **Special infected**:
+- **Special infected** (the Hunter and the Tank are off by default: **Hunter +
+  Tank** under **Specials**):
   - The **Hunter** tests shove timing. It screeches, then pounces: shove it
     out of the air (deadstop), shoot it mid-air (skeet), or get pinned and
     tap to break free.
@@ -476,9 +582,10 @@ and no dependencies.
 - **Four guns** to compare feel: SMG, assault rifle (pierces 2), pump shotgun
   (loads shell by shell; firing interrupts the reload) and hunting rifle
   (pierces lines of zombies). Reloading is automatic when empty.
-- **Night**: a flashlight cone, street lamps, burning wrecks and
-  line-of-sight shadows, so zombies behind buildings stay hidden until you
-  round the corner. You can turn it off in the panel.
+- **Night**: a flashlight cone, street lamps and burning wrecks. You can
+  turn it off in the panel. **Line-of-sight shadows** (under Presentation,
+  off by default) keep zombies behind buildings hidden until you round the
+  corner.
 - **Feedback**: synthesized sound (no audio files), haptics on Android, blood
   decals that stay, casings, tracers, screen shake and recoil, off-screen
   threat arrows.
@@ -623,8 +730,9 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
   `file://`.
 - **iPhone:** use Share → Add to Home Screen for true full screen. Android
   goes full screen when you tap Start.
-- **Desktop:** WASD to move, the mouse to aim, click to fire, Space to shove,
-  R to reload, Q to swap, Esc for tuning. A gamepad works too.
+- **Desktop:** WASD to move (screen directions, like the sticks), the mouse
+  to aim, click to fire, Space to shove, R to reload, Q to swap, Esc for
+  tuning. A gamepad works too.
 
 ## Code map
 
@@ -634,10 +742,20 @@ src/main.js                boot, resize/safe areas, pause, frame loop
 src/settings.js            every tunable value + panel schema + presets
 src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
+src/iso.js                 the camera: orthographic projection (yaw + tilt), project / unproject, stick and mouse mapping, and the painter's order for boxes (pure, unit tested)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
-src/world/                 seeded city + building + docks (Pier 9) generators, Ben's traces (ben-content: every line; ben-gen: placement), world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
-src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), Ben at run time (ben.js: his bed, the glimpse, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects, game state
-src/render/                renderer, lighting (night + LOS), HUD, loot, world-feature, graffiti/poster, docks (water, containers, cranes, ferry) and Ben (ben-render: crayon, eyes, his bed, the chalk drawings) drawing
+src/world/                 seeded generators for the six map types (city, building, docks; graveyard, suburbia and junkyard, which share gen-kit.js), Ben's traces (ben-content: every line; ben-gen: placement), world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
+src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), Ben at run time (ben.js: his bed, the glimpse, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects (particles in 3D), game state + the view
+src/render/renderer.js     the passes: ground -> night overlay -> everything that stands (far to near) -> overhead -> bright -> HUD
+src/render/lighting.js     one list of lights: the ground overlay (night + line of sight) and the sampler that shades what stands on it
+src/render/prims.js        3D shapes on the 2D canvas: boxes, cylinders, prisms, balls, limbs; colour tones
+src/render/scene3d.js      the map prepared for 3D: heights, the painter's order, the grid, where movers slot in, what hides what
+src/render/models.js       a 3D model for every kind of obstacle (buildings, walls, cars, furniture, containers...), lamp posts, door frames; hangs posters and rooftop words on what they belong to
+src/render/theme-models.js the newer maps' models, added to the table in models.js: headstones, mausoleums, the chapel; houses, garages, the mall, buses; wreck stacks, the crusher and crane
+src/render/theme-render.js the newer maps' ground (lawns and lots, grave plots and paths, the yard) and what lies on it
+src/render/decor3d.js      the small things that stand up (chairs, signs, the lemonade stand, Ben's fort and rabbit, boats)
+src/render/figures.js      survivors, the horde (batched), Hunter, Tank, Night Terror
+src/render/*-render.js     what is painted flat (ground, graffiti, posters, chalk, Ben's crayon) and the big set pieces (docks: piers, cranes, the ferry; features: the canopy, fires, fireballs), hud.js
 src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
@@ -646,7 +764,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, settings saves, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, Ben's traces + memory, playtest reports + daily seed, the five metagames, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, Ben's traces + memory, playtest reports + daily seed, the five metagames, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

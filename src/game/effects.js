@@ -1,9 +1,12 @@
 // Particles, tracers, muzzle flashes, transient lights, corpses and the
 // persistent blood decal layer (painted once into a world-sized canvas).
+// Particles live in 3D: x, y on the ground and z above it (smoke, steam and
+// embers rise; blood, gibs, debris and casings fly and fall).
 
 import { rand, randSpread, TAU, pick } from '../util.js';
 
 const DECAL_SCALE = 0.4;
+const DECAL_CELL = 160; // world units
 const BLOOD = ['#4d0a0a', '#5c0c0c', '#6a1010', '#3f0808', '#561109'];
 const MAX_PARTICLES = 900;
 const MAX_CORPSES = 160;
@@ -23,6 +26,50 @@ export class Effects {
     this.decalScale = DECAL_SCALE;
     this.dctx = this.decal.getContext('2d');
     this.dctx.setTransform(DECAL_SCALE, 0, 0, DECAL_SCALE, 0, 0);
+    // Which parts of the decal layer have anything on them (coarse grid), so
+    // the renderer only lays the stained parts over the ground.
+    this.dcw = Math.ceil(w / DECAL_CELL);
+    this.dch = Math.ceil(h / DECAL_CELL);
+    this.dcell = new Uint8Array(this.dcw * this.dch);
+  }
+
+  /** Note that the decal layer was painted on around (x, y). */
+  _stained(x, y, r) {
+    const x0 = Math.max(0, Math.floor((x - r) / DECAL_CELL));
+    const x1 = Math.min(this.dcw - 1, Math.floor((x + r) / DECAL_CELL));
+    const y0 = Math.max(0, Math.floor((y - r) / DECAL_CELL));
+    const y1 = Math.min(this.dch - 1, Math.floor((y + r) / DECAL_CELL));
+    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) this.dcell[cy * this.dcw + cx] = 1;
+  }
+
+  /**
+   * The world rect that holds every stain inside `vr` (or null if that part
+   * of the ground is clean).
+   */
+  stainedRect(vr, out) {
+    const x0 = Math.max(0, Math.floor(vr.x / DECAL_CELL));
+    const x1 = Math.min(this.dcw - 1, Math.floor((vr.x + vr.w) / DECAL_CELL));
+    const y0 = Math.max(0, Math.floor(vr.y / DECAL_CELL));
+    const y1 = Math.min(this.dch - 1, Math.floor((vr.y + vr.h) / DECAL_CELL));
+    let ax = Infinity;
+    let ay = Infinity;
+    let bx = -1;
+    let by = -1;
+    for (let cy = y0; cy <= y1; cy++) {
+      for (let cx = x0; cx <= x1; cx++) {
+        if (!this.dcell[cy * this.dcw + cx]) continue;
+        if (cx < ax) ax = cx;
+        if (cx > bx) bx = cx;
+        if (cy < ay) ay = cy;
+        if (cy > by) by = cy;
+      }
+    }
+    if (bx < 0) return null;
+    out.x = ax * DECAL_CELL;
+    out.y = ay * DECAL_CELL;
+    out.w = (bx - ax + 1) * DECAL_CELL;
+    out.h = (by - ay + 1) * DECAL_CELL;
+    return out;
   }
 
   // --- Spawners --------------------------------------------------------------
@@ -65,16 +112,17 @@ export class Effects {
         size: rand(2.5, 5.5), life: 1.6, max: 1.6, color: palette ? pick(palette) : Math.random() < 0.5 ? '#6f6a63' : '#8a847b', rot: rand(0, TAU), spin: rand(-14, 14),
       });
     }
-    this._p({ kind: 'dust', x, y, vx: 0, vy: 0, life: 0.7, max: 0.7, size: 14 });
+    this._p({ kind: 'dust', x, y, z: 4, vx: 0, vy: 0, life: 0.7, max: 0.7, size: 14 });
   }
 
-  sparks(x, y, nx, ny, n = 5) {
+  /** Sparks off a surface at height z (bullets hit at gun height). */
+  sparks(x, y, nx, ny, n = 5, z = 24) {
     for (let i = 0; i < n; i++) {
       const a = Math.atan2(ny, nx) + randSpread() * 1.3;
       const s = rand(80, 320);
-      this._p({ kind: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.08, 0.22), max: 0.22, size: rand(1, 2) });
+      this._p({ kind: 'spark', x, y, z: z + rand(-3, 3), vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(-40, 60), life: rand(0.08, 0.22), max: 0.22, size: rand(1, 2) });
     }
-    this._p({ kind: 'dust', x, y, vx: nx * 20, vy: ny * 20, life: 0.5, max: 0.5, size: rand(5, 9) });
+    this._p({ kind: 'dust', x, y, z, vx: nx * 20, vy: ny * 20, life: 0.5, max: 0.5, size: rand(5, 9) });
   }
 
   casing(x, y, aim, shell = false) {
@@ -91,7 +139,7 @@ export class Effects {
     for (let i = 0; i < n; i++) {
       const a = (i / n) * TAU + rand(-0.2, 0.2);
       const s = rand(90, 190);
-      this._p({ kind: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.25, 0.5), max: 0.5, size: rand(1.4, 2.4) });
+      this._p({ kind: 'spark', x, y, z: 12, vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(20, 90), life: rand(0.25, 0.5), max: 0.5, size: rand(1.4, 2.4) });
     }
   }
 
@@ -103,14 +151,15 @@ export class Effects {
     for (let i = 0; i < 26; i++) {
       const a = Math.random() * TAU;
       const s = rand(160, 520);
-      this._p({ kind: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.25, 0.7), max: 0.7, size: rand(1.6, 3) });
+      this._p({ kind: 'spark', x, y, z: rand(4, 30), vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(20, 260), life: rand(0.25, 0.7), max: 0.7, size: rand(1.6, 3) });
     }
-    for (let i = 0; i < 14; i++) this.smoke(x + rand(-R, R) * 0.35, y + rand(-R, R) * 0.35, rand(18, 32));
+    for (let i = 0; i < 14; i++) this.smoke(x + rand(-R, R) * 0.35, y + rand(-R, R) * 0.35, rand(18, 32), rand(6, 40));
     this.scorch(x, y, R * 0.55);
   }
 
   /** Burnt ground painted into the decal layer. */
   scorch(x, y, r) {
+    this._stained(x, y, r);
     const c = this.dctx;
     const g = c.createRadialGradient(x, y, 0, x, y, r);
     g.addColorStop(0, 'rgba(10,8,6,0.85)');
@@ -122,17 +171,18 @@ export class Effects {
     c.fill();
   }
 
-  smoke(x, y, size = 10) {
-    this._p({ kind: 'smoke', x: x + rand(-8, 8), y: y + rand(-8, 8), vx: rand(-6, 6), vy: rand(-26, -10), life: rand(1.6, 2.6), max: 2.6, size });
+  /** Smoke starting at height z: it rises and drifts. */
+  smoke(x, y, size = 10, z = 8) {
+    this._p({ kind: 'smoke', x: x + rand(-8, 8), y: y + rand(-8, 8), z, vx: rand(-7, 7), vy: rand(-7, 7), vz: rand(12, 30), life: rand(1.6, 2.6), max: 2.6, size });
   }
 
   /** Pale steam off something still warm. */
-  steam(x, y) {
-    this._p({ kind: 'steam', x: x + rand(-3, 3), y, vx: rand(-4, 4), vy: rand(-18, -9), life: rand(1, 1.6), max: 1.6, size: rand(3, 5) });
+  steam(x, y, z = 6) {
+    this._p({ kind: 'steam', x: x + rand(-3, 3), y: y + rand(-2, 2), z, vx: rand(-4, 4), vy: rand(-3, 3), vz: rand(10, 20), life: rand(1, 1.6), max: 1.6, size: rand(3, 5) });
   }
 
-  ember(x, y) {
-    this._p({ kind: 'spark', x: x + rand(-10, 10), y: y + rand(-10, 10), vx: rand(-20, 20), vy: rand(-60, -20), life: rand(0.4, 0.9), max: 0.9, size: rand(1, 1.8) });
+  ember(x, y, z = 14) {
+    this._p({ kind: 'spark', x: x + rand(-10, 10), y: y + rand(-10, 10), z, vx: rand(-20, 20), vy: rand(-20, 20), vz: rand(25, 70), life: rand(0.4, 0.9), max: 0.9, size: rand(1, 1.8) });
   }
 
   tracer(x0, y0, x1, y1, rgb, width = 1.6, life = 0.07) {
@@ -168,6 +218,7 @@ export class Effects {
   // --- Decals ----------------------------------------------------------------
 
   splat(x, y, size, alpha = 0.75) {
+    this._stained(x, y, size * 3);
     const c = this.dctx;
     c.globalAlpha = alpha * rand(0.6, 0.9);
     c.fillStyle = pick(BLOOD);
@@ -183,6 +234,7 @@ export class Effects {
   }
 
   pool(x, y, r) {
+    this._stained(x, y, r * 2);
     const c = this.dctx;
     c.fillStyle = pick(BLOOD);
     for (let k = 0; k < 5; k++) {
@@ -195,6 +247,7 @@ export class Effects {
   }
 
   stain(x, y, r) {
+    this._stained(x, y, r * 1.5);
     const c = this.dctx;
     c.globalAlpha = 0.35;
     c.fillStyle = '#2a0b08';
@@ -268,6 +321,7 @@ export class Effects {
         case 'spark': {
           p.x += p.vx * dt;
           p.y += p.vy * dt;
+          p.z = Math.max(0, p.z + p.vz * dt);
           const f = Math.exp(-7 * dt);
           p.vx *= f;
           p.vy *= f;
@@ -278,6 +332,7 @@ export class Effects {
         case 'steam': {
           p.x += p.vx * dt;
           p.y += p.vy * dt;
+          if (p.vz) p.z += p.vz * dt;
           p.size += dt * (p.kind === 'smoke' ? 14 : p.kind === 'steam' ? 6 : 18);
           break;
         }

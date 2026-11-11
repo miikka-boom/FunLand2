@@ -3,8 +3,50 @@
 
 const STORAGE_KEY = 'funland2.p0.tuning.v1';
 
+/**
+ * The map types, in the order the title card and the panel list them:
+ * id (settings.level), name, a few words for the title card, and a line for
+ * the panel. Roughly Philadelphia, 2020.
+ */
+export const LEVELS = [
+  { id: 'city', name: 'Streets', sub: 'Center City, after dark', about: 'Center City at night' },
+  { id: 'interior', name: 'Building', sub: 'an office floor', about: 'an office floor on Market St' },
+  { id: 'docks', name: 'Pier 9', sub: 'docks · last ferry', about: 'the Delaware docks, ferry finale' },
+  { id: 'suburbia', name: 'Suburbia', sub: 'lawns of Delco', about: 'a Delco subdivision' },
+  { id: 'graveyard', name: 'Graveyard', sub: 'Wissahickon Hill', about: 'Wissahickon Hill Cemetery' },
+  { id: 'junkyard', name: 'Junkyard', sub: 'Southwest Philly', about: 'a Southwest Philly salvage yard' },
+];
+export const LEVEL_IDS = LEVELS.map((l) => l.id);
+export const LEVEL_NAMES = Object.fromEntries(LEVELS.map((l) => [l.id, l.name]));
+
+// --- The camera, per map type ---------------------------------------------------------------
+// Each map type keeps its own camera: the settings are stored as
+// 'cameraTilt@interior', 'viewSize@docks' and so on (see levelKey / forLevel).
+const CAMERA_DEFAULTS = {
+  camera: 'iso', // 'iso' (3D) | 'top' (the same 3D world seen straight from above)
+  cameraAligned: true, // 3D without the 45° turn: streets run along the screen, only south walls face you (off: isometric)
+  cameraTilt: 25, // degrees above the horizon in the isometric view (35 = true isometric)
+  cameraAlignedTilt: 75, // ...and with the streets along the screen: steep, so a wall doesn't hide the doorway in it
+  viewSize: 470, // world units visible across the short screen axis
+};
+const CAMERA_BY_LEVEL = {
+  // Corridors and rooms read best turned 45° (walls both ways show a face), from as high as the slider goes.
+  interior: { cameraAligned: false, cameraTilt: 70 },
+};
+/** The settings that are kept per map type. */
+export const LEVEL_KEYS = Object.keys(CAMERA_DEFAULTS);
+/** Where a per-map-type setting is stored. */
+export const levelKey = (key, level) => `${key}@${level}`;
+/** A per-map-type setting for a level (the one being played unless given). */
+export const forLevel = (S, key, level = S.level) => S[levelKey(key, LEVEL_NAMES[level] ? level : 'city')];
+function cameraDefaults() {
+  const out = {};
+  for (const id of LEVEL_IDS) for (const k of LEVEL_KEYS) out[levelKey(k, id)] = (CAMERA_BY_LEVEL[id] && k in CAMERA_BY_LEVEL[id] ? CAMERA_BY_LEVEL[id] : CAMERA_DEFAULTS)[k];
+  return out;
+}
+
 export const DEFAULTS = Object.freeze({
-  level: 'city', // 'city' (streets) | 'interior' (building floor) | 'docks' (Pier 9 finale)
+  level: 'city', // one of LEVELS
   ferryTime: 60, // Pier 9: seconds from the flare until the ferry docks
 
   // --- World: what each map has (changes restart the run) -----------------
@@ -42,8 +84,7 @@ export const DEFAULTS = Object.freeze({
   tapMaxPx: 14,
   shoveButton: true,
 
-  // --- Camera -------------------------------------------------------------
-  viewSize: 470, // world units visible across the short screen axis
+  // --- Camera (view, angles and zoom are per map type: see cameraDefaults below) ---
   lookAhead: 0.2, // fraction of view size the camera leads toward the aim
   cameraStiffness: 8,
   screenShake: 1.0,
@@ -61,7 +102,7 @@ export const DEFAULTS = Object.freeze({
   wanderers: 1.0,
 
   // --- Special infected ---------------------------------------------------
-  specials: true, // Hunter + Tank
+  specials: false, // Hunter + Tank (opt-in)
   hunterBreakTaps: 5, // taps to break a Hunter pin
   deadstopWindow: 0.18, // seconds a shove stays live for knocking a pouncing Hunter down
   tankHealth: 1.0,
@@ -76,7 +117,7 @@ export const DEFAULTS = Object.freeze({
   // --- Presentation -------------------------------------------------------
   night: true,
   darkness: 0.8,
-  los: true,
+  los: false, // line-of-sight shadows: what's behind a building stays hidden until you round the corner
   threatIndicators: true,
   haptics: 'light', // 'off' | 'light' | 'full'
   volume: 0.8,
@@ -89,6 +130,9 @@ export const DEFAULTS = Object.freeze({
   showDebug: false,
   showTouches: false,
   seed: 1337,
+
+  // --- Camera: view, angles and zoom, one set per map type ------------------
+  ...cameraDefaults(),
 });
 
 const pct = (v) => `${Math.round(v * 100)}%`;
@@ -111,11 +155,7 @@ export const SCHEMA = [
         key: 'level',
         label: 'Level (restarts the run)',
         type: 'select',
-        options: [
-          ['city', 'Streets – night city'],
-          ['interior', 'Building – interior floor'],
-          ['docks', 'Pier 9 – docks, ferry finale'],
-        ],
+        options: LEVELS.map((l) => [l.id, `${l.name} – ${l.about}`]),
       },
       { key: 'ferryTime', label: 'Pier 9: ferry arrives after', type: 'range', min: 30, max: 120, step: 10, fmt: (v) => `${v}s` },
     ],
@@ -169,9 +209,31 @@ export const SCHEMA = [
     ],
   },
   {
+    // perLevel: these are kept per map type (stored as key@level); the panel
+    // shows and edits the ones of the map type being played.
     group: 'Camera',
+    perLevel: true,
+    note: 'Each map type keeps its own view, angles and zoom: these are the ones for the map you are on.',
     items: [
-      { key: 'viewSize', label: 'View size (zoom)', type: 'range', min: 300, max: 800, step: 10, fmt: (v) => `${v}u` },
+      {
+        key: 'camera',
+        perLevel: true,
+        label: 'View',
+        type: 'select',
+        options: [
+          ['iso', '3D'],
+          ['top', 'Top-down – straight from above'],
+        ],
+      },
+      { key: 'cameraAligned', perLevel: true, label: 'Streets along the screen (no 45° turn)', type: 'toggle' },
+      { key: 'cameraTilt', perLevel: true, label: 'Isometric tilt (35° = true isometric)', type: 'range', min: 25, max: 70, step: 1, fmt: deg },
+      { key: 'cameraAlignedTilt', perLevel: true, label: 'Tilt with streets along the screen', type: 'range', min: 30, max: 75, step: 1, fmt: deg },
+      { key: 'viewSize', perLevel: true, label: 'View size (zoom)', type: 'range', min: 300, max: 800, step: 10, fmt: (v) => `${v}u` },
+    ],
+  },
+  {
+    group: 'Camera feel (every map)',
+    items: [
       { key: 'lookAhead', label: 'Look-ahead', type: 'range', min: 0, max: 0.4, step: 0.01, fmt: pct },
       { key: 'cameraStiffness', label: 'Camera stiffness', type: 'range', min: 2, max: 25, step: 0.5, fmt: (v) => v.toFixed(1) },
       { key: 'screenShake', label: 'Screen shake', type: 'range', min: 0, max: 2, step: 0.05, fmt: mult },
@@ -303,7 +365,7 @@ function pickControlDefaults() {
 // stored every value; there, a value equal to a default that has changed
 // since is dropped, so the new default applies (the teammate used to be on).
 const SAVE_FORMAT = 2;
-const CHANGED_DEFAULTS = { ally: true };
+const CHANGED_DEFAULTS = { ally: true, specials: true, los: true };
 
 /** Saved JSON -> the values to apply over the defaults. */
 export function parseSaved(saved) {

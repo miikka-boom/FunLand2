@@ -67,7 +67,8 @@ export function addBen(map, seed, opts = {}) {
   const busy = [];
   for (const d of map.decor) {
     if (CLUTTER.has(d.type) || d.x === undefined || d.y === undefined) continue;
-    const w = d.type === 'graffiti' ? (d.text || '').length * (d.size || 12) * 0.32 : 0;
+    // Writing takes its length (half of it either side): sprayed lines, painted words, a ledger's slab.
+    const w = d.type === 'epitaph' ? d.w / 2 : d.type === 'graffiti' || (d.type === 'paint' && d.text) ? (d.text || '').length * (d.size || 12) * 0.32 : 0;
     busy.push({ x: d.x, y: d.y, r: Math.max(26, w + 14) });
   }
   for (const s of map.stashes || []) busy.push({ x: s.x, y: s.y, r: 60 });
@@ -241,14 +242,31 @@ export function addBen(map, seed, opts = {}) {
   // --- Two little eyes ---------------------------------------------------------------------------
   // By the secret, looking at it.
   if (secret) {
-    for (let k = 0; k < 24; k++) {
+    let placed = false;
+    for (let k = 0; k < 24 && !placed; k++) {
       const ang = rnd() * Math.PI * 2;
       const dist = r(80, 140);
       const x = secret.x + Math.cos(ang) * dist;
       const y = secret.y + Math.sin(ang) * dist;
       if (!world.isFree(x, y, 10) || !world.segmentClear(x, y, secret.x, secret.y) || !clearOf(x, y)) continue;
       eyes(x, y, Math.atan2(secret.y - y, secret.x - x));
-      break;
+      placed = true;
+    }
+    if (!placed) {
+      // A crowded corner: the spot in sight of it that sits least on top of anything else.
+      let best = null;
+      for (let dist = 70; dist <= 150; dist += 16) {
+        for (let k = 0; k < 16; k++) {
+          const ang = (k / 16) * Math.PI * 2;
+          const x = secret.x + Math.cos(ang) * dist;
+          const y = secret.y + Math.sin(ang) * dist;
+          if (!world.isFree(x, y, 10) || !world.segmentClear(x, y, secret.x, secret.y)) continue;
+          let over = 0;
+          for (const q of busy) over = Math.max(over, q.r - Math.hypot(q.x - x, q.y - y));
+          if (!best || over < best.over) best = { x, y, over };
+        }
+      }
+      if (best) eyes(best.x, best.y, Math.atan2(secret.y - best.y, secret.x - best.x));
     }
   }
   // From the walk to his bed: a few, every ~260 u, looking the way to go.
@@ -374,7 +392,7 @@ export function addBen(map, seed, opts = {}) {
   };
   const roofFree = (o) => !(map.roofArt || []).some((ra) => pointInRect(ra.x, ra.y, o, 10)) && !map.benRoof.some((b) => pointInRect(b.x, b.y, o, 10));
   if (theme === 'city') {
-    const roofs = shuffle(map.obstacles.filter((o) => o.kind === 'building' && !o.safe && o.w >= 150 && o.h >= 110), rnd);
+    const roofs = shuffle(map.obstacles.filter((o) => o.kind === 'building' && !o.safe && !o.pitched && o.w >= 150 && o.h >= 110), rnd);
     for (const o of roofs) {
       if (!roofFree(o) || !nearWalk(o) || Math.hypot(o.x + o.w / 2 - map.start.x, o.y + o.h / 2 - map.start.y) < 700) continue;
       map.benRoof.push({ type: 'text', x: o.x + o.w * r(0.35, 0.65), y: o.y + o.h * r(0.3, 0.7), text: BEN_WAS_HERE.roof, size: clamp(Math.min(o.w, o.h) * 0.11, 12, 17), a: r(-0.25, 0.25) });

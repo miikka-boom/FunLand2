@@ -1,7 +1,7 @@
 {
   "name": "We Left Ben",
   "short_name": "We Left Ben",
-  "description": "Top-down horde survival. We left him behind. He keeps leaving signs.",
+  "description": "Horde survival in 3D. We left him behind. He keeps leaving signs.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",

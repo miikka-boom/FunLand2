@@ -1,7 +1,7 @@
 // DOM tuning panel (opened by the sliders button / Esc). Pauses the game.
 // Every control writes straight into the live settings object.
 
-import { SCHEMA, PRESETS, WORLD_PRESETS, DEFAULTS, diffFromDefaults, saveSettings } from './settings.js';
+import { SCHEMA, PRESETS, WORLD_PRESETS, DEFAULTS, LEVEL_NAMES, levelKey, diffFromDefaults, saveSettings } from './settings.js';
 import { loadHistory, clearHistory, historyText } from './playtest.js';
 
 // Log-scale sliders (item.log): position 0..LOG_STEPS maps to min..max
@@ -31,8 +31,14 @@ export class SettingsPanel {
     this.settings = settings;
     this.actions = actions;
     this.controls = new Map();
+    this.levelHeads = []; // headers of the groups that are kept per map type
     this.isOpen = false;
     this._build();
+  }
+
+  /** Where a control's value lives: per-map-type settings are stored under key@level. */
+  _key(item) {
+    return item.perLevel ? levelKey(item.key, this.settings.level) : item.key;
   }
 
   _build() {
@@ -90,7 +96,10 @@ export class SettingsPanel {
 
     for (const group of SCHEMA) {
       const sec = el('div', 'panel-section');
-      sec.appendChild(el('div', 'panel-group', group.group));
+      const head = el('div', 'panel-group', group.group);
+      sec.appendChild(head);
+      if (group.perLevel) this.levelHeads.push({ head, name: group.group });
+      if (group.note) sec.appendChild(el('p', 'panel-note', group.note));
       if (group.presets === 'world') {
         const row = el('div', 'panel-row');
         for (const p of WORLD_PRESETS) {
@@ -177,7 +186,7 @@ export class SettingsPanel {
         input.step = item.step;
       }
       input.addEventListener('input', () => {
-        S[item.key] = item.log ? fromLogPos(item, parseFloat(input.value)) : parseFloat(input.value);
+        S[this._key(item)] = item.log ? fromLogPos(item, parseFloat(input.value)) : parseFloat(input.value);
         this._show(item.key);
         saveSettings(S);
         this.actions.onChange(item.key);
@@ -190,17 +199,19 @@ export class SettingsPanel {
         input.appendChild(o);
       }
       input.addEventListener('change', () => {
-        S[item.key] = input.value;
+        S[this._key(item)] = input.value;
         this._show(item.key);
         saveSettings(S);
         this.actions.onChange(item.key);
+        // Another map type: the per-map controls now show that one's values.
+        if (item.key === 'level') this.sync();
       });
     } else {
       input = el('input');
       input.type = 'checkbox';
       input.className = 'switch';
       input.addEventListener('change', () => {
-        S[item.key] = input.checked;
+        S[this._key(item)] = input.checked;
         this._show(item.key);
         saveSettings(S);
         this.actions.onChange(item.key);
@@ -215,8 +226,9 @@ export class SettingsPanel {
     reset.title = `Reset ${item.label} to default`;
     reset.addEventListener('click', (e) => {
       e.preventDefault();
-      if (isDefault(S, item.key)) return;
-      S[item.key] = DEFAULTS[item.key];
+      const k = this._key(item);
+      if (isDefault(S, k)) return;
+      S[k] = DEFAULTS[k];
       this._show(item.key, true);
       saveSettings(S);
       this.actions.onChange(item.key);
@@ -237,20 +249,22 @@ export class SettingsPanel {
     if (!c) return;
     const S = this.settings;
     const { item, input, val, row } = c;
+    const k = this._key(item);
     if (item.type === 'range') {
-      if (setInput) input.value = item.log ? toLogPos(item, S[key]) : S[key];
-      val.textContent = item.fmt ? item.fmt(S[key]) : String(S[key]);
+      if (setInput) input.value = item.log ? toLogPos(item, S[k]) : S[k];
+      val.textContent = item.fmt ? item.fmt(S[k]) : String(S[k]);
     } else if (item.type === 'select') {
-      if (setInput) input.value = S[key];
+      if (setInput) input.value = S[k];
       val.textContent = '';
     } else {
-      if (setInput) input.checked = !!S[key];
+      if (setInput) input.checked = !!S[k];
       val.textContent = '';
     }
-    row.classList.toggle('changed', !isDefault(S, key));
+    row.classList.toggle('changed', !isDefault(S, k));
   }
 
   sync() {
+    for (const h of this.levelHeads) h.head.textContent = `${h.name} · ${LEVEL_NAMES[this.settings.level] || this.settings.level}`;
     for (const key of this.controls.keys()) this._show(key, true);
     this._syncReports();
     if (this.fsBtn) this.fsBtn.style.display = document.documentElement.requestFullscreen ? '' : 'none';

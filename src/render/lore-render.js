@@ -434,57 +434,70 @@ function drawDoodle(ctx, d) {
 
 // --- Posters (on walls, under the darkness) -----------------------------------------------------
 
-export function drawPosters(ctx, game, vr) {
+/**
+ * Posters that are not hanging on a wall the camera can see: they lie on the
+ * ground against it, as they always did. (The rest are painted on their walls
+ * by the 3D pass, see models.js.)
+ */
+export function drawPosters(ctx, game, vr, view = null) {
   const map = game.world.map;
   if (!map.posters) return;
   for (const p of map.posters) {
     if (!pointInRect(p.x, p.y, vr, 40)) continue;
-    const d = POSTERS[p.design];
-    if (!d) continue;
-    const cx = p.x + p.w / 2;
-    const cy = p.y + p.h / 2;
+    if (posterOnWall(p, view)) continue;
     ctx.save();
-    ctx.translate(cx, cy);
+    ctx.translate(p.x + p.w / 2, p.y + p.h / 2);
     ctx.rotate(p.rot || 0);
-    const w = p.w;
-    const h = p.h;
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.fillRect(-w / 2 + 1.5, -h / 2 + 1.5, w, h);
-    ctx.fillStyle = d.bg;
-    ctx.fillRect(-w / 2, -h / 2, w, h);
-    // Headline, fitted to the width.
-    const fs = Math.min(h * 0.24, (w * 0.95) / Math.max(4, d.head.length * 0.58));
-    ctx.fillStyle = d.fg;
-    ctx.font = `900 ${fs.toFixed(1)}px ${PRINT_FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(d.head, 0, -h / 2 + fs * 0.75 + 1);
-    posterIcon(ctx, d.icon, 0, h * 0.12, Math.min(w, h) * 0.32, d.fg);
-    if (d.sub) {
-      ctx.globalAlpha = 0.7;
-      ctx.fillRect(-w * 0.35, h / 2 - 3.5, w * 0.7, 1);
-      ctx.globalAlpha = 1;
-    }
-    if (d.scrawl) {
-      ctx.save();
-      ctx.rotate(-0.35);
-      ctx.fillStyle = '#d11f1f';
-      ctx.font = `700 ${(fs * 0.9).toFixed(1)}px ${MARKER_FONT}`;
-      ctx.fillText(d.scrawl, 0, h * 0.08);
-      ctx.restore();
-    }
-    if (p.torn) {
-      // A corner peeled away.
-      ctx.fillStyle = 'rgba(20,20,20,0.85)';
-      const t = 5 + p.torn * 7;
-      ctx.beginPath();
-      ctx.moveTo(w / 2, h / 2);
-      ctx.lineTo(w / 2 - t, h / 2);
-      ctx.lineTo(w / 2, h / 2 - t);
-      ctx.closePath();
-      ctx.fill();
-    }
+    drawPosterArt(ctx, p, p.w, p.h);
     ctx.restore();
+  }
+}
+
+/** Is this poster on a wall that looks at the camera (so the 3D pass draws it there)? */
+export function posterOnWall(p, view) {
+  const w = p._wall;
+  return !!(w && view && !view.flat && (w.axis === 'x' ? view.faceX === w.out : view.faceY === w.out));
+}
+
+/** One poster, w by h, centred on the origin. */
+export function drawPosterArt(ctx, p, w, h) {
+  const d = POSTERS[p.design];
+  if (!d) return;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(-w / 2 + 1.5, -h / 2 + 1.5, w, h);
+  ctx.fillStyle = d.bg;
+  ctx.fillRect(-w / 2, -h / 2, w, h);
+  // Headline, fitted to the width.
+  const fs = Math.min(h * 0.24, (w * 0.95) / Math.max(4, d.head.length * 0.58));
+  ctx.fillStyle = d.fg;
+  ctx.font = `900 ${fs.toFixed(1)}px ${PRINT_FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(d.head, 0, -h / 2 + fs * 0.75 + 1);
+  posterIcon(ctx, d.icon, 0, h * 0.12, Math.min(w, h) * 0.32, d.fg);
+  if (d.sub) {
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(-w * 0.35, h / 2 - 3.5, w * 0.7, 1);
+    ctx.globalAlpha = 1;
+  }
+  if (d.scrawl) {
+    ctx.save();
+    ctx.rotate(-0.35);
+    ctx.fillStyle = '#d11f1f';
+    ctx.font = `700 ${(fs * 0.9).toFixed(1)}px ${MARKER_FONT}`;
+    ctx.fillText(d.scrawl, 0, h * 0.08);
+    ctx.restore();
+  }
+  if (p.torn) {
+    // A corner peeled away.
+    ctx.fillStyle = 'rgba(20,20,20,0.85)';
+    const t = 5 + p.torn * 7;
+    ctx.beginPath();
+    ctx.moveTo(w / 2, h / 2);
+    ctx.lineTo(w / 2 - t, h / 2);
+    ctx.lineTo(w / 2, h / 2 - t);
+    ctx.closePath();
+    ctx.fill();
   }
 }
 
@@ -623,47 +636,42 @@ function posterIcon(ctx, icon, x, y, r, color) {
   ctx.restore();
 }
 
-// --- Rooftop messages (roof pass: visible from the sky, faint at night) ---------------------------
+// --- Rooftop messages (painted on the roof: visible from the sky, faint at night) -----------------
 
-export function drawRoofArt(ctx, game, vr) {
-  const map = game.world.map;
-  if (!map.roofArt) return;
-  const night = game.settings.night;
-  for (const r of map.roofArt) {
-    if (!pointInRect(r.x, r.y, vr, Math.max(r.w, r.h))) continue;
-    ctx.save();
-    ctx.translate(r.x, r.y);
-    ctx.rotate(r.a || 0);
-    const len = Math.max(2, r.text.length);
-    const fs = Math.min(r.h * (r.arrow !== null && r.arrow !== undefined ? 0.4 : 0.55), (r.w * 0.82) / (len * 0.62));
-    ctx.font = `${fs.toFixed(0)}px ${SPRAY_FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = night ? 'rgba(235,232,220,0.42)' : 'rgba(245,242,230,0.75)';
-    const ty = r.arrow !== null && r.arrow !== undefined ? -fs * 0.35 : 0;
-    ctx.fillText(r.text, 0, ty);
-    if (r.arrow !== null && r.arrow !== undefined) {
-      const a = r.arrow - (r.a || 0);
-      const L = Math.min(r.w, r.h) * 0.28;
-      const ax = 0;
-      const ay = fs * 0.55;
-      ctx.strokeStyle = ctx.fillStyle;
-      ctx.lineWidth = fs * 0.14;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(ax - Math.cos(a) * L, ay - Math.sin(a) * L);
-      ctx.lineTo(ax + Math.cos(a) * L, ay + Math.sin(a) * L);
-      for (const sgn of [-1, 1]) {
-        ctx.moveTo(ax + Math.cos(a) * L, ay + Math.sin(a) * L);
-        ctx.lineTo(ax + Math.cos(a) * L - Math.cos(a + sgn * 0.6) * L * 0.45, ay + Math.sin(a) * L - Math.sin(a + sgn * 0.6) * L * 0.45);
-      }
-      ctx.stroke();
+/** One rooftop message, in world coordinates on the roof's plane. */
+export function roofText(ctx, r, night) {
+  ctx.save();
+  ctx.translate(r.x, r.y);
+  ctx.rotate(r.a || 0);
+  const len = Math.max(2, r.text.length);
+  const fs = Math.min(r.h * (r.arrow !== null && r.arrow !== undefined ? 0.4 : 0.55), (r.w * 0.82) / (len * 0.62));
+  ctx.font = `${fs.toFixed(0)}px ${SPRAY_FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = night ? 'rgba(235,232,220,0.42)' : 'rgba(245,242,230,0.75)';
+  const ty = r.arrow !== null && r.arrow !== undefined ? -fs * 0.35 : 0;
+  ctx.fillText(r.text, 0, ty);
+  if (r.arrow !== null && r.arrow !== undefined) {
+    const a = r.arrow - (r.a || 0);
+    const L = Math.min(r.w, r.h) * 0.28;
+    const ax = 0;
+    const ay = fs * 0.55;
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.lineWidth = fs * 0.14;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(ax - Math.cos(a) * L, ay - Math.sin(a) * L);
+    ctx.lineTo(ax + Math.cos(a) * L, ay + Math.sin(a) * L);
+    for (const sgn of [-1, 1]) {
+      ctx.moveTo(ax + Math.cos(a) * L, ay + Math.sin(a) * L);
+      ctx.lineTo(ax + Math.cos(a) * L - Math.cos(a + sgn * 0.6) * L * 0.45, ay + Math.sin(a) * L - Math.sin(a + sgn * 0.6) * L * 0.45);
     }
-    ctx.restore();
+    ctx.stroke();
   }
+  ctx.restore();
 }
 
-/** Words scrawled across a car roof (drawn by the renderer right after the car). */
+/** Words scrawled across a car roof (painted on the roof's plane by the car model). */
 export function drawCarScrawl(ctx, o) {
   if (!o.scrawl) return;
   const vert = o.h > o.w;
@@ -684,27 +692,33 @@ export function drawCarScrawl(ctx, o) {
 
 // --- Bright pass: candle flames and the stove in dens ---------------------------------------------
 
-export function drawLoreBright(ctx, game, vr) {
+/** Called with the plain screen transform. */
+export function drawLoreBright(R, game, vr) {
   const map = game.world.map;
   if (!map.dens || !map.dens.length) return;
+  const { ctx, v } = R;
   const t = game.time;
+  const s = Math.max(0.8, v.scale);
   for (const d of map.decor) {
     if (d.type !== 'candle' && d.type !== 'stove') continue;
     if (!pointInRect(d.x, d.y, vr, 20)) continue;
     const fl = 0.6 + 0.4 * Math.sin(t * 13 + d.x * 0.7) * Math.sin(t * 7.3 + d.y);
+    const sx = v.px(d.x, d.y);
     if (d.type === 'candle') {
+      const sy = v.py(d.x, d.y, v.flat ? 0 : 8);
       ctx.fillStyle = `rgba(255,200,110,${0.25 * fl})`;
       ctx.beginPath();
-      circle(ctx, d.x, d.y - 1, 7);
+      ctx.arc(sx, sy, 7 * s, 0, TAU);
       ctx.fill();
       ctx.fillStyle = `rgba(255,236,170,${0.8 + 0.2 * fl})`;
       ctx.beginPath();
-      circle(ctx, d.x, d.y - 1, 1.6 + fl);
+      ctx.arc(sx, sy, (1.6 + fl) * s, 0, TAU);
       ctx.fill();
     } else {
+      const sy = v.py(d.x, d.y, v.flat ? 0 : 6);
       ctx.fillStyle = `rgba(110,170,255,${0.5 + 0.3 * fl})`;
       ctx.beginPath();
-      circle(ctx, d.x, d.y, 3 + fl);
+      ctx.arc(sx, sy, (3 + fl) * s, 0, TAU);
       ctx.fill();
     }
   }

@@ -145,98 +145,111 @@ export function drawBenDecor(ctx, d, t) {
   }
 }
 
-/** His bed: a cardboard fort (open toward +x in its own frame), a sleeping bag, a folded blanket, a candle jar, the tally. */
-function drawFort(ctx, d) {
+/**
+ * His bed: a cardboard fort (open toward +x in its own frame), a sleeping
+ * bag, a folded blanket, a candle jar, the tally. `part`: 'floor' = what lies
+ * on the ground, 'walls' = the cardboard seen from above (with the tally and
+ * the drawings taped to it; the 3D pass paints this on top of the walls it
+ * builds), undefined = both.
+ */
+export function drawFort(ctx, d, part) {
   ctx.save();
   ctx.translate(d.x, d.y);
   ctx.rotate(d.a || 0);
-  ctx.fillStyle = 'rgba(0,0,0,0.32)';
-  ctx.fillRect(-32, -28, 56, 62);
-  // Floor: sleeping bag (pillow at the back), the square blanket at the foot.
-  ctx.fillStyle = '#4b6a88';
-  ctx.fillRect(-21, -12, 26, 24);
-  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let x = -16; x < 5; x += 5) {
-    ctx.moveTo(x, -12);
-    ctx.lineTo(x, 12);
-  }
-  ctx.stroke();
-  ctx.fillStyle = '#d8d0bd';
-  ctx.fillRect(-21, -9, 7, 18);
-  ctx.fillStyle = '#8a4d3a';
-  ctx.fillRect(6, -7, 11, 11);
-  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-  ctx.strokeRect(6.5, -6.5, 10, 10);
-  ctx.beginPath();
-  ctx.moveTo(6.5, -1.5);
-  ctx.lineTo(16.5, -1.5);
-  ctx.stroke();
-  // Candle in a jar, back corner.
-  ctx.fillStyle = 'rgba(200,230,240,0.35)';
-  ctx.beginPath();
-  circle(ctx, -18, -16, 3.6);
-  ctx.fill();
-  ctx.fillStyle = '#efe6cf';
-  ctx.beginPath();
-  circle(ctx, -18, -16, 2);
-  ctx.fill();
-  // A can by the bed.
-  ctx.fillStyle = '#8f969c';
-  ctx.beginPath();
-  circle(ctx, -6, 16, 3);
-  ctx.fill();
-  ctx.fillStyle = '#5c6268';
-  ctx.beginPath();
-  circle(ctx, -6, 16, 1.8);
-  ctx.fill();
-  // Cardboard walls: back and both sides.
-  const box = (x, y, w, h) => {
-    ctx.fillStyle = '#9c7650';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = 'rgba(60,40,20,0.55)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-    ctx.fillStyle = 'rgba(220,200,160,0.55)';
-    if (w > h) ctx.fillRect(x + w / 2 - 1.5, y, 3, h);
-    else ctx.fillRect(x, y + h / 2 - 1.5, w, 3);
-  };
-  box(-34, -30, 12, 60);
-  box(-34, -30, 52, 11);
-  box(-34, 19, 52, 11);
-  // Nights slept: tally marks down the back wall, in orange.
-  ctx.strokeStyle = BEN_COLOR;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  const n = d.slept || 20;
-  for (let k = 0; k < n; k++) {
-    const g = Math.floor(k / 5);
-    const j = k % 5;
-    const y = -26 + g * 8.5 + (j < 4 ? j * 1.6 : 0);
-    if (y > 26) break;
-    if (j < 4) {
-      ctx.moveTo(-31, y);
-      ctx.lineTo(-25, y);
-    } else {
-      ctx.moveTo(-31.5, -26 + g * 8.5 - 0.8);
-      ctx.lineTo(-24.5, -26 + g * 8.5 + 5.6);
+  if (part !== 'walls') {
+    if (!part) {
+      ctx.fillStyle = 'rgba(0,0,0,0.32)';
+      ctx.fillRect(-32, -28, 56, 62);
     }
-  }
-  ctx.stroke();
-  // Drawings taped to the side walls.
-  for (const [x, y, c] of [[-14, -27.5, '#5f8fd0'], [2, -27.5, '#e05a4a'], [-6, 21.5, '#59a85a']]) {
-    ctx.fillStyle = '#f1ead8';
-    ctx.fillRect(x, y, 9, 6);
-    ctx.strokeStyle = c;
+    // Floor: sleeping bag (pillow at the back), the square blanket at the foot.
+    ctx.fillStyle = '#4b6a88';
+    ctx.fillRect(-21, -12, 26, 24);
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x + 1.5, y + 4);
-    ctx.lineTo(x + 4, y + 1.5);
-    ctx.lineTo(x + 7.5, y + 4.5);
+    for (let x = -16; x < 5; x += 5) {
+      ctx.moveTo(x, -12);
+      ctx.lineTo(x, 12);
+    }
     ctx.stroke();
+    ctx.fillStyle = '#d8d0bd';
+    ctx.fillRect(-21, -9, 7, 18);
+    ctx.fillStyle = '#8a4d3a';
+    ctx.fillRect(6, -7, 11, 11);
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.strokeRect(6.5, -6.5, 10, 10);
+    ctx.beginPath();
+    ctx.moveTo(6.5, -1.5);
+    ctx.lineTo(16.5, -1.5);
+    ctx.stroke();
+    // Candle in a jar, back corner.
+    ctx.fillStyle = 'rgba(200,230,240,0.35)';
+    ctx.beginPath();
+    circle(ctx, -18, -16, 3.6);
+    ctx.fill();
+    ctx.fillStyle = '#efe6cf';
+    ctx.beginPath();
+    circle(ctx, -18, -16, 2);
+    ctx.fill();
+    // A can by the bed.
+    ctx.fillStyle = '#8f969c';
+    ctx.beginPath();
+    circle(ctx, -6, 16, 3);
+    ctx.fill();
+    ctx.fillStyle = '#5c6268';
+    ctx.beginPath();
+    circle(ctx, -6, 16, 1.8);
+    ctx.fill();
+  }
+  if (part !== 'floor') {
+    // Cardboard walls: back and both sides.
+    const box = (x, y, w, h) => {
+      ctx.fillStyle = '#9c7650';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(60,40,20,0.55)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      ctx.fillStyle = 'rgba(220,200,160,0.55)';
+      if (w > h) ctx.fillRect(x + w / 2 - 1.5, y, 3, h);
+      else ctx.fillRect(x, y + h / 2 - 1.5, w, 3);
+    };
+    for (const [x, y, w, h] of FORT_WALLS) box(x, y, w, h);
+    // Nights slept: tally marks down the back wall, in orange.
+    ctx.strokeStyle = BEN_COLOR;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const n = d.slept || 20;
+    for (let k = 0; k < n; k++) {
+      const g = Math.floor(k / 5);
+      const j = k % 5;
+      const y = -26 + g * 8.5 + (j < 4 ? j * 1.6 : 0);
+      if (y > 26) break;
+      if (j < 4) {
+        ctx.moveTo(-31, y);
+        ctx.lineTo(-25, y);
+      } else {
+        ctx.moveTo(-31.5, -26 + g * 8.5 - 0.8);
+        ctx.lineTo(-24.5, -26 + g * 8.5 + 5.6);
+      }
+    }
+    ctx.stroke();
+    // Drawings taped to the side walls.
+    for (const [x, y, c] of [[-14, -27.5, '#5f8fd0'], [2, -27.5, '#e05a4a'], [-6, 21.5, '#59a85a']]) {
+      ctx.fillStyle = '#f1ead8';
+      ctx.fillRect(x, y, 9, 6);
+      ctx.strokeStyle = c;
+      ctx.beginPath();
+      ctx.moveTo(x + 1.5, y + 4);
+      ctx.lineTo(x + 4, y + 1.5);
+      ctx.lineTo(x + 7.5, y + 4.5);
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
+
+/** The fort's cardboard walls in its own frame: [x, y, w, h] (back, then the two sides). */
+export const FORT_WALLS = [[-34, -30, 12, 60], [-34, -30, 52, 11], [-34, 19, 52, 11]];
 
 /** The stuffed rabbit: one ear chewed short, sewn-on googly eyes. */
 function drawRabbit(ctx, d) {
@@ -313,14 +326,19 @@ function drawVent(ctx, d) {
 
 // --- Over the darkness ---------------------------------------------------------------------------------
 
-/** The eyes glow a little in the dark; the candle in his bed; the glimpse. */
-export function drawBenBright(ctx, game, vr) {
+/**
+ * The eyes glow a little in the dark; the candle in his bed; the glimpse.
+ * Called with the plain screen transform (R.ground(z) paints on the ground).
+ */
+export function drawBenBright(R, game, vr) {
   const map = game.world.map;
   if (!map.ben) return;
+  const { ctx, v } = R;
   const t = game.time;
   const p = game.player;
   const W = game.world;
   const night = game.settings.night;
+  R.ground(0);
   if (night) {
     const pulse = 0.14 + 0.06 * Math.sin(t * 1.3);
     for (const d of map.decor) {
@@ -348,7 +366,9 @@ export function drawBenBright(ctx, game, vr) {
     circle(ctx, n.candle.x, n.candle.y - 0.5, 1.4 + fl * 0.8);
     ctx.fill();
   }
+  R.reset();
   // The glimpse: two eyes catching your light, then a blink, then nothing.
+  // They are about as high as a small boy's, and they look at you.
   const g = G && G.glimpse;
   if (g && (g.state === 'wait' || g.state === 'seen') && pointInRect(g.x, g.y, vr, 20)) {
     let a = g.state === 'wait' ? Math.min(1, g.lit * 1.4) : 1;
@@ -356,54 +376,50 @@ export function drawBenBright(ctx, game, vr) {
     if (g.state === 'seen') lid = Math.max(0, 1 - g.t / 0.16);
     if (g.state === 'seen' && g.t > 0.16) a = 0;
     if (a > 0.03 && lid > 0) {
-      const look = Math.atan2(p.y - g.y, p.x - g.x);
+      const look = v.angleToScreen(Math.atan2(p.y - g.y, p.x - g.x));
       ctx.save();
-      ctx.translate(g.x, g.y - 8);
-      ctx.scale(1, lid);
+      ctx.translate(v.px(g.x, g.y), v.py(g.x, g.y, v.flat ? 0 : 26));
+      ctx.scale(Math.max(0.8, v.scale), Math.max(0.8, v.scale) * lid);
       drawEyes(ctx, 0, 0, look, 0.75, a, false);
       ctx.restore();
     }
   }
 }
 
-/** "ben was here" on roofs, shelf tops, container stacks, the quarantine wall and crane 3's boom (above everything). */
-export function drawBenRoof(ctx, game, vr) {
+/**
+ * "ben was here" where nobody could reach: one entry, in world coordinates on
+ * the plane it was written on (a roof, a shelf top, a container, the top of
+ * the quarantine wall). The 3D pass calls it for the obstacle it sits on.
+ */
+export function benText(ctx, e, night, x = e.x, y = e.y, size = e.size, a = e.a || 0) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(a);
+  ctx.font = `700 ${size}px ${CRAYON}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = Math.max(2, size * 0.22);
+  ctx.strokeText(e.text, 0, 0);
+  ctx.fillStyle = BEN_COLOR;
+  ctx.globalAlpha = night ? 0.8 : 0.95;
+  ctx.fillText(e.text, 0, 0);
+  ctx.globalAlpha = 1;
+  if (!e.small) {
+    const w = ctx.measureText(e.text).width;
+    drawEyes(ctx, w / 2 + size * 0.75, 0, 0, size * 0.09, night ? 0.8 : 1);
+  }
+  ctx.restore();
+}
+
+/** Entries that found nothing to sit on (shouldn't happen) are written on the ground where they are. */
+export function drawBenLoose(ctx, game, vr) {
   const map = game.world.map;
   if (!map.benRoof || !map.benRoof.length) return;
-  const night = game.settings.night;
   for (const e of map.benRoof) {
-    let x = e.x;
-    let y = e.y;
-    let size = e.size;
-    let a = e.a || 0;
-    if (e.type === 'boom') {
-      const c = map.cranes && map.cranes[e.crane];
-      if (!c) continue;
-      x = c.x1 + c.boom * 0.55;
-      y = (c.y + c.y1) / 2;
-      size = 12;
-      a = 0;
-    }
-    if (!pointInRect(x, y, vr, 120)) continue;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(a);
-    ctx.font = `700 ${size}px ${CRAYON}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-    ctx.lineWidth = Math.max(2, size * 0.22);
-    ctx.strokeText(e.text, 0, 0);
-    ctx.fillStyle = BEN_COLOR;
-    ctx.globalAlpha = night ? 0.8 : 0.95;
-    ctx.fillText(e.text, 0, 0);
-    ctx.globalAlpha = 1;
-    if (!e.small) {
-      const w = ctx.measureText(e.text).width;
-      drawEyes(ctx, w / 2 + size * 0.75, 0, 0, size * 0.09, night ? 0.8 : 1);
-    }
-    ctx.restore();
+    if (e.type === 'boom' || e._on || !pointInRect(e.x, e.y, vr, 120)) continue;
+    benText(ctx, e, game.settings.night);
   }
 }
 

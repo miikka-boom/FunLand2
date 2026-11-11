@@ -1,10 +1,11 @@
 # Twin-stick touch controls (Prototype 0)
 
-This is the control scheme for the top-down horde game, with the default
-values and the reasons behind them. Every number here can be changed live in
-the in-game tuning panel (sliders button, top right). To lock in a different
-feel, tune it on a phone, press **Copy tuning JSON**, and update the defaults in
-`src/settings.js`.
+This is the control scheme for the horde game (We Left Ben), with the default
+values and the reasons behind them. The world is 3D;
+[what the camera means for the sticks](#sticks-and-the-camera) is below.
+Every number here can be changed live in the in-game tuning panel (sliders
+button, top right). To lock in a different feel, tune it on a phone, press
+**Copy tuning JSON**, and update the defaults in `src/settings.js`.
 
 ## Layout (landscape)
 
@@ -29,6 +30,50 @@ feel, tune it on a phone, press **Copy tuning JSON**, and update the defaults in
   on release.
 - Faint "ghost" sticks show where thumbs usually rest (and where fixed sticks
   sit). Their labels fade out after about 15 seconds of play.
+
+## Sticks and the camera
+
+The world is 3D. On most maps the camera looks north from high up (75°
+above the horizon), so the streets run along the screen, left-right and
+up-down. The other 3D camera is the isometric one: the map turned 45°, seen
+from the south-west. **Every map type keeps its own camera**: the Building
+starts in the isometric view at its highest tilt (70°), the other five with
+the streets along the screen. Either way:
+
+- **A stick is a direction on the screen.** Push up and you run up the
+  screen; push right and you run right. With the streets along the screen
+  that is north and east on the map; in the isometric view up is north-east.
+  The aim stick works the same way: the laser leaves your gun at the angle
+  your thumb makes on the glass. `src/iso.js` (`dirToWorld`) turns a screen
+  direction into the heading on the ground that looks the same.
+- **Speed is the same over the ground in every direction.** Up and down the
+  screen the ground is foreshortened (hardly at 75°, by more than half in
+  the isometric view at 25°), so you cover fewer pixels there for the same
+  run speed, and guns reach further in pixels sideways than up. The camera's
+  look-ahead makes up for it: it leads by the same distance on screen
+  whichever way you aim.
+- **The mouse** (desktop) aims at the spot under the cursor at gun height, so
+  the laser runs through the cursor rather than through the ground behind it.
+- **What the camera can't see, you're told:** a wall or building between the
+  camera and you fades out; a zombie the camera can't see (one you can, when
+  line-of-sight shadows are on) shows through as a red outline.
+- **Streets along the screen** looks north, so you see roofs and
+  south-facing walls; walls that run up the screen are seen along their
+  length. It needs a steep tilt: from 35° a wall hides most of a doorway in
+  it.
+
+The **Camera** group in the panel shows and changes the camera of the map
+type being played (its heading names it: "Camera · Streets"); each of the
+six keeps its own values, saved as `key@map` (`cameraTilt@interior`). The
+defaults:
+
+| Setting | Default | Why |
+|---|---|---|
+| View | **3D** | *Top-down* shows the same world from straight above, flat: the baseline to compare the feel against. |
+| Streets along the screen | **on** (Building: **off**) | The 3D view without a 45° turn: streets run left-right and up-down, and sticks are map directions. Costs the west-facing walls: only south faces show. Off: the isometric view, where both the west and the south walls of a room show, which is what an office floor of small rooms needs. |
+| Tilt with streets along the screen | 75° | Nearly overhead: the ground is hardly squeezed, and a wall hides only 12 u of the 72-86 u doorway in it (at 35° it would hide 63 u). The top of the slider. |
+| Isometric tilt | 25° (Building: **70°**) | For the isometric view (the switch off). Low is cinematic, but buildings hide a lot behind them; 35° is true isometric; 70°, the top of the slider, is nearly overhead: indoors the walls then hide little of the rooms behind them. |
+| View size | 470 u | Zoom, per map type like the rest. |
 
 ## Left stick: move
 
@@ -81,6 +126,9 @@ The knob turns orange while firing, and the fire ring brightens.
   finger.
 
 ## Special infected: stress tests for the controls
+
+The Hunter and the Tank are off by default (**Hunter + Tank** under
+**Specials**).
 
 ### Hunter: shove timing
 
@@ -294,7 +342,8 @@ stays reachable, or the piece isn't placed.
 
 ## Pier 9: the ferry finale
 
-The third level (**Pier 9** on the title card, or **Level** in the panel).
+One of the six map types (**Pier 9** on the title card, or **Level** in the
+panel).
 
 - **Map:** warehouse lots (start: the harbour office, bottom left), the yard
   road, a container yard (a grid of stacks with a lane between every two, two
@@ -316,6 +365,43 @@ The third level (**Pier 9** on the title card, or **Level** in the panel).
   reads PIER 9, then GANGWAY.
 - The holdout gate, two routes and landmarks don't apply on Pier 9; the
   finds and the graffiti do.
+
+## Out of town: Suburbia, the Graveyard, the Junkyard
+
+Three more map types, each a seeded generator of its own
+(`src/world/suburbia-gen.js`, `graveyard-gen.js`, `junkyard-gen.js`; what
+they share is in `gen-kit.js`) with its own ground, models and lines. All
+three start with the streets along the screen, take the finds, the writing
+and Ben with the streets' numbers, and have no holdout gate, second route or
+landmarks. On every seed the goal can be walked to and at least 98.5% of
+the open ground is connected (tested with a body's width, not a point).
+
+- **Suburbia** (5632 × 3456 u): 5 × 3 blocks between streets with sidewalks.
+  Most blocks are two rows of lots back to back, some with an alley between
+  the rows: a house (one or two storeys under a pitched roof, 60–94 u tall,
+  solid), a driveway, a garage, a porch light on some, a fenced backyard.
+  Fences are thin (they stop feet, not bullets or sight) and have 96 u
+  gates, so every yard can be walked into and the yards are a second way
+  through each block. One block each is the park (a ballfield, a closed
+  playground), the strip mall (a row of shops behind a parking lot with
+  light towers) and the school (buses in the lane). Alarms: parked cars as
+  in town, and the ice-cream truck.
+- **Graveyard** (5184 × 3392 u): 6 × 4 sections between gravel paths.
+  Lanterns stand along the gate avenue and the cross avenue and hardly
+  anywhere else, and the night is darker here. Headstones (800–1000 of
+  them) stand one to a 32 u cell, every second cell along a row and every
+  third row, so a body always passes between two stones and a lane runs
+  between rows; they stop feet, not bullets or sight. Mausoleums, the
+  chapel and the columbarium walls are solid. The pond is water: it blocks
+  feet only. The office in the maintenance yard is the one building a
+  boarded room can be in.
+- **Junkyard** (4992 × 3200 u): the front lot (office trailer, weighbridge,
+  workshop), then a grid of yard cells with a lane between every two (some
+  wide enough to be roads), then the back lot. A cell holds stacks of
+  wrecks (94 × 48 u a car, 2–4 high: solid, they block bullets and sight),
+  or scrap heaps, tyre stacks, appliances, containers, a bus. The clearing
+  in the middle has the crusher, the crane and the floodlights. Wrecks left
+  in the lanes never close one. Few lamps work.
 
 ## Playtest kit
 
@@ -349,8 +435,8 @@ keeps clear of finds, features and graffiti. Every word is in
   googly eyes like the logo's. The pupils always point at what the mark is
   about. Eye marks glow faintly over the darkness (only with a clear line of
   sight).
-- **His bed:** one per map, off the route (detour 650 u on the streets, 420 in
-  the building, 600 at the docks), enclosed, dark if possible, at least
+- **His bed:** one per map, off the route (detour 420 u in the building, 600
+  at the docks, 650 everywhere else), enclosed, dark if possible, at least
   1100 u from the start and away from the secret. Found = within 80 u (saved
   on the device). Out of sight within 700 u: the whistle, once a run. Within
   480 u: steam off the can. His map of the level (190 × 124 u) and the squad
@@ -378,13 +464,25 @@ visual only: no obstacles, so it never changes a route. Everything is placed
 fresh from the map's seed, and every line lives in `src/world/lore-content.js`
 for editing.
 
-**The setting** (all original): Port Halvard, a harbor city. "The Drowse":
-people who stopped sleeping, then stopped being people. Survivors call them
-**drowsers**; the jumpy ones are **leapers**, the huge ones **brutes**.
-Everybody blames **Slumbra**, Lullan Labs' sleep aid ("Sleep like the dead.").
-Halvard Civil Response (HCR) put up curfew notices and promised boats at
-**Pier 9**, every hour. The safe rooms are on the way to the pier, and the
-survivors who got there first left their marks:
+**The setting:** roughly Philadelphia, 2020. On top of everything else that
+year came "the Drowse": people who stopped sleeping, then stopped being
+people. Survivors call them **drowsers**; the jumpy ones are **leapers**,
+the huge ones **brutes**. Everybody blames **Slumbra**, Lullan Labs' sleep
+aid ("Sleep like the dead."). The city put up stay-home and curfew notices
+and promised boats across the Delaware from **Pier 9**, every hour. The safe
+rooms are on the way to the pier, from the Delco lawns through the cemetery
+and the salvage yards to Center City.
+
+What is real and what isn't: the place names are real and used loosely
+(Center City, Market St, Broad St, Delaware Ave, Penn's Landing, Delco,
+Southwest Philly, the Schuylkill, 311). Slumbra, Lullan Labs and every
+venue are made up (Wissahickon Hill Cemetery, Cracked Bell Auto Salvage, Elm
+St Elementary, the ferry LIBERTY BELLE, the shops), and no real brand or
+person is named, Ben Franklin aside. The year shows in the notices (masks,
+six feet, essential trips, curbside pickup, remote learning, a postponed
+Broad Street run) and in what people wrote ("YOU'RE ON MUTE", "CLASS OF
+2020: WE MADE IT (SOME)"). The survivors who got there first left their
+marks:
 
 - **Odile** keeps a diary (her journal pages are in the street dens) and
   found a dog called **Biscuit** (whose MISSING posters are all over town).
@@ -399,16 +497,19 @@ survivors who got there first left their marks:
 
 What a map gets:
 
-- **Graffiti** (about 20 lines on the streets, 15 in the building): half
-  along the way, half where you wander. Mostly jokes, some dark, some tips
+- **Graffiti** (about 20 lines outdoors, 15 in the building): half along
+  the way, half where you wander. Out of town and on the docks a place's own
+  lines come first, then a few from town. No line is ever written over
+  another (or over the words a map came with: road paint, ledgers, chalk). Mostly jokes, some dark, some tips
   ("RED LIGHT CARS = DINNER BELLS", "LEAPERS JUMP. KNOCK 'EM OUT OF THE AIR.",
   "CHALK ARROWS LEAD TO GOOD STUFF", "SHINY IN THE DARK? LOOK CLOSER."). Two
   "PIER 9 →" (indoors "EXIT →") arrows point along the walk to the safe room.
   Plus loose doodles: smileys, a tic-tac-toe game, a cat, the Tinkerer's mark.
 - **Safe-room walls:** five or so lines in each safe room. The start room's
   "PIER 9 →" points out of the door.
-- **Posters** (12–18 on the streets, 8–11 indoors) in small groups on
-  building fronts and corridor walls near the way.
+- **Posters** (12–18 on the streets, 8–11 indoors, 10–15 in the suburbs, a
+  handful on the chapel or the yard's trailer) in small groups on building
+  fronts and corridor walls near the way.
 - **Rooftop messages** (streets): four roofs near the way, one with a
   "PIER 9" arrow pointing at the goal.
 - **Dens** (1–2 on the streets, 1 indoors) in a dead end or back room off the
@@ -418,6 +519,8 @@ What a map gets:
   the camp (on two or three lines, or along an alley, if space is tight).
 - **Scenes** (2–3): bus stop, lemonade stand, last stand, HONK IF ALIVE car,
   wedding car (streets); fridge note, whiteboards, reception desk (building).
+  Out of town the same scenes in local dress: the school bus stop by the
+  road, the flower stall at the cemetery ("TODAY: FREE"), hubcaps for sale.
 - **No inspect text:** there is no caption box and no action to read
   anything. Every word is drawn in the world at a size you can read from
   above (graffiti 11–23 u, notes 11–14 u), so all players see the same
@@ -426,10 +529,17 @@ What a map gets:
 
 ## Camera
 
-- The visible world is **470 units across the short screen axis** on every
-  device, so the field of view feels the same on phones and tablets.
+- The view size is **470 units across the short screen axis** on every
+  device (and by default on every map type; it is a per-map setting like
+  the view and the tilts), so the field of view feels the same on phones
+  and tablets. That is
+  exact in the top-down view; a tilted view is drawn larger the lower the
+  camera (1% at 75°, 18% at true isometric, 24% at 25°), because the tilt
+  squeezes the ground up and down the screen: it still shows more of it that
+  way, and bodies stay readable.
 - Look-ahead is 20% of the view: full while firing, 70% while aiming and 45%
-  while just moving. You see more of where you're shooting.
+  while just moving. You see more of where you're shooting. The lead is the
+  same distance on screen whichever way you aim.
 - Screen shake is trauma-based (trauma² feels right), tuned low for sustained
   SMG fire and punchy for the shotgun. The camera recoils back from each shot.
 

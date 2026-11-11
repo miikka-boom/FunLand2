@@ -350,9 +350,8 @@ function allyPanelRect(L) {
 function drawAllyMarker(ctx, game, L) {
   const a = game.ally;
   const v = game.view;
-  const cam = game.camera;
-  const sx = (a.x - cam.x - cam.shakeX) * v.scale + v.w / 2;
-  const sy = (a.y - cam.y - cam.shakeY) * v.scale + v.h / 2;
+  const sx = v.px(a.x, a.y);
+  const sy = v.py(a.x, a.y, 0);
   const pulse = 0.6 + Math.sin(game.time * 7) * 0.3;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -360,13 +359,13 @@ function drawAllyMarker(ctx, game, L) {
     ctx.font = `800 10px ${FONT}`;
     if (a.down) {
       // Under the dashed revive circle (announcements sit above the centre).
-      const y = sy + ALLY.reviveRange * v.scale + 12;
+      const y = sy + ALLY.reviveRange * v.scale * v.sp + 12;
       ctx.fillStyle = `rgba(255,120,100,${pulse})`;
       ctx.fillText(a.revive > 0 ? `REVIVING ${Math.round(a.revive * 100)}%` : 'DOWN — STAND HERE', sx, y);
       return;
     }
-    // Above its ring; a small health bar between the name and the ring when it's hurt.
-    const top = sy - (a.r + 5) * v.scale;
+    // Above its head; a small health bar between the name and the head when it's hurt.
+    const top = v.flat ? sy - (a.r + 5) * v.scale : v.py(a.x, a.y, 48);
     const hurt = a.hp < a.maxHp * 0.6;
     const y = top - (hurt ? 16 : 10);
     ctx.fillStyle = 'rgba(160,255,175,0.55)';
@@ -381,8 +380,8 @@ function drawAllyMarker(ctx, game, L) {
     return;
   }
   const p = game.player;
-  const px = (p.x - cam.x - cam.shakeX) * v.scale + v.w / 2;
-  const py = (p.y - cam.y - cam.shakeY) * v.scale + v.h / 2;
+  const px = v.px(p.x, p.y);
+  const py = v.py(p.x, p.y, 0);
   const ang = Math.atan2(sy - py, sx - px);
   const e = edgePoint(L, px, py, ang, 30);
   ctx.fillStyle = a.down ? `rgba(255,90,70,${pulse})` : 'rgba(140,255,160,0.75)';
@@ -477,11 +476,8 @@ function drawThreats(ctx, game, L) {
   const ps = game.worldToScreen(p.x, p.y);
   sectors.fill(0);
   let any = false;
-  // worldToScreen inlined: this runs for every hunting zombie, every frame.
+  // The projection inlined: this runs for every hunting zombie, every frame.
   const v = game.view;
-  const cam = game.camera;
-  const ox = v.w / 2 - (cam.x + cam.shakeX) * v.scale;
-  const oy = v.h / 2 - (cam.y + cam.shakeY) * v.scale;
   for (const z of game.zombies) {
     if (!z.alive || z.ghost || z.state !== 'chase') continue;
     const ddx = z.x - p.x;
@@ -489,8 +485,8 @@ function drawThreats(ctx, game, L) {
     const lim = z.type === 'common' ? 850 : 1300;
     if (ddx * ddx + ddy * ddy > lim * lim) continue;
     const d = Math.sqrt(ddx * ddx + ddy * ddy);
-    const zsx = z.x * v.scale + ox;
-    const zsy = z.y * v.scale + oy;
+    const zsx = v.ox + v.ax * z.x + v.ay * z.y;
+    const zsy = v.oy + v.bx * z.x + v.by * z.y;
     if (zsx > 0 && zsx < L.w && zsy > 0 && zsy < L.h) continue;
     if (z.type !== 'common') {
       const ang = Math.atan2(zsy - ps.y, zsx - ps.x);

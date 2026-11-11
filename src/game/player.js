@@ -9,6 +9,10 @@ import { hotDef, shootBoards, shoveBoards } from './loot.js';
 import { damageExplosive } from './world-events.js';
 
 export const SHOVE_REACH = 52;
+/** How high the survivors carry their guns (the laser and tracers run at this height). */
+export const GUN_Z = 27;
+const moveTmp = { x: 0, y: 0 };
+const aimTmp = { x: 0, y: 0 };
 export const SHOVE_HALF_ANGLE = 65 * DEG;
 
 export class Player {
@@ -98,8 +102,10 @@ export function updatePlayer(game, dt, input) {
     if (p.slowT > 0) speed *= 0.55; // tagged by a hit
   }
   const control = p.knockT > 0 ? 0.15 : 1; // knocked flying by a Tank
-  const tx = input.move.x * speed * control;
-  const ty = input.move.y * speed * control;
+  // The stick is a direction on the screen: run the way that looks the same on the ground.
+  const mv = game.view.dirToWorld(input.move.x, input.move.y, moveTmp);
+  const tx = mv.x * speed * control;
+  const ty = mv.y * speed * control;
   // Accelerate toward the target velocity; brake harder when reversing/stopping.
   const dvx = tx - p.vx;
   const dvy = ty - p.vy;
@@ -122,13 +128,16 @@ export function updatePlayer(game, dt, input) {
   let aimActive = input.aimActive;
   let targetAngle = p.aimAngle;
   if (input.aimScreen) {
-    const s = game.worldToScreen(p.x, p.y);
-    const ax = input.aimScreen.x - s.x;
-    const ay = input.aimScreen.y - s.y;
-    aimActive = Math.hypot(ax, ay) > 6;
+    // Mouse: aim at the spot under the cursor, at gun height (the laser runs through the cursor).
+    const w = game.view.unproject(input.aimScreen.x, input.aimScreen.y, GUN_Z, aimTmp);
+    const ax = w.x - p.x;
+    const ay = w.y - p.y;
+    aimActive = Math.hypot(ax, ay) > 7;
     if (aimActive) targetAngle = Math.atan2(ay, ax);
   } else if (aimActive) {
-    targetAngle = Math.atan2(input.aimY, input.aimX);
+    // Stick: the heading on the ground that looks like the stick's on screen.
+    const w = game.view.dirToWorld(input.aimX, input.aimY, aimTmp);
+    targetAngle = Math.atan2(w.y, w.x);
   }
 
   if (aimActive) {
