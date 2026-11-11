@@ -7,6 +7,7 @@ build step and no dependencies.
 |---|---|---|
 | 0: HORDE | [`/`](index.html) | Twin-stick touch controls for zombie horde survival, in 3D |
 | 1: WOBBLE WAR | [`battle/`](battle/) | A real-time card battler with funny, satisfying 2D physics units and a fair free-to-play meta game |
+| Long Haul | [`haul/`](haul) | A simple metagame that crosses The Walking Dead: No Man's Land with Clash Royale: three go out, everyone still standing carries a crate home (stars = picks from nine crates), survivors are cards, radios call new people on a timer, and the road leads to Pier 9 |
 | Thrill Hill | [`thrill/`](thrill) | A Clash-Royale-inspired metagame: two static chests, a theme-park base, randomly generated survivors, a squad of three, three-crown raids |
 | Last Stop | [`outpost/`](outpost) | A simple base builder on an isometric town: one survivor goes out each night; build homes (someone new moves in), upgrade them (they grow), decorate, clear the lot next door |
 | Hope Street | [`hope/`](hope) | A metagame with base building and randomly generated people: take them in, pick a crew of four for each run |
@@ -610,6 +611,40 @@ and no dependencies.
     The chip shows your best time (or furthest run) today. **New map** turns
     it off. The run timer says "daily" while it's on.
 
+## Long Haul: No Man's Land × Clash Royale
+
+[`haul/`](haul) is the newest metagame prototype, written from scratch: it
+shares no code or systems with the others. The brief was "a simple and
+satisfying combination of The Walking Dead: No Man's Land and Clash Royale".
+Runs are simulated; the people and places are borrowed from We Left Ben (the
+squad, the six maps as six stops on the road, drowsers).
+
+- **Three go out. Whoever's still standing carries a crate home.** A run is
+  worth 0 to 3 stars, one for each survivor on their feet at the end, and each
+  star is one pick from **nine crates**. So Clash Royale's three crowns are No
+  Man's Land's crate picks, and you can count them on screen.
+- **Survivors are cards.** A fixed cast of twelve in four rarities. Crates
+  hold supplies (the one currency) and tokens; a full token bar plus supplies
+  is a level-up. Power against the stop's danger decides who stays standing.
+- **The radio rack is the chest slots.** Every haul hides one radio while the
+  rack has room. The rack holds three and calls with one at a time, three
+  hours a call. Someone answers: a new survivor moves into the camp, or
+  someone you know sends tokens.
+- **The road is the ladder.** Stars add up through six stops to Pier 9; each
+  is more dangerous, has richer crates and new voices on the radio.
+- The camp is one scene at dusk: the radio tent, the fire, a tent for every
+  two people, the squad by the truck. No buildings to upgrade, no energy, no
+  premium currency.
+- Once in a while: a gold crate, a Legendary on the radio, two little eyes
+  scratched beside the best crate, a crate at the gate in orange crayon.
+- The testing drawer (gear, top right) forces outcomes, jumps time for the
+  radio, picks who answers, cheats and has live sliders. `npm run haul:balance`
+  simulates ten days of play.
+
+Open `/haul/` (on Pages: `https://miikka-boom.github.io/FunLand2/haul/`). The
+design, numbers, pacing and code map are in
+[docs/LONG-HAUL.md](docs/LONG-HAUL.md).
+
 ## Thrill Hill: a metagame prototype
 
 [`thrill/`](thrill) is a separate page and a fresh take: it shares no systems
@@ -747,8 +782,9 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
 
 - **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` (HORDE) once
   this is on the default branch (the Pages workflow only deploys from there).
-  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/thrill/`
-  (Thrill Hill), `/outpost/` (Last Stop), `/hope/` (Hope Street), `/evac/` (Road to Evac), `/safehouse/` (the Safehouse) and
+  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/haul/`
+  (Long Haul), `/thrill/` (Thrill Hill), `/outpost/` (Last Stop), `/hope/`
+  (Hope Street), `/evac/` (Road to Evac), `/safehouse/` (the Safehouse) and
   `/camp/` (the v1 camp).
 - **Locally:** `npm start` (or `python3 -m http.server 8080`), then open
   `http://localhost:8080`. To try it on a phone, open
@@ -786,13 +822,14 @@ src/render/*-render.js     what is painted flat (ground, graffiti, posters, chal
 src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
+haul/                      Long Haul metagame prototype: No Man's Land × Clash Royale (separate page; map in docs/LONG-HAUL.md)
 thrill/                    Thrill Hill metagame prototype (separate page; map in docs/THRILL-HILL.md)
 outpost/                   Last Stop, the simple isometric base builder (separate page; map in docs/LAST-STOP.md)
 hope/                      Hope Street metagame prototype (separate page; map in docs/HOPE-STREET.md)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.
