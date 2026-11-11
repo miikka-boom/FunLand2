@@ -118,8 +118,14 @@ export class RunView {
       s.g.innerHTML = figureSvg(s.id, pose);
     };
     const drowsers = [];
+    // The timeline: events in time order (ones added while it plays slot into place).
     const events = [];
-    const at = (t, fn) => events.push({ t, fn });
+    let ei = 0;
+    const at = (t, fn) => {
+      let i = events.length;
+      while (i > ei && events[i - 1].t > t) i--;
+      events.splice(i, 0, { t, fn });
+    };
 
     // The squad runs in.
     for (const s of squad) {
@@ -161,7 +167,7 @@ export class RunView {
           play('hit', { heavy: CAST[s.id].cls === 'bruiser' });
         } else {
           setPose(s, 'aim');
-          tracer(s.x + (REACH[s.prop] || 60), s.y - 50, d.x - 4, s.y - 56);
+          tracer(s.x + (REACH[s.prop] || 60), s.y - 50, (d.x ?? d.x0) - 4, s.y - 56);
           play('shot', { kind: SHOT[s.prop] || 'pistol' });
         }
         s.poseT = tk + 0.17;
@@ -224,7 +230,12 @@ export class RunView {
     // The end: everyone standing lifts a crate, one star each.
     const standing = squad.filter((s) => s.standing);
     at(END + 0.15, () => {
-      for (const d of drowsers) if (d.alive && d.g && standing.length) drop(d, END + 0.15);
+      for (const d of drowsers) {
+        if (!d.alive) continue;
+        if (!standing.length) d.stopX = -200; // nobody left to stop them: they shuffle on
+        else if (d.g) drop(d, END + 0.15);
+        else d.alive = false;
+      }
       for (const s of standing) setPose(s, 'cheer');
     });
     standing.forEach((s, n) => {
@@ -250,9 +261,7 @@ export class RunView {
     const total = bannerT + (res.stars ? 0.95 : 1.5);
 
     // --- The frame loop -----------------------------------------------------------------------
-    events.sort((a, b) => a.t - b.t);
     let t = -0.25; // a breath before it starts
-    let ei = 0;
     let prev = performance.now();
     let done = false;
     const skipEl = el.querySelector('.run-skip');
@@ -264,18 +273,9 @@ export class RunView {
     };
     el.addEventListener('click', onTap);
     await new Promise((resolve) => {
-      const frame = (now) => {
-        const dt = Math.min(0.05, (now - prev) / 1000) * speed;
-        prev = now;
-        t += dt;
-        while (ei < events.length && events[ei].t <= t) {
-          try {
-            events[ei].fn();
-          } catch (err) {
-            console.error(err);
-          }
-          ei++;
-        }
+      /** Move the clock on to `to`: the drowsers first, so whoever an event is about is already in the street. */
+      const advance = (to) => {
+        t = to;
         for (const d of drowsers) {
           if (!d.alive) continue;
           if (!d.g) {
@@ -289,8 +289,26 @@ export class RunView {
             d.g.remove();
           }
         }
+        while (ei < events.length && events[ei].t <= t) {
+          const e = events[ei++];
+          try {
+            e.fn();
+          } catch (err) {
+            console.error(err);
+          }
+        }
+      };
+      const frame = (now) => {
+        let left = Math.min(0.05, (now - prev) / 1000) * speed;
+        prev = now;
+        // Skipping covers seconds in one frame, but always in small steps: the same things happen in the same order.
+        while (left > 0) {
+          const step = Math.min(0.05, left);
+          advance(t + step);
+          left -= step;
+        }
         if (t >= total) return resolve();
-        requestAnimationFrame(frame);
+        return requestAnimationFrame(frame);
       };
       requestAnimationFrame(frame);
     });

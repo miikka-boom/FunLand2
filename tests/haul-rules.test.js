@@ -656,3 +656,60 @@ test('a simulated player gets down the road at the pace the docs promise', () =>
   const lazy = simulate({ seed: 1, days: 3, lazy: true });
   assert.ok(lazy.state.stars < sims[0].dayRows[2].stars / 2, 'never levelling up gets you nowhere fast');
 });
+
+test('names are only the cast’s own: "constructor" is nobody, in the game or in a save', () => {
+  const { g, s } = make();
+  assert.equal(g.has('constructor'), false);
+  assert.equal(g.has('toString'), false);
+  assert.equal(g.putInSquad('constructor', 0).ok, false);
+  assert.equal(g.levelUp('__proto__').ok, false);
+  assert.deepEqual(s.squad, START.squad);
+  const odd = migrate({ seed: 3, cast: { odile: { level: 2 }, constructor: { level: 5 }, toString: { level: 5 } }, squad: ['constructor', 'odile', 'teo', 7, null] }, T0);
+  assert.deepEqual(odd.squad, ['odile', 'teo', 'mags']);
+  assert.deepEqual(Object.keys(odd.cast).sort(), ['mags', 'odile', 'teo']);
+  const game = new Game(odd, { clock: new FakeClock(T0), tuning: { ...TUNING_DEFAULTS } });
+  assert.ok(game.play().ok);
+  assert.equal(game.power('odile'), 14);
+});
+
+test('a haul remembers who went and who is carrying, through a save too', () => {
+  const { g, s } = make(5, { outcome: '1' });
+  s.cast.mags.level = 5;
+  s.runs = 2;
+  const res = g.play();
+  assert.deepEqual(res.standing, [false, false, true]);
+  assert.deepEqual(s.haul.squad, ['odile', 'teo', 'mags']);
+  assert.deepEqual(s.haul.standing, [false, false, true], 'only Mags is carrying');
+  g.putInSquad('odile', 2); // changing the squad afterwards doesn't change who went
+  const copy = migrate(JSON.parse(JSON.stringify(s)), T0);
+  assert.deepEqual(copy.haul.squad, ['odile', 'teo', 'mags']);
+  assert.deepEqual(copy.haul.standing, [false, false, true]);
+  // A haul from before this was kept: the squad as it is, the first ones carrying.
+  const old = JSON.parse(JSON.stringify(s));
+  delete old.haul.squad;
+  delete old.haul.standing;
+  const m = migrate(old, T0);
+  assert.deepEqual(m.haul.squad, m.squad);
+  assert.deepEqual(m.haul.standing, [true, false, false]);
+  // Nonsense in those fields is repaired the same way.
+  old.haul.squad = ['ghost', 'odile', 'teo'];
+  old.haul.standing = [true, true, true];
+  const r = migrate(old, T0);
+  assert.deepEqual(r.haul.squad, r.squad);
+  assert.equal(r.haul.standing.filter(Boolean).length, r.haul.picks);
+});
+
+test('the first haul still teaches three things when the rack was filled by hand first', () => {
+  const { g, s } = make(17);
+  for (let i = 0; i < RACK_SIZE; i++) g.cheat('radio');
+  const res = g.play();
+  assert.equal(res.stars, 3);
+  assert.ok(!s.haul.crates.some((c) => c.kind === 'radio'), 'no radio with the rack full');
+  const got = [g.pick(7), g.pick(2), g.pick(5)];
+  for (const out of got) assert.ok(out.ok);
+  assert.equal(got[0].crate.kind, 'supplies');
+  assert.equal(got[1].crate.kind, 'tokens');
+  assert.ok(got[2].crate.gold, 'the gold crate stands in for the radio');
+  assert.equal(s.rack.length, RACK_SIZE);
+  assert.ok(g.finishHaul());
+});

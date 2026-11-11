@@ -66,6 +66,9 @@ export const callMs = (n, mult = 1) => Math.max(1000, Math.round((FIRST_CALLS[n]
 
 const tierOfRarity = (r) => (r === 'common' ? 'wood' : r === 'rare' ? 'steel' : 'gold');
 
+/** `key` is the object's own (so 'constructor' and friends are nobody's name). */
+export const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+
 export function newStats() {
   return {
     stars: [0, 0, 0, 0], // runs by how many came back standing
@@ -137,7 +140,7 @@ export class Game {
   // --- People ----------------------------------------------------------------------------------
 
   has(id) {
-    return !!this.s.cast[id];
+    return own(this.s.cast, id);
   }
 
   /** Everyone in the camp, in card order. */
@@ -348,7 +351,7 @@ export class Game {
     const before = s.stars;
     s.stars += stars;
     let scraps = 0;
-    if (stars > 0) s.haul = this._makeHaul(area, run, stars);
+    if (stars > 0) s.haul = this._makeHaul(area, run, stars, squad, standing);
     else {
       scraps = Math.max(1, Math.round(SCRAPS * AREAS[area].loot * this.tuning.supplies));
       this._earn(scraps);
@@ -385,7 +388,7 @@ export class Game {
     return { kind: 'tokens', tier: tierOfRarity(CAST[who].rarity), who, amount: this._stack(rng, who, area) };
   }
 
-  _makeHaul(area, run, picks) {
+  _makeHaul(area, run, picks, squad = this.s.squad, standing = squad.map((_, i) => i < picks)) {
     const s = this.s;
     const rng = rngFor(s.seed, 'haul', run);
     const crates = [];
@@ -401,7 +404,8 @@ export class Game {
     delete this.force.eyes;
     if (lucky && run > 0) crates[0] = gold();
     shuffle(rng, crates);
-    const haul = { run, area, picks, picked: [], crates, eyes: null, script: null };
+    // Who went and who is carrying is kept with the haul, so a reload shows the same people.
+    const haul = { run, area, picks, picked: [], crates, eyes: null, script: null, squad: [...squad], standing: [...standing] };
     if (run === 0) {
       // The first haul teaches one of each, whichever crates are tapped:
       // supplies, then tokens that fill a bar, then the radio.
@@ -413,7 +417,8 @@ export class Game {
       const need = suppliesFor(1);
       const m = crates.find((c) => c.kind === 'supplies' && c.tier === 'steel');
       m.amount = Math.max(m.amount, need);
-      haul.script = [crates.indexOf(m), crates.indexOf(t), crates.findIndex((c) => c.kind === 'radio')];
+      // (The special crate is the radio, or the gold one if the rack was filled by hand first.)
+      haul.script = [crates.indexOf(m), crates.indexOf(t), crates.findIndex((c) => c.kind === 'radio' || c.gold)];
     } else if (eyes) haul.eyes = crates.findIndex((c) => c.kind === 'radio' || c.gold);
     return haul;
   }
@@ -429,7 +434,7 @@ export class Game {
       // Bring the scripted crate under the finger.
       const k = h.picked.length;
       const j = h.script[k];
-      if (j != null && j !== i && !h.picked.includes(j)) {
+      if (j != null && j >= 0 && j !== i && !h.picked.includes(j)) {
         [h.crates[i], h.crates[j]] = [h.crates[j], h.crates[i]];
         for (let m = k + 1; m < h.script.length; m++) if (h.script[m] === i) h.script[m] = j;
       }

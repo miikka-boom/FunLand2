@@ -29,8 +29,8 @@ export class PickView {
     const s = game.s;
     const h = s.haul;
     const root = this.root;
-    const squad = res ? res.squad : s.squad;
-    const standing = res ? res.standing : squad.map((_, i) => i < h.picks);
+    const squad = res ? res.squad : h.squad || s.squad;
+    const standing = res ? res.standing : h.standing || squad.map((_, i) => i < h.picks);
     const area = AREAS[h.area];
     const roadBefore = res ? res.road.before : s.stars - h.picks;
     const cell = (i) =>
@@ -247,7 +247,8 @@ export class PickView {
         up.type = 'button';
         up.dataset.next = 'camp';
         up.dataset.open = id;
-        up.innerHTML = `${icon('up')}LEVEL UP ${esc(CAST[id].name.toUpperCase())}`;
+        up.innerHTML = `${icon('up')}${face(id, { cls: 'tiny' })}<span>LEVEL UP</span>`;
+        up.setAttribute('aria-label', `Level up ${CAST[id].name}`);
         btns.replaceChild(up, btns.querySelector('[data-next="camp"]'));
       }
       btns.hidden = false;

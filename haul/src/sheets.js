@@ -91,7 +91,7 @@ export function peopleSheet(game) {
     const inSquad = s.squad.includes(id);
     const stronger = !inSquad && info.power > weakest;
     return (
-      `<button class="pcard r-${c.rarity}${inSquad ? ' squad' : ''}${info.ok ? ' can' : ''}" type="button" data-act="survivor" data-id="${id}">` +
+      `<button class="pcard r-${c.rarity}${inSquad ? ' is-squad' : ''}${info.ok ? ' can' : ''}" type="button" data-act="survivor" data-id="${id}">` +
       (inSquad ? `<i class="ribbon">SQUAD</i>` : stronger ? `<i class="ribbon stronger">STRONGER</i>` : '') +
       face(id, { level: info.level }) +
       `<b class="nm">${esc(c.name)}</b>` +
@@ -117,7 +117,7 @@ export function peopleSheet(game) {
   const rest = CAST_ORDER.filter((id) => !s.cast[id]).sort((a, b) => CAST[a].area - CAST[b].area);
   return (
     closeBtn() +
-    `<div class="people">` +
+    `<div class="people-sheet">` +
     `<div class="people-head"><h2>Everyone <em>${owned.length}/${CAST_ORDER.length}</em></h2>` +
     (owned.length > SQUAD_SIZE ? `<button class="btn blue small${isBest ? ' off' : ''}" type="button" data-act="best"${isBest ? ' disabled' : ''}>${icon('power')}${isBest ? 'STRONGEST THREE ARE IN' : 'SEND THE STRONGEST THREE'}</button>` : '') +
     `</div>` +
@@ -168,7 +168,7 @@ export function radioSheet(game) {
   for (let i = 0; i < RACK_SIZE; i++) {
     const r = rack[i];
     if (!r) slots.push(`<div class="slot empty"><span class="slot-ic">${icon('radio')}</span><b>Empty</b><small>Find a radio in a crate</small></div>`);
-    else if (r.state === 'answered') slots.push(`<div class="slot answered"><span class="slot-ic">${icon('radio')}</span><b>Someone answered!</b><small>Pick up</small></div>`);
+    else if (r.state === 'answered') slots.push(`<button class="slot answered" type="button" data-act="radio"><span class="slot-ic">${icon('radio')}</span><b>Someone answered!</b><small>Tap to pick up</small></button>`);
     else if (r.state === 'calling') slots.push(`<div class="slot calling"><span class="slot-ic">${icon('radio')}</span><b>Calling…</b><small data-until="${r.readyAt}">${fmtLeft(r.left)}</small><span class="bar"><i style="width:${Math.round(r.t * 100)}%"></i></span></div>`);
     else slots.push(`<div class="slot queued"><span class="slot-ic">${icon('radio')}</span><b>Next in line</b><small data-until="${r.readyAt}">${fmtLeft(r.left)}</small></div>`);
   }

@@ -37,8 +37,10 @@ const toasts = new Toasts(el('toasts'));
 let busy = false; // a run, a haul or a moment has the screen
 let sheetUi = { id: null, swapping: false, cheer: false };
 let backTo = null; // the sheet to return to when this one closes ('people')
+let leaving = false; // the page is reloading on purpose (reset, load a save): don't write the old save back on the way out
 
 function save() {
+  if (leaving) return;
   state.clockOffset = clock.offset;
   saveState(state);
 }
@@ -82,7 +84,9 @@ const dev = new Dev(el('dev'), {
     const ok = game.cheat(kind, arg);
     save();
     refresh();
-    if (ok && (kind === 'stars' || kind === 'next') && (game.pendingArea() != null || game.pendingFerry())) {
+    // A stop reached by cheating is celebrated now, unless a run or a haul has
+    // the screen: then it is celebrated on the way home, like any other.
+    if (ok && !busy && (game.pendingArea() != null || game.pendingFerry())) {
       dev.hide();
       road();
     }
@@ -95,17 +99,22 @@ const dev = new Dev(el('dev'), {
     refresh();
   },
   onReset() {
+    leaving = true;
     clearState();
     clearTuning();
     location.reload();
   },
   onImport(text) {
+    let parsed = null;
     try {
-      saveState(migrate(JSON.parse(text)));
-      location.reload();
+      parsed = JSON.parse(text);
     } catch {
-      toasts.show('That doesn’t look like a save');
+      parsed = null;
     }
+    if (!parsed || typeof parsed !== 'object' || !parsed.cast || !Array.isArray(parsed.squad)) return toasts.show('That doesn’t look like a save');
+    leaving = true;
+    saveState(migrate(parsed));
+    return location.reload();
   },
   async onExport() {
     const text = JSON.stringify(state);
@@ -343,24 +352,31 @@ function starsHome(res) {
 }
 
 /** Celebrate any stop reached (and the ferry) before the camp gets the screen back. */
+let onTheRoad = false;
 async function road() {
+  if (onTheRoad) return; // already celebrating: that loop picks up whatever else was reached
+  onTheRoad = true;
   const was = busy;
   busy = true;
   hud.hideHand();
-  while (game.pendingArea() != null) {
-    const a = game.arrive();
-    save();
-    await moments.arrive(a);
-    moments.close();
-    hud.render();
+  try {
+    while (game.pendingArea() != null) {
+      const a = game.arrive();
+      save();
+      await moments.arrive(a);
+      moments.close();
+      hud.render();
+    }
+    if (game.pendingFerry()) {
+      game.boardFerry();
+      save();
+      await moments.ferry();
+      moments.close();
+    }
+  } finally {
+    onTheRoad = false;
+    busy = was;
   }
-  if (game.pendingFerry()) {
-    game.boardFerry();
-    save();
-    await moments.ferry();
-    moments.close();
-  }
-  busy = was;
   if (!busy) refresh();
 }
 
@@ -496,6 +512,8 @@ window.addEventListener('keydown', (e) => {
     saveTuning(tuning);
     toasts.show(tuning.volume ? 'Sound on' : 'Sound off');
   } else if ((e.key === ' ' || e.key === 'Enter') && !busy && !sheets.isOpen && !dev.open && state.welcomed) {
+    // A focused button takes its own Space and Enter.
+    if (e.target && e.target.closest && e.target.closest('button, a, select')) return;
     e.preventDefault();
     sfx.unlock();
     play();

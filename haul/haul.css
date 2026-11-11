@@ -250,7 +250,6 @@ p {
 
 /* A figure standing on a disc of its rarity colour. */
 .stand {
-  --rc: var(--common);
   position: relative;
   display: block;
   width: 150px;
@@ -1162,7 +1161,6 @@ body.away #hud .bottom {
 }
 
 .card {
-  --rc: var(--common);
   position: relative;
   flex: 1 1 0;
   max-width: 168px;
@@ -1624,7 +1622,7 @@ body.away #hud .bottom {
   justify-content: space-between;
 }
 
-.acts .btn.big > span {
+.acts .btn.big > span:not(.amt) {
   flex: 1;
   text-align: left;
 }
@@ -1720,7 +1718,7 @@ body.away #hud .bottom {
   box-shadow: 0 1px 0 var(--ink);
 }
 
-.swap-face i {
+.swap-face > i {
   font-style: normal;
   display: inline-flex;
   align-items: center;
@@ -1767,7 +1765,7 @@ body.away #hud .bottom {
 }
 
 /* Everyone. */
-.people,
+.people-sheet,
 .road-sheet {
   display: grid;
   gap: 10px;
@@ -1785,7 +1783,7 @@ body.away #hud .bottom {
   flex: 1;
 }
 
-.people .scroll {
+.people-sheet .scroll {
   max-height: calc(100vh - 118px - var(--st) - var(--sb));
   margin: 0 -6px;
   padding: 10px 8px 8px;
@@ -1798,7 +1796,6 @@ body.away #hud .bottom {
 }
 
 .pcard {
-  --rc: var(--common);
   position: relative;
   display: grid;
   justify-items: center;
@@ -1851,7 +1848,7 @@ button.pcard:active {
   width: 100%;
 }
 
-.pcard.squad {
+.pcard.is-squad {
   background: #fff6c2;
 }
 
@@ -1978,6 +1975,7 @@ button.pcard:active {
 }
 
 .stop-top .num {
+  color: var(--ink);
   grid-row: span 2;
   width: 24px;
   height: 24px;
@@ -2117,6 +2115,17 @@ button.pcard:active {
   border-radius: 14px;
   background: var(--paper2);
   text-align: center;
+  font: inherit;
+  color: inherit;
+}
+
+button.slot {
+  box-shadow: 0 4px 0 var(--ink);
+}
+
+button.slot:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--ink);
 }
 
 .slot-ic {
@@ -2524,6 +2533,7 @@ button.pcard:active {
 .pick-right {
   justify-items: end;
   align-self: stretch;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr auto auto;
 }
 
@@ -3087,11 +3097,21 @@ button.pcard:active {
   font-weight: 900;
 }
 
+.pick-btns .btn {
+  color: var(--ink);
+}
+
+.pick-btns .btn .face {
+  --fs: 26px;
+  margin: -4px 0;
+}
+
 .pick-btns {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  max-width: 100%;
   opacity: 0;
   transform: translateY(10px);
   transition: opacity 0.25s, transform 0.25s cubic-bezier(0.2, 1.5, 0.4, 1);

@@ -35,6 +35,7 @@ export class Dev {
   show() {
     this.open = true;
     this.confirmReset = false;
+    this.root.innerHTML = ''; // a fresh card: it slides in, scrolled to the top
     this.render();
     this.root.classList.add('open');
   }
@@ -71,8 +72,7 @@ export class Dev {
     const people = CAST_ORDER.filter((id) => s.cast[id])
       .map((id) => `${esc(CAST[id].name)} ${s.cast[id].level}`)
       .join(', ');
-    this.root.innerHTML =
-      `<div class="panel-card">` +
+    const html =
       `<div class="panel-head"><div><div class="kicker">PROTOTYPE</div><div class="panel-h">Testing tools</div></div><button class="btn go small" type="button" data-dev="close">Done</button></div>` +
       `<div class="panel-section"><div class="panel-group">Runs</div><div class="panel-note">How many are left standing on every run from now on.</div><div class="panel-row">${outcome}</div>` +
       `<div class="panel-row">${chip('eyes', 'Two little eyes on the next haul', '', !!f.eyes)}${chip('lucky', 'A second gold crate', '', !!f.lucky)}</div></div>` +
@@ -90,8 +90,17 @@ export class Dev {
       `<div class="panel-section"><div class="panel-group">Stats</div><div class="panel-note">${runs} runs: ${st.stars[3]} with all three standing, ${st.stars[2]} with two, ${st.stars[1]} with one, ${st.stars[0]} with nobody · ${fmtNum(s.stars)} stars, stop ${game.areaIndex() + 1} (${esc(AREAS[game.areaIndex()].name)}) · ${fmtNum(st.earned)} supplies earned, ${fmtNum(st.spent)} spent on ${st.levelUps} level-ups · ${st.tokens} tokens · ${st.radios} radios, ${s.calls} calls (${st.newcomers.common}/${st.newcomers.rare}/${st.newcomers.epic}/${st.newcomers.legendary} new by rarity, ${st.dupes} packages) · ${st.luckyGold} gold crates opened · eyes followed ${st.eyes} · ${st.gifts} crates at the gate<br>${people}</div></div>` +
       `<div class="panel-section"><div class="panel-group">Save</div><div class="panel-row">${chip('copy', 'Copy save')}${chip('load', 'Load save…')}${this.confirmReset ? chip('reset2', 'Really reset everything?') + chip('noreset', 'Keep it') : chip('reset', 'Reset progress')}</div>` +
       `<textarea class="savebox hidden" rows="3" placeholder="Paste a save here, then tap Load save again"></textarea></div>` +
-      `<div class="panel-note">The console has <code>window.__haul</code>.</div>` +
-      `</div>`;
+      `<div class="panel-note">The console has <code>window.__haul</code>.</div>`;
+    // Redraw inside the same card, where it was scrolled to: a tap on a chip must not jump the drawer about.
+    let card = this.root.querySelector('.panel-card');
+    if (!card) {
+      card = document.createElement('div');
+      card.className = 'panel-card';
+      this.root.appendChild(card);
+    }
+    const top = card.scrollTop;
+    card.innerHTML = html;
+    card.scrollTop = top;
   }
 
   _input(e) {

@@ -2,7 +2,7 @@
 // in whatever a newer build added and drops whatever it can't make sense of,
 // so an old or hand-edited save still starts.
 
-import { newState, newStats, areaIndexFor } from './rules.js';
+import { newState, newStats, areaIndexFor, own } from './rules.js';
 import { CAST, MAX_LEVEL, SQUAD_SIZE, RACK_SIZE, GRID, START, TUNING_DEFAULTS } from './config.js';
 
 export const SAVE_KEY = 'funland2.haul.v1';
@@ -45,13 +45,13 @@ export function migrate(saved, now = Date.now()) {
   // People: only ones the cast knows, with sane numbers.
   s.cast = {};
   for (const [id, m] of Object.entries(saved.cast)) {
-    if (!CAST[id] || !m || typeof m !== 'object') continue;
+    if (!own(CAST, id) || !m || typeof m !== 'object') continue;
     s.cast[id] = { level: int(m.level, 1, MAX_LEVEL, 1), tokens: int(m.tokens, 0, 1e6, 0), runs: int(m.runs, 0, 1e9, 0), stood: int(m.stood, 0, 1e9, 0) };
   }
-  for (const id of START.squad) if (!s.cast[id]) s.cast[id] = { level: 1, tokens: 0, runs: 0, stood: 0 };
+  for (const id of START.squad) if (!own(s.cast, id)) s.cast[id] = { level: 1, tokens: 0, runs: 0, stood: 0 };
   // The squad: three different people who are in the camp.
   const squad = [];
-  for (const id of Array.isArray(saved.squad) ? saved.squad : []) if (s.cast[id] && !squad.includes(id) && squad.length < SQUAD_SIZE) squad.push(id);
+  for (const id of Array.isArray(saved.squad) ? saved.squad : []) if (typeof id === 'string' && own(s.cast, id) && !squad.includes(id) && squad.length < SQUAD_SIZE) squad.push(id);
   for (const id of [...START.squad, ...Object.keys(s.cast)]) if (squad.length < SQUAD_SIZE && !squad.includes(id)) squad.push(id);
   s.squad = squad;
   s.supplies = int(saved.supplies, 0, 1e12, 0);
@@ -81,12 +81,16 @@ export function migrate(saved, now = Date.now()) {
 function migrateHaul(h, s) {
   if (!h || typeof h !== 'object' || !Array.isArray(h.crates) || h.crates.length !== GRID || !Array.isArray(h.picked)) return null;
   const ok = h.crates.every(
-    (c) => c && ((c.kind === 'supplies' && c.amount > 0) || (c.kind === 'tokens' && s.cast[c.who] && c.amount > 0) || c.kind === 'radio') && ['wood', 'steel', 'gold'].includes(c.tier),
+    (c) => c && ((c.kind === 'supplies' && c.amount > 0) || (c.kind === 'tokens' && typeof c.who === 'string' && own(s.cast, c.who) && c.amount > 0) || c.kind === 'radio') && ['wood', 'steel', 'gold'].includes(c.tier),
   );
   if (!ok) return null;
   const picked = h.picked.filter((i, k, a) => Number.isInteger(i) && i >= 0 && i < GRID && a.indexOf(i) === k);
   const picks = int(h.picks, 1, SQUAD_SIZE, 1);
   if (picked.length > picks) return null;
+  // Who went out and who is carrying (older saves: the squad as it is, the first ones carrying).
+  const went = Array.isArray(h.squad) && h.squad.length === SQUAD_SIZE && h.squad.every((id) => typeof id === 'string' && own(s.cast, id)) ? [...h.squad] : [...s.squad];
+  let standing = Array.isArray(h.standing) && h.standing.length === SQUAD_SIZE ? h.standing.map(Boolean) : null;
+  if (!standing || standing.filter(Boolean).length !== picks) standing = went.map((_, i) => i < picks);
   return {
     run: int(h.run, 0, 1e9, 0),
     area: int(h.area, 0, areaIndexFor(s.stars), 0),
@@ -95,6 +99,8 @@ function migrateHaul(h, s) {
     crates: h.crates,
     eyes: Number.isInteger(h.eyes) && h.eyes >= 0 && h.eyes < GRID ? h.eyes : null,
     script: Array.isArray(h.script) ? h.script.filter((i) => Number.isInteger(i) && i >= 0 && i < GRID) : null,
+    squad: went,
+    standing,
   };
 }
 
