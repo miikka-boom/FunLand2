@@ -25,6 +25,11 @@
   --sr: env(safe-area-inset-right, 0px);
   --sb: env(safe-area-inset-bottom, 0px);
   --sl: env(safe-area-inset-left, 0px);
+  /* Outlines for big lettering, as rings of hard shadows (they look the same in every browser). */
+  --o2: 2px 0px 0 var(--ink), 1.85px 0.77px 0 var(--ink), 1.41px 1.41px 0 var(--ink), 0.77px 1.85px 0 var(--ink), 0px 2px 0 var(--ink), -0.77px 1.85px 0 var(--ink), -1.41px 1.41px 0 var(--ink), -1.85px 0.77px 0 var(--ink), -2px 0px 0 var(--ink), -1.85px -0.77px 0 var(--ink), -1.41px -1.41px 0 var(--ink), -0.77px -1.85px 0 var(--ink), -0px -2px 0 var(--ink), 0.77px -1.85px 0 var(--ink), 1.41px -1.41px 0 var(--ink), 1.85px -0.77px 0 var(--ink), 0 3px 0 var(--ink);
+  --o3: 3px 0px 0 var(--ink), 2.77px 1.15px 0 var(--ink), 2.12px 2.12px 0 var(--ink), 1.15px 2.77px 0 var(--ink), 0px 3px 0 var(--ink), -1.15px 2.77px 0 var(--ink), -2.12px 2.12px 0 var(--ink), -2.77px 1.15px 0 var(--ink), -3px 0px 0 var(--ink), -2.77px -1.15px 0 var(--ink), -2.12px -2.12px 0 var(--ink), -1.15px -2.77px 0 var(--ink), -0px -3px 0 var(--ink), 1.15px -2.77px 0 var(--ink), 2.12px -2.12px 0 var(--ink), 2.77px -1.15px 0 var(--ink), 1.5px 0px 0 var(--ink), 1.06px 1.06px 0 var(--ink), 0px 1.5px 0 var(--ink), -1.06px 1.06px 0 var(--ink), -1.5px 0px 0 var(--ink), -1.06px -1.06px 0 var(--ink), -0px -1.5px 0 var(--ink), 1.06px -1.06px 0 var(--ink), 0 4px 0 var(--ink), 0 5px 0 var(--ink);
+  --o4: 4px 0px 0 var(--ink), 3.7px 1.53px 0 var(--ink), 2.83px 2.83px 0 var(--ink), 1.53px 3.7px 0 var(--ink), 0px 4px 0 var(--ink), -1.53px 3.7px 0 var(--ink), -2.83px 2.83px 0 var(--ink), -3.7px 1.53px 0 var(--ink), -4px 0px 0 var(--ink), -3.7px -1.53px 0 var(--ink), -2.83px -2.83px 0 var(--ink), -1.53px -3.7px 0 var(--ink), -0px -4px 0 var(--ink), 1.53px -3.7px 0 var(--ink), 2.83px -2.83px 0 var(--ink), 3.7px -1.53px 0 var(--ink), 2px 0px 0 var(--ink), 1.41px 1.41px 0 var(--ink), 0px 2px 0 var(--ink), -1.41px 1.41px 0 var(--ink), -2px 0px 0 var(--ink), -1.41px -1.41px 0 var(--ink), -0px -2px 0 var(--ink), 1.41px -1.41px 0 var(--ink), 0 5px 0 var(--ink), 0 6px 0 var(--ink), 0 7px 0 var(--ink);
+  --o5: 5px 0px 0 var(--ink), 4.62px 1.91px 0 var(--ink), 3.54px 3.54px 0 var(--ink), 1.91px 4.62px 0 var(--ink), 0px 5px 0 var(--ink), -1.91px 4.62px 0 var(--ink), -3.54px 3.54px 0 var(--ink), -4.62px 1.91px 0 var(--ink), -5px 0px 0 var(--ink), -4.62px -1.91px 0 var(--ink), -3.54px -3.54px 0 var(--ink), -1.91px -4.62px 0 var(--ink), -0px -5px 0 var(--ink), 1.91px -4.62px 0 var(--ink), 3.54px -3.54px 0 var(--ink), 4.62px -1.91px 0 var(--ink), 2.5px 0px 0 var(--ink), 1.77px 1.77px 0 var(--ink), 0px 2.5px 0 var(--ink), -1.77px 1.77px 0 var(--ink), -2.5px 0px 0 var(--ink), -1.77px -1.77px 0 var(--ink), -0px -2.5px 0 var(--ink), 1.77px -1.77px 0 var(--ink), 0 6px 0 var(--ink), 0 7px 0 var(--ink), 0 8px 0 var(--ink);
   --font: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Nunito", "Baloo 2", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   font-family: var(--font);
 }
@@ -1266,9 +1271,7 @@ body.away #hud .bottom {
   font-size: 29px;
   letter-spacing: 0.04em;
   color: #fff;
-  -webkit-text-stroke: 5px var(--ink);
-  paint-order: stroke fill;
-  text-shadow: 0 3px 0 var(--ink);
+  text-shadow: var(--o3);
 }
 
 .play-main .ic {
@@ -1487,9 +1490,8 @@ body.away #hud .bottom {
   line-height: 0.95;
   letter-spacing: 0.03em;
   color: var(--gold);
-  -webkit-text-stroke: 9px var(--ink);
-  paint-order: stroke fill;
-  text-shadow: 0 5px 0 var(--ink);
+  text-shadow: var(--o5);
+  padding-bottom: 6px;
 }
 
 .tag {
@@ -2374,9 +2376,7 @@ button.pcard:active {
   font-weight: 900;
   letter-spacing: 0.03em;
   color: #fff;
-  -webkit-text-stroke: 8px var(--ink);
-  paint-order: stroke fill;
-  text-shadow: 0 5px 0 var(--ink);
+  text-shadow: var(--o4);
   text-align: center;
 }
 
@@ -2532,9 +2532,7 @@ button.pcard:active {
   font-weight: 900;
   letter-spacing: 0.03em;
   color: var(--gold);
-  -webkit-text-stroke: 6px var(--ink);
-  paint-order: stroke fill;
-  text-shadow: 0 4px 0 var(--ink);
+  text-shadow: var(--o3);
   line-height: 1;
 }
 
@@ -2618,9 +2616,7 @@ button.pcard:active {
   font-size: clamp(24px, 4.4vw, 36px);
   font-weight: 900;
   color: #fff;
-  -webkit-text-stroke: 6px var(--ink);
-  paint-order: stroke fill;
-  text-shadow: 0 4px 0 var(--ink);
+  text-shadow: var(--o3);
   line-height: 1;
 }
 
@@ -2630,7 +2626,7 @@ button.pcard:active {
   gap: 6px;
   font-size: 18px;
   color: var(--green);
-  -webkit-text-stroke: 5px var(--ink);
+  text-shadow: var(--o2);
 }
 
 .pick-count span {
@@ -3069,8 +3065,7 @@ button.pcard:active {
   font-size: 20px;
   font-weight: 900;
   color: var(--gold);
-  -webkit-text-stroke: 4px var(--ink);
-  paint-order: stroke fill;
+  text-shadow: var(--o2);
 }
 
 .pr-bar {
@@ -3401,9 +3396,8 @@ button.pcard:active {
   font-weight: 900;
   line-height: 1;
   color: var(--gold);
-  -webkit-text-stroke: 8px var(--ink);
-  paint-order: stroke fill;
-  text-shadow: 0 4px 0 var(--ink);
+  text-shadow: var(--o4);
+  padding-bottom: 4px;
 }
 
 .arrive-card .sub {
@@ -3492,14 +3486,13 @@ button.pcard:active {
   font-size: 18px;
   font-weight: 900;
   color: #fff;
-  -webkit-text-stroke: 5px var(--ink);
-  paint-order: stroke fill;
+  text-shadow: var(--o2);
   white-space: nowrap;
 }
 
 .floater.big {
   font-size: 30px;
-  -webkit-text-stroke: 7px var(--ink);
+  text-shadow: var(--o3);
 }
 
 .floater.gold {
@@ -3513,7 +3506,7 @@ button.pcard:active {
 }
 
 .floater.crayon-float {
-  -webkit-text-stroke: 5px #1b1730;
+  text-shadow: var(--o2);
   font-size: 22px;
 }
 
