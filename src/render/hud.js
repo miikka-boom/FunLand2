@@ -56,7 +56,6 @@ export function drawHud(ctx, game, input, ui, renderer) {
   drawFerryBar(ctx, game, L);
   if (p.pinnedBy && p.alive) drawPinned(ctx, game, L);
   drawMessages(ctx, game, L);
-  if (!ui.title) drawCaption(ctx, game, L);
   if (game.won || game.lost) drawEnd(ctx, game, L, ui);
   if (S.showDebug) drawDebug(ctx, game, input, ui, L);
 }
@@ -351,9 +350,8 @@ function allyPanelRect(L) {
 function drawAllyMarker(ctx, game, L) {
   const a = game.ally;
   const v = game.view;
-  const cam = game.camera;
-  const sx = (a.x - cam.x - cam.shakeX) * v.scale + v.w / 2;
-  const sy = (a.y - cam.y - cam.shakeY) * v.scale + v.h / 2;
+  const sx = v.px(a.x, a.y);
+  const sy = v.py(a.x, a.y, 0);
   const pulse = 0.6 + Math.sin(game.time * 7) * 0.3;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -361,13 +359,13 @@ function drawAllyMarker(ctx, game, L) {
     ctx.font = `800 10px ${FONT}`;
     if (a.down) {
       // Under the dashed revive circle (announcements sit above the centre).
-      const y = sy + ALLY.reviveRange * v.scale + 12;
+      const y = sy + ALLY.reviveRange * v.scale * v.sp + 12;
       ctx.fillStyle = `rgba(255,120,100,${pulse})`;
       ctx.fillText(a.revive > 0 ? `REVIVING ${Math.round(a.revive * 100)}%` : 'DOWN — STAND HERE', sx, y);
       return;
     }
-    // Above its ring; a small health bar between the name and the ring when it's hurt.
-    const top = sy - (a.r + 5) * v.scale;
+    // Above its head; a small health bar between the name and the head when it's hurt.
+    const top = v.flat ? sy - (a.r + 5) * v.scale : v.py(a.x, a.y, 48);
     const hurt = a.hp < a.maxHp * 0.6;
     const y = top - (hurt ? 16 : 10);
     ctx.fillStyle = 'rgba(160,255,175,0.55)';
@@ -382,8 +380,8 @@ function drawAllyMarker(ctx, game, L) {
     return;
   }
   const p = game.player;
-  const px = (p.x - cam.x - cam.shakeX) * v.scale + v.w / 2;
-  const py = (p.y - cam.y - cam.shakeY) * v.scale + v.h / 2;
+  const px = v.px(p.x, p.y);
+  const py = v.py(p.x, p.y, 0);
   const ang = Math.atan2(sy - py, sx - px);
   const e = edgePoint(L, px, py, ang, 30);
   ctx.fillStyle = a.down ? `rgba(255,90,70,${pulse})` : 'rgba(140,255,160,0.75)';
@@ -478,11 +476,8 @@ function drawThreats(ctx, game, L) {
   const ps = game.worldToScreen(p.x, p.y);
   sectors.fill(0);
   let any = false;
-  // worldToScreen inlined: this runs for every hunting zombie, every frame.
+  // The projection inlined: this runs for every hunting zombie, every frame.
   const v = game.view;
-  const cam = game.camera;
-  const ox = v.w / 2 - (cam.x + cam.shakeX) * v.scale;
-  const oy = v.h / 2 - (cam.y + cam.shakeY) * v.scale;
   for (const z of game.zombies) {
     if (!z.alive || z.ghost || z.state !== 'chase') continue;
     const ddx = z.x - p.x;
@@ -490,8 +485,8 @@ function drawThreats(ctx, game, L) {
     const lim = z.type === 'common' ? 850 : 1300;
     if (ddx * ddx + ddy * ddy > lim * lim) continue;
     const d = Math.sqrt(ddx * ddx + ddy * ddy);
-    const zsx = z.x * v.scale + ox;
-    const zsy = z.y * v.scale + oy;
+    const zsx = v.ox + v.ax * z.x + v.ay * z.y;
+    const zsy = v.oy + v.bx * z.x + v.by * z.y;
     if (zsx > 0 && zsx < L.w && zsy > 0 && zsy < L.h) continue;
     if (z.type !== 'common') {
       const ang = Math.atan2(zsy - ps.y, zsx - ps.x);
@@ -572,61 +567,6 @@ function drawMessages(ctx, game, L) {
   }
 }
 
-/** Word-wrap text to a width (at most maxLines lines; the last one gets an ellipsis if cut). */
-function wrap(ctx, text, width, maxLines) {
-  const words = text.split(' ');
-  const lines = [];
-  let cur = '';
-  for (const w of words) {
-    const next = cur ? `${cur} ${w}` : w;
-    if (ctx.measureText(next).width <= width || !cur) cur = next;
-    else {
-      lines.push(cur);
-      cur = w;
-    }
-  }
-  if (cur) lines.push(cur);
-  if (lines.length > maxLines) {
-    lines.length = maxLines;
-    lines[maxLines - 1] += '…';
-  }
-  return lines;
-}
-
-/** What you're standing next to says (graffiti, a poster, a journal page). Bottom centre, between the sticks. */
-function drawCaption(ctx, game, L) {
-  const cap = game.caption;
-  if (!cap || !cap.item || cap.a <= 0.02) return;
-  const r = cap.item;
-  const maxW = Math.min(440, L.w * 0.46);
-  ctx.font = `600 13px ${FONT}`;
-  const lines = wrap(ctx, r.text, maxW - 24, 3);
-  const textW = Math.max(...lines.map((l) => ctx.measureText(l).width));
-  ctx.font = `800 9px ${FONT}`;
-  const labelW = ctx.measureText(r.label).width;
-  const w = Math.max(textW, labelW) + 24;
-  const h = 22 + lines.length * 17;
-  const x = L.w / 2 - w / 2;
-  const y = L.h - L.safe.b - 14 - h;
-  ctx.globalAlpha = cap.a;
-  ctx.fillStyle = 'rgba(8,10,14,0.72)';
-  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  rrect(ctx, x, y, w, h, 8);
-  ctx.fill();
-  ctx.stroke();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = 'rgba(255,210,122,0.85)';
-  ctx.font = `800 9px ${FONT}`;
-  ctx.fillText(r.label, L.w / 2, y + 11);
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  ctx.font = `600 13px ${FONT}`;
-  lines.forEach((l, i) => ctx.fillText(l, L.w / 2, y + 27 + i * 17));
-  ctx.globalAlpha = 1;
-}
-
 function drawEnd(ctx, game, L, ui) {
   const a = clamp((game.endT - 0.5) / 0.6, 0, 1);
   if (a <= 0) return;
@@ -696,6 +636,12 @@ function drawEnd(ctx, game, L, ui) {
     const held = F.flareT >= 0 ? (game.won ? F.t : F.flareT) : 0;
     const mmss = `${Math.floor(held / 60)}:${Math.floor(held % 60).toString().padStart(2, '0')}`;
     lines.push(F.state === 'idle' ? 'the flare was never fired' : F.state === 'docked' ? `held the pier ${mmss}   ·   the ferry came` : `held the pier ${mmss}   ·   the ferry was ${Math.max(0, Math.ceil(F.dur - F.t))}s out`);
+  }
+  if (st.benNest || st.benGlimpse) {
+    const parts = [];
+    if (st.benNest) parts.push("found a bed that wasn't ours");
+    if (st.benGlimpse) parts.push('something looked back');
+    lines.push(parts.join('   ·   '));
   }
   if (st.terrors || st.terrorsFled || st.terrorHits) {
     lines.push(`night terror: killed ${st.terrors}   ·   drove off ${st.terrorsFled}   ·   it hit you ${st.terrorHits}×`);

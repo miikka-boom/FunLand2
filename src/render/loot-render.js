@@ -1,9 +1,11 @@
-// Scavenging visuals: supply crates, the secret manhole / floor hatch, survivor
-// chalk arrows, boarded doorways and the planks left after breaking them, plus
-// the bright pass (glints, search ring, open burst).
+// Scavenging visuals: supply crates (3D), the secret manhole / floor hatch,
+// survivor chalk arrows, the planks left after breaking boards, plus the
+// bright pass (glints, search ring, open burst). The boards themselves are an
+// obstacle model (models.js).
 
 import { TAU, pointInRect, rectsOverlap } from '../util.js';
-import { rrect, circle } from './draw-utils.js';
+import { circle } from './draw-utils.js';
+import { prism, polygon, turnedRect, tone, ball } from './prims.js';
 
 const WOODS = ['#7a5a36', '#8c6a40', '#6b4e2e', '#94744a'];
 
@@ -67,7 +69,7 @@ export function drawChalk(ctx, d) {
   ctx.stroke();
 }
 
-/** Stashes, secrets and loose planks (drawn under the darkness: you need light to see them). */
+/** What lies flat: loose planks and the secret's cover (under the darkness: you need light to see them). */
 export function drawLoot(ctx, game, vr) {
   const L = game.loot;
   if (!L) return;
@@ -86,52 +88,51 @@ export function drawLoot(ctx, game, vr) {
     ctx.restore();
   }
   for (const s of L.stashes) {
-    if (!pointInRect(s.x, s.y, vr, 40)) continue;
-    if (s.tier === 'secret') {
-      if (s.look === 'hatch') drawHatch(ctx, s);
-      else drawManhole(ctx, s);
-    } else drawCrate(ctx, s);
+    if (s.tier !== 'secret' || !pointInRect(s.x, s.y, vr, 40)) continue;
+    if (s.look === 'hatch') drawHatch(ctx, s);
+    else drawManhole(ctx, s);
   }
 }
 
-function drawCrate(ctx, s) {
+const crate = new Float64Array(8);
+const lid = new Float64Array(8);
+
+/** A supply crate at brightness b: olive (stash) or steel blue (boarded room), a coloured band, the lid thrown back once it's open. */
+export function drawStash(R, s, b) {
+  const { ctx, v } = R;
   const room = s.tier === 'room';
   const w = room ? 38 : 30;
   const h = room ? 24 : 20;
+  const H = room ? 17 : 14;
   const body = room ? '#4c5966' : '#4d5b2b';
-  const lid = room ? '#5e6c79' : '#606f38';
+  const top = room ? '#5e6c79' : '#606f38';
   const band = room ? '#d27a2c' : '#c9a227';
-  ctx.save();
-  ctx.translate(s.x, s.y);
-  ctx.rotate(s.a || 0);
-  ctx.fillStyle = 'rgba(0,0,0,0.38)';
-  ctx.fillRect(-w / 2 + 3, -h / 2 + 4, w, h);
-  ctx.fillStyle = body;
-  ctx.beginPath();
-  rrect(ctx, -w / 2, -h / 2, w, h, 3);
-  ctx.fill();
-  if (!s.opened) {
-    ctx.fillStyle = lid;
-    ctx.fillRect(-w / 2 + 2, -h / 2 + 2, w - 4, h * 0.42);
-    ctx.fillStyle = band;
-    ctx.fillRect(-3, -h / 2, 6, h);
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(-w / 2 + 5, -1, 4, 3);
-    ctx.fillRect(w / 2 - 9, -1, 4, 3);
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillRect(-w / 2 + 5, h / 2 - 6, 8, 2);
-  } else {
-    // Emptied: dark inside, lid flipped back.
-    ctx.fillStyle = '#15160f';
-    ctx.fillRect(-w / 2 + 3, -h / 2 + 3, w - 6, h - 6);
-    ctx.fillStyle = lid;
-    ctx.fillRect(-w / 2, -h / 2 - h * 0.48, w, h * 0.44);
-    ctx.fillStyle = band;
-    ctx.globalAlpha = 0.7;
-    ctx.fillRect(-3, -h / 2 - h * 0.48, 6, h * 0.44);
-    ctx.globalAlpha = 1;
+  const a = s.a || 0;
+  const side = (nx, ny) => tone(body, b * (0.62 + 0.3 * Math.max(0, nx * R.lx + ny * R.ly)));
+  turnedRect(s.x, s.y, w, h, a, crate);
+  if (s.opened) {
+    // Emptied: dark inside, the lid lying behind it.
+    prism(ctx, v, crate, 0, H, tone(body, b), side);
+    turnedRect(s.x, s.y, w - 6, h - 6, a, lid);
+    ctx.fillStyle = '#12130d';
+    ctx.beginPath();
+    polygon(ctx, v, lid, H);
+    ctx.fill();
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    turnedRect(s.x + sa * h * 0.95, s.y - ca * h * 0.95, w, h * 0.8, a, lid);
+    prism(ctx, v, lid, 0, 3, tone(top, b * 0.9), side);
+    return;
   }
-  ctx.restore();
+  prism(ctx, v, crate, 0, H, tone(top, b), side);
+  // The band over the lid and down the front, and the latches.
+  turnedRect(s.x, s.y, 6, h + 0.6, a, lid);
+  prism(ctx, v, lid, 0, H + 0.4, tone(band, b), (nx, ny) => tone(band, b * (0.62 + 0.3 * Math.max(0, nx * R.lx + ny * R.ly))));
+  ctx.fillStyle = tone('#f0ead8', b * 0.75);
+  ctx.beginPath();
+  ball(ctx, v, s.x + Math.cos(a) * w * 0.3, s.y + Math.sin(a) * w * 0.3, H + 0.5, 1.6);
+  ball(ctx, v, s.x - Math.cos(a) * w * 0.3, s.y - Math.sin(a) * w * 0.3, H + 0.5, 1.6);
+  ctx.fill();
 }
 
 /** City secret: a manhole cover pushed slightly off its hole. */
@@ -184,40 +185,14 @@ function drawHatch(ctx, s) {
   ctx.restore();
 }
 
-/** Planks nailed across a doorway (roof pass). Fewer planks as they take damage. */
-export function drawBoards(ctx, o, t) {
-  const vert = o.vertical;
-  const n = Math.max(1, Math.ceil((o.hp / o.maxHp) * 4));
-  const wob = o.hitT > 0 ? Math.sin(t * 70) * o.hitT * 10 : 0;
-  ctx.fillStyle = '#0b0a09';
-  ctx.fillRect(o.x, o.y, o.w, o.h);
-  ctx.save();
-  ctx.translate(o.x + o.w / 2 + (vert ? wob : 0), o.y + o.h / 2 + (vert ? 0 : wob));
-  if (vert) ctx.rotate(Math.PI / 2);
-  const len = (vert ? o.h : o.w) + 12;
-  const th = vert ? o.w : o.h;
-  const angles = [-0.16, 0.13, -0.05, 0.2];
-  const offs = [-th * 0.22, th * 0.18, -th * 0.02, th * 0.3];
-  for (let k = 0; k < n; k++) {
-    ctx.save();
-    ctx.translate(0, offs[k]);
-    ctx.rotate(angles[k]);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(-len / 2 + 1, -1.5, len, 6);
-    ctx.fillStyle = WOODS[k];
-    ctx.fillRect(-len / 2, -2.5, len, 5);
-    ctx.fillStyle = 'rgba(25,18,10,0.7)';
-    ctx.fillRect(-len / 2 + 3, -1, 2, 2);
-    ctx.fillRect(len / 2 - 5, -1, 2, 2);
-    ctx.restore();
-  }
-  ctx.restore();
-}
-
-/** Bright pass: glints you can spot in the dark (with line of sight), the search ring, the open burst. */
-export function drawLootBright(ctx, game, vr) {
+/**
+ * Bright pass: glints you can spot in the dark (with line of sight), the
+ * search ring, the open burst. Called with the plain screen transform.
+ */
+export function drawLootBright(R, game, vr) {
   const L = game.loot;
   if (!L) return;
+  const { ctx, v } = R;
   const t = game.time;
   const p = game.player;
   const W = game.world;
@@ -226,15 +201,18 @@ export function drawLootBright(ctx, game, vr) {
     if (s.opened) {
       if (s.openT < 0.7) {
         const k = s.openT / 0.7;
+        R.ground(0);
         ctx.strokeStyle = s.tier === 'secret' ? `rgba(220,180,255,${1 - k})` : `rgba(255,220,130,${1 - k})`;
         ctx.lineWidth = 3 * (1 - k) + 1;
         ctx.beginPath();
         circle(ctx, s.x, s.y, 12 + k * 70);
         ctx.stroke();
+        R.reset();
       }
       continue;
     }
     if (s.search > 0) {
+      R.ground(0);
       ctx.strokeStyle = 'rgba(255,255,255,0.18)';
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -244,6 +222,7 @@ export function drawLootBright(ctx, game, vr) {
       ctx.beginPath();
       ctx.arc(s.x, s.y, 25, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, s.search));
       ctx.stroke();
+      R.reset();
     }
     const secret = s.tier === 'secret';
     const period = secret ? 3.8 : 2.6;
@@ -252,9 +231,10 @@ export function drawLootBright(ctx, game, vr) {
     if (ph >= win) continue;
     if (!W.segmentClear(p.x, p.y, s.x, s.y)) continue;
     const k = Math.sin((ph / win) * Math.PI);
-    const gx = s.x + (secret ? 4 : -9);
-    const gy = s.y + (secret ? -4 : -7);
-    const size = (secret ? 7 : 10) * k;
+    // The glint sits on the crate's lid (or on the cover of the secret).
+    const gx = v.px(s.x + (secret ? 4 : -6), s.y + (secret ? -4 : -4));
+    const gy = v.py(s.x + (secret ? 4 : -6), s.y + (secret ? -4 : -4), secret ? 1 : 15);
+    const size = (secret ? 7 : 10) * k * Math.max(0.8, v.scale);
     ctx.strokeStyle = secret ? `rgba(235,215,255,${0.9 * k})` : `rgba(255,248,215,${0.95 * k})`;
     ctx.lineWidth = 1.4;
     ctx.beginPath();
@@ -265,7 +245,7 @@ export function drawLootBright(ctx, game, vr) {
     ctx.stroke();
     ctx.fillStyle = `rgba(255,255,255,${k})`;
     ctx.beginPath();
-    circle(ctx, gx, gy, 1.6 * k + 0.4);
+    ctx.arc(gx, gy, 1.6 * k + 0.4, 0, TAU);
     ctx.fill();
   }
 }

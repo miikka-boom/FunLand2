@@ -4,7 +4,7 @@
 // Pure helpers (report building, text, daily seed, storage) are exported for
 // tests; ReportCard is the DOM card shown over the end screen.
 
-import { diffFromDefaults } from './settings.js';
+import { diffFromDefaults, LEVEL_NAMES } from './settings.js';
 
 const HISTORY_KEY = 'funland2.p0.reports.v1';
 const DAILY_KEY = 'funland2.p0.daily.v1';
@@ -15,7 +15,7 @@ export const RATINGS = [
   { key: 'difficulty', label: 'Difficulty', options: [['easy', 'Too easy'], ['right', 'About right'], ['hard', 'Too hard']] },
   { key: 'controls', label: 'Controls', options: [['bad', 'Fought me'], ['ok', 'OK'], ['great', 'Felt great']] },
 ];
-export const LEVEL_NAMES = { city: 'Streets', interior: 'Building', docks: 'Pier 9' };
+export { LEVEL_NAMES };
 
 // --- Daily map ------------------------------------------------------------------------------
 
@@ -117,12 +117,14 @@ export function buildReport(game, { ratings = {}, perf = null, daily = null, dev
       landmarks: !!(E && E.explosives && E.explosives.length),
       lore: !!S.lore,
       nightTerror: !!S.nightTerror,
+      ben: !!S.ben,
     },
     events: {
       gateHeld: st.holdouts ? Math.round(st.holdoutTime) : null,
       shortcut: E && E.breach ? !!st.shortcut : null,
       explosions: st.explosions || 0,
       ferry: finale ? finale.state : null,
+      ben: S.ben ? { bed: !!st.benNest, glimpse: !!st.benGlimpse } : null,
     },
     ally: game.ally ? { alive: game.ally.alive, kills: st.allyKills, saves: st.allySaves, revives: st.revives } : null,
     ratings,
@@ -138,7 +140,7 @@ const RATING_WORDS = Object.fromEntries(RATINGS.map((r) => [r.key, Object.fromEn
 export function reportText(r) {
   const lines = [];
   const when = r.when.slice(0, 16).replace('T', ' ');
-  lines.push(`HORDE playtest · ${LEVEL_NAMES[r.level] || r.level} · seed ${r.seed}${r.daily ? ` (daily ${r.daily})` : ''} · ${when}`);
+  lines.push(`We Left Ben playtest · ${LEVEL_NAMES[r.level] || r.level} · seed ${r.seed}${r.daily ? ` (daily ${r.daily})` : ''} · ${when}`);
   const how = r.outcome === 'won' ? (r.level === 'docks' ? 'Made the ferry' : 'Won') : r.outcome === 'died' ? `Died at ${Math.round(r.progress * 100)}%` : 'Quit';
   lines.push(`${how} in ${fmtTime(r.time)} · ${r.kills} kills · ${Math.round(r.accuracy * 100)}% accuracy · ${r.damageTaken} damage taken · ${r.hordes} hordes`);
   const rated = RATINGS.filter((q) => r.ratings[q.key]).map((q) => `${q.label.toLowerCase()} ${RATING_WORDS[q.key][r.ratings[q.key]].toLowerCase()}`);
@@ -149,6 +151,7 @@ export function reportText(r) {
   if (r.events.shortcut !== null) bits.push(r.events.shortcut ? 'took the shortcut' : 'long way round');
   if (r.events.explosions) bits.push(`${r.events.explosions} explosion${r.events.explosions > 1 ? 's' : ''}`);
   if (r.events.ferry) bits.push(`ferry: ${r.events.ferry}`);
+  if (r.events.ben) bits.push(`Ben's bed ${r.events.ben.bed ? 'found' : 'not found'}${r.events.ben.glimpse ? ', saw the eyes' : ''}`);
   if (r.specials.terrors || r.specials.terrorsFled || r.specials.terrorHits) bits.push(`night terror: ${r.specials.terrors} killed, ${r.specials.terrorsFled} driven off, hit you ${r.specials.terrorHits}×`);
   if (bits.length) lines.push(bits.join(' · '));
   if (r.device) {
@@ -163,7 +166,7 @@ export function reportText(r) {
 
 /** Every saved run: the readable lines of each, then all of them as one JSON array. */
 export function historyText(list) {
-  const out = [`HORDE playtest reports · ${list.length} run${list.length === 1 ? '' : 's'}`];
+  const out = [`We Left Ben playtest reports · ${list.length} run${list.length === 1 ? '' : 's'}`];
   for (const r of list) out.push('', reportText(r).split('\n').slice(0, -1).join('\n'));
   out.push('', JSON.stringify(list));
   return out.join('\n');
@@ -306,6 +309,14 @@ export class ReportCard {
     this.isOpen = false;
   }
 
+  /** A tap beside the card: make Play again pulse so it's obvious where to tap. */
+  nudge() {
+    if (!this.isOpen) return;
+    this.againBtn.classList.remove('nudge');
+    void this.againBtn.offsetWidth; // restart the animation
+    this.againBtn.classList.add('nudge');
+  }
+
   /** Where the card sits (CSS px), so the end-screen summary can make room for it. */
   rect() {
     const r = this.root.firstChild.getBoundingClientRect();
@@ -331,7 +342,7 @@ export class ReportCard {
     if (!this.report || !navigator.share) return;
     saveReport(this.report);
     try {
-      await navigator.share({ title: 'HORDE playtest', text: reportText(this.report) });
+      await navigator.share({ title: 'We Left Ben playtest', text: reportText(this.report) });
     } catch {
       // cancelled
     }

@@ -1,7 +1,7 @@
 {
-  "name": "FunLand2 · Prototype 0",
-  "short_name": "Horde P0",
-  "description": "Top-down zombie horde survival - twin-stick feel prototype",
+  "name": "We Left Ben",
+  "short_name": "We Left Ben",
+  "description": "Horde survival in 3D. We left him behind. He keeps leaving signs.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
@@ -9,7 +9,16 @@
   "background_color": "#060709",
   "theme_color": "#060709",
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" }
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
   ]
 }

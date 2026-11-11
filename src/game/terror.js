@@ -10,7 +10,7 @@
 //    flinches, smokes and backs off. Keep it lit long enough and it flees.
 //  - Your heartbeat speeds up while it's close and unseen.
 
-import { rand, wrapAngle, clamp, smoothstep } from '../util.js';
+import { rand, wrapAngle, clamp, smoothstep, lampLit } from '../util.js';
 import { newId, damageZombie } from './zombies.js';
 import { finaleLights } from './finale.js';
 
@@ -84,7 +84,7 @@ export function lightAt(game, x, y) {
     const dx = x - l.x;
     const dy = y - l.y;
     if (dx * dx + dy * dy > r * r) continue;
-    if (l.broken && Math.sin(t * 13 + l.x) <= 0.6) continue;
+    if (!lampLit(l, t)) continue;
     add(Math.min(1, (1 - Math.hypot(dx, dy) / r) * 1.7), 0);
   }
   for (const f of map.fires) {
@@ -187,7 +187,7 @@ export class NightTerror {
     game.stats.terrors++;
     game.audio.terrorDie(this.x, this.y);
     game.announce('NIGHT TERROR DOWN', '#cfe3ff', 1.4, 'small');
-    for (let i = 0; i < 8; i++) game.effects.smoke(this.x + rand(-10, 10), this.y + rand(-10, 10), rand(10, 18));
+    for (let i = 0; i < 8; i++) game.effects.smoke(this.x + rand(-10, 10), this.y + rand(-10, 10), rand(10, 18), rand(8, 40));
   }
 }
 
@@ -293,7 +293,7 @@ export function updateTerror(game, z, dt) {
   z.burn = L.burn;
   z.ghost = z.lit < TERROR.hitLit;
   if (z.burn > 0.25 && z.mode !== 'flee') z.burnT += dt * z.burn;
-  if (z.burn > 0.3 && Math.random() < dt * 22) game.effects.smoke(z.x + rand(-7, 7), z.y + rand(-7, 7), rand(5, 9));
+  if (z.burn > 0.3 && Math.random() < dt * 22) game.effects.smoke(z.x + rand(-7, 7), z.y + rand(-7, 7), rand(5, 9), rand(20, 44));
 
   const dx = p.x - z.x;
   const dy = p.y - z.y;

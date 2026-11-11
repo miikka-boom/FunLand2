@@ -25,7 +25,7 @@ for (const [name, gen] of LEVELS) {
   test(`${name}: flavor is seeded and purely visual (no obstacle touched)`, () => {
     const a = addLore(full(gen, 1337), 1337);
     const b = addLore(full(gen, 1337), 1337);
-    assert.equal(JSON.stringify([a.decor, a.posters, a.roofArt, a.readables]), JSON.stringify([b.decor, b.posters, b.roofArt, b.readables]));
+    assert.equal(JSON.stringify([a.decor, a.posters, a.roofArt]), JSON.stringify([b.decor, b.posters, b.roofArt]));
     for (const seed of SEEDS) {
       const map = full(gen, seed, true);
       const before = map.obstacles.map((o) => [o.kind, o.x, o.y, o.w, o.h]);
@@ -34,7 +34,7 @@ for (const [name, gen] of LEVELS) {
     }
   });
 
-  test(`${name}: graffiti, posters, a den and things to read on every map`, () => {
+  test(`${name}: graffiti, posters and a den on every map, all of it drawn (no inspect text)`, () => {
     for (const seed of SEEDS) {
       for (const all of [false, true]) {
         const map = addLore(full(gen, seed, all), seed);
@@ -42,13 +42,12 @@ for (const [name, gen] of LEVELS) {
         assert.ok(graffiti.length >= 20, `seed ${seed}: ${graffiti.length} graffiti`);
         assert.ok(map.posters.length >= 6, `seed ${seed}: ${map.posters.length} posters`);
         assert.ok(map.dens.length >= 1, `seed ${seed}: no den`);
-        assert.ok(map.readables.length >= 25, `seed ${seed}: ${map.readables.length} readables`);
-        for (const r of map.readables) assert.ok(r.text && r.label, 'every readable has a label and a text');
+        assert.equal(map.readables, undefined, 'no inspect text: the words are in the world');
         if (name === 'city') assert.ok(map.roofArt.length >= 2, `seed ${seed}: roof messages`);
-        // The den is lit, and has a page to read.
+        // The den is lit, and its page's words are written out on the floor beside it.
         for (const d of map.dens) {
           assert.ok(map.glows.some((g) => g.den && Math.hypot(g.x - d.x, g.y - d.y) < 1), 'den candle glow');
-          assert.ok(map.readables.some((r) => Math.hypot(r.x - d.x, r.y - d.y) < 40 && /JOURNAL|NOTE/.test(r.label)), 'den note');
+          assert.ok(graffiti.some((g) => g.page && Math.hypot(g.x - d.x, g.y - d.y) < 200), `seed ${seed}: the den's page, written out`);
         }
       }
     }
@@ -89,4 +88,8 @@ test('content: plenty to go round, nothing referenced that does not exist', () =
   const texts = [...CITY_GRAFFITI, ...BUILDING_GRAFFITI].map((g) => g.text);
   assert.equal(new Set(texts).size, texts.length, 'no duplicate lines');
   for (const d of Object.values(POSTERS)) assert.ok(d.head && d.bg && d.fg && (d.city || d.building));
+});
+
+test('every line meant to be read in the world is short enough to read from above', () => {
+  for (const set of [NOTES.city, NOTES.building, NOTES.docks, NOTES.tinkerer]) for (const t of set) assert.ok(t.length <= 40, t);
 });

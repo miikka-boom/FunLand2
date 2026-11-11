@@ -1,11 +1,12 @@
 // World features at run time (placement: world/features-gen.js):
 //   - the holdout gate: stand at the control box, then hold out against the
 //     waves (they come from your side of the wall) while the gate slides open
-//   - the breach: called out when you first see it; breaking it opens the
+//   - the breach (it says what it is in spray paint): breaking it opens the
 //     short way (the nav grid and the safe-room arrow follow) and wakes the nest
 //   - explosive landmarks (gas pumps, cylinders): a blast, then a fire that
 //     burns for a while (zombies walking into it burn too)
-//   - landmark call-outs and the ammo cans
+//   - the ammo cans
+// No inspect text: what the world has to say is drawn in it.
 
 import { clamp, pointInRect, rand } from '../util.js';
 import { Zombie, alertZombie, damageZombie } from './zombies.js';
@@ -25,10 +26,9 @@ export function initWorldEvents(game, map) {
   const h = map.holdout;
   game.events = {
     holdout: h ? { ...h, state: 'idle', t: 0, hold: 0, prompted: false, waves: 0, nextWave: 1, f: 0 } : null,
-    breach: map.breach ? { ...map.breach, seen: false, open: false } : null,
+    breach: map.breach ? { ...map.breach, open: false } : null,
     explosives: (map.explosives || []).map((e) => ({ ...e, done: false })),
     burns: [],
-    seen: new Set(),
     smokeT: 0,
     finale: initFinale(game, map),
   };
@@ -53,24 +53,6 @@ export function updateWorldEvents(game, dt) {
   const p = game.player;
   if (E.holdout) updateHoldout(game, E.holdout, dt);
   if (E.finale) updateFinale(game, E.finale, dt);
-
-  const B = E.breach;
-  if (B && !B.seen && !B.open && p.alive) {
-    if (Math.hypot(B.front.x - p.x, B.front.y - p.y) < 520 && game.world.segmentClear(p.x, p.y, B.front.x, B.front.y)) {
-      B.seen = true;
-      game.announce('A BREACH: THE SHORT WAY', '#ffb37a', 2.4);
-      game.announce('BREAK IT DOWN (LOUD), OR GO ROUND BY THE CHECKPOINT', 'rgba(255,232,205,0.9)', 3.2, 'small');
-    }
-  }
-
-  // Landmark call-outs, once each.
-  for (const l of game.world.map.landmarks || []) {
-    if (E.seen.has(l) || !p.alive) continue;
-    if (Math.hypot(l.x - p.x, l.y - p.y) < 400) {
-      E.seen.add(l);
-      game.announce(l.label, '#cfd8dc', 1.8, 'small');
-    }
-  }
 
   // Fires left by explosions.
   for (const b of E.burns) {
@@ -99,7 +81,7 @@ export function updateWorldEvents(game, dt) {
       if (!pointInRect(b.x, b.y, vr, b.r)) continue;
       const a = rand(0, Math.PI * 2);
       const d = rand(0, b.r * 0.8);
-      game.effects.smoke(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d - 6, rand(10, 18));
+      game.effects.smoke(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d, rand(10, 18), 14);
       game.effects.ember(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d);
     }
   }
@@ -268,35 +250,6 @@ export function explode(game, x, y, R) {
 
 // --- Reading: graffiti, posters, notes -------------------------------------------------------
 
-const READ_R = 95;
-
-/** The nearest thing to read (in sight, within reach) fades in as a caption. */
-export function updateCaption(game, dt) {
-  const map = game.world.map;
-  const p = game.player;
-  const cap = game.caption || (game.caption = { item: null, a: 0 });
-  let best = null;
-  let bd = READ_R * READ_R;
-  if (map.readables && p.alive && !game.won && !game.lost) {
-    for (const r of map.readables) {
-      const dx = r.rx - p.x;
-      const dy = r.ry - p.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 >= bd || !game.world.segmentClear(p.x, p.y, r.rx, r.ry)) continue;
-      bd = d2;
-      best = r;
-    }
-  }
-  if (best && best !== cap.item) {
-    // Let the old one fade before switching.
-    if (cap.a > 0.05) cap.a = Math.max(0, cap.a - dt * 7);
-    else {
-      cap.item = best;
-      cap.a = 0;
-    }
-  } else if (best) cap.a = Math.min(1, cap.a + dt * 5);
-  else cap.a = Math.max(0, cap.a - dt * 3);
-}
 
 // --- Ammo cans -------------------------------------------------------------------------------
 

@@ -78,7 +78,8 @@ test('docks: finds and flavour work there too (stashes, boarded rooms, harbour g
     assert.ok(!g.some((d) => SAFE_ROOM.end.some((e) => e.text && e.text === d.text)), 'safe-room lines on a pier');
     const W = new World(map);
     for (const d of g) assert.ok(!map.water.some((w) => pointInRect(d.x, d.y, w)), `seed ${seed}: graffiti in the water: ${d.text}`);
-    assert.ok(map.readables.length > 15);
+    assert.ok(g.length > 15, 'plenty to read, all of it painted');
+    assert.equal(map.readables, undefined);
     void W;
   }
   assert.ok(NOTES.docks.length >= 4);

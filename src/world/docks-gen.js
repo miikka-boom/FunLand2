@@ -393,13 +393,14 @@ export function generateDocks(seed) {
   }
 
   // A couple of alarm trucks in the warehouse lots (shooting one starts a panic event).
-  let alarms = 0;
+  const alarmed = [];
   for (const c of shuffle(obstacles.filter((o) => o.kind === 'car'), rnd)) {
-    if (alarms >= 2) break;
+    if (alarmed.length >= 2) break;
     if (Math.hypot(c.x - start.x, c.y - start.y) < 900) continue;
+    if (alarmed.some((a) => Math.hypot(a.x - c.x, a.y - c.y) < 1000)) continue; // spread out
     c.alarm = true;
     c.color = '#b8b8b2';
-    alarms++;
+    alarmed.push(c);
   }
 
   // --- World border ----------------------------------------------------------------------------

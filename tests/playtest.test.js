@@ -82,7 +82,7 @@ test('report history: saved per run (re-rating updates it), copy-all text, clear
   assert.equal(h.length, 2);
   assert.equal(h.find((q) => q.id === a.id).ratings.fun, 'meh');
   const all = historyText(h);
-  assert.match(all, /^HORDE playtest reports · 2 runs/);
+  assert.match(all, /^We Left Ben playtest reports · 2 runs/);
   assert.match(all, /Made the ferry/);
   assert.equal(JSON.parse(all.split('\n').pop()).length, 2);
   clearHistory();

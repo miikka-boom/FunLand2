@@ -88,6 +88,23 @@ h1 {
   text-shadow: 0 0 24px rgba(255, 70, 40, 0.45);
 }
 
+/* The logo: WE LEFT BEN with the googly eyes. */
+h1.logo {
+  margin: 0 auto 2px;
+  line-height: 0;
+  font-size: 0;
+}
+
+h1.logo img {
+  display: block;
+  margin: 0 auto;
+  width: auto;
+  height: clamp(84px, 24vh, 190px);
+  max-width: min(440px, 80vw);
+  object-fit: contain;
+  filter: drop-shadow(0 6px 18px rgba(255, 110, 30, 0.22));
+}
+
 .sub {
   margin: 2px 0 12px;
   color: var(--muted);
@@ -148,11 +165,29 @@ html.is-ios .ios-only {
 
 /* --- Level picker ---------------------------------------------------------- */
 
+/* Six map types: two rows of three (one row of six on short screens, below). */
 .levels {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(128px, 1fr));
   justify-content: center;
   gap: 8px;
   margin: 0 0 12px;
+}
+
+@media (max-width: 460px) {
+  .levels {
+    grid-template-columns: repeat(2, minmax(110px, 1fr));
+  }
+}
+
+/* Not much height (a 960 x 540 embed): the six names in one row, no second line. */
+@media (max-height: 640px) and (min-width: 700px) {
+  .levels {
+    grid-template-columns: repeat(6, auto);
+  }
+  .levels .level span {
+    display: none;
+  }
 }
 
 .level {
@@ -162,8 +197,7 @@ html.is-ios .ios-only {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 7px 14px;
-  min-width: 128px;
+  padding: 6px 12px;
   cursor: pointer;
   touch-action: manipulation;
   text-align: center;
@@ -602,6 +636,15 @@ html.is-ios .ios-only {
   padding: 8px 6px;
 }
 
+.report-actions .btn.nudge {
+  animation: nudge 0.6s ease-out;
+}
+
+@keyframes nudge {
+  0%, 100% { transform: scale(1); box-shadow: none; }
+  35% { transform: scale(1.08); box-shadow: 0 0 0 4px rgba(255, 107, 74, 0.45); }
+}
+
 .report-note {
   margin-top: 8px;
   font-size: 11px;
@@ -665,6 +708,12 @@ html.is-ios .ios-only {
   h1 {
     font-size: 34px;
   }
+  h1.logo img {
+    height: 66px;
+  }
+  .kicker {
+    display: none;
+  }
   .sub,
   .hint {
     display: none !important;
@@ -683,11 +732,16 @@ html.is-ios .ios-only {
     padding: 9px 24px;
   }
   .levels {
+    grid-template-columns: repeat(6, auto);
+    gap: 6px;
     margin-bottom: 8px;
   }
   .level {
-    padding: 5px 12px;
-    min-width: 104px;
+    padding: 5px 9px;
+  }
+  .level b {
+    font-size: 12px;
+    letter-spacing: 0.04em;
   }
   .level span {
     display: none;

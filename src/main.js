@@ -276,7 +276,10 @@ window.addEventListener('keydown', kickAudio);
 // taps beside it don't skip it (its Play again button does); keys and pads still restart.
 let restartQueued = false;
 const maybeRestart = (force = false) => {
-  if (card.isOpen && !force) return;
+  if (card.isOpen && !force) {
+    card.nudge(); // point at Play again instead
+    return;
+  }
   if (state === 'play' && (game.won || game.lost) && game.endT > 1.4) restartQueued = true;
 };
 canvas.addEventListener('touchstart', () => maybeRestart(), { passive: true });

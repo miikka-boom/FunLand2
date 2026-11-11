@@ -12,10 +12,20 @@ export class GamepadControls {
     this.lastUsed = 0;
     this.firing = false;
     this.connected = false;
+    this.blocked = typeof navigator.getGamepads !== 'function';
   }
 
   poll(settings) {
-    const pads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [];
+    let pads = [];
+    if (!this.blocked) {
+      try {
+        pads = navigator.getGamepads();
+      } catch {
+        // Embedded in a page that withholds the gamepad (permissions policy):
+        // the call throws. Play on without one, and stop asking.
+        this.blocked = true;
+      }
+    }
     let gp = null;
     for (const p of pads) {
       if (p && p.connected) {

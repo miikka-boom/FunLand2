@@ -30,7 +30,6 @@ export function initFinale(game, map) {
     dur: 60,
     hold: 0,
     prompted: false,
-    seenPier: false,
     waves: 0,
     nextWave: 0,
     f: 0,
@@ -59,12 +58,7 @@ export function updateFinale(game, F, dt) {
   if (F.flareT >= 0) F.flareT += dt;
 
   if (F.state === 'idle') {
-    // Call-outs: on the pier, then near the end.
-    const onPier = p.x > F.pier.x && p.y > F.pier.y - 40 && p.y < F.pier.y + F.pier.h + 40;
-    if (!F.seenPier && p.alive && onPier) {
-      F.seenPier = true;
-      game.announce('PIER 9', '#cfe3ff', 1.8);
-    }
+    // The objective, once you're nearly there (the pier itself is painted PIER 9).
     if (!F.prompted && p.alive && Math.hypot(F.flare.x - p.x, F.flare.y - p.y) < FERRY.prompt) {
       F.prompted = true;
       game.announce('THE LAST FERRY STOPS HERE', '#ffd27a', 2.4);
@@ -84,16 +78,16 @@ export function updateFinale(game, F, dt) {
     if (F.t >= FERRY.answer && !F.said.has('answer')) {
       F.said.add('answer');
       game.audio.ferryHorn(true);
-      game.announce(`HALVARD STAR: WE SEE YOUR FLARE. ${Math.round(F.dur)} SECONDS, PIER 9.`, '#9fd8ff', 3.4, 'small');
+      game.announce(`LIBERTY BELLE: WE SEE YOUR FLARE. ${Math.round(F.dur)} SECONDS, PIER 9.`, '#9fd8ff', 3.4, 'small');
     }
     if (F.t >= F.dur / 2 && F.dur >= 40 && !F.said.has('half')) {
       F.said.add('half');
-      game.announce('HALVARD STAR: HALFWAY THERE. KEEP THAT PIER CLEAR.', '#9fd8ff', 3, 'small');
+      game.announce('LIBERTY BELLE: HALFWAY THERE. KEEP THAT PIER CLEAR.', '#9fd8ff', 3, 'small');
     }
     if (F.t >= F.dur - FERRY.arrive && !F.said.has('arrive')) {
       F.said.add('arrive');
       game.audio.ferryHorn(false);
-      game.announce('HALVARD STAR: COMING ALONGSIDE, NORTH SIDE OF THE PIER.', '#9fd8ff', 3.2, 'small');
+      game.announce('LIBERTY BELLE: COMING ALONGSIDE, NORTH SIDE OF THE PIER.', '#9fd8ff', 3.2, 'small');
     }
     // Waves from land, down the pier.
     if (F.t >= F.nextWave && F.t < F.dur - 4) {

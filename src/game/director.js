@@ -255,7 +255,6 @@ export class Director {
     const g = this.game;
     const p = g.player;
     const S = g.settings;
-    const view = g.viewRect(160);
     let idleNear = 0;
     let near = 0;
     const cap = this.cap;
@@ -263,7 +262,7 @@ export class Director {
     for (const z of g.zombies) {
       if (!z.alive) continue;
       const d = Math.hypot(z.x - p.x, z.y - p.y);
-      const inView = pointInRect(z.x, z.y, view);
+      const inView = g.onScreen(z.x, z.y, 160);
       if (z.state === 'idle') {
         // Far wanderers stay (they populate the route) unless hordes need room.
         if (crowded && d > 2600 && !inView) {
@@ -296,7 +295,6 @@ export class Director {
     const W = g.world;
     const f = W.flow;
     const p = g.player;
-    const view = g.viewRect(90);
     const { startRoom, endRoom } = W.map;
     const n = W.blocked.length;
     const c = this._c;
@@ -311,7 +309,7 @@ export class Director {
       if (pointInRect(c.x, c.y, startRoom.outer, 30) || pointInRect(c.x, c.y, endRoom.outer, 30)) continue;
       if (W.sealedAt(c.x, c.y)) continue; // nailed-shut rooms: nothing new appears in there
       if (spawnBlocked(g, c.x, c.y)) continue; // beyond a shut holdout gate
-      if (pointInRect(c.x, c.y, view)) {
+      if (g.onScreen(c.x, c.y, 90)) {
         if (Math.hypot(c.x - p.x, c.y - p.y) < 380) continue;
         if (W.segmentClear(p.x, p.y, c.x, c.y)) continue;
       }

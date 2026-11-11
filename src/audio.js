@@ -555,6 +555,43 @@ export class Audio {
     this._tone({ f0: 120, f1: 45, dur: 0.18, gain: 0.5, out });
   }
 
+  // --- ben -----------------------------------------------------------------------------
+
+  /** Somebody whistling a few notes, close by, out of sight (the same little tune every time). */
+  benWhistle(x, y) {
+    if (!this._ok('bwhistle', 2)) return;
+    const s = this._spatial(x, y, 900);
+    if (s.gain < 0.02) return;
+    const out = this._out(s.pan, 0.25 + s.gain * 0.6);
+    const tune = [[784, 0.22], [659, 0.22], [784, 0.2], [880, 0.34], [784, 0.5]];
+    let at = 0;
+    for (const [f, dur] of tune) {
+      const o = this._tone({ f0: f, dur, gain: 0.07, attack: 0.04, at, out });
+      // A breathy edge and a little vibrato, like a real whistle.
+      if (o && this.ctx.createOscillator) {
+        const lfo = this.ctx.createOscillator();
+        const lg = this.ctx.createGain();
+        lfo.frequency.value = 6;
+        lg.gain.value = f * 0.012;
+        lfo.connect(lg);
+        lg.connect(o.frequency);
+        const t0 = this.ctx.currentTime + at;
+        lfo.start(t0);
+        lfo.stop(t0 + dur + 0.05);
+      }
+      this._noise({ dur, type: 'bandpass', freq: f * 2, q: 12, gain: 0.012, attack: 0.05, at, out });
+      at += dur + 0.05;
+    }
+  }
+
+  /** Small quick footsteps, running off. */
+  benScuff(x, y) {
+    if (!this._ok('bscuff', 0.5)) return;
+    const s = this._spatial(x, y, 800);
+    const out = this._out(s.pan, 0.3 + s.gain * 0.6);
+    for (let k = 0; k < 5; k++) this._noise({ dur: 0.05, type: 'lowpass', freq: 900 - k * 80, gain: 0.3 * (1 - k * 0.16), at: k * 0.085, out });
+  }
+
   // --- pier 9 ------------------------------------------------------------------------
 
   /** The flare: a whoosh up, a pop, then the hiss of it burning. */
