@@ -285,7 +285,7 @@ function select(sel) {
   sound(same ? 'tap' : 'open');
   hud.setMode('sel');
   const c = selCentre(sel);
-  if (c && !same) map.glide(c.i, c.j, { ms: 380, dy: 60 });
+  if (c && !same) map.glide(c.i, c.j, { ms: 380, dy: 40 });
 }
 
 function deselect() {
