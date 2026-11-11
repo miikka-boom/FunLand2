@@ -122,6 +122,10 @@ p {
   background: linear-gradient(#7fc0ff, #3d8bf0);
 }
 
+.btn.teal {
+  background: linear-gradient(#b4f3e6, #55c9b0);
+}
+
 .btn.plain {
   background: var(--paper2);
 }
@@ -313,6 +317,15 @@ p {
 
 .lvtag {
   background: var(--paper);
+}
+
+/* What someone is (a Hunter, a Scout...): a word, not a rule. */
+.cls {
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .rtag.r-legendary {
@@ -926,6 +939,12 @@ em.ready {
 
 .pin-radio.calling i.full {
   background: #ff8a7a;
+  letter-spacing: 0.04em;
+}
+
+.pin-radio {
+  min-height: 40px;
+  box-sizing: border-box;
 }
 
 .pin-radio.answered {
@@ -978,14 +997,14 @@ em.ready {
 }
 
 .pin-gift {
-  width: 26px;
-  height: 26px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   justify-content: center;
   border-radius: 50%;
   background: #ff8a1e;
   color: #fff;
-  font-size: 15px;
+  font-size: 20px;
   animation: pin-bounce 0.7s ease-in-out infinite alternate;
 }
 
@@ -1111,6 +1130,10 @@ body.away #hud .bottom {
 }
 
 .chip.gear {
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
   padding: 5px;
   font-size: 22px;
   background: var(--paper2);
@@ -1205,21 +1228,56 @@ body.away #hud .bottom {
 }
 
 .card .nm {
+  font-size: 12.5px;
+  font-weight: 900;
+  line-height: 1.08;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Power, and in a word how it stands against the danger out there. */
+.odds {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  justify-self: start;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 1px 6px 1px 3px;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
   font-size: 13px;
   font-weight: 900;
+  line-height: 1.2;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.1;
 }
 
-.card .pw {
-  font-size: 15px;
-  line-height: 1;
+.odds .ic {
+  font-size: 14px;
 }
 
-.card .pw .ic {
-  font-size: 15px;
+.odds i {
+  font-style: normal;
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+}
+
+.odds.st-solid {
+  background: #8bea7c;
+}
+
+.odds.st-good {
+  background: #d8ec6a;
+}
+
+.odds.st-shaky {
+  background: #ffc46a;
+}
+
+.odds.st-risky {
+  background: #ff8a7a;
 }
 
 .card.can {
@@ -1294,10 +1352,17 @@ body.away #hud .bottom {
   font-size: 14px;
 }
 
-.play-sub span {
-  opacity: 0.8;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.play-sub .stars {
+  margin-left: 4px;
+  gap: 1px;
+}
+
+.play-sub .ic-starOff path,
+.rstar .ic-starOff path {
+  fill: #f8eed8;
+  fill-opacity: 0.18;
+  stroke: #f8eed8;
+  stroke-opacity: 0.8;
 }
 
 .btn.play.small {
@@ -1415,6 +1480,7 @@ body.away #hud .bottom {
 
 .sheet.wide {
   width: min(800px, 100%);
+  padding: 12px 16px;
 }
 
 @keyframes sheet-in {
@@ -1426,11 +1492,11 @@ body.away #hud .bottom {
 
 .x {
   position: absolute;
-  top: -10px;
-  right: -10px;
+  top: -12px;
+  right: -12px;
   z-index: 2;
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   border: 3px solid var(--ink);
@@ -1578,7 +1644,7 @@ body.away #hud .bottom {
 }
 
 .stat small {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.1em;
   color: var(--muted);
@@ -1783,6 +1849,10 @@ body.away #hud .bottom {
   flex: 1;
 }
 
+.people-head .btn {
+  min-height: 40px;
+}
+
 .people-sheet .scroll {
   max-height: calc(100vh - 118px - var(--st) - var(--sb));
   margin: 0 -6px;
@@ -1799,8 +1869,8 @@ body.away #hud .bottom {
   position: relative;
   display: grid;
   justify-items: center;
-  gap: 4px;
-  padding: 9px 7px 8px;
+  gap: 3px;
+  padding: 7px 6px 7px;
   border: 3px solid var(--ink);
   border-radius: 15px;
   background: var(--paper2);
@@ -1817,7 +1887,7 @@ button.pcard:active {
 }
 
 .pcard .face {
-  --fs: 58px;
+  --fs: 48px;
 }
 
 .pcard .nm {
@@ -1839,7 +1909,7 @@ button.pcard:active {
 
 .pcard .ctag,
 .pcard .rtag {
-  font-size: 8.5px;
+  font-size: 10px;
   padding: 2px 5px;
   border-width: 2px;
 }
@@ -1865,8 +1935,8 @@ button.pcard:active {
   border: 2.5px solid var(--ink);
   border-radius: 8px;
   background: var(--gold);
-  font: 900 9px/1 var(--font);
-  letter-spacing: 0.08em;
+  font: 900 10px/1 var(--font);
+  letter-spacing: 0.06em;
   font-style: normal;
 }
 
@@ -1879,7 +1949,15 @@ button.pcard:active {
   transform: none;
 }
 
+.pcard.unknown .nm {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4a4460;
+}
+
 .pcard.unknown {
+  align-content: start;
   background: #cfc6b4;
   box-shadow: 0 4px 0 #1b173088;
   opacity: 0.92;
@@ -1995,7 +2073,7 @@ button.pcard:active {
 }
 
 .stop-top small {
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 800;
   opacity: 0.75;
   line-height: 1.1;
@@ -2027,7 +2105,7 @@ button.pcard:active {
 
 .fact small {
   grid-column: span 2;
-  font-size: 8.5px;
+  font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2071,8 +2149,8 @@ button.pcard:active {
 
 .here-tag {
   background: var(--gold);
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
+  font-size: 10px;
+  letter-spacing: 0.05em;
 }
 
 .done-tag {
@@ -2275,8 +2353,8 @@ button.slot:active {
   border-radius: 7px;
   background: var(--red);
   color: #fff;
-  font: 900 8.5px/1.2 var(--font);
-  letter-spacing: 0.06em;
+  font: 900 10px/1.2 var(--font);
+  letter-spacing: 0.05em;
   font-style: normal;
   opacity: 0;
 }
@@ -2380,7 +2458,7 @@ button.slot:active {
   }
 }
 
-.run-banner b {
+.run-banner > b {
   font-size: clamp(20px, 4.6vw, 44px);
   font-weight: 900;
   letter-spacing: 0.03em;
@@ -2389,11 +2467,11 @@ button.slot:active {
   text-align: center;
 }
 
-.run-banner.s3 b {
+.run-banner.s3 > b {
   color: var(--gold);
 }
 
-.run-banner.s0 b {
+.run-banner.s0 > b {
   color: #ffb3a8;
 }
 
@@ -2407,6 +2485,29 @@ button.slot:active {
   background: var(--paper);
   font-size: 14px;
   font-weight: 900;
+}
+
+.run-banner .why {
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 92vw;
+  box-sizing: border-box;
+  font-size: 13px;
+}
+
+.run-banner .why i {
+  font-style: normal;
+  margin: 0 3px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.run-banner em {
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: var(--o2);
 }
 
 .run-skip {
@@ -2537,7 +2638,58 @@ button.slot:active {
   grid-template-rows: auto 1fr auto auto;
 }
 
+.pick-mid {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+.pick-hunt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--paper);
+  font-size: 12.5px;
+  font-weight: 800;
+  line-height: 1;
+  transition: opacity 0.3s;
+}
+
+.pick-hunt .ic {
+  font-size: 17px;
+}
+
+.pick-hunt b {
+  color: var(--gold);
+  font-weight: 900;
+}
+
+.pick-hunt.done {
+  opacity: 0.35;
+}
+
+.pick-why {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 210px;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #ffd9d2;
+}
+
+.pick-why b {
+  font-weight: 900;
+  color: #fff;
+}
+
+.pick-why .ic {
+  font-size: 13px;
+}
+
 .pick h2 {
+  white-space: nowrap;
   font-size: clamp(22px, 4vw, 34px);
   font-weight: 900;
   letter-spacing: 0.03em;
@@ -2585,9 +2737,9 @@ button.slot:active {
   border-radius: 8px;
   background: var(--paper);
   color: var(--ink);
-  font: 900 8px/1 var(--font);
+  font: 900 10px/1 var(--font);
   font-style: normal;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
 }
 
 .carrier i .ic {
@@ -2620,6 +2772,7 @@ button.slot:active {
   align-items: baseline;
   gap: 6px;
   min-height: 36px;
+  white-space: nowrap;
 }
 
 .pick-count b {
@@ -2930,9 +3083,9 @@ button.slot:active {
 
 .eyes-spot {
   position: absolute;
-  left: -9%;
-  bottom: -4%;
-  width: 30%;
+  left: -13%;
+  bottom: -7%;
+  width: 44%;
   pointer-events: none;
   opacity: 0;
   animation: eyes-in 1.2s 0.9s ease-out forwards;
@@ -3034,8 +3187,21 @@ button.slot:active {
   min-width: 0;
 }
 
+.got li.tok .tk {
+  flex: 1;
+  width: auto;
+}
+
+.got li.tok em.ready {
+  margin-left: auto;
+}
+
 .got li.radio {
   background: linear-gradient(#ffe27a, #ffb52e);
+}
+
+.got li.radio b {
+  flex: 1;
 }
 
 .got li.radio span {
@@ -3099,6 +3265,7 @@ button.slot:active {
 
 .pick-btns .btn {
   color: var(--ink);
+  min-height: 42px;
 }
 
 .pick-btns .btn .face {
@@ -3388,6 +3555,14 @@ button.slot:active {
   height: 20px;
 }
 
+.call-tokens .amt {
+  margin-left: 4px;
+}
+
+.call-btns .btn {
+  min-height: 44px;
+}
+
 .call-btns {
   display: flex;
   flex-wrap: wrap;
@@ -3405,7 +3580,7 @@ button.slot:active {
   padding: 16px 20px 18px;
   border: 3.5px solid var(--ink);
   border-radius: 22px;
-  background: #f8eed8f2;
+  background: var(--paper);
   box-shadow: 0 7px 0 #0b0920;
   text-align: center;
   animation: sheet-in 0.4s cubic-bezier(0.2, 1.5, 0.4, 1) 0.15s backwards;
@@ -3451,6 +3626,41 @@ button.slot:active {
 
 .fact.voices small {
   width: 100%;
+}
+
+.found {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  padding: 6px 14px 8px;
+  border: 2.5px dashed #1b173066;
+  border-radius: 14px;
+  background: #fff6c2;
+}
+
+.found small {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+.found-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 17px;
+}
+
+.found-row .amt .ic {
+  font-size: 22px;
+}
+
+.found-tok {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 900;
 }
 
 .ferry .arrive-card h1 {
@@ -3760,7 +3970,28 @@ button.slot:active {
 /* --- Small phones (667x375 and the like) --------------------------------------------------------- */
 @media (max-width: 720px), (max-height: 380px) {
   .btn.play {
-    width: 158px;
+    width: 150px;
+  }
+
+  .odds {
+    padding-left: 5px;
+    font-size: 12px;
+  }
+
+  .odds .ic {
+    display: none;
+  }
+
+  .card .nm {
+    font-size: 11.5px;
+  }
+
+  .pick-how {
+    font-size: 11.5px;
+  }
+
+  .pick-why {
+    font-size: 10.5px;
   }
 
   .play-main {
@@ -3768,7 +3999,9 @@ button.slot:active {
   }
 
   .btn.people {
-    width: 64px;
+    width: 60px;
+    font-size: 9px;
+    letter-spacing: 0;
   }
 
   .card {

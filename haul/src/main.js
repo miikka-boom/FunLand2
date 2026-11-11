@@ -64,7 +64,7 @@ const sheets = new Sheets(el('modals'), {
     return refresh();
   },
 });
-const runView = new RunView(el('stage'), { sfx, fx, tuning });
+const runView = new RunView(el('stage'), { sfx, fx, tuning, game });
 const pickView = new PickView(el('stage'), { game, sfx, fx, tuning, save });
 const moments = new Moments(el('stage'), { game, sfx, fx, tuning });
 const dev = new Dev(el('dev'), {
@@ -147,10 +147,9 @@ function pointTheWay() {
   if (busy || sheets.isOpen || dev.open || !state.welcomed) return hud.hideHand();
   const h = game.hint();
   const guiding = game.guiding();
-  if (h.kind === 'radio') return hud.point(camp.radioTarget(), guiding ? 'Someone answered the radio' : '');
+  if (h.kind === 'radio') return hud.point(camp.radioTarget()); // the bubble says it already
   if (!guiding) return hud.hideHand();
-  if (h.kind === 'level') return hud.point(hud.cardEl(h.id), `Level up ${CAST[h.id].name}`);
-  if (h.kind === 'squad') return hud.point(hud.peopleEl(), `${CAST[h.id].name} is stronger: swap them in`);
+  if (h.kind === 'level') return hud.point(hud.cardEl(h.id), `Level up ${CAST[h.id].short || CAST[h.id].name}`);
   if (h.kind === 'gift') return hud.point(camp.point(SPOTS.gift.x, SPOTS.gift.y - 40), 'Somebody left this');
   return hud.point(hud.playEl(), state.runs === 0 ? 'Send them out' : '');
 }
@@ -169,9 +168,15 @@ function onAct(act, data = {}) {
       sfx.play('tap');
       backTo = null;
       return sheets.open(() => peopleSheet(game), { cls: 'wide', key: 'people' });
-    case 'road':
+    case 'road': {
       sfx.play('tap');
-      return sheets.open(() => roadSheet(game), { cls: 'wide', key: 'road' });
+      sheets.open(() => roadSheet(game), { cls: 'wide', key: 'road' });
+      // Open on where you are, not on stop 1.
+      const here = el('modals').querySelector('.stop.here');
+      const scroller = el('modals').querySelector('.scroll.sideways');
+      if (here && scroller) scroller.scrollLeft = Math.max(0, here.offsetLeft - (scroller.clientWidth - here.offsetWidth) / 2);
+      return undefined;
+    }
     case 'radio':
       if (busy) return undefined;
       if (game.answered() > 0) return answerCall();
@@ -210,8 +215,7 @@ function onAct(act, data = {}) {
       sheets.refresh();
       hud.render();
       camp.render();
-      if (out.out) toasts.show(`${esc(CAST[data.id].name)} is in. ${esc(CAST[out.out].name)} sits this one out.`);
-      return undefined;
+      return undefined; // (the sheet itself now says "In the squad")
     }
     case 'best': {
       const came = game.useBest();
@@ -221,7 +225,7 @@ function onAct(act, data = {}) {
       sheets.refresh();
       hud.render();
       camp.render();
-      return toasts.show(`In the squad: ${came.map((id) => esc(CAST[id].name)).join(' and ')}`);
+      return undefined; // (the cards on the sheet show who is in)
     }
     default:
       return undefined;
@@ -322,7 +326,8 @@ async function backHome(next, res = null) {
   await road();
   busy = false;
   refresh();
-  if (next.open && game.has(next.open)) openSurvivor(next.open);
+  if (next.open === 'radio' && game.answered() > 0) answerCall();
+  else if (next.open && game.has(next.open)) openSurvivor(next.open);
   else if (next.next === 'again') play();
   else if (res) setTimeout(() => homeTalk(res), 650);
 }
@@ -412,12 +417,12 @@ async function answerCall() {
   save();
   camp.renderRack();
   const choice = await moments.reveal(res);
-  if (choice === 'squad') {
-    const b = game.betterBench();
-    if (b && b.id === res.id) {
-      game.putInSquad(b.id, b.slot);
+  if (choice === 'squad' && !state.squad.includes(res.id)) {
+    const slot = game.weakestSlot();
+    const out = state.squad[slot];
+    if (game.putInSquad(res.id, slot).ok) {
       sfx.play('swap');
-      toasts.show(`${esc(CAST[b.id].name)} is in. ${esc(CAST[b.out].name)} sits this one out.`);
+      toasts.show(`${esc(CAST[res.id].name)} is in. ${esc(CAST[out].name)} sits this one out.`);
     }
   }
   save();

@@ -61,6 +61,7 @@ export function migrate(saved, now = Date.now()) {
   s.calls = int(saved.calls, 0, 1e9, 0);
   s.fresh = int(saved.fresh, 0, 99, 0);
   s.legendWait = int(saved.legendWait, 0, 1e6, 0);
+  s.dry = int(saved.dry, 0, 1e6, 0);
   s.gifts = int(saved.gifts, 0, 1e9, 0);
   s.areaSeen = int(saved.areaSeen, 0, areaIndexFor(s.stars), 0);
   s.ferry = saved.ferry === true;

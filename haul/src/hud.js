@@ -6,7 +6,7 @@ import { CAST, AREAS, FERRY_STARS } from './config.js';
 import { standLabel } from './rules.js';
 import { icon } from './icons.js';
 import { fmtNum } from './format.js';
-import { face, tokenBar, esc } from './ui.js';
+import { face, tokenBar, esc, shortName, stars } from './ui.js';
 import { centre } from './fx.js';
 
 export class Hud {
@@ -36,7 +36,7 @@ export class Hud {
       `<button class="chip road" type="button" data-act="road" aria-label="The road">` +
       `<span class="road-ic">${icon('road')}</span>` +
       `<span class="road-txt"><b>${esc(area.name)}</b><span class="bar"><i style="width:${Math.round((this.roadShown ?? r.t) * 100)}%"></i></span></span>` +
-      `<span class="road-stars">${icon('star')}<b>${done ? fmtNum(s.stars) : `${s.stars - r.from}/${r.to - r.from}`}</b></span>` +
+      `<span class="road-stars">${icon('star')}<b>${done ? fmtNum(s.stars) : `${s.stars}/${r.to}`}</b></span>` +
       `<span class="road-next">${done ? 'Pier 9 · you made it' : `to ${esc(goal)}`}</span>` +
       `</button>` +
       `<span class="grow"></span>` +
@@ -50,12 +50,13 @@ export class Hud {
     const cards = s.squad
       .map((id) => {
         const info = game.levelInfo(id);
-        const st = standLabel(game.standChance(id)).id;
+        const st = standLabel(game.standChance(id));
+        // The one rule that decides a run, in a word: their power against the danger out there.
         return (
           `<button class="card r-${CAST[id].rarity}${info.ok ? ' can' : ''}" type="button" data-act="survivor" data-id="${id}">` +
           face(id, { level: info.level }) +
-          `<span class="card-txt"><b class="nm">${esc(CAST[id].name)}</b>` +
-          `<span class="pw st-${st}">${icon('power')}<b>${info.power}</b></span>` +
+          `<span class="card-txt"><b class="nm">${shortName(id)}</b>` +
+          `<span class="odds st-${st.id}">${icon('power')}<b>${info.power}</b><i>${st.name.toUpperCase()}</i></span>` +
           tokenBar(info, { compact: true }) +
           `</span>` +
           (info.ok ? `<span class="upbadge">${icon('up')}</span>` : '') +
@@ -66,7 +67,8 @@ export class Hud {
     this.bottom.innerHTML =
       `<button class="btn people" type="button" data-act="people">${icon('people')}<span>EVERYONE</span>${benchReady || better ? `<i class="dot">${benchReady || '!'}</i>` : ''}</button>` +
       `<div class="squad">${cards}</div>` +
-      `<button class="btn play" type="button" data-act="play"><span class="play-main">${icon('play')}PLAY</span><span class="play-sub">${icon('danger')}<b>${Math.round(game.danger())}</b><span>${esc(area.name)}</span></span></button>`;
+      // PLAY says what is out there and how many are likely to come back standing.
+      `<button class="btn play" type="button" data-act="play" aria-label="Play: danger ${Math.round(game.danger())} at ${esc(area.name)}"><span class="play-main">${icon('play')}PLAY</span><span class="play-sub">${icon('danger')}<b>${Math.round(game.danger())}</b>${stars(Math.round(game.expectedStars()))}</span></button>`;
   }
 
   /** Draw the road bar at `t` (0..1) until told otherwise; null goes back to the truth. */

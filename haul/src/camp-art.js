@@ -6,8 +6,9 @@
 // The scene is drawn for SCENE (1200 x 540) but the sky, the ground and the
 // fence run on far past it, so camp.js can show any window of it that fits
 // the screen. SPOTS says where things stand; camp.js fills the empty groups
-// (#c-tents, #c-rack, #c-people-back, #c-people, #c-gift) and sets .calling on
-// the <svg> while a radio is calling (the waves at the top of the mast).
+// (#c-tents, #c-rack, #c-people-back, #c-people, #c-gift), redraws the sky and
+// the horizon (#c-sky, #c-city) for the stop the squad has reached, and sets
+// .calling on the <svg> while a radio is calling (the waves on the mast).
 
 import { OL, tone, miniCrate } from './figures.js';
 import { mulberry32 } from './util.js';
@@ -22,16 +23,17 @@ export const SPOTS = {
     { x: 764, y: 388, s: 0.88, flip: false },
     { x: 822, y: 406, s: 0.9, flip: false },
   ],
+  // (Nobody stands in front of the radio set or the rack: they have to be seen.)
   bench: [
     { x: 500, y: 398, s: 0.82, flip: false },
     { x: 636, y: 398, s: 0.82, flip: true },
-    { x: 228, y: 378, s: 0.82, flip: true },
+    { x: 86, y: 384, s: 0.82, flip: false },
     { x: 404, y: 374, s: 0.8, flip: false },
     { x: 568, y: 350, s: 0.78, flip: false, back: true },
-    { x: 344, y: 408, s: 0.84, flip: false },
-    { x: 446, y: 416, s: 0.84, flip: false },
-    { x: 142, y: 408, s: 0.84, flip: false },
-    { x: 290, y: 362, s: 0.78, flip: true },
+    { x: 346, y: 410, s: 0.84, flip: false },
+    { x: 448, y: 416, s: 0.84, flip: false },
+    { x: 674, y: 356, s: 0.78, flip: true },
+    { x: 352, y: 356, s: 0.78, flip: true },
   ],
   /** One tent for every two people in the camp. */
   tents: [372, 464, 556, 648, 740, 832].map((x, i) => ({ x, y: 316 - (i % 2) * 6, s: 1.12 })),
@@ -41,7 +43,7 @@ export const SPOTS = {
   mast: { x: 132, y: 150 },
   truck: { x: 986, y: 330 },
   gate: { x: 1172, y: 300 },
-  gift: { x: 1096, y: 428 },
+  gift: { x: 1134, y: 318 },
 };
 
 const SWD = 3;
@@ -56,23 +58,59 @@ const n1 = (v) => Math.round(v * 10) / 10;
 const LIGHT = '#ffd36b';
 const CANVAS = ['#748149', '#8a7550', '#56737a', '#93604f', '#6a6a8a', '#7f8a3f'];
 
-// --- Sky and the far city --------------------------------------------------------------------
+// --- Sky and what stands beyond the fence ----------------------------------------------------
+// The camp moves down the road with the squad, so each stop has its own sky and
+// its own shapes on the horizon: roofs, a hill of headstones, stacks of wrecks,
+// towers, office blocks, and at last the cranes of Pier 9 themselves (they get
+// bigger at every stop).
 
-function sky() {
+/** Six skies, top to horizon. */
+const SKIES = [
+  ['#121231', '#231c4a', '#4a2c66', '#93406c', '#e2694f', '#ffb768'], // Suburbia: sunset
+  ['#081425', '#0f2238', '#17394f', '#2a5a66', '#4f8a86', '#9fd0b8'], // The Graveyard: moonlight
+  ['#140f1c', '#2a1826', '#55272c', '#8f4a2c', '#d9783a', '#ffc070'], // The Junkyard: rust
+  ['#080c24', '#111640', '#221f5c', '#47307a', '#8a4a86', '#e07a8a'], // Center City: neon dusk
+  ['#081019', '#0e1c2e', '#17304a', '#255068', '#4f8fa0', '#a8dcd8'], // Market Street: a cold early hour
+  ['#06091a', '#0c1430', '#1a2448', '#3a2850', '#8a3a4a', '#e0604a'], // Pier 9: the flare
+];
+const SKY_STOPS = [0, 0.62, 0.8, 0.9, 0.965, 1];
+/** The dark of the far shapes and of the near ones, for each sky. */
+const SHADES = [
+  ['#3b2c5e', '#2a2148', '#241c40'],
+  ['#12303f', '#0d2532', '#0a1d28'],
+  ['#3a1f26', '#2a161f', '#22121a'],
+  ['#2a2466', '#1b1848', '#15133a'],
+  ['#1b3a52', '#12293d', '#0e2032'],
+  ['#1f2a50', '#141c3a', '#0f1630'],
+];
+const CRANE_SIZE = [0.72, 0.8, 0.92, 1.1, 1.4, 2.25];
+export const CAMP_SKIES = SKIES.length;
+
+const area6 = (area) => Math.max(0, Math.min(SKIES.length - 1, Math.floor(area) || 0));
+
+export function skySvg(area = 0) {
+  const k = area6(area);
   const rnd = mulberry32(9);
   let stars = '';
-  for (let i = 0; i < 46; i++) {
+  const n = k === 3 || k === 4 ? 22 : 46; // the city's glow hides most of them
+  for (let i = 0; i < n; i++) {
     const x = Math.round(-380 + rnd() * 1960);
     const y = Math.round(-250 + rnd() * 400);
     const r = n1(0.8 + rnd() * 1.5);
     stars += `<circle class="c-star" cx="${x}" cy="${y}" r="${r}" fill="#fff6d8" style="animation-delay:${n1(-rnd() * 5)}s"/>`;
   }
-  const cloud = (x, y, s, o) => `<g class="c-cloud" transform="translate(${x},${y}) scale(${s})" opacity="${o}"><path d="M0,0 q10,-22 36,-14 q14,-22 42,-8 q26,-8 34,14 q22,2 20,16 h-150 q-8,-10 18,-8z" fill="#8a4a7c"/><path d="M4,6 q60,-10 128,0" stroke="#ffb768" stroke-width="3" fill="none" opacity="0.5" stroke-linecap="round"/></g>`;
+  const tint = SKIES[k][3];
+  const edge = SKIES[k][5];
+  const cloud = (x, y, s, o) => `<g class="c-cloud" transform="translate(${x},${y}) scale(${s})" opacity="${o}"><path d="M0,0 q10,-22 36,-14 q14,-22 42,-8 q26,-8 34,14 q22,2 20,16 h-150 q-8,-10 18,-8z" fill="${tint}"/><path d="M4,6 q60,-10 128,0" stroke="${edge}" stroke-width="3" fill="none" opacity="0.5" stroke-linecap="round"/></g>`;
+  const moon = k === 1 ? { r: 38, c: '#f4fbff', d: '#d5e8ee' } : { r: 30, c: '#fff1c9', d: '#e9cf96' };
+  // At Pier 9 the sky is lit from below by the flare.
+  const flare = k === 5 ? `<circle class="c-flare" cx="1040" cy="150" r="230" fill="url(#c-flareglow)"/><circle class="c-blink" cx="1040" cy="120" r="5" fill="#ffd0c0"/>` : '';
   return (
-    `<rect x="-900" y="-900" width="3000" height="1200" fill="url(#c-sky)"/>` +
+    `<rect x="-900" y="-900" width="3000" height="1200" fill="url(#c-sky-${k})"/>` +
     stars +
+    flare +
     `<circle cx="770" cy="96" r="150" fill="url(#c-moonglow)"/>` +
-    `<circle cx="770" cy="96" r="30" fill="#fff1c9"/><circle cx="781" cy="88" r="27" fill="#f7dfa6" opacity="0.5"/><circle cx="760" cy="104" r="5" fill="#e9cf96" opacity="0.7"/><circle cx="778" cy="84" r="3.5" fill="#e9cf96" opacity="0.7"/>` +
+    `<circle cx="770" cy="96" r="${moon.r}" fill="${moon.c}"/><circle cx="${770 + moon.r * 0.36}" cy="${96 - moon.r * 0.27}" r="${moon.r * 0.9}" fill="${moon.d}" opacity="0.5"/><circle cx="760" cy="104" r="5" fill="${moon.d}" opacity="0.7"/><circle cx="778" cy="84" r="3.5" fill="${moon.d}" opacity="0.7"/>` +
     cloud(180, 150, 1.15, 0.75) +
     cloud(560, 122, 0.9, 0.6) +
     cloud(1040, 172, 1.25, 0.7) +
@@ -81,42 +119,148 @@ function sky() {
   );
 }
 
-function city() {
-  // Towers, then row-house roofs, then trees: three dark bands against the glow.
-  const rnd = mulberry32(21);
-  let far = '';
+/** A band of far-off towers, and the gantry cranes on the river where the road ends. */
+function farBand(k, rnd) {
+  const [far] = SHADES[k];
+  let out = '';
   let x = -420;
+  const tall = k === 3 || k === 4 ? 1.5 : k === 5 ? 0.5 : 1;
   while (x < 1640) {
     const w = 26 + Math.round(rnd() * 34);
-    const h = 30 + Math.round(rnd() * 70);
+    const h = Math.round((30 + rnd() * 70) * tall);
     const top = 232 - h;
-    far += `<rect x="${x}" y="${top}" width="${w}" height="${h + 20}" fill="#3b2c5e"/>`;
-    if (rnd() < 0.35) far += `<path d="M${x + w / 2 - 5},${top} l5,-${12 + Math.round(rnd() * 16)} l5,${12}z" fill="#3b2c5e"/>`;
-    for (let wy = top + 8; wy < 226; wy += 11) for (let wx = x + 5; wx < x + w - 6; wx += 9) if (rnd() < 0.16) far += `<rect x="${wx}" y="${wy}" width="4" height="5" fill="${LIGHT}" opacity="${n1(0.5 + rnd() * 0.5)}"/>`;
+    out += `<rect x="${x}" y="${top}" width="${w}" height="${h + 20}" fill="${far}"/>`;
+    if (rnd() < 0.35) out += `<path d="M${x + w / 2 - 5},${top} l5,-${12 + Math.round(rnd() * 16)} l5,${12}z" fill="${far}"/>`;
+    const lit = k === 3 ? 0.2 : k === 4 ? 0.14 : k === 1 ? 0.05 : 0.16;
+    for (let wy = top + 8; wy < 226; wy += 11) for (let wx = x + 5; wx < x + w - 6; wx += 9) if (rnd() < lit) out += `<rect x="${wx}" y="${wy}" width="4" height="5" fill="${k === 4 ? '#8fe3d0' : LIGHT}" opacity="${n1(0.5 + rnd() * 0.5)}"/>`;
     x += w + Math.round(rnd() * 14);
   }
-  // Gantry cranes on the river: where the road ends. One red light, blinking.
-  const crane = (cx, s) =>
-    `<g transform="translate(${cx},232) scale(${s})" fill="none" stroke="#2c2350" stroke-width="5" stroke-linejoin="round"><path d="M-22,0 L-14,-70 L14,-70 L22,0 M-18,-36 H18 M-40,-70 H58 M-14,-70 L8,-94 L58,-70 M8,-94 V-70"/><path d="M40,-70 V-46" stroke-width="2.5"/></g>` +
-    `<circle class="c-blink" cx="${cx + 8 * s}" cy="${232 - 97 * s}" r="3.4" fill="#ff5a4a"/>`;
-  let near = '';
-  x = -420;
-  while (x < 1640) {
-    const w = 44 + Math.round(rnd() * 30);
-    const h = 26 + Math.round(rnd() * 22);
-    near += `<path d="M${x},262 V${240 - h + 16} l${w / 2},-16 l${w / 2},16 V262z" fill="#2a2148"/>`;
-    if (rnd() < 0.5) near += `<rect x="${x + w / 2 - 4}" y="${244 - h + 22}" width="8" height="9" fill="${LIGHT}" opacity="0.75"/>`;
-    if (rnd() < 0.4) near += `<rect x="${x + w - 14}" y="${240 - h + 2}" width="7" height="14" fill="#2a2148"/>`;
-    x += w + 3;
-  }
-  let trees = '';
-  for (let i = 0; i < 20; i++) {
-    const tx = Math.round(-400 + rnd() * 2000);
-    const r = 16 + Math.round(rnd() * 14);
-    trees += `<circle cx="${tx}" cy="${236 - r * 0.4}" r="${r}" fill="#241c40"/><circle cx="${tx + r * 0.7}" cy="${240 - r * 0.2}" r="${r * 0.7}" fill="#241c40"/>`;
-  }
-  const tower = `<g fill="#241c40"><path d="M452,170 h44 v34 h-44z"/><path d="M448,170 l26,-14 l26,14z"/><path d="M456,204 l-6,58 M492,204 l6,58 M474,204 v58" stroke="#241c40" stroke-width="4" fill="none"/></g>`;
-  return `<rect x="-900" y="196" width="3000" height="70" fill="url(#c-haze)"/>` + far + crane(1010, 0.9) + crane(1086, 0.72) + near + tower + trees;
+  return out;
+}
+
+function cranes(k) {
+  const [, near] = SHADES[k];
+  const s = CRANE_SIZE[k];
+  const crane = (cx, sc) =>
+    `<g transform="translate(${cx},${k === 5 ? 262 : 232}) scale(${sc})" fill="none" stroke="${near}" stroke-width="5" stroke-linejoin="round"><path d="M-22,0 L-14,-70 L14,-70 L22,0 M-18,-36 H18 M-40,-70 H58 M-14,-70 L8,-94 L58,-70 M8,-94 V-70"/><path d="M40,-70 V-46" stroke-width="2.5"/></g>` +
+    `<circle class="c-blink" cx="${n1(cx + 8 * sc)}" cy="${n1((k === 5 ? 262 : 232) - 97 * sc)}" r="${n1(2.6 + sc)}" fill="#ff5a4a"/>`;
+  if (k === 5) return crane(880, s) + crane(1068, s * 0.82);
+  return crane(1010, s) + crane(1010 + 84 * s, s * 0.8);
+}
+
+/** What is just beyond the fence at each stop. */
+const NEAR = [
+  // Suburbia: roofs, a chimney here and there, a water tower, trees.
+  (rnd, [, near, dark]) => {
+    let out = '';
+    let x = -420;
+    while (x < 1640) {
+      const w = 44 + Math.round(rnd() * 30);
+      const h = 26 + Math.round(rnd() * 22);
+      out += `<path d="M${x},262 V${240 - h + 16} l${w / 2},-16 l${w / 2},16 V262z" fill="${near}"/>`;
+      if (rnd() < 0.5) out += `<rect x="${x + w / 2 - 4}" y="${244 - h + 22}" width="8" height="9" fill="${LIGHT}" opacity="0.75"/>`;
+      if (rnd() < 0.4) out += `<rect x="${x + w - 14}" y="${240 - h + 2}" width="7" height="14" fill="${near}"/>`;
+      x += w + 3;
+    }
+    for (let i = 0; i < 20; i++) {
+      const tx = Math.round(-400 + rnd() * 2000);
+      const r = 16 + Math.round(rnd() * 14);
+      out += `<circle cx="${tx}" cy="${236 - r * 0.4}" r="${r}" fill="${dark}"/><circle cx="${n1(tx + r * 0.7)}" cy="${n1(240 - r * 0.2)}" r="${n1(r * 0.7)}" fill="${dark}"/>`;
+    }
+    return out + `<g fill="${dark}"><path d="M452,170 h44 v34 h-44z"/><path d="M448,170 l26,-14 l26,14z"/><path d="M456,204 l-6,58 M492,204 l6,58 M474,204 v58" stroke="${dark}" stroke-width="4" fill="none"/></g>`;
+  },
+  // The Graveyard: a hill of headstones, the chapel, bare trees.
+  (rnd, [, near, dark]) => {
+    const hill = (x) => 180 + 20 * Math.sin(x / 190) + 9 * Math.sin(x / 71);
+    let d = 'M-900,262';
+    for (let x = -900; x <= 2100; x += 40) d += ` L${x},${n1(hill(x))}`;
+    let out = `<path d="${d} L2100,262z" fill="${near}"/>`;
+    // Stones along the ridge, where they stand against the sky.
+    for (let i = 0; i < 44; i++) {
+      const x = Math.round(-380 + rnd() * 1960);
+      const y = n1(hill(x) + 3);
+      out += rnd() < 0.3 ? `<path d="M${x - 1.5},${y} v-18 h3 v18z M${x - 6},${n1(y - 13)} h12 v3 h-12z" fill="${dark}"/>` : `<path d="M${x - 5},${y} v-10 q0,-6 5,-6 q5,0 5,6 v10z" fill="${dark}"/>`;
+    }
+    const cy = n1(hill(580) + 4);
+    out += `<g fill="${dark}"><path d="M558,${cy} v-34 l22,-16 l22,16 v34z"/><path d="M572,${cy - 50} l8,-36 l8,36z"/><rect x="575" y="${cy - 28}" width="10" height="14" rx="5" fill="${LIGHT}" opacity="0.8"/></g>`;
+    const tree = (x, s) => `<g transform="translate(${x},${n1(hill(x) + 4)}) scale(${s})" stroke="${dark}" stroke-width="5" stroke-linecap="round" fill="none"><path d="M0,0 V-46 M0,-22 l-18,-20 M0,-30 l16,-22 M-18,-42 l-10,-4 M-18,-42 l2,-14 M16,-52 l12,-2 M16,-52 l-4,-14 M0,-46 l-6,-18 M0,-46 l8,-14"/></g>`;
+    return out + tree(330, 1) + tree(900, 1.2) + tree(-120, 1.1) + tree(1330, 0.9);
+  },
+  // The Junkyard: stacks of wrecks, a crane with its magnet, heaps of tyres.
+  (rnd, [, near, dark]) => {
+    let out = '';
+    let x = -400;
+    while (x < 1640) {
+      const n = 3 + Math.floor(rnd() * 3);
+      const w = 62 + Math.round(rnd() * 14);
+      for (let i = 0; i < n; i++) {
+        const y = 262 - i * 17;
+        const dx = Math.round((rnd() - 0.5) * 8);
+        out += `<path d="M${x + dx},${y} v-10 q0,-4 6,-4 h${w * 0.18} l6,-7 h${w * 0.3} l7,7 h${w * 0.22} q6,0 6,4 v10z" fill="${i % 2 ? dark : near}"/>`;
+      }
+      x += w + 18 + Math.round(rnd() * 60);
+    }
+    for (let i = 0; i < 9; i++) {
+      const tx = Math.round(-380 + rnd() * 1960);
+      out += `<circle cx="${tx}" cy="254" r="9" fill="none" stroke="${dark}" stroke-width="6"/><circle cx="${tx + 13}" cy="257" r="8" fill="none" stroke="${dark}" stroke-width="5"/>`;
+    }
+    out += `<g stroke="${dark}" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M360,262 V168 L520,138 M360,186 L430,155"/><path d="M520,138 V178" stroke-width="3"/></g><rect x="500" y="178" width="40" height="12" rx="4" fill="${dark}"/>`;
+    return out + `<circle cx="690" cy="176" r="46" fill="#ffb45a" opacity="0.2"/><path d="M688,262 V180" stroke="${dark}" stroke-width="5"/><rect x="678" y="172" width="22" height="10" rx="3" fill="#ffd36b"/>`;
+  },
+  // Center City: towers close by, their windows lit, a billboard.
+  (rnd, [, near, dark]) => {
+    let out = '';
+    let x = -420;
+    const cols = [LIGHT, LIGHT, '#ff9ab0', '#8fe3d0'];
+    while (x < 1640) {
+      const w = 60 + Math.round(rnd() * 50);
+      const h = 60 + Math.round(rnd() * 80);
+      const top = 262 - h;
+      out += `<rect x="${x}" y="${top}" width="${w}" height="${h}" fill="${rnd() < 0.5 ? near : dark}"/>`;
+      for (let wy = top + 9; wy < 250; wy += 13) for (let wx = x + 7; wx < x + w - 9; wx += 12) if (rnd() < 0.2) out += `<rect x="${wx}" y="${wy}" width="6" height="7" fill="${cols[Math.floor(rnd() * cols.length)]}" opacity="${n1(0.55 + rnd() * 0.45)}"/>`;
+      if (rnd() < 0.3) out += `<path d="M${x + w / 2},${top} v-22" stroke="${dark}" stroke-width="3"/>`;
+      x += w + 2 + Math.round(rnd() * 10);
+    }
+    return out + `<g><path d="M250,262 V176 M330,262 V176" stroke="${dark}" stroke-width="5"/><rect x="232" y="140" width="116" height="42" rx="4" fill="${dark}" stroke="#ff9ab0" stroke-width="3"/><text x="290" y="169" text-anchor="middle" font-size="22" font-weight="900" fill="#ff9ab0" font-family="ui-rounded, 'Arial Rounded MT Bold', 'Nunito', system-ui, sans-serif" class="bd-flicker">HOAGIES</text></g>`;
+  },
+  // Market Street: office blocks, floor after floor, a few still lit.
+  (rnd, [, near, dark]) => {
+    let out = '';
+    let x = -440;
+    while (x < 1640) {
+      const w = 96 + Math.round(rnd() * 60);
+      const h = 96 + Math.round(rnd() * 70);
+      const top = 262 - h;
+      out += `<rect x="${x}" y="${top}" width="${w}" height="${h}" fill="${rnd() < 0.5 ? near : dark}"/>`;
+      for (let wy = top + 10; wy < 252; wy += 14) {
+        const floorLit = rnd() < 0.22;
+        out += `<rect x="${x + 6}" y="${wy}" width="${w - 12}" height="6" fill="${floorLit ? '#8fe3d0' : '#ffffff'}" opacity="${floorLit ? n1(0.5 + rnd() * 0.35) : 0.06}"/>`;
+      }
+      x += w + 6 + Math.round(rnd() * 16);
+    }
+    return out + `<rect x="560" y="196" width="150" height="14" fill="${dark}"/><rect x="566" y="199" width="138" height="5" fill="#8fe3d0" opacity="0.45"/>`;
+  },
+  // Pier 9: containers two and three high, the water, and the ferry's lights.
+  (rnd, [, near, dark]) => {
+    let out = `<rect x="-900" y="238" width="3000" height="24" fill="#1c2a4a"/>`;
+    for (let i = 0; i < 26; i++) out += `<path d="M${Math.round(-380 + rnd() * 1960)},${244 + Math.round(rnd() * 14)} h${10 + Math.round(rnd() * 26)}" stroke="#e0604a" stroke-width="2" opacity="${n1(0.25 + rnd() * 0.4)}" stroke-linecap="round"/>`;
+    const tones = ['#2a3558', '#3a2a4a', '#1f3a4a', '#3a3040'];
+    let x = -420;
+    while (x < 760) {
+      const n = 2 + Math.floor(rnd() * 3);
+      for (let i = 0; i < n; i++) out += `<rect x="${x}" y="${262 - (i + 1) * 20}" width="70" height="19" fill="${tones[Math.floor(rnd() * tones.length)]}" stroke="${dark}" stroke-width="2"/>`;
+      x += 74 + Math.round(rnd() * 22);
+    }
+    // The LIBERTY BELLE, standing off.
+    out += `<g transform="translate(1250,246)"><path d="M-46,0 h92 l-10,12 h-72z" fill="${dark}"/><rect x="-26" y="-12" width="52" height="12" fill="${near}"/><rect x="-10" y="-22" width="20" height="10" fill="${near}"/>${[-20, -10, 0, 10, 20].map((dx) => `<circle cx="${dx}" cy="-6" r="1.8" fill="${LIGHT}"/>`).join('')}<circle class="c-blink" cx="0" cy="-26" r="2.4" fill="#ff5a4a"/></g>`;
+    return out;
+  },
+];
+
+export function citySvg(area = 0) {
+  const k = area6(area);
+  const rnd = mulberry32(21 + k * 7);
+  return `<rect x="-900" y="196" width="3000" height="70" fill="url(#c-haze-${k})"/>` + farBand(k, rnd) + cranes(k) + NEAR[k](rnd, SHADES[k]);
 }
 
 // --- The fence and its lights ----------------------------------------------------------------
@@ -458,8 +602,8 @@ export function giftSvg(line) {
 
 const defs = () =>
   `<defs>` +
-  `<linearGradient id="c-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#121231"/><stop offset="0.62" stop-color="#231c4a"/><stop offset="0.8" stop-color="#4a2c66"/><stop offset="0.9" stop-color="#93406c"/><stop offset="0.965" stop-color="#e2694f"/><stop offset="1" stop-color="#ffb768"/></linearGradient>` +
-  `<linearGradient id="c-haze" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb768" stop-opacity="0"/><stop offset="1" stop-color="#ffb768" stop-opacity="0.55"/></linearGradient>` +
+  SKIES.map((sky, k) => `<linearGradient id="c-sky-${k}" x1="0" y1="0" x2="0" y2="1">${sky.map((c, i) => `<stop offset="${SKY_STOPS[i]}" stop-color="${c}"/>`).join('')}</linearGradient>` + `<linearGradient id="c-haze-${k}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${sky[5]}" stop-opacity="0"/><stop offset="1" stop-color="${sky[5]}" stop-opacity="0.55"/></linearGradient>`).join('') +
+  `<radialGradient id="c-flareglow"><stop offset="0" stop-color="#ff5a4a" stop-opacity="0.55"/><stop offset="1" stop-color="#ff5a4a" stop-opacity="0"/></radialGradient>` +
   `<linearGradient id="c-ground" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a4168"/><stop offset="0.25" stop-color="#3d3658"/><stop offset="1" stop-color="#262040"/></linearGradient>` +
   `<radialGradient id="c-moonglow"><stop offset="0" stop-color="#fff1c9" stop-opacity="0.35"/><stop offset="1" stop-color="#fff1c9" stop-opacity="0"/></radialGradient>` +
   `<radialGradient id="c-firelight"><stop offset="0" stop-color="#ffb45a" stop-opacity="0.5"/><stop offset="0.6" stop-color="#ff8a4a" stop-opacity="0.16"/><stop offset="1" stop-color="#ff8a4a" stop-opacity="0"/></radialGradient>` +
@@ -475,8 +619,8 @@ export function campSvg() {
     defs() +
     // camp.js slides this group about, so the viewBox itself always starts at 0 0.
     `<g id="c-world">` +
-    `<g id="c-sky">${sky()}</g>` +
-    `<g id="c-city">${city()}</g>` +
+    `<g id="c-sky">${skySvg(0)}</g>` +
+    `<g id="c-city">${citySvg(0)}</g>` +
     `<g id="c-lurkers">${lurkers()}</g>` +
     `<g id="c-fence">${fence()}</g>` +
     `<g id="c-ground">${ground()}</g>` +

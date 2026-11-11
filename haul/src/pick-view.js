@@ -5,10 +5,11 @@
 // to camp or straight out again.
 
 import { CAST, AREAS, GRID } from './config.js';
+import { standChanceOf } from './rules.js';
 import { crateSvg, cansSvg, radioSvg, eyesSvg } from './crate-art.js';
 import { icon } from './icons.js';
 import { fmtNum, fmtLeft } from './format.js';
-import { face, tokenBar, esc, wait, nextFrame } from './ui.js';
+import { face, tokenBar, esc, shortName, wait, nextFrame } from './ui.js';
 import { buzz } from './fx.js';
 
 const RADIO_LINES = ['A RADIO!', 'A RADIO!', 'ANOTHER RADIO!'];
@@ -22,7 +23,7 @@ export class PickView {
   /**
    * Show the haul in the save and let the player pick. `res` is the run that
    * brought it (null when picking up where a reload left off).
-   * Resolves { next: 'camp' | 'again', open?: id } once every pick is used.
+   * Resolves { next: 'camp' | 'again', open?: id | 'radio' } once every pick is used.
    */
   async show(res = null) {
     const { game, sfx, fx, tuning } = this.ctx;
@@ -32,9 +33,20 @@ export class PickView {
     const squad = res ? res.squad : h.squad || s.squad;
     const standing = res ? res.standing : h.standing || squad.map((_, i) => i < h.picks);
     const area = AREAS[h.area];
-    const roadBefore = res ? res.road.before : s.stars - h.picks;
-    const cell = (i) =>
-      `<button class="crate" type="button" data-i="${i}" aria-label="Crate ${i + 1}">` + crateSvg() + `<span class="loot"></span></button>`;
+    const danger = Math.round(area.danger * tuning.danger);
+    const hasRadio = h.crates.some((c) => c.kind === 'radio');
+    const cell = (i) => `<button class="crate" type="button" data-i="${i}" aria-label="Crate ${i + 1}">` + crateSvg() + `<span class="loot"></span></button>`;
+    // Why it is this many: whoever went down, and the two numbers that decided it
+    // (or that it was plain bad luck, when their number was the bigger one by a margin).
+    const avg = squad.reduce((a, id) => a + (game.has(id) ? game.power(id) : 0), 0) / squad.length;
+    const why = squad
+      .map((id, i) => {
+        if (standing[i] || !game.has(id)) return '';
+        const chance = res ? res.chances[i] : standChanceOf(game.power(id), avg, area.danger * tuning.danger);
+        const nums = `${icon('power')}<b>${game.power(id)}</b> against ${icon('danger')}<b>${danger}</b>`;
+        return `<p class="pick-why">${face(id, { cls: 'tiny', mood: 'ko' })}<span><b>${shortName(id)}</b> went down${chance >= 0.6 ? `. Bad luck: ${nums}` : `: ${nums}`}</span></p>`;
+      })
+      .join('');
     root.innerHTML =
       `<div class="pick">` +
       `<div class="pick-left">` +
@@ -44,8 +56,12 @@ export class PickView {
         .map((id, i) => `<span class="carrier${standing[i] ? '' : ' down'}" data-i="${i}">${face(id, { mood: standing[i] ? 'happy' : 'ko' })}<i>${standing[i] ? icon('crate') : 'DOWN'}</i></span>`)
         .join('')}</div>` +
       `<div class="pick-count"></div>` +
+      why +
       `</div>` +
-      `<div class="pick-mid"><div class="pallet">${Array.from({ length: GRID }, (_, i) => cell(i)).join('')}</div></div>` +
+      `<div class="pick-mid">` +
+      `<p class="pick-hunt">${hasRadio ? `${icon('radio')}<span>One of these hides a <b>radio</b></span>` : `${icon('crate')}<span>The rack is full: one of these is <b>gold</b></span>`}</p>` +
+      `<div class="pallet">${Array.from({ length: GRID }, (_, i) => cell(i)).join('')}</div>` +
+      `</div>` +
       `<div class="pick-right">` +
       `<span class="chip wallet pick-wallet">${icon('supplies')}<b>${fmtNum(s.supplies)}</b></span>` +
       `<div class="got"><h3>Coming home</h3><ul></ul></div>` +
@@ -71,16 +87,12 @@ export class PickView {
 
     // The road: the stars this run was worth.
     const road = el.querySelector('.pick-road');
-    const drawRoad = () => {
-      const r = game.road();
-      const crossed = res && res.road.areaAfter > res.road.areaBefore;
-      const toName = r.next ? r.next.name : 'the ferry';
-      road.innerHTML =
-        `<span class="pr-stars">${icon('star')}<b>+${h.picks}</b></span>` +
-        `<span class="pr-bar"><span class="bar"><i style="width:${Math.round(r.t * 100)}%"></i></span><small>${crossed ? `<em>NEW STOP: ${esc(AREAS[r.area].name)}!</em>` : r.left > 0 ? `${r.left} to ${esc(toName)}` : 'Pier 9'}</small></span>`;
-    };
-    drawRoad();
-    void roadBefore;
+    const r = game.road();
+    const crossed = res && res.road.areaAfter > res.road.areaBefore;
+    const toName = r.next ? r.next.name : 'the ferry';
+    road.innerHTML =
+      `<span class="pr-stars">${icon('star')}<b>+${h.picks}</b></span>` +
+      `<span class="pr-bar"><span class="bar"><i style="width:${Math.round(r.t * 100)}%"></i></span><small>${crossed ? `<em>NEW STOP: ${esc(AREAS[r.area].name)}!</em>` : r.left > 0 ? `${r.left} to ${esc(toName)}` : 'Pier 9'}</small></span>`;
 
     const lootHtml = (c) => {
       if (c.kind === 'supplies') return `${cansSvg(c.gold ? 'gold' : c.tier)}<b class="loot-n">+${fmtNum(c.amount)}</b>`;
@@ -99,16 +111,13 @@ export class PickView {
     for (const i of h.picked) showOpen(i, h.crates[i]);
 
     // Two little eyes by the special crate, looking at it.
-    const eyes = () => {
-      if (h.eyes == null || h.picked.includes(h.eyes)) return;
-      const b = crates[h.eyes];
+    if (h.eyes != null && !h.picked.includes(h.eyes)) {
       const e = document.createElement('span');
       e.className = 'eyes-spot';
       e.innerHTML = eyesSvg(1, -1);
-      b.appendChild(e);
+      crates[h.eyes].appendChild(e);
       setTimeout(() => sfx.play('eyes'), 900);
-    };
-    eyes();
+    }
     setCount();
 
     // Crates thump down one after another.
@@ -128,23 +137,28 @@ export class PickView {
       list.appendChild(li);
       return li;
     };
-    for (const i of h.picked) {
-      const c = h.crates[i];
-      if (c.kind === 'supplies') addGot(`${icon('supplies')}<b>+${fmtNum(c.amount)}</b><span>supplies</span>`);
-      else if (c.kind === 'tokens') addGot(`${face(c.who, { cls: 'tiny' })}<b>+${c.amount}</b><span>${esc(CAST[c.who].name)}</span>`);
-      else addGot(`${icon('radio')}<b>Radio!</b><span></span>`, 'radio');
-    }
-
-    let busy = false;
-    const open = async (i) => {
-      if (busy || h.picked.includes(i) || h.picked.length >= h.picks) return;
-      busy = true;
-      const out = game.pick(i);
-      if (!out.ok) {
-        busy = false;
-        return;
+    /** One line in "Coming home": tokens are a face and a bar, so nothing needs a name. */
+    const gotRow = (c, out = {}) => {
+      if (c.kind === 'supplies') return [`${icon('supplies')}<b>+${fmtNum(c.amount)}</b><span>supplies</span>`, ''];
+      if (c.kind === 'tokens') {
+        const info = game.levelInfo(c.who);
+        const tail = out.refund ? `<em class="ready">+${fmtNum(out.refund)} ${icon('supplies')}</em>` : info.ok ? `<em class="ready">READY</em>` : tokenBar(info, { compact: true });
+        return [`${face(c.who, { cls: 'tiny' })}<b>+${c.amount}</b>${tail}`, 'tok'];
       }
+      const rad = out.radio;
+      return [`${icon('radio')}<b>Radio!</b>${rad ? `<em class="when">${fmtLeft(rad.readyAt - game.now())}</em>` : ''}`, 'radio'];
+    };
+    for (const i of h.picked) addGot(...gotRow(h.crates[i]));
+
+    // Each tap is a pick at once (so quick fingers aren't ignored); the opening plays out on its own.
+    let opening = 0;
+    let finished = false;
+    const open = async (i) => {
+      if (h.picked.includes(i) || h.picked.length >= h.picks) return;
+      const out = game.pick(i);
+      if (!out.ok) return;
       this.ctx.save();
+      opening++;
       const c = out.crate;
       const b = crates[i];
       const tier = tierOf(c);
@@ -154,6 +168,7 @@ export class PickView {
       b.classList.add('shake');
       sfx.play('crateTap');
       buzz(10, tuning.haptics);
+      setCount();
       await wait(170);
       b.classList.remove('shake');
       b.classList.add('open', 'mine', 'fresh', `t-${tier}`);
@@ -165,10 +180,10 @@ export class PickView {
         fx.shake(el, 4, 220);
         buzz([15, 40, 25], tuning.haptics);
       } else if (tier === 'steel') fx.burst(b, { color: '#bfe0ff', n: 9, r: 54, size: 7 });
-      setCount();
 
+      const [row, cls] = gotRow(c, out);
+      const li = addGot(row, `new ${cls}`);
       if (c.kind === 'supplies') {
-        const li = addGot(`${icon('supplies')}<b>+${fmtNum(c.amount)}</b><span>supplies</span>`, 'new');
         const n = Math.min(12, Math.max(3, Math.round(c.amount / (8 * area.loot))));
         const each = c.amount / n;
         let landed = 0;
@@ -180,35 +195,35 @@ export class PickView {
           size: 24,
           onEach: () => {
             landed++;
-            shown = landed === n ? s.supplies : Math.round(shown + each);
-            walletB.textContent = fmtNum(Math.min(shown, s.supplies));
+            shown = Math.min(s.supplies, Math.round(shown + each));
+            walletB.textContent = fmtNum(shown);
             sfx.play('supplies', { pitch: landed / n });
             fx.pop(el.querySelector('.pick-wallet'), 1.12, 160);
           },
+          onDone: () => {
+            if (opening === 0) {
+              shown = s.supplies;
+              walletB.textContent = fmtNum(shown);
+            }
+          },
         });
-        void li;
       } else if (c.kind === 'tokens') {
-        const info = game.levelInfo(c.who);
-        const tail = out.refund ? `<em class="ready">+${fmtNum(out.refund)} ${icon('supplies')}</em>` : info.ready ? `<em class="ready">READY</em>` : tokenBar(info, { compact: true });
-        const li = addGot(`${face(c.who, { cls: 'tiny' })}<b>+${c.amount}</b><span>${esc(CAST[c.who].name)}</span>${tail}`, 'new');
-        fx.fly({ from: b, to: li, html: icon('token'), count: Math.min(6, c.amount), size: 22, stagger: 70, onEach: (k) => sfx.play('token', { pitch: (k + 1) / Math.min(6, c.amount) }) });
-        if (info.ready) setTimeout(() => sfx.play('ready'), 520);
+        const n = Math.min(6, c.amount);
+        fx.fly({ from: b, to: li, html: icon('token'), count: n, size: 22, stagger: 70, onEach: (k) => sfx.play('token', { pitch: (k + 1) / n }) });
+        if (game.levelInfo(c.who).ready) setTimeout(() => sfx.play('ready'), 520);
         if (out.refund) {
           shown = s.supplies;
           walletB.textContent = fmtNum(shown);
         }
       } else {
         sfx.play('radioFound');
-        const r = out.radio;
-        const first = s.rack.length === 1;
-        addGot(`${icon('radio')}<b>Radio!</b><span>${first ? 'calling' : 'in line'}</span><em class="when">${fmtLeft(r.readyAt - game.now())}</em>`, 'new radio');
         fx.float(b, RADIO_LINES[Math.min(2, s.rack.length - 1)], 'big gold');
         fx.confetti({ n: 26, from: b });
       }
       await wait(c.kind === 'radio' ? 620 : 380);
       b.classList.remove('fresh');
-      busy = false;
-      if (h.picked.length >= h.picks) finish();
+      opening--;
+      if (h.picked.length >= h.picks && opening === 0) finish();
     };
 
     const result = new Promise((resolve) => {
@@ -222,11 +237,17 @@ export class PickView {
         sfx.play('tap');
         this._resolve({ next: n.dataset.next, open: n.dataset.open || null });
       }
+      return undefined;
     });
 
     const finish = async () => {
+      if (finished) return;
+      finished = true;
       setCount();
+      el.querySelector('.pick-hunt').classList.add('done');
       await wait(350);
+      shown = s.supplies;
+      walletB.textContent = fmtNum(shown);
       // What was in the others.
       if (tuning.peek) {
         const rest = [];
@@ -237,19 +258,19 @@ export class PickView {
         }
         await wait(250);
       } else for (const b of crates) if (!b.classList.contains('open')) b.classList.add('left');
-      // Someone can level up: offer the short way there.
-      const ready = game.readyList();
+      // The left button is the best next step: a call that has its answer, a level-up in the squad, or just camp.
       const btns = el.querySelector('.pick-btns');
-      if (ready.length) {
-        const id = ready[0];
-        const up = document.createElement('button');
-        up.className = 'btn up small';
-        up.type = 'button';
-        up.dataset.next = 'camp';
-        up.dataset.open = id;
-        up.innerHTML = `${icon('up')}${face(id, { cls: 'tiny' })}<span>LEVEL UP</span>`;
-        up.setAttribute('aria-label', `Level up ${CAST[id].name}`);
-        btns.replaceChild(up, btns.querySelector('[data-next="camp"]'));
+      const camp = btns.querySelector('[data-next="camp"]');
+      const up = s.squad.find((id) => game.levelInfo(id).ok);
+      if (game.answered() > 0) {
+        camp.className = 'btn teal small';
+        camp.dataset.open = 'radio';
+        camp.innerHTML = `${icon('radio')}<span>ANSWER THE RADIO</span>`;
+      } else if (up) {
+        camp.className = 'btn up small';
+        camp.dataset.open = up;
+        camp.innerHTML = `${icon('up')}${face(up, { cls: 'tiny' })}<span>LEVEL UP</span>`;
+        camp.setAttribute('aria-label', `Level up ${CAST[up].name}`);
       }
       btns.hidden = false;
       await nextFrame();
@@ -257,8 +278,7 @@ export class PickView {
     };
     if (h.picked.length >= h.picks) finish();
 
-    const answer = await result;
-    return answer;
+    return result;
   }
 
   close() {

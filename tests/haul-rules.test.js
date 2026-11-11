@@ -19,6 +19,8 @@ import {
   RACK_SIZE,
   CALL_SECONDS,
   FIRST_CALLS,
+  PACKAGE,
+  WELCOME_CRATE,
   LEGEND_PITY,
   TOKENS_TO_LEVEL,
   SUPPLIES_TO_LEVEL,
@@ -371,18 +373,56 @@ test('the first call is Big Lou, the first calls are all new people, later ones 
   assert.equal(s.stats.dupes, 6);
 });
 
-test('newcomers arrive near the squad’s level', () => {
+test('someone you know sends a package: at least half a bar of tokens, and supplies', () => {
   const { g, s } = make(4);
-  for (const id of s.squad) s.cast[id].level = 6;
+  for (let k = 0; k < START.freshCalls; k++) {
+    g.cheat('radio');
+    g.cheat('answer');
+    g.answer();
+  }
+  for (const id of g.owned()) s.cast[id].level = 8; // a long bar: 16 tokens to the next level
+  for (let k = 0; k < 8; k++) {
+    g.cheat('radio');
+    g.cheat('answer');
+    const supplies = s.supplies;
+    const before = JSON.parse(JSON.stringify(s.cast));
+    const res = g.answer();
+    assert.equal(res.isNew, false);
+    assert.ok(res.tokens >= Math.ceil(tokensFor(8) * PACKAGE.bar), `${res.id}: +${res.tokens} tokens is at least half the bar`);
+    assert.equal(s.cast[res.id].tokens, before[res.id].tokens + res.tokens);
+    assert.ok(res.supplies >= PACKAGE.supplies[0] && res.supplies <= PACKAGE.supplies[1]);
+    assert.equal(s.supplies, supplies + res.supplies);
+  }
+});
+
+test('newcomers arrive just stronger than the weakest of the squad', () => {
+  const { g, s } = make(4);
+  s.cast.odile.level = 7;
+  s.cast.teo.level = 4;
+  s.cast.mags.level = 6;
   g.cheat('radio');
   g.cheat('answer');
   const res = g.answer();
   assert.equal(res.id, 'lou');
-  assert.equal(res.level, 5);
-  assert.equal(g.level('lou'), 5);
-  assert.ok(g.power('lou') < g.power('odile') + 1 && g.power('lou') > g.power('odile') - 6);
-  const better = g.betterBench();
-  assert.equal(better, null, 'a Rare a level down is about as strong, not stronger');
+  assert.ok(g.power('lou') > g.power('teo'), 'worth sending out the day they arrive');
+  assert.ok(powerAt('rare', res.level - 1) <= g.power('teo'), 'and no stronger than that takes');
+  assert.equal(g.level('lou'), res.level);
+  assert.deepEqual(g.betterBench(), { id: 'lou', slot: 1, out: 'teo' });
+  // Everyone after that arrives the same way, whatever their rarity.
+  for (let k = 0; k < 2; k++) {
+    g.cheat('radio');
+    g.cheat('answer');
+    const r = g.answer();
+    assert.ok(r.isNew);
+    assert.ok(g.power(r.id) > g.power('teo'));
+    if (r.level > 1) assert.ok(powerAt(r.rarity, r.level - 1) <= g.power('teo'));
+  }
+  // A squad at the very top: newcomers stop one level short of it.
+  const top = make(4);
+  for (const id of top.s.squad) top.s.cast[id].level = MAX_LEVEL;
+  top.g.cheat('radio');
+  top.g.cheat('answer');
+  assert.equal(top.g.answer().level, MAX_LEVEL - 1);
 });
 
 test('a new stop: its voices are on the radio and the next call reaches one of them', () => {
@@ -397,12 +437,25 @@ test('a new stop: its voices are on the radio and the next call reaches one of t
   assert.equal(s.stars, AREAS[1].stars);
   assert.equal(g.areaIndex(), 1);
   assert.equal(g.pendingArea(), 1);
+  const supplies = s.supplies;
+  const tokens = s.squad.map((id) => s.cast[id].tokens);
   const a = g.arrive();
   assert.equal(a.area, 1);
   assert.deepEqual(a.voices, ['caretaker']);
   assert.equal(g.pendingArea(), null);
   assert.equal(g.arrive(), null);
   assert.equal(s.fresh, 1);
+  // The crate found on the way in: supplies, and half a bar of tokens for each of the three.
+  assert.ok(a.crate.supplies >= Math.round(WELCOME_CRATE.supplies[0] * AREAS[1].loot) && a.crate.supplies <= Math.round(WELCOME_CRATE.supplies[1] * AREAS[1].loot));
+  assert.equal(s.supplies, supplies + a.crate.supplies);
+  assert.deepEqual(
+    a.crate.tokens.map((t) => t.id),
+    s.squad,
+  );
+  s.squad.forEach((id, i) => {
+    assert.equal(a.crate.tokens[i].tokens, Math.ceil(tokensFor(g.level(id)) * WELCOME_CRATE.bar));
+    assert.equal(s.cast[id].tokens, tokens[i] + a.crate.tokens[i].tokens);
+  });
   g.cheat('radio');
   g.cheat('answer');
   const res = g.answer();
@@ -503,7 +556,7 @@ test('the squad: swapping in, changing places, the strongest three', () => {
   const better = g.betterBench();
   assert.equal(better.id, 'tinkerer');
   assert.equal(better.out, 'mags');
-  assert.deepEqual(g.hint(), { kind: 'squad', id: 'tinkerer' });
+  assert.deepEqual(g.hint(), { kind: 'play' }, 'the hand never nags about the squad');
   s.cast.mags.level = 9;
   const came = g.useBest();
   assert.deepEqual(s.squad, ['mags', 'tinkerer', 'biscuit'], 'whoever stays keeps their place');
@@ -512,7 +565,7 @@ test('the squad: swapping in, changing places, the strongest three', () => {
   assert.equal(g.betterBench(), null);
 });
 
-test('the pointing hand: crates, then the radio, a level-up, a stronger squad, then PLAY', () => {
+test('the pointing hand: crates, then the radio, a level-up, then PLAY', () => {
   const { g, s, clock } = make(13);
   g.play();
   assert.equal(g.hint().kind, 'pick');
@@ -524,10 +577,8 @@ test('the pointing hand: crates, then the radio, a level-up, a stronger squad, t
   g.answer();
   assert.equal(g.hint().kind, 'level');
   g.levelUp(s.squad[0]);
-  assert.deepEqual(g.hint(), { kind: 'squad', id: 'lou' }, 'Big Lou (a Rare) is stronger than the weakest of the three');
-  const better = g.betterBench();
-  g.putInSquad(better.id, better.slot);
   assert.equal(g.hint().kind, 'play');
+  assert.equal(g.betterBench().id, 'lou', 'Big Lou is stronger than the weakest: the reveal offers the swap, the hand does not');
   s.gift = { amount: 10, line: 'found this.' };
   assert.equal(g.hint().kind, 'gift');
   assert.ok(g.guiding());
@@ -712,4 +763,44 @@ test('the first haul still teaches three things when the rack was filled by hand
   assert.ok(got[2].crate.gold, 'the gold crate stands in for the radio');
   assert.equal(s.rack.length, RACK_SIZE);
   assert.ok(g.finishHaul());
+});
+
+test('the radio is never left behind three hauls running', () => {
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const { g, s } = make(seed, { outcome: '2' });
+    s.runs = 3; // past the scripted first haul
+    let missed = 0;
+    for (let k = 0; k < 30; k++) {
+      // Keep the rack empty, so every haul hides a radio.
+      g.cheat('answer');
+      while (g.answered()) g.answer();
+      g.play();
+      const h = s.haul;
+      const radio = h.crates.findIndex((c) => c.kind === 'radio');
+      assert.ok(radio >= 0);
+      const owed = s.dry >= CRATES.radioFloor;
+      // Tap the crates that are NOT the radio, as an unlucky player would.
+      const taps = [];
+      for (let i = 0; i < GRID && taps.length < h.picks; i++) if (i !== radio) taps.push(i);
+      const got = taps.map((i) => g.pick(i));
+      const found = got.some((o) => o.crate.kind === 'radio');
+      if (owed) {
+        assert.ok(found, 'owed after two misses: it is under the last pick, wherever that lands');
+        assert.equal(got[got.length - 1].crate.kind, 'radio', 'the last pick, so the haul ends on it');
+      } else assert.ok(!found, 'an honest miss');
+      g.finishHaul();
+      missed = found ? 0 : missed + 1;
+      assert.equal(s.dry, missed);
+      assert.ok(missed <= CRATES.radioFloor, 'never three misses running');
+    }
+  }
+  // With the rack full there is no radio to miss, and the count stands still.
+  const { g, s } = make(9, { outcome: '3' });
+  s.runs = 3;
+  s.dry = 1;
+  for (let i = 0; i < RACK_SIZE; i++) g.cheat('radio');
+  g.play();
+  for (let i = 0; i < 3; i++) g.pick(i);
+  g.finishHaul();
+  assert.equal(s.dry, 1);
 });

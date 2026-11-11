@@ -8,7 +8,7 @@ import { CAST, CLASSES, RARITIES, AREAS, FERRY_STARS } from './config.js';
 import { radioSvg } from './crate-art.js';
 import { backdropSvg, STAGE } from './area-art.js';
 import { icon } from './icons.js';
-import { face, tokenBar, rarityTag, classTag, esc, wait, tapOrWait } from './ui.js';
+import { face, tokenBar, rarityTag, esc, wait, tapOrWait } from './ui.js';
 import { stand } from './sheets.js';
 import { buzz } from './fx.js';
 
@@ -97,11 +97,11 @@ export class Moments {
     el.classList.remove('rumble');
     el.classList.add('shown');
     sfx.play('reveal', { rarity: res.rarity });
-    fx.ring(card, rarity.color, 420);
-    if (res.isNew) fx.confetti({ n: res.rarity === 'legendary' ? 110 : res.rarity === 'epic' ? 70 : 36, from: card });
     buzz(res.isNew ? [20, 30, 40] : 15, tuning.haptics);
-    const better = res.isNew ? game.betterBench() : null;
-    const swap = better && better.id === res.id ? better : null;
+    // A newcomer stronger than the weakest of the squad can go straight in.
+    const slot = game.weakestSlot();
+    const weakest = game.s.squad[slot];
+    const swap = res.isNew && game.power(res.id) > game.power(weakest) ? { id: res.id, slot, out: weakest } : null;
     const info = game.levelInfo(res.id);
     words.innerHTML = '';
     card.innerHTML =
@@ -110,21 +110,25 @@ export class Moments {
       `<div class="call-info">` +
       `<div class="call-tag">${res.isNew ? 'MOVES INTO THE CAMP' : 'SENDS A PACKAGE'}</div>` +
       `<h2>${esc(c.name)}</h2>` +
-      `<div class="tags">${rarityTag(res.id)}${classTag(res.id)}<span class="lvtag">Lv ${info.level}</span><span class="pw">${icon('power')}<b>${info.power}</b></span></div>` +
+      `<div class="tags">${rarityTag(res.id)}<span class="lvtag">Lv ${info.level}</span><span class="pw">${icon('power')}<b>${info.power}</b></span><span class="cls">${CLASSES[c.cls].name}</span></div>` +
       `<p class="line">“${esc(c.line)}”</p>` +
       (res.isNew
         ? ''
-        : `<div class="call-tokens">${icon('token')}<b>+${res.tokens || 0} tokens</b>${res.refund ? `<span>+${res.refund} ${icon('supplies')} (top level)</span>` : tokenBar(info)}${info.ok ? '<em class="ready">READY</em>' : ''}</div>`) +
+        : `<div class="call-tokens">${icon('token')}<b>+${res.tokens || 0}</b>${res.refund ? `<span>+${res.refund} ${icon('supplies')} (top level)</span>` : tokenBar(info)}${info.ok ? '<em class="ready">READY</em>' : ''}<span class="amt">${icon('supplies')}<b>+${res.supplies || 0}</b></span></div>`) +
       `<div class="call-btns">` +
       (swap ? `<button class="btn blue" type="button" data-go="squad">${icon('swap')}INTO THE SQUAD <small>for ${esc(CAST[swap.out].name)}</small></button>` : '') +
       `<button class="btn go" type="button" data-go="ok">${res.isNew ? 'WELCOME!' : 'THANKS!'}</button>` +
       `</div></div></div>`;
+    // The burst comes from the figure, so the name stays readable.
+    const from = card.querySelector('.stand') || card;
+    fx.ring(from, rarity.color, 360);
+    if (res.isNew) fx.confetti({ n: res.rarity === 'legendary' ? 110 : res.rarity === 'epic' ? 70 : 36, from });
     if (res.isNew) setTimeout(() => sfx.play('join'), 500);
     else if (info.ready) setTimeout(() => sfx.play('ready'), 450);
     return this._choice(el);
   }
 
-  /** A new stop on the road: `a` is Game.arrive() ({ area, voices }). */
+  /** A new stop on the road: `a` is Game.arrive() ({ area, voices, crate }). */
   async arrive(a) {
     const { game, sfx, fx } = this.ctx;
     const area = AREAS[a.area];
@@ -137,9 +141,15 @@ export class Moments {
         `<p class="sub">${esc(area.sub)}</p>` +
         `<div class="facts">` +
         `<span class="fact">${icon('danger')}<b>${Math.round(game.danger(a.area))}</b><small>danger</small></span>` +
-        `<span class="fact">${icon('crate')}<b>×${area.loot}</b><small>in every crate</small></span>` +
+        `<span class="fact">${icon('crate')}<b>Richer</b><small>crates</small></span>` +
         (a.voices.length ? `<span class="fact voices">${icon('radio')}${a.voices.map((id) => face(id, { unknown: !game.has(id), cls: 'tiny' })).join('')}<small>new on the radio</small></span>` : '') +
         `</div>` +
+        // The crate the squad found on the way in: something to show for getting here.
+        (a.crate
+          ? `<div class="found"><small>FOUND ON THE WAY IN</small><span class="found-row"><span class="amt">${icon('supplies')}<b>+${a.crate.supplies}</b></span>` +
+            a.crate.tokens.map((t) => `<span class="found-tok">${face(t.id, { cls: 'tiny' })}<b>+${t.tokens || 0}</b></span>`).join('') +
+            `</span></div>`
+          : '') +
         `<button class="btn go big" type="button" data-go="ok">ONWARD</button>` +
         `</div>`,
       `arrive a-${area.id}`,

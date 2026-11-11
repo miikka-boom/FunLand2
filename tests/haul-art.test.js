@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { figureSvg, portraitSvg, silhouetteSvg, drowserSvg, DROWSER_KINDS, DROWSERS_BY_AREA, POSE_NAMES, figureHeight, miniCrate, tone } from '../haul/src/figures.js';
-import { campSvg, SCENE, SPOTS, tentSvg, rackSvg, giftSvg } from '../haul/src/camp-art.js';
+import { campSvg, SCENE, SPOTS, tentSvg, rackSvg, giftSvg, skySvg, citySvg, CAMP_SKIES } from '../haul/src/camp-art.js';
 import { crateSvg, cansSvg, radioSvg, eyesSvg, crayon } from '../haul/src/crate-art.js';
 import { backdropSvg, STAGE, AREA_IDS } from '../haul/src/area-art.js';
 import { icon, ICON_NAMES } from '../haul/src/icons.js';
@@ -104,6 +104,30 @@ test('the camp: one scene, with room for everyone and everything where it can be
   const all = [...SPOTS.squad, ...SPOTS.bench];
   for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) assert.ok(Math.hypot(all[i].x - all[j].x, (all[i].y - all[j].y) * 2) > 40, `spots ${i} and ${j} are apart`);
   for (let n = 0; n < 8; n++) wellFormed(tentSvg(n, '#4a9dff'), `tent ${n}`);
+});
+
+test('the camp moves down the road: a sky and a horizon for every stop', () => {
+  assert.equal(CAMP_SKIES, AREAS.length);
+  const skies = new Set();
+  const cities = new Set();
+  for (let k = 0; k < AREAS.length; k++) {
+    const sky = skySvg(k);
+    const city = citySvg(k);
+    wellFormed(sky, `sky ${k}`);
+    wellFormed(city, `horizon ${k}`);
+    assert.ok(sky.includes(`url(#c-sky-${k})`));
+    assert.ok(city.includes(`url(#c-haze-${k})`));
+    skies.add(sky);
+    cities.add(city);
+    assert.ok((city.match(/<(path|rect|circle|g|text)\b/g) || []).length < 900, `horizon ${k} stays light`);
+  }
+  assert.equal(skies.size, AREAS.length, 'no two skies alike');
+  assert.equal(cities.size, AREAS.length, 'no two horizons alike');
+  const camp = campSvg();
+  for (let k = 0; k < AREAS.length; k++) assert.ok(camp.includes(`id="c-sky-${k}"`) && camp.includes(`id="c-haze-${k}"`), `gradients for stop ${k + 1}`);
+  // Out-of-range stops fall back to the nearest one instead of drawing nothing.
+  assert.equal(skySvg(99), skySvg(AREAS.length - 1));
+  assert.equal(citySvg(-3), citySvg(0));
 });
 
 test('the rack and the crate at the gate', () => {

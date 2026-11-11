@@ -57,6 +57,9 @@ export function face(id, { cls = '', mood, level = null, unknown = false } = {})
   );
 }
 
+/** A survivor's name where space is tight. */
+export const shortName = (id) => esc(CAST[id].short || CAST[id].name);
+
 export const amount = (n, cls = '') => `<span class="amt ${cls}">${icon('supplies')}<b>${fmtNum(n)}</b></span>`;
 export const power = (n, cls = '') => `<span class="pw ${cls}">${icon('power')}<b>${Math.round(n)}</b></span>`;
 export const rarityTag = (id) => `<span class="rtag r-${CAST[id].rarity}">${RARITIES[CAST[id].rarity].name}</span>`;

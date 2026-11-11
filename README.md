@@ -625,15 +625,20 @@ squad, the six maps as six stops on the road, drowsers).
   Man's Land's crate picks, and you can count them on screen.
 - **Survivors are cards.** A fixed cast of twelve in four rarities. Crates
   hold supplies (the one currency) and tokens; a full token bar plus supplies
-  is a level-up. Power against the stop's danger decides who stays standing.
+  is a level-up. Power against the stop's danger decides who stays standing,
+  and every squad card says how that looks in a word: SOLID, GOOD, SHAKY or
+  RISKY.
 - **The radio rack is the chest slots.** Every haul hides one radio while the
-  rack has room. The rack holds three and calls with one at a time, three
-  hours a call. Someone answers: a new survivor moves into the camp, or
-  someone you know sends tokens.
+  rack has room, and it is never missed three hauls running. The rack holds
+  three and calls with one at a time, three hours a call. Someone answers: a
+  new survivor moves into the camp (strong enough to go out that day), or
+  someone you know sends a package.
 - **The road is the ladder.** Stars add up through six stops to Pier 9; each
-  is more dangerous, has richer crates and new voices on the radio.
-- The camp is one scene at dusk: the radio tent, the fire, a tent for every
-  two people, the squad by the truck. No buildings to upgrade, no energy, no
+  is more dangerous, has richer crates and new voices on the radio. The camp
+  moves with the squad: a new sky and skyline at every stop, a crate found on
+  the way in.
+- The camp is one scene: the radio tent, the fire, a tent for every two
+  people, the squad by the truck. No buildings to upgrade, no energy, no
   premium currency.
 - Once in a while: a gold crate, a Legendary on the radio, two little eyes
   scratched beside the best crate, a crate at the gate in orange crayon.
@@ -642,7 +647,7 @@ squad, the six maps as six stops on the road, drowsers).
   simulates ten days of play.
 
 Open `/haul/` (on Pages: `https://miikka-boom.github.io/FunLand2/haul/`). The
-design, numbers, pacing and code map are in
+design, numbers, pacing, what two reviews changed, and the code map are in
 [docs/LONG-HAUL.md](docs/LONG-HAUL.md).
 
 ## Thrill Hill: a metagame prototype

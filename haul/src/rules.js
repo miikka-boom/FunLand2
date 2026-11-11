@@ -30,8 +30,9 @@ import {
   CALL_SECONDS,
   FIRST_CALLS,
   CALL_STACK,
+  PACKAGE,
+  WELCOME_CRATE,
   LEGEND_PITY,
-  ARRIVE_BELOW,
   GIFT,
   TUNING_DEFAULTS,
 } from './config.js';
@@ -107,6 +108,7 @@ export function newState(now = Date.now(), seed = (Math.random() * 0x100000000) 
     calls: 0, // calls ever answered
     fresh: START.freshCalls, // calls still guaranteed to reach someone new
     legendWait: 0,
+    dry: 0, // hauls in a row that left the radio behind
     haul: null, // the crates of the run being picked from
     areaSeen: 0, // the furthest stop already celebrated
     ferry: false, // the ending has been shown
@@ -288,13 +290,27 @@ export class Game {
     return this.areaIndex() > this.s.areaSeen ? this.s.areaSeen + 1 : null;
   }
 
-  /** Celebrate the next stop: its voices are on the radio, and the next call reaches someone new. */
+  /**
+   * Celebrate the next stop: its voices are on the radio, the next call
+   * reaches someone new, and the squad finds a crate on the way in (supplies,
+   * and half a bar of tokens each).
+   */
   arrive() {
     const i = this.pendingArea();
     if (i == null) return null;
-    this.s.areaSeen = i;
-    this.s.fresh += FRESH_PER_AREA;
-    return { area: i, voices: CAST_ORDER.filter((id) => CAST[id].area === i) };
+    const s = this.s;
+    s.areaSeen = i;
+    s.fresh += FRESH_PER_AREA;
+    const rng = rngFor(s.seed, 'arrive', i);
+    const supplies = Math.max(1, Math.round(randInt(rng, WELCOME_CRATE.supplies[0], WELCOME_CRATE.supplies[1]) * AREAS[i].loot * this.tuning.supplies));
+    this._earn(supplies);
+    const tokens = s.squad.map((id) => {
+      const need = tokensFor(s.cast[id].level);
+      const n = need == null ? 2 : Math.max(1, Math.ceil(need * WELCOME_CRATE.bar));
+      const got = this._giveTokens(id, n, i);
+      return { id, tokens: got.tokens, refund: got.refund };
+    });
+    return { area: i, voices: CAST_ORDER.filter((id) => CAST[id].area === i), crate: { supplies, tokens } };
   }
 
   pendingFerry() {
@@ -419,7 +435,15 @@ export class Game {
       m.amount = Math.max(m.amount, need);
       // (The special crate is the radio, or the gold one if the rack was filled by hand first.)
       haul.script = [crates.indexOf(m), crates.indexOf(t), crates.findIndex((c) => c.kind === 'radio' || c.gold)];
-    } else if (eyes) haul.eyes = crates.findIndex((c) => c.kind === 'radio' || c.gold);
+    } else {
+      if (eyes) haul.eyes = crates.findIndex((c) => c.kind === 'radio' || c.gold);
+      // Left behind too many hauls running: this time the radio is under the last pick, wherever that lands.
+      const radio = crates.findIndex((c) => c.kind === 'radio');
+      if (radio >= 0 && s.dry >= CRATES.radioFloor) {
+        haul.script = Array.from({ length: picks }, (_, k) => (k === picks - 1 ? radio : null));
+        haul.eyes = null;
+      }
+    }
     return haul;
   }
 
@@ -465,6 +489,9 @@ export class Game {
     const h = this.s.haul;
     if (!h) return null;
     this.s.haul = null;
+    // Count the hauls that leave the radio behind (the next one may be owed it).
+    const radio = h.crates.findIndex((c) => c.kind === 'radio');
+    if (radio >= 0) this.s.dry = h.picked.includes(radio) ? 0 : this.s.dry + 1;
     return { left: h.crates.map((c, i) => ({ i, crate: c })).filter((x) => !h.picked.includes(x.i)), unused: h.picks - h.picked.length };
   }
 
@@ -596,18 +623,25 @@ export class Game {
     const isNew = !s.cast[id];
     if (legend) s.legendWait = id === legend ? 0 : s.legendWait + 1;
     if (isNew && s.fresh > 0 && rarity !== 'legendary') s.fresh -= 1;
-    const out = { ok: true, id, rarity, isNew, why, level: 1, tokens: 0, refund: 0 };
+    const out = { ok: true, id, rarity, isNew, why, level: 1, tokens: 0, refund: 0, supplies: 0 };
     if (isNew) {
-      const avg = Math.round(mean(s.squad.map((x) => s.cast[x].level)));
-      out.level = clamp(avg - ARRIVE_BELOW[rarity], 1, MAX_LEVEL - 1);
-      s.cast[id] = newMember(out.level);
+      // The first level that makes them stronger than the weakest of the squad.
+      const weakest = Math.min(...s.squad.map((x) => this.power(x)));
+      let level = 1;
+      while (level < MAX_LEVEL - 1 && powerAt(rarity, level) <= weakest) level++;
+      out.level = level;
+      s.cast[id] = newMember(level);
       s.stats.newcomers[rarity] += 1;
     } else {
-      const n = this._stack(rng, id, area, CALL_STACK);
+      // A package: tokens (never less than half their bar) and some supplies.
+      const need = tokensFor(s.cast[id].level);
+      const n = Math.max(this._stack(rng, id, area, CALL_STACK), need == null ? 0 : Math.ceil(need * PACKAGE.bar));
       const got = this._giveTokens(id, n, area);
       out.level = s.cast[id].level;
       out.tokens = got.tokens;
       out.refund = got.refund;
+      out.supplies = Math.max(1, Math.round(randInt(rng, PACKAGE.supplies[0], PACKAGE.supplies[1]) * AREAS[area].loot * this.tuning.supplies));
+      this._earn(out.supplies);
       s.stats.dupes += 1;
     }
     return out;
@@ -666,15 +700,17 @@ export class Game {
     return s.runs < 4 || s.stats.levelUps < 2 || s.calls < 1;
   }
 
-  /** The best next step: { kind: 'pick' | 'radio' | 'level' | 'squad' | 'gift' | 'play', id? }. */
+  /**
+   * The best next step: { kind: 'pick' | 'radio' | 'level' | 'gift' | 'play', id? }.
+   * (Swapping the squad about is never the next step: a newcomer offers it
+   * when they arrive, and Everyone marks who is stronger.)
+   */
   hint() {
     const s = this.s;
     if (s.haul) return { kind: 'pick' };
     if (this.answered() > 0) return { kind: 'radio' };
     const up = s.squad.find((id) => this.levelInfo(id).ok);
     if (up) return { kind: 'level', id: up };
-    const better = this.betterBench();
-    if (better) return { kind: 'squad', id: better.id };
     if (s.gift) return { kind: 'gift' };
     return { kind: 'play' };
   }

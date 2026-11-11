@@ -5,7 +5,7 @@
 //   PLAY      three survivors go out. Everyone still standing at the end
 //             carries one crate home: 0 to 3 stars.
 //   PICK      nine crates on the pallet, one pick per star: supplies, tokens,
-//             and somewhere among them a radio.
+//             and somewhere among them a radio (never missed three hauls running).
 //   LEVEL UP  tokens + supplies make a survivor stronger.
 //   RADIO     the rack holds three radios and calls with one at a time.
 //             Someone answers: a new survivor, or tokens from one you know.
@@ -51,7 +51,7 @@ export const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary'];
 /**
  * The cast: twelve fixed survivors (cards), two of each class. `area` is the
  * stop on the road where their voice first turns up on the radio (0 = from the
- * start). `look` is read by figures.js. They are the people of We Left Ben's
+ * start). `short` is the name where space is tight. `look` is read by figures.js. They are the people of We Left Ben's
  * world: the squad, and the ones who signed the walls.
  */
 export const CAST = {
@@ -105,6 +105,7 @@ export const CAST = {
   },
   caretaker: {
     name: 'The Caretaker',
+    short: 'Caretaker',
     cls: 'warrior',
     rarity: 'rare',
     area: 1,
@@ -137,6 +138,7 @@ export const CAST = {
   },
   tinkerer: {
     name: 'The Tinkerer',
+    short: 'Tinkerer',
     cls: 'assault',
     rarity: 'legendary',
     area: 3,
@@ -145,6 +147,7 @@ export const CAST = {
   },
   harbour: {
     name: 'The Harbour Master',
+    short: 'Harbour Master',
     cls: 'hunter',
     rarity: 'rare',
     area: 4,
@@ -159,7 +162,7 @@ export const POWER = { base: 10, growth: 4 };
 
 /** Tokens and supplies to reach level L (index L − 2). */
 export const TOKENS_TO_LEVEL = [2, 3, 4, 6, 8, 10, 13, 16, 20];
-export const SUPPLIES_TO_LEVEL = [15, 30, 65, 120, 200, 310, 460, 660, 920];
+export const SUPPLIES_TO_LEVEL = [15, 30, 60, 105, 175, 270, 400, 570, 800];
 /** Tokens for someone at the top level turn into supplies (per token, × the area's loot). */
 export const TOKEN_REFUND = 6;
 
@@ -183,16 +186,21 @@ export const START = {
  */
 export const AREAS = [
   { id: 'suburbia', name: 'Suburbia', sub: 'the lawns of Delco', stars: 0, danger: 8, loot: 1 },
-  { id: 'graveyard', name: 'The Graveyard', sub: 'Wissahickon Hill', stars: 12, danger: 14, loot: 1.6 },
-  { id: 'junkyard', name: 'The Junkyard', sub: 'Cracked Bell Auto Salvage', stars: 40, danger: 21, loot: 2.4 },
-  { id: 'streets', name: 'Center City', sub: 'after dark', stars: 90, danger: 28, loot: 3.5 },
-  { id: 'office', name: 'Market Street', sub: 'the 14th floor', stars: 160, danger: 36, loot: 5 },
-  { id: 'docks', name: 'Pier 9', sub: 'the last ferry', stars: 250, danger: 44, loot: 7 },
+  { id: 'graveyard', name: 'The Graveyard', sub: 'Wissahickon Hill', stars: 12, danger: 15, loot: 1.6 },
+  { id: 'junkyard', name: 'The Junkyard', sub: 'Cracked Bell Auto Salvage', stars: 40, danger: 23, loot: 2.4 },
+  { id: 'streets', name: 'Center City', sub: 'after dark', stars: 90, danger: 31, loot: 3.5 },
+  { id: 'office', name: 'Market Street', sub: 'the 14th floor', stars: 160, danger: 40, loot: 5 },
+  { id: 'docks', name: 'Pier 9', sub: 'the last ferry', stars: 250, danger: 49, loot: 7 },
 ];
 /** The end of the road: the LIBERTY BELLE answers. The prototype goes on after it. */
 export const FERRY_STARS = 360;
 /** Each new stop makes this many calls reach someone new (while anyone is out there). */
 export const FRESH_PER_AREA = 1;
+/**
+ * And on the way in the squad finds a crate nobody had opened: supplies
+ * (× the new stop's loot) and this share of a token bar for each of the three.
+ */
+export const WELCOME_CRATE = { supplies: [50, 60], bar: 0.5 };
 
 // --- The run ---------------------------------------------------------------------------------
 
@@ -222,16 +230,21 @@ export const GRID = 9;
  * survivor's rarity stack (never less than 1).
  */
 export const CRATES = {
-  small: { count: 3, supplies: [8, 12], tier: 'wood' },
+  small: { count: 2, supplies: [8, 12], tier: 'wood' },
   medium: { count: 2, supplies: [20, 28], tier: 'steel' },
-  tokens: { count: 3, base: 2, perArea: 0.5 },
+  tokens: { count: 4, base: 2, perArea: 0.5 },
   gold: { supplies: [60, 80], tier: 'gold' },
   /** A token crate is for someone in the squad this often; otherwise for anyone else in the camp. */
   squadShare: 0.65,
   /** Once in a while a small crate is a second gold one. */
   luckyGold: 0.04,
   /** And once in a while two little eyes on the pallet look straight at the special crate. */
-  eyes: 0.07,
+  eyes: 0.12,
+  /**
+   * The radio is never missed three hauls running: after this many hauls in a
+   * row that left it behind, the next one has it under the last pick.
+   */
+  radioFloor: 2,
 };
 
 // --- The radio -------------------------------------------------------------------------------
@@ -239,13 +252,22 @@ export const CRATES = {
 export const RACK_SIZE = 3;
 /** How long a call takes (seconds). The first few are quick, to teach the loop. */
 export const CALL_SECONDS = 3 * 3600;
-export const FIRST_CALLS = [12, 90, 600];
-/** Someone you know answers: tokens, this many times a crate's stack. */
+export const FIRST_CALLS = [12, 90, 3600];
+/**
+ * Someone you know answers and sends a package: tokens (this many times a
+ * crate's stack, and never less than half their bar) and some supplies
+ * ([min, max] × the area's loot).
+ */
 export const CALL_STACK = 3;
+export const PACKAGE = { bar: 0.5, supplies: [25, 35] };
 /** The Legendary answers by this many calls after their voice is first out there. */
 export const LEGEND_PITY = 14;
-/** Newcomers arrive this far below the squad's average level (never under 1). */
-export const ARRIVE_BELOW = { common: 1, rare: 1, epic: 0, legendary: 0 };
+/**
+ * Newcomers are worth sending out the day they arrive: they come at the first
+ * level that makes them stronger than the weakest of the squad (so a rarer
+ * one arrives at a lower level, with more to grow).
+ */
+export const ARRIVE = { above: 'weakest' };
 
 // --- Camp talk -------------------------------------------------------------------------------
 

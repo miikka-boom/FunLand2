@@ -6,7 +6,7 @@ import { standLabel } from './rules.js';
 import { figureSvg } from './figures.js';
 import { icon } from './icons.js';
 import { fmtNum, fmtLeft, fmtDuration } from './format.js';
-import { face, amount, tokenBar, rarityTag, classTag, esc } from './ui.js';
+import { face, amount, tokenBar, rarityTag, esc, shortName } from './ui.js';
 
 const closeBtn = () => `<button class="x" type="button" data-act="close" aria-label="Close">${icon('close')}</button>`;
 
@@ -53,7 +53,7 @@ export function survivorSheet(game, id, ui = {}) {
   if (ui.swapping) {
     squad =
       `<div class="swap"><b>Who sits this one out?</b><div class="swap-row">` +
-      s.squad.map((sid, slot) => `<button class="swap-face" type="button" data-act="swap" data-id="${id}" data-slot="${slot}">${face(sid, { level: game.level(sid) })}<span>${esc(CAST[sid].name)}</span><i>${icon('power')}${game.power(sid)}</i></button>`).join('') +
+      s.squad.map((sid, slot) => `<button class="swap-face" type="button" data-act="swap" data-id="${id}" data-slot="${slot}">${face(sid, { level: game.level(sid) })}<span>${shortName(sid)}</span><i>${icon('power')}${game.power(sid)}</i></button>`).join('') +
       `</div><button class="btn plain" type="button" data-act="swap-cancel" data-id="${id}">Never mind</button></div>`;
   } else if (inSquad) squad = `<div class="in-squad">${icon('check')}<span>In the squad</span><small>${icon('danger')}${Math.round(game.danger())} out there:</small><i class="st st-${standLabel(chance).id}">${standLabel(chance).name}</i></div>`;
   else squad = `<button class="btn blue" type="button" data-act="swap-start" data-id="${id}">${icon('swap')}PUT IN THE SQUAD</button>`;
@@ -61,7 +61,7 @@ export function survivorSheet(game, id, ui = {}) {
   return (
     closeBtn() +
     `<div class="surv r-${c.rarity}">` +
-    `<div class="surv-left">${stand(id, ui.cheer ? 'cheer' : 'idle')}<div class="tags">${rarityTag(id)}${classTag(id)}</div></div>` +
+    `<div class="surv-left">${stand(id, ui.cheer ? 'cheer' : 'idle')}<div class="tags">${rarityTag(id)}<span class="cls">${CLASSES[c.cls].name}</span></div></div>` +
     `<div class="surv-right">` +
     `<h2>${esc(c.name)}</h2>` +
     `<p class="line">“${esc(c.line)}”</p>` +
@@ -94,8 +94,8 @@ export function peopleSheet(game) {
       `<button class="pcard r-${c.rarity}${inSquad ? ' is-squad' : ''}${info.ok ? ' can' : ''}" type="button" data-act="survivor" data-id="${id}">` +
       (inSquad ? `<i class="ribbon">SQUAD</i>` : stronger ? `<i class="ribbon stronger">STRONGER</i>` : '') +
       face(id, { level: info.level }) +
-      `<b class="nm">${esc(c.name)}</b>` +
-      `<span class="pcard-row">${classTag(id)}<span class="pw">${icon('power')}<b>${info.power}</b></span></span>` +
+      `<b class="nm">${shortName(id)}</b>` +
+      `<span class="pcard-row"><span class="pw">${icon('power')}<b>${info.power}</b></span></span>` +
       tokenBar(info, { compact: true }) +
       (info.ok ? `<span class="upbadge">${icon('up')}</span>` : '') +
       `</button>`
@@ -107,8 +107,7 @@ export function peopleSheet(game) {
     return (
       `<div class="pcard unknown r-${c.rarity}">` +
       face(id, { unknown: true }) +
-      `<b class="nm">? ? ?</b>` +
-      `<span class="pcard-row"><span class="rtag r-${c.rarity}">${RARITIES[c.rarity].name}</span></span>` +
+      `<b class="nm">${RARITIES[c.rarity].name}</b>` +
       `<span class="where">${out ? `${icon('radio')} Out there. Keep calling.` : `${icon('lock')} ${esc(AREAS[c.area].name)}`}</span>` +
       `</div>`
     );
@@ -138,23 +137,19 @@ export function roadSheet(game) {
     return (
       `<div class="stop a-${a.id}${here ? ' here' : ''}${reached ? ' reached' : ''}">` +
       `<div class="stop-top"><i class="num">${i + 1}</i><b>${esc(a.name)}</b><small>${esc(a.sub)}</small></div>` +
-      `<div class="stop-facts">` +
-      `<span class="fact">${icon('danger')}<b>${a.danger}</b><small>danger</small></span>` +
-      `<span class="fact">${icon('crate')}<b>×${a.loot}</b><small>crates</small></span>` +
-      `</div>` +
+      `<div class="stop-facts"><span class="fact">${icon('danger')}<b>${a.danger}</b><small>danger</small></span></div>` +
       `<div class="stop-voices">${voices.length ? `${icon('radio')}${voices.map((id) => face(id, { unknown: !s.cast[id], cls: 'tiny' })).join('')}` : `<small>${i === AREAS.length - 1 ? 'The ferry leaves from here.' : 'Nobody new out here.'}</small>`}</div>` +
       `<div class="stop-foot">${here ? `<span class="here-tag">${icon('check')}YOU ARE HERE</span>` : reached ? `<span class="done-tag">${icon('check')}</span>` : `<span class="gate">${icon('star')}<b>${a.stars}</b></span>`}</div>` +
       `</div>`
     );
   }).join('<i class="road-line"></i>');
-  const ferry = `<i class="road-line"></i><div class="stop ferry${s.ferry ? ' reached' : ''}"><div class="stop-top"><i class="num">⚓</i><b>The ferry</b><small>the LIBERTY BELLE</small></div><div class="stop-voices"><small>${s.ferry ? 'She came. You’re on the next one.' : 'No flare, no ferry.'}</small></div><div class="stop-foot">${s.ferry ? `<span class="done-tag">${icon('check')}</span>` : `<span class="gate">${icon('star')}<b>${FERRY_STARS}</b></span>`}</div></div>`;
-  const left = r.left;
+  const ferry = `<i class="road-line"></i><div class="stop ferry${s.ferry ? ' reached' : ''}"><div class="stop-top"><i class="num">\u2693</i><b>The ferry</b><small>the LIBERTY BELLE</small></div><div class="stop-voices"><small>${s.ferry ? 'She came. You\u2019re on the next one.' : 'No flare, no ferry.'}</small></div><div class="stop-foot">${s.ferry ? `<span class="done-tag">${icon('check')}</span>` : `<span class="gate">${icon('star')}<b>${FERRY_STARS}</b></span>`}</div></div>`;
   const next = r.next ? r.next.name : 'the ferry';
   return (
     closeBtn() +
     `<div class="road-sheet">` +
-    `<div class="people-head"><h2>The road to Pier 9</h2><span class="road-sum">${icon('star')}<b>${fmtNum(s.stars)}</b>${left > 0 ? `<small>${left} more to ${esc(next)}</small>` : ''}</span></div>` +
-    `<p class="road-how">Everyone still standing after a run carries a crate home. Each one is a star, and stars take you down the road.</p>` +
+    `<div class="people-head"><h2>The road to Pier 9</h2><span class="road-sum">${icon('star')}<b>${fmtNum(s.stars)}</b>${r.left > 0 ? `<small>of ${r.to} to ${esc(next)}</small>` : ''}</span></div>` +
+    `<p class="road-how">Everyone still standing after a run carries a crate home. Each one is a star, and stars take you down the road. Further on: more danger, richer crates, new voices on the radio.</p>` +
     `<div class="scroll sideways"><div class="stops">${stops}${ferry}</div></div>` +
     `</div>`
   );

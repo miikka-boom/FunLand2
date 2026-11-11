@@ -3,7 +3,7 @@
 // around the fire), keeps the radio rack and its bubble up to date, and turns
 // taps on the scene into actions.
 
-import { campSvg, SCENE, SPOTS, tentSvg, rackSvg, giftSvg } from './camp-art.js';
+import { campSvg, SCENE, SPOTS, tentSvg, rackSvg, giftSvg, skySvg, citySvg } from './camp-art.js';
 import { figureSvg, figureHeight } from './figures.js';
 import { CAST, RARITIES, RACK_SIZE } from './config.js';
 import { icon } from './icons.js';
@@ -26,7 +26,8 @@ export class CampView {
     this.svg = root.querySelector('svg');
     this.world = this.svg.querySelector('#c-world');
     this.g = {};
-    for (const k of ['tents', 'rack', 'people-back', 'people', 'gift']) this.g[k] = this.svg.querySelector(`#c-${k}`);
+    for (const k of ['tents', 'rack', 'people-back', 'people', 'gift', 'sky', 'city']) this.g[k] = this.svg.querySelector(`#c-${k}`);
+    this.areaDrawn = 0; // the stop whose sky and horizon are on screen
     this.truck = this.svg.querySelector('#c-truck');
     this.truckHome = this.truck.getAttribute('transform');
     root.addEventListener('click', (e) => this._click(e));
@@ -89,6 +90,14 @@ export class CampView {
     const { game } = this.ctx;
     const s = game.s;
     const owned = game.owned();
+    // The camp has moved on with the squad: a new sky, new shapes beyond the fence.
+    // (Only once the stop has been celebrated, so the card comes first.)
+    const stop = Math.min(game.areaIndex(), s.areaSeen);
+    if (stop !== this.areaDrawn) {
+      this.areaDrawn = stop;
+      this.g.sky.innerHTML = skySvg(stop);
+      this.g.city.innerHTML = citySvg(stop);
+    }
     // One tent for every two people.
     const tents = [];
     for (let i = 0; i < Math.ceil(owned.length / 2) && i < SPOTS.tents.length; i++) {
@@ -185,7 +194,7 @@ export class CampView {
     if (answered) {
       html += `<button class="pin pin-radio answered" type="button" data-act="radio" data-x="${SPOTS.rack.x}" data-y="${SPOTS.rack.y - 54}">${icon('radio')}<b>SOMEONE ANSWERED!</b>${answered > 1 ? `<i>${answered}</i>` : ''}</button>`;
     } else if (calling) {
-      html += `<button class="pin pin-radio calling" type="button" data-act="radio" data-x="${SPOTS.rack.x}" data-y="${SPOTS.rack.y - 50}">${icon('radio')}<span>Calling</span><b data-until="${calling.readyAt}">${fmtLeft(calling.left)}</b>${rack.length > 1 ? `<i${rack.length >= RACK_SIZE ? ' class="full"' : ''}>${rack.length}/${RACK_SIZE}</i>` : ''}</button>`;
+      html += `<button class="pin pin-radio calling" type="button" data-act="radio" data-x="${SPOTS.rack.x}" data-y="${SPOTS.rack.y - 50}">${icon('radio')}<span>Calling</span><b data-until="${calling.readyAt}">${fmtLeft(calling.left)}</b>${rack.length >= RACK_SIZE ? `<i class="full">RACK FULL</i>` : ''}</button>`;
     }
     if (game.s.gift) html += `<button class="pin pin-gift" type="button" data-act="gift" data-x="${SPOTS.gift.x}" data-y="${SPOTS.gift.y - 74}"><b>?</b></button>`;
     this.pinsRoot.innerHTML = html;

@@ -12,7 +12,7 @@ import { CAST, CLASSES, AREAS } from './config.js';
 import { figureSvg, drowserSvg, DROWSERS_BY_AREA, OL } from './figures.js';
 import { backdropSvg, STAGE } from './area-art.js';
 import { icon } from './icons.js';
-import { face, esc, wait, tapOn } from './ui.js';
+import { face, esc, shortName, wait, tapOn } from './ui.js';
 import { mulberry32 } from './util.js';
 import { buzz } from './fx.js';
 
@@ -31,7 +31,7 @@ const BANNERS = ['NOBODY’S CARRYING ANYTHING', 'ONE CRATE COMING HOME', 'TWO C
 export class RunView {
   constructor(root, ctx) {
     this.root = root;
-    this.ctx = ctx; // { sfx, fx, tuning }
+    this.ctx = ctx; // { sfx, fx, tuning, game }
   }
 
   /**
@@ -39,7 +39,7 @@ export class RunView {
    * @param canSkip a tap fast-forwards to the end
    */
   async play(res, { canSkip = true } = {}) {
-    const { sfx, fx, tuning } = this.ctx;
+    const { sfx, fx, tuning, game } = this.ctx;
     const area = AREAS[res.area];
     const bd = backdropSvg(area.id);
     const rnd = mulberry32(res.run * 7717 + 31);
@@ -254,11 +254,16 @@ export class RunView {
     const bannerT = END + 0.6 + Math.max(1, standing.length) * 0.3;
     at(bannerT, () => {
       const b = el.querySelector('.run-banner');
-      b.innerHTML = `<b>${BANNERS[res.stars]}</b>${res.stars ? '' : `<span>Scraps: +${res.scraps} ${icon('supplies')}</span>`}`;
+      // Nobody standing: say why (their numbers against the danger), and wait to be sent home.
+      const why = res.stars
+        ? ''
+        : `<span class="why">${res.squad.map((id) => `${shortName(id)} ${icon('power')}<b>${game.power(id)}</b>`).join('<i>\u00b7</i>')}<i>against</i>${icon('danger')}<b>${Math.round(area.danger * tuning.danger)}</b></span>` +
+          `<span>Scraps: +${res.scraps} ${icon('supplies')}</span><em>${game.expectedStars(res.squad) >= 2 ? 'Rotten luck.' : 'Level someone up, then try again.'} Tap to go home.</em>`;
+      b.innerHTML = `<b>${BANNERS[res.stars]}</b>${why}`;
       b.classList.add('on', `s${res.stars}`);
       if (!res.stars) play('fail');
     });
-    const total = bannerT + (res.stars ? 0.95 : 1.5);
+    const total = bannerT + (res.stars ? 0.95 : 0.7);
 
     // --- The frame loop -----------------------------------------------------------------------
     let t = -0.25; // a breath before it starts
@@ -318,8 +323,11 @@ export class RunView {
     // Skipped: give the last picture a beat so the stars register.
     if (muted) {
       for (let n = 0; n < res.stars; n++) sfx.play('star', { n: n + 1 });
+      if (!res.stars) sfx.play('fail');
       await wait(520);
     }
+    // A run nobody came back from stays up until it has been read.
+    if (!res.stars) await tapOn(el, 350);
     void svg;
   }
 
