@@ -134,7 +134,7 @@ export class CampView {
     const h = figureHeight(id);
     const delay = -((id.charCodeAt(0) * 37 + id.length * 91) % 300) / 100;
     return (
-      `<g class="c-fig${inSquad ? ' in-squad' : ''}" data-act="survivor" data-id="${id}" transform="translate(${sp.x},${sp.y})">` +
+      `<g class="c-fig${inSquad ? ' is-squad' : ''}" data-act="survivor" data-id="${id}" transform="translate(${sp.x},${sp.y})">` +
       `<rect x="${-26 * sp.s}" y="${-h * sp.s}" width="${52 * sp.s}" height="${h * sp.s + 6}" fill="transparent"/>` +
       `<g class="c-fig-in" transform="scale(${sp.flip ? -sp.s : sp.s},${sp.s})" style="--d:${delay}s">${figureSvg(id, pose)}</g>` +
       `</g>`

@@ -294,3 +294,45 @@ test('the page: every module it loads exists, and every action a button can ask 
   // No prototype borrows from another: this one is written from scratch.
   for (const f of files) assert.ok(!/from '\.\.\/\.\.\//.test(readFileSync(new URL(f, srcDir), 'utf8')), `${f} stays inside haul/`);
 });
+
+test('the stylesheet: no class is both a thing of its own and a state of something else', () => {
+  // Six times in the making of this prototype one name meant two things (.up was a badge
+  // and a green button, .x a close button and a sideways scroller, .found a crate and a
+  // state of the radio reveal...). A bare `.name { }` rule styles every element carrying
+  // that class, so a name with a bare rule must never also be used as a modifier or a state.
+  const root = new URL('../haul/', import.meta.url);
+  const css = readFileSync(new URL('haul.css', root), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const bare = new Set();
+  const modifierOf = new Map(); // class -> the classes it is attached to (.btn.up: up -> btn)
+  for (const m of css.matchAll(/(^|[{}])\s*([^{}@]+?)\s*\{/g)) {
+    for (const sel of m[2].split(',').map((x) => x.trim())) {
+      if (/^\.[\w-]+$/.test(sel)) bare.add(sel.slice(1));
+      for (const part of sel.replace(/:not\([^)]*\)/g, '').split(/[\s>+~]+/)) {
+        const classes = [...part.matchAll(/\.([\w-]+)/g)].map((x) => x[1]);
+        for (let i = 1; i < classes.length; i++) {
+          if (!modifierOf.has(classes[i])) modifierOf.set(classes[i], new Set());
+          modifierOf.get(classes[i]).add(classes[0]);
+        }
+      }
+    }
+  }
+  assert.ok(bare.size > 60, 'the stylesheet was read');
+  // Meant to sit on other things: the rarity classes only set a colour variable.
+  const paired = (name) => /^r-(common|rare|epic|legendary)$/.test(name);
+  for (const [name, bases] of modifierOf) {
+    if (paired(name)) continue;
+    assert.ok(!bare.has(name), `.${name} has its own rule and is also a modifier of .${[...bases].join(', .')}`);
+  }
+  // States switched on from the scripts.
+  const srcDir = new URL('src/', root);
+  const states = new Set();
+  for (const f of readdirSync(srcDir).filter((x) => x.endsWith('.js'))) {
+    const src = readFileSync(new URL(f, srcDir), 'utf8');
+    for (const m of src.matchAll(/classList\.(?:add|remove|toggle)\(([^)]*)\)/g)) for (const q of m[1].matchAll(/'([\w-]+)'/g)) states.add(q[1]);
+  }
+  assert.ok(states.has('open') && states.has('found'), 'the scripts were read');
+  for (const name of states) {
+    if (name === 'hidden' || name === 'booted') continue; // a utility, and a flag for the boot check
+    assert.ok(!bare.has(name), `.${name} is switched on by a script as a state, and also has a rule of its own`);
+  }
+});

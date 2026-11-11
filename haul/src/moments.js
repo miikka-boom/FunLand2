@@ -146,8 +146,8 @@ export class Moments {
         `</div>` +
         // The crate the squad found on the way in: something to show for getting here.
         (a.crate
-          ? `<div class="found"><small>FOUND ON THE WAY IN</small><span class="found-row"><span class="amt">${icon('supplies')}<b>+${a.crate.supplies}</b></span>` +
-            a.crate.tokens.map((t) => `<span class="found-tok">${face(t.id, { cls: 'tiny' })}<b>+${t.tokens || 0}</b></span>`).join('') +
+          ? `<div class="way-in"><small>FOUND ON THE WAY IN</small><span class="way-in-row"><span class="amt">${icon('supplies')}<b>+${a.crate.supplies}</b></span>` +
+            a.crate.tokens.map((t) => `<span class="way-in-tok">${face(t.id, { cls: 'tiny' })}<b>+${t.tokens || 0}</b></span>`).join('') +
             `</span></div>`
           : '') +
         `<button class="btn go big" type="button" data-go="ok">ONWARD</button>` +

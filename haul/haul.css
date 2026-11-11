@@ -849,7 +849,7 @@ em.ready {
   }
 }
 
-.c-fig.in-squad .f-shadow {
+.c-fig.is-squad .f-shadow {
   fill: #ffd36b;
   opacity: 0.4;
 }
@@ -3628,7 +3628,7 @@ button.slot:active {
   width: 100%;
 }
 
-.found {
+.way-in {
   display: grid;
   justify-items: center;
   gap: 5px;
@@ -3638,25 +3638,25 @@ button.slot:active {
   background: #fff6c2;
 }
 
-.found small {
+.way-in small {
   font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.14em;
   color: var(--muted);
 }
 
-.found-row {
+.way-in-row {
   display: flex;
   align-items: center;
   gap: 14px;
   font-size: 17px;
 }
 
-.found-row .amt .ic {
+.way-in-row .amt .ic {
   font-size: 22px;
 }
 
-.found-tok {
+.way-in-tok {
   display: inline-flex;
   align-items: center;
   gap: 4px;

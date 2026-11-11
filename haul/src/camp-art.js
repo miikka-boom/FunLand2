@@ -544,8 +544,8 @@ function gate() {
     R(1172, 240, 10, 176, 3, '#6b748c') +
     L('M1182,300 H1310 M1182,412 H1310', OL, 6) +
     L('M1182,300 H1310 M1182,412 H1310', '#8d97ab', 2.4) +
-    `<g transform="translate(1092,238) rotate(-4)">${R(-52, -17, 104, 34, 5, '#a8774a')}<path d="M-48,-6 h96 M-48,7 h96" stroke="#8a5a34" stroke-width="2" opacity="0.7"/><text x="-8" y="7" text-anchor="middle" font-size="19" font-weight="900" fill="#f4f1ea" font-family="ui-rounded, 'Arial Rounded MT Bold', 'Nunito', system-ui, sans-serif" letter-spacing="1">PIER 9</text><path d="M30,0 h14 m-6,-6 l6,6 l-6,6" stroke="#f4f1ea" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>` +
-    L('M1092,256 V272', OL, 3)
+    `<g transform="translate(1034,238) rotate(-4)">${R(-52, -17, 104, 34, 5, '#a8774a')}<path d="M-48,-6 h96 M-48,7 h96" stroke="#8a5a34" stroke-width="2" opacity="0.7"/><text x="-8" y="7" text-anchor="middle" font-size="19" font-weight="900" fill="#f4f1ea" font-family="ui-rounded, 'Arial Rounded MT Bold', 'Nunito', system-ui, sans-serif" letter-spacing="1">PIER 9</text><path d="M30,0 h14 m-6,-6 l6,6 l-6,6" stroke="#f4f1ea" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>` +
+    L('M1034,256 V272', OL, 3)
   );
 }
 
