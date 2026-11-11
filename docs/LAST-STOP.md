@@ -1,289 +1,154 @@
-# Last Stop (an isometric base-building variation of Thrill Hill)
+# Last Stop (a simple base-building metagame prototype)
 
-A landscape, mobile-first, free-to-play **metagame** prototype. Raids are
+A landscape, mobile-first, free-to-play **metagame** prototype. Nights are
 **simulated**, and nothing here is connected to the HORDE action game. It lives
 in [`outpost/`](../outpost) and runs at `/outpost/` (on Pages:
 `https://miikka-boom.github.io/FunLand2/outpost/`, locally
 `http://localhost:8080/outpost/` with `npm start`).
 
-> Turn a lonely gas station into a bright little town in the zombie pines.
-> Clear the lots around you, put everything where you like, and watch every
-> survivor's home grow as they level up.
+> One gas station. One survivor. Build a town.
 
 ## The brief
 
-"We want players to be able to get really invested in building their own base.
-Start a new variation that has an isometric top-down map of a zombie
-apocalypse survivor base that you can expand."
+The first Last Stop put Thrill Hill's whole loop (two chests, Badges, a squad
+of three, crowns, zones) on an isometric town you expand lot by lot. Playtest
+feedback: "It is way way way too complex. Simplify it in every way possible.
+And player is only playing with one character at a time. We want a satisfying
+simple base building experience."
 
-Last Stop keeps everything that worked in [Thrill Hill](THRILL-HILL.md) (two
-static chests, Badges, a squad of three, three-crown raids, zones) and replaces
-the fixed park with a town you lay out yourself. The design came out of a
-panel of four proposals scored by three judges; the winner ("Last Stop") was
-merged with the best ideas of the others (wishes, keepsakes, owner-styled
-homes and Undo from "Patchwork Fort"; MVP-named lots, landmark bosses and the
-camera glide from "Brightside").
+So this version keeps the town (the iso map, homes that grow, lots to clear,
+residents wandering about, zombies at the fence) and cuts everything else. The
+bigger version is in git history (the merge of PR #3).
 
-What makes it a base you care about:
+## The whole game
 
-- **It's yours to arrange.** Anything goes anywhere on your land as long as it
-  doesn't overlap; moving is free, with Undo. Paths are painted with a finger.
-- **It's full of your people.** Everyone gets a home that grows with them, with
-  their hat as a weathervane, their class prop on the porch, a heart plaque per
-  wish granted and siblings sharing a roof colour.
-- **It remembers.** Lots are named after the squad's MVP ("Mabel's Diner"),
-  landmarks say who restored them and when, keepsakes carry their owner's name,
-  and on day 7 the founders get a golden statue.
-- **It grows visibly.** Grass blooms over every lot you clear, the fence and
-  the station grow through three looks, and six landmarks light up.
+There is one currency (coins) and five things to do:
 
-## The base in five rules
+| | What you do | What happens |
+|---|---|---|
+| **PLAY** | Send tonight's survivor out | A win: coins and the next night. A loss: a third of the coins, same night again. |
+| **UPGRADE** | Tap a home, tap UPGRADE | Its survivor gets stronger and **the home grows**: tent, shack, log cabin, cottage, tower house, golden house (a heart plaque marks the level in between). |
+| **NEW HOME** | BUILD, pick New home, put it anywhere on your land | **Someone new moves in**: the stars knock in one by one, then their face. The first is always a 3★ Hero. |
+| **DECORATE** | BUILD, pick a decoration, put it anywhere | Nothing but fun: people sit on benches, soak in the hot tub, bounce on the trampoline. |
+| **LAND** | Tap a price tag on the lot next door, tap CLEAR | It's yours: the ruin crumbles, grass blooms, the fence hops out. Landmarks are restored; four corner lots hide a coin surprise. |
 
-1. Tap a lot next to your land and pay coins: it's yours instantly. Your zone
-   sets how many lots you can own.
-2. Anything goes anywhere on your land as long as it doesn't overlap. Moving is
-   free.
-3. Everyone who moves in gets a home automatically, and it grows with their
-   level.
-4. Cleared lots leave junk piles. Tap one to pop it, free.
-5. One survivor at a time wishes for something from a set to go by their home.
-   Put one there and they get Badges.
+And one thing that happens by itself: **the Gas Station fixes itself up** as
+you win nights (a new look every 5 nights: Patched, Fixed up at night 11, Proud
+at night 21, gold trim at night 31), and the fence goes with it (planks, tin,
+brick, string lights).
 
-There are no builders, no timers beyond the two chests, and no producers,
-defence, beds or storage.
+Anything you've placed can be moved: long-press and drag it, or tap it and
+tap Move. There's no selling, no box and no undo.
 
-## The map
+## One survivor at a time
 
-A 35×35 tile map (2:1 isometric, 64×32 px tiles at zoom 1) in a 5×5 grid of
-7×7 lots. Lot (a, b) covers i ∈ [7a, 7a+7), j ∈ [7b, 7b+7). You start in the
-middle with **Last Stop**: the Gas Station (3×3), the Drop Pad and the Bank
-Vault (the two chests), the Batting Cage and the Tin Can Range (class yards),
-three founder tents, a campfire and a dirt path, with one free 2×2 plot.
+The face next to PLAY is whoever goes out tonight. Tap it for **Who goes out
+tonight?**: everyone, strongest first, with their power and tonight's odds
+(Easy, Good, Tough, Risky). Tap someone to send them. A newcomer who'd do
+better than tonight's pick offers **SEND OUT TONIGHT** when they move in.
 
-| b \ a | 0 | 1 | 2 | 3 | 4 |
+Survivors are generated (name, look, job, a quirk, a line): stars (1★ Rookie
+to 4★ Legend) and level are all that matter. The class (Brawler, Shooter,
+Medic, Tinker) is the outfit colour and the prop.
+
+## The screen
+
+- Top left: coins. Top right: the gear (testing tools).
+- Bottom left: **BUILD**. Bottom right: tonight's survivor and **PLAY**
+  ("NIGHT 7 · GOOD").
+- Tap anything on the map and a bar slides up along the bottom with what you
+  can do with it: a home (UPGRADE, SEND OUT, Move), a decoration or the
+  station (Move), a lot (CLEAR). The camera glides it into view above the bar,
+  so you watch the home grow as you upgrade. Tap the ✕, the ground or Back to
+  close it.
+- An ↑ floats over tonight's survivor's home when their upgrade is affordable.
+- For the first nights a hand points at the next thing to do: PLAY, the first
+  new home, an upgrade when tonight looks tough, the lot next door when
+  there's no room. It stops once you've played 15 nights, built 2 homes and
+  cleared a lot.
+
+## Numbers
+
+All in [`outpost/src/config.js`](../outpost/src/config.js).
+
+- **Power** = round((10 + 4 × (level − 1)) × stars), stars ×1 / ×1.2 / ×1.45 /
+  ×1.75 for 1★..4★.
+- **Night N's threat** = 7 × √N (quick at first, slower later).
+- **Chance** = clamp(0.5 + 1.1 × (power / threat − 1), 5%, 95%). Night 1 is a
+  sure win. Labels: Easy ≥ 80%, Good ≥ 55%, Tough ≥ 30%, else Risky.
+- **Pay**: a win 15 + 5 × N coins, a loss a third of that.
+- **Upgrades** to Lv 2..10: 20, 35, 60, 95, 140, 200, 280, 380, 500.
+- **Homes**: 80, 120, 180, 260, 360, 480, 620, 780, 960, 1160, then +220
+  each. Who moves in: 50% 1★, 30% 2★, 15% 3★, 5% 4★, at one level below your
+  best survivor. The first is a 3★ Hero; a 4★ Legend comes by the 8th home
+  if none has yet.
+- **Land**: 120, 220, 350, 500, 680, 880, 1100, 1350, 1620, 1900, 2200,
+  2500, then +320 each. A surprise lot pays back 60–140% of its price.
+- **Decorations**: 25 (bench, planter) up to 650 (the carousel), 18 kinds.
+- Start: 60 coins, a 1★ Rookie in a tent, a campfire, a bench and a planter.
+
+## Pacing
+
+`npm run outpost:balance` plays 20 seeded players who follow the hints:
+keep tonight's odds at 75%+ with upgrades, alternate new homes and land
+(whichever is cheaper), and spend 30% of every night's coins on decorations
+and on the others' homes. Medians:
+
+| Nights played | Night | People | Lots | Decorations | Tonight's survivor |
 |---|---|---|---|---|---|
-| **0** | ? Old Quarry | L Radio Mast | D Pine Grove | C Bus Depot | ? Scrapyard |
-| **1** | C Lumber Yard | L Water Tower | C Burger Stand | C Car Lot | L Fire Station |
-| **2** | R School | R Diner | **Last Stop** | R Motel | R Pharmacy |
-| **3** | L Fairground Wheel | D Playground | D Mini Golf | L Drive-in | D Farm Stand |
-| **4** | ? Hidden Cove | R Campground | C Boat Rental | L Lighthouse Pier | ? Water Park |
+| 5 | 5 | 2 | 1 | 3 | 3★ Lv 2 |
+| 15 | 14 | 3 | 2 | 6 | 3★ Lv 5 |
+| 30 | 26 | 5 | 3 | 13 | 3★ Lv 6 |
+| 60 | 51 | 8 | 6 | 38 | 3★ Lv 9 |
+| 100 | 84 | 12 | 9 | 74 | 4★ Lv 10 |
+| 150 | 119 | 16 | 12 | 123 | 4★ Lv 10 |
 
-R rescue, C cache, D decoration set, L landmark, ? mystery. Lots next to your
-land float a tag with their kind and price; farther lots show only a name under
-a haze. Locked lots hold a ruin (6 archetypes with a name sign), a ruined
-landmark with its boss waving from the roof, or a tarp heap with a "?".
+First new home by night 4, first lot by night 14, the station Fixed up at 11
+and Proud at 22, a Legend by about 66. About 80% of nights are won; past
+night 100 the threat catches up even with a Legend at Lv 10 and wins thin
+out (losses still pay, so the town keeps growing). Coins go about a quarter
+each on levels, homes and land, and 15% on decorations.
 
-### Clearing a lot
+## What was cut from the first Last Stop
 
-The price depends on how many lots you own: 50, 150, 300, 450, 650, 850, 1,100,
-1,400, 1,700, 2,000, 2,400, 2,800, then +500 each. The land cap is 3 / 5 / 7 /
-10 / 13 / 16 lots for zones 1–6, then +1 per milestone past the last gate, up
-to 25.
-
-The clear takes about four seconds (tap to speed it up): the squad sprints out
-and BONKs the zombies, grass blooms tile by tile, the fence hops out, a sign
-rises with the MVP's name (the squad member with the most crowns since the last
-clear; ties go to the higher level, then the newer), the prize knocks three
-times like a chest (15% Glow-Up chance each), and the ruin crumbles into four
-junk piles (the squad pops the first). Roof campers then move into new homes.
-
-| Prize | Plain | Glow-Ups |
-|---|---|---|
-| Rescue | a newcomer at Bank Vault odds (Veteran+); outer-ring rescues start at Silver | Silver/Gold: Hero+; Rainbow: a Legend |
-| Cache | 100 × zone coins + 10 gems | ×1.5 / ×2 / ×3 |
-| Decoration set | the lot's signature piece + 2 commons, standing on the lot | Silver: a common becomes the set's rare; Gold: both; Rainbow: + a Golden Gnome |
-| Mystery | Legend 15%, golden Hero 15%, a resident's sibling (Hero) 20%, a giant decoration 30%, 50 gems 20% | +10 gems per grade |
-| Landmark | restored: its bonus forever + 20 gems (no knocks) | |
-
-The first clear always brings someone: the lot's own rescue, or a survivor
-hiding in the pile the squad bonks. People found in town (rescues, trunks,
-mysteries, the radio call) arrive one level below a chest newcomer of the same
-rarity: they've been hiding a while.
-
-### Landmarks
-
-| Landmark | Boss | Restored, forever |
-|---|---|---|
-| Water Tower | the Plumber | the Supply Crate refills every 1 h 45 m |
-| Drive-in | the Projectionist | +10% raid coins |
-| Radio Mast | the DJ | strays follow you home twice as often, and a Hero answers the call |
-| Fire Station | the Fire Chief | +5% squad power |
-| Fairground Wheel | the Carny | +2 points Glow-Up chance per knock (chests and lots) |
-| Lighthouse Pier | Old Salt | the Bank Vault refills every 7 h |
-
-These reach Thrill Hill's rules through hooks in `meta.js` (`glowExtra`,
-`strayChance`, `powerMult`, `coinBonus`, `chestPeriod`), so the chest sheets,
-odds and raid previews show them.
-
-## Buildings, homes, decorations
-
-**Buildings** keep Thrill Hill's ids, levels 1–7, instant upgrades and the
-max level of zone + 1. Each has three looks (Patched Lv 1–2, Fixed up 3–4,
-Proud 5–7), a pennant per level and gold trim at 7. The Gas Station (the Big
-Top's role: +10% raid coins per level) also sets the fence: planks and tyres,
-painted tin, brick and lamps, string lights and flags. The Ice Cream Clinic
-(Medics) and the Junk Garage (Tinkers) fly in as kits at zones 2 and 3.
-
-**Homes** are 2×2, free and automatic. A newcomer's home lands on the best free
-spot: +3 touching a path, +2 per home within a tile (streets fill up), +4 next
-to a sibling, −0.2 per tile from the station, never on a path or the
-station's forecourt. With no room, people camp on the Gas Station's roof and
-move down after the next clear (or when you place their home from BUILD →
-Homes). Tiers follow the owner's level:
-
-| Lv | 1 | 2–3 | 4–5 | 6–7 | 8–9 | 10 |
-|---|---|---|---|---|---|---|
-| Home | tent | shack | log cabin | cottage | tower house | golden house |
-
-A level-up that changes the tier gets a **housewarming**: the camera visits the
-home as it pops into its new look and the neighbours cheer.
-
-**Decorations** have no stats. Each belongs to a set tied to a vibe:
-
-| Set (vibe) | Commons (coins) | Rare (junk, finds) | Signature (set lot) |
-|---|---|---|---|
-| Cozy (Sleepy) | Bench 40, Campfire 50, Hammock 60 | Bathtub Hot Tub | Treehouse |
-| Garden (Sunny) | Planter 40, Sunflowers 50, Veggie Patch 90 | Golden Gnome | Pumpkin Patch |
-| Party (Show-off) | Flamingo 40, Trampoline 70, Pallet Stage 120 | Disco Ball Pole | Windmill Hole |
-| Lookout (Jumpy) | Flag Pole 40, Searchlight 70, Lookout Ladder 80 | Scarecrow in a Tutu | Rocket Slide |
-
-The 40-coin pieces sell from Zone 1, the rest from Zone 2, the 2×2 ones from
-Zone 3. Every Hero, Legend and golden newcomer brings a **keepsake** with their
-name on it (Jukebox, Arcade Cabinet, Grill, Rocking Chair, Telescope, Gnome
-Army; Legends a Mini Carousel or a Greenhouse), placed by their home. Zone
-gates fly in **souvenirs** on plinths, and day 7 brings the **Founders'
-Statue**. Decorations, keepsakes, souvenirs and the statue can go in the box.
-
-**Placing**: an object must sit entirely on your land and not overlap anything.
-Paths never block (things sit on top). Dropping something on a junk pile pops
-it.
-
-## Wishes, junk, visitors
-
-**Wishes.** One is open at a time and never expires, unless the home stays boxed in for 30 minutes, when the wisher gives it up and another wish comes on the usual clock (the simulated player, who plays four 20-minute sessions a day, grants about two a session): "Aino would love
-something Garden by her cabin." It's granted the moment any piece of that set
-stands within 2 tiles of her home, bought, unboxed or **moved** there for free:
-4 + 2 × zone Badges, a heart and a plaque. The squad is three times as likely
-to wish, Heroes and Legends twice, nobody twice in a row, and only for sets the
-home lacks and has room for (a sibling wish only when one home fits near the
-other). A sibling may instead wish to live near their family. A new wish
-comes 20 minutes after the last is granted, or on returning after an hour. Tap
-the bubble and BUILD opens on Decor with a ♥ on matching cards; the ♥ over her
-home glows while you drag a match in range. Wishes never get the arrow.
-
-**Junk.** 70% coins (10 + 10 × zone ±25%), 15% 2–4 gems, 12% a common
-decoration, 3% a rare one; separately a 3% "someone's in the trunk!" survivor
-(the first by the 12th pile, never more than 40 apart). The first pile you pop
-yourself holds a Lawn Flamingo and starts the first wish (Party), when there is
-room by the Show-off founder's tent.
-
-**Visitors** (on returning after an hour): a costume zombie at the fence (1 in
-5; BONK it for a common decoration or 20 × zone coins) or a golden zombie (1 in
-3 after 2 h+, at most one a day; three taps for 5 gems).
-
-## The next step
-
-One bouncing arrow (with an edge pointer when off-screen): a ready chest, a
-READY person you can afford, a gift, a kit waiting to be placed, BEST, the
-cheaper of the best building upgrade and the next lot (rescues first, then
-toward the nearest landmark), PLAY. Junk, wishes and decorations never get the
-arrow; the hand guides the first session only.
-
-## Economy and pacing
-
-Thrill Hill's currencies, nothing new: coins pay for everything (land too),
-gems only open chests early, Badges are personal, Skulls are a score. Raid and
-chest coins are ×1.5 Thrill Hill's (`TUNING_DEFAULTS.coins`) because about a
-third goes on land. The milestone cycle gains a decoration: coins → Badges →
-gems → a decoration.
-
-`npm run outpost:balance` plays 20 seeds for 7 days (4 sessions a day of 4
-raids). The simulated player puts land first, up to a third of the coins it
-has earned, then follows Thrill Hill's spending order; it pops all junk, places
-kits and found decorations, and grants wishes the cheapest way. It then plays
-Thrill Hill's own player on the same seeds and checks that the squad's level
-and every zone day stay within ±5%, and that land takes 25–35% of coins.
-
-| Day | raids | zone | lots (cap) | people | squad Lv | landmarks | decorations | wishes | junk | coins earned | on land |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | 16 | 3 | 5 (7) | 17 | 4.7 | 0 | 9 | 8 | 16 | 3,630 | 950 (26%) |
-| 3 | 48 | 4 | 8 (10) | 29 | 6.3 | 3 | 18 | 24 | 28 | 12,750 | 3,550 (27%) |
-| 7 | 112 | 6 | 12 (19) | 53 | 8.7 | 6 | 35 | 56 | 44 | 39,000 | 11,050 (28%) |
-
-Squad level on day 7 is 8.7 against Thrill Hill's 9.0 (−4%), and zones open on the same days
-(2 and 3 on day 1, 4 on day 3, 5 on day 4, 6 on day 7). The remaining 13 lots
-cost about 75,000 coins: a weeks-long tail.
-
-## Screens and controls
-
-The map is the home screen; Thrill Hill's Crew, Raid and chest Opening screens
-are unchanged.
-
-- **HUD** (floating pills): the town's flag and name (tap to rename), the zone
-  and Skull bar (the ladder), coins, gems, the gear. Along the bottom: the
-  Supply Crate, BUILD, the squad's faces with the threat and PLAY, CREW, the
-  Bank Vault. A home button appears when the station is off-screen.
-- **Performance**: map art is drawn as cached SVG images and taps use each
-  object's footprint hexagon. A full town (220 objects, 27 walkers) pans at
-  about 45 fps with the CPU throttled 4× in headless Chrome.
-- **Gestures**: drag pans (with inertia), pinch or the wheel zooms 0.35–1.8,
-  a double tap zooms 0.9 ↔ 1.4, a tap opens what's there (a person's card, a
-  building's sheet, a lot card, pops junk, BONKs a zombie), and a long press
-  (0.35 s) lifts anything movable. Let go on green to move it; on red it slides
-  home. Drop a boxable thing on "Box it" to put it away.
-- **BUILD** is a short drawer with four tabs: Buildings (move them; kits
-  waiting), Homes (everyone, roof campers first), Decor (the box, then every
-  decoration with its price or where to find it) and Paths (Dirt, Planks,
-  Brick, the Eraser; paint with one finger, pan with two).
-- **Placing** something new: it appears on a free spot near the screen centre
-  over a green or red footprint; drag it (it follows your finger from where you
-  grabbed it), then ✓.
-- **Naming**: after the first wish (or the third raid) the game asks for the
-  town's name (three suggestions or your own) and a flag colour; the Gas
-  Station's sign shows it from the Fixed-up look on.
-
-The testing drawer (gear, or the ` key) has Thrill Hill's tools plus: clear the
-next lot or every lot, a wish now, a trunk survivor next, +5 people, a costume
-or golden zombie, and Founders' Day.
+Chests and their timers, gems, Badges and READY, the squad of three, classes
+as counters and threats, crowns, Skulls, zones and gates, milestones, perks,
+vibes as a mechanic, siblings, golden survivors, Rally and Clutch, BEST,
+strays, gifts, junk piles, trunk survivors, wishes, keepsakes with names,
+the box, kits, decoration sets and rares, paths and painting, Undo,
+landmark bonuses, lot prizes and Glow-Ups, MVP lot names, roof campers,
+visitors, town naming, the Crew screen, the Skull ladder and the founders'
+statue.
 
 ## Code map
 
 ```
-outpost/index.html, outpost.css   the page and its styles (Thrill Hill's, plus the map, HUD, drawer)
-outpost/src/
-  config.js          every number and piece of content (Thrill Hill's, plus the town's tables)
-  meta.js            Thrill Hill's rules (chests, Badges, squad, raids, zones) with landmark hooks
-  town.js            the town rules: lots, clearing, placement, homes, junk, wishes, landmarks, kits, visitors, nextStep
-  save.js            localStorage (funland2.outpost.v1), migration
-  iso.js             isometric math and the camera (pure)
-  isoview.js         the iso view: world layer, objects by depth, walkers, ghost, pins, gestures
-  path.js            A* for walkers (paths cost 1, grass 3)
-  map.js             the town map: ground, wild, objects, fence, tags, bubbles, walkers, placing, painting
-  art.js             one door to the art modules, cached, with stand-in boxes if one fails to load
-  town-art.js        buildings (3 looks), homes (6 tiers, owner touches), landmarks (+ bosses), fences
-  ground-art.js      lot ground (grass, the wild, joined paths, haze), ruins, mystery heap, junk, scenery, bloom
-  decor-art.js       decorations, keepsakes, souvenir plinths, the statue, set badges
-  town-icons.js      the town's UI icons
-  hud.js, build.js   the floating HUD and the BUILD drawer
-  sheets.js          survivor card, building/chest/ladder sheets, lot card, landmark/decor/rename sheets
-  main.js            boot, the frame loop and every flow (clear, place, move, wishes, raids, chests)
-  people.js, raid.js, chests.js, opening.js, raid-view.js, crew.js, kit.js, ui.js, fx.js,
-  audio.js, portrait.js, chest-art.js, icons.js, thrill-art.js, clock.js, format.js, util.js, dev.js
-                     carried over from Thrill Hill (thrill-art.js = its art.js)
-outpost/tools/       player.mjs (the simulated player) and balance-sim.mjs
-tests/outpost-iso.test.js, tests/outpost-town.test.js
+outpost/
+  index.html, outpost.css     the page and its styles
+  src/config.js               every number and every piece of content
+  src/town.js                 the rules (no DOM): nights, upgrades, homes, decorations, land, moving, hints, cheats
+  src/people.js               the survivor generator (names, looks, jobs, quirks)
+  src/main.js                 boot, the frame loop and every flow (select, play, build, clear, move, hints)
+  src/map.js                  the town map: ground, wild lots, objects, fence, tags, walkers, zombies, placing and lifting
+  src/isoview.js, iso.js      the iso engine: camera, gestures, depth order, hit tests, the placement ghost
+  src/hud.js                  coins, the gear, BUILD, tonight's survivor and PLAY, the hint hand
+  src/build.js                the BUILD row
+  src/sheets.js               the selection bar and the people list
+  src/run.js                  the night out and the move-in reveal
+  src/save.js, dev.js         the save (localStorage) and the testing drawer
+  src/art.js                  the door to the art modules (town-art, ground-art, decor-art, town-icons)
+  src/portrait.js, thrill-art.js, icons.js, fx.js, audio.js, ui.js, path.js, util.js, clock.js, format.js
+  tools/player.mjs            the simulated player
+  tools/balance-sim.mjs       npm run outpost:balance
 ```
 
-`window.__outpost` exposes the rules, the map and the HUD in the browser
-console.
+Tests: `tests/outpost-town.test.js` (the rules, saves and pacing),
+`tests/outpost-art.test.js` (every piece of art is well-formed),
+`tests/outpost-iso.test.js` (the iso engine).
 
-## What was cut, and why
+## Testing tools
 
-- Permits, paid shacks, beds or any cap on people: everyone moves in.
-- Builders, build timers, producers, harvests, storage and base defence: the
-  only timers are the two chests.
-- Land won by raid flags or districts: it would rewrite the accepted Skull
-  ladder and take the building choices away.
-- Paid or multi-tap junk: junk is free and never gets the arrow.
-- Per-object paint and flipping, night art variants and the postcard export:
-  one town colour instead, to keep the art cache small (possible follow-ups).
+The gear (or the `` ` `` key): always win or always lose, the stars of the next
+newcomer, +5 or +20 nights, coins, everyone +1 level, clear the next lot or
+every lot, +3 people, live sliders for coins and threat, stats, and copy, load
+or reset the save. `window.__outpost` has the town in the console.

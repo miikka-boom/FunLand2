@@ -1,12 +1,12 @@
 // Persistence: the save and the testing tuning, in localStorage. Loading fills
-// in anything a newer build added, so old saves keep working.
+// in anything a newer build added, so old saves keep working. (The earlier,
+// bigger Last Stop kept its save under another key; it starts fresh.)
 
-import { newStats } from './meta.js';
-import { newTownState as newState, newTownStats } from './town.js';
-import { TUNING_DEFAULTS, PERKS, RARITIES } from './config.js';
+import { newTownState, newStats } from './town.js';
+import { TUNING_DEFAULTS, RARITIES } from './config.js';
 
-export const SAVE_KEY = 'funland2.outpost.v1';
-const TUNING_KEY = 'funland2.outpost.tuning.v1';
+export const SAVE_KEY = 'funland2.outpost.simple.v1';
+const TUNING_KEY = 'funland2.outpost.simple.tuning.v1';
 
 export function loadState() {
   try {
@@ -35,39 +35,25 @@ export function clearState() {
   }
 }
 
-const PERSON_DEFAULTS = { hearts: 0, level: 1, badges: 0, raids: 0, wins: 0, golden: false, siblingOf: null, family: null, nick: null, elder: null, perk: null };
+const PERSON_DEFAULTS = { level: 1, raids: 0, wins: 0, golden: false, nick: null, elder: null, perk: null };
+const KINDS = ['station', 'home', 'decor', 'landmark'];
 
-/** Bring a parsed save up to the current shape (at the save's own park time). */
+/** Bring a parsed save up to the current shape. Anything that isn't a save becomes a fresh town. */
 export function migrate(saved, now) {
-  if (!saved || typeof saved !== 'object' || Array.isArray(saved) || !Array.isArray(saved.people) || !saved.people.length) return newState(now ?? Date.now());
-  const offset = Number(saved.clockOffset) || 0;
-  const fresh = newState(now ?? Date.now() + offset, saved.seed);
+  const ok = saved && typeof saved === 'object' && !Array.isArray(saved) && Array.isArray(saved.people) && saved.people.length && Array.isArray(saved.objects) && saved.lots && typeof saved.lots === 'object';
+  if (!ok) return newTownState(now ?? Date.now());
+  const fresh = newTownState(now ?? Date.now(), saved.seed);
   const s = fillMissing(saved, fresh);
-  if (!Array.isArray(s.squad)) s.squad = [];
-  if (!Array.isArray(s.threats) || !s.threats.length) s.threats = fresh.threats;
-  if (!Array.isArray(s.log)) s.log = [];
   s.stats = fillMissing(s.stats || {}, newStats());
-  s.town.stats = fillMissing(s.town.stats || {}, newTownStats());
-  if (typeof s.paths !== 'string' || s.paths.length !== fresh.paths.length) s.paths = fresh.paths;
-  for (const k of ['objects', 'junk', 'box', 'kits']) if (!Array.isArray(s[k])) s[k] = [];
-  s.objects = s.objects.filter((o) => o && Number.isFinite(o.i) && Number.isFinite(o.j) && o.size > 0 && (o.kind !== 'home' || s.people.some((p) => p.id === o.ref)));
+  s.people = s.people.filter((p) => p && Number.isFinite(p.id) && RARITIES[p.rarity]);
+  if (!s.people.length) return fresh;
+  for (const p of s.people) for (const [k, v] of Object.entries(PERSON_DEFAULTS)) if (p[k] === undefined) p[k] = v;
+  s.objects = s.objects.filter((o) => o && KINDS.includes(o.kind) && Number.isFinite(o.i) && Number.isFinite(o.j) && o.size > 0 && (o.kind !== 'home' || s.people.some((p) => p.id === o.ref)));
+  if (!s.objects.some((o) => o.kind === 'station')) s.objects.unshift({ ...fresh.objects.find((o) => o.kind === 'station'), id: Math.max(0, ...s.objects.map((o) => o.id)) + 1 });
   s.nextObj = Math.max(s.nextObj || 1, ...s.objects.map((o) => o.id + 1));
-  s.nextJunk = Math.max(s.nextJunk || 1, ...s.junk.map((o) => o.id + 1));
-  s.boxSerial = Math.max(s.boxSerial || 0, ...s.box.map((x) => x.n || 0));
-  // Saves from before box serials: stamp the entries, and keep the old "seen" count.
-  if (s.box.some((x) => !x.n)) {
-    const seenN = Math.min(s.seen.boxSeen || 0, s.box.length);
-    for (const x of s.box) if (!x.n) x.n = ++s.boxSerial;
-    if (s.seen.boxSerial == null) s.seen.boxSerial = seenN ? s.box[seenN - 1].n : 0;
-  }
-  if (s.wish && !s.people.some((p) => p.id === s.wish.id)) s.wish = null;
-  for (const p of s.people) {
-    for (const [k, v] of Object.entries(PERSON_DEFAULTS)) if (p[k] === undefined) p[k] = v;
-    // A perk a newer build removed becomes one that exists (or none for a Rookie).
-    if (p.perk && !PERKS[p.perk]) p.perk = RARITIES[p.rarity] && RARITIES[p.rarity].perk > 0 ? 'gemnose' : null;
-  }
-  s.squad = s.squad.filter((id) => s.people.some((p) => p.id === id));
-  if (!s.squad.length) s.squad = s.people.slice(0, 3).map((p) => p.id);
+  s.nextId = Math.max(s.nextId || 1, ...s.people.map((p) => p.id + 1));
+  if (!s.people.some((p) => p.id === s.pick)) s.pick = s.people[0].id;
+  s.night = Math.max(1, Math.floor(s.night) || 1);
   return s;
 }
 

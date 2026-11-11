@@ -4,8 +4,7 @@
 // draws.
 
 import { tileToWorld } from './iso.js';
-import { DECOR, KEEPSAKES, BUILDINGS, LOT, LOTS, LOTS_ACROSS, CLASSES, SETS, RUINS, FENCE_TIERS } from './config.js';
-import { souvenirSvg } from './thrill-art.js';
+import { DECOR, LOT, LOTS, LOTS_ACROSS, CLASSES, RUINS, FENCE_TIERS } from './config.js';
 
 const load = async (path) => {
   try {
@@ -69,18 +68,14 @@ const anim = (art) => (art && T && T.withAnimation ? { ...art, svg: T.withAnimat
 /** The anchors town-art exposes (bus spot, roof campers, door and walker spots). */
 export const ANCHORS = (T && T.ANCHORS) || {};
 
+/** The Gas Station (id 'bigtop', 3×3) at a look level 1..7. */
 export function building(id, level, town, flags = 0, night = false) {
-  const n = BUILDINGS[id].size;
-  return memo(`b|${id}|${level}|${town.name}|${town.color}|${flags}|${night}`, () => (T && T.buildingArt ? anim(T.buildingArt(id, level, { town: town.name, color: town.color, flags, night })) : null)) || boxArt(n, n, 40 + n * 10, '#e9c46a', BUILDINGS[id].name.split(' ')[0]);
+  return memo(`b|${id}|${level}|${town.name}|${town.color}|${flags}|${night}`, () => (T && T.buildingArt ? anim(T.buildingArt(id, level, { town: town.name, color: town.color, flags, night })) : null)) || boxArt(3, 3, 70, '#e9c46a', 'GAS');
 }
 
 export function home(person, tier, { roof, hearts = 0, legend = false, wish = false, night = false } = {}) {
   const key = `h|${person.id}|${person.first}|${tier}|${roof}|${hearts}|${legend}|${person.golden}|${person.level}|${wish}|${night}`;
   return memo(key, () => (T && T.homeArt ? anim(T.homeArt(person, tier, { roof, hearts, golden: !!person.golden, legend, wish, name: person.first, night })) : null)) || boxArt(2, 2, 30 + tierHeight(tier), CLASSES[person.cls].color);
-}
-
-export function campTent(color) {
-  return memo(`ct|${color}`, () => (T && T.campTentArt ? T.campTentArt(color) : '')) || '';
 }
 
 const tierHeight = (tier) => ({ tent: 0, shack: 8, cabin: 14, cottage: 18, tower: 34, gold: 34 })[tier] || 0;
@@ -112,26 +107,18 @@ export function fence(tier, side, len, color = null, seed = 0, start = 0, edge =
 
 export function decor(kind, night = false) {
   const n = DECOR[kind] ? DECOR[kind].size : 1;
-  return memo(`d|${kind}|${night}`, () => (D && D.decorArt ? D.decorArt(kind, { night }) : null)) || boxArt(n, n, 16, DECOR[kind] ? SETS[DECOR[kind].set].color : '#ccc');
+  return memo(`d|${kind}|${night}`, () => (D && D.decorArt ? D.decorArt(kind, { night }) : null)) || boxArt(n, n, 16, '#c9b48a');
 }
 
+/** Keepsake art (the grill, the jukebox, the carousel): sold as decorations, no name plate. */
 export function keepsake(kind, name = '', night = false) {
-  const n = KEEPSAKES[kind] ? KEEPSAKES[kind].size : 1;
+  const n = DECOR[kind] ? DECOR[kind].size : 1;
   return memo(`k|${kind}|${name}|${night}`, () => (D && D.keepsakeArt ? D.keepsakeArt(kind, { name, night }) : null)) || boxArt(n, n, 22, '#ffd36b');
 }
 
-export function souvenir(id, count = null) {
-  const c = id === 'scoreboard' ? count : null;
-  return memo(`s|${id}|${c}`, () => (D && D.plinthArt ? D.plinthArt(souvenirSvg(id), c != null ? { count: c } : {}) : null)) || boxArt(2, 2, 24, '#bdbdbd');
-}
-
-/** The Founders' Statue: the founders themselves, in gold. */
-export function statue(founders = []) {
-  return memo(`statue|${founders.map((p) => p.id).join(',')}`, () => (D && D.statueArt ? D.statueArt(founders) : null)) || boxArt(2, 2, 50, '#ffc23a');
-}
-
-export function setBadge(set) {
-  return memo(`sb|${set}`, () => (D && D.setBadgeSvg ? D.setBadgeSvg(set) : '')) || `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="${SETS[set] ? SETS[set].color : '#ccc'}" stroke="#2a1b12" stroke-width="2"/></svg>`;
+/** Any decoration by its DECOR kind (decor or keepsake art). */
+export function decoration(kind, night = false) {
+  return DECOR[kind] && DECOR[kind].art === 'keepsake' ? keepsake(kind, '', night) : decor(kind, night);
 }
 
 export function ruin(key, faded = false) {
@@ -149,12 +136,8 @@ export function mystery(faded = false) {
   return memo(`mystery|${faded}`, () => (G && G.mysteryArt ? G.mysteryArt({ faded }) : null)) || boxArt(3, 3, 40, '#5aa0d8', '?');
 }
 
-export function junk(v) {
-  return memo(`j|${v}`, () => (G && G.junkArt ? G.junkArt(v) : null)) || boxArt(1, 1, 12, '#a07a4a');
-}
-
-/** One lot's ground image (owned grass or the wild), paths joined across lots. */
-export function lotGround(a, b, { owned, haze, pathAt, key }) {
+/** One lot's ground image (owned grass or the wild). */
+export function lotGround(a, b, { owned, haze, pathAt = () => null, key }) {
   if (G && G.lotGroundSvg) {
     try {
       return G.lotGroundSvg(a, b, { owned, haze, pathAt, seed: a * 31 + b * 7 + 1 });
@@ -205,7 +188,7 @@ export function scenery() {
   return { svg: `<svg viewBox="-1500 -350 3000 1800" xmlns="http://www.w3.org/2000/svg"><rect x="-1500" y="-350" width="3000" height="1800" fill="#7fae5a"/></svg>`, left: -1500, top: -350, width: 3000, height: 1800, M };
 }
 
-/** Town icons (BUILD, the sets, move, box…), falling back to a dot. */
+/** Town icons (BUILD, home, move, lot…), falling back to a dot. */
 export function townIcon(name) {
   if (I && I.townIcon) {
     const s = I.townIcon(name);

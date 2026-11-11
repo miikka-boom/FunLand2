@@ -6,7 +6,7 @@
 //   import { icon, ICONS } from './icons.js';
 //   el.innerHTML = `${icon('coin')}<b>120</b>`;
 //
-// classGlyph(cls, colours) is shared with chest-art.js (the Badge tokens).
+// classGlyph(cls, colours) draws the class marks.
 // Names: the currencies and UI glyphs, the four classes, the vibes and perks, plus
 // skip (fast-forward), back, soundOn, soundOff and tiny crate / vault chests.
 
@@ -115,7 +115,7 @@ const wrap = (body) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
 
 // --- shared shapes ---------------------------------------------------------------------------
 
-/** The coin face on a 24 grid (also used by chest-art's coinSvg). */
+/** The coin face on a 24 grid (also used by kit.js coinSvg). */
 export function coinBody() {
   return (
     C(12, 12.6, 9.6, GOLD_D, { sw: 0 }) +
@@ -127,7 +127,7 @@ export function coinBody() {
   );
 }
 
-/** The gem on a 24 grid (also used by chest-art's gemSvg). */
+/** The gem on a 24 grid. */
 export function gemBody() {
   return (
     P('M7 4.5H17L21.5 9.5L12 21L2.5 9.5Z', GEM, { sw: 0 }) +
