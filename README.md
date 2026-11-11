@@ -8,6 +8,7 @@ build step and no dependencies.
 | 0: HORDE | [`/`](index.html) | Twin-stick touch controls for zombie horde survival, in 3D |
 | 1: WOBBLE WAR | [`battle/`](battle/) | A real-time card battler with funny, satisfying 2D physics units and a fair free-to-play meta game |
 | Thrill Hill | [`thrill/`](thrill) | A Clash-Royale-inspired metagame: two static chests, a theme-park base, randomly generated survivors, a squad of three, three-crown raids |
+| Last Stop | [`outpost/`](outpost) | Thrill Hill's loop on an isometric town you expand lot by lot: place anything anywhere, homes that grow with their owners, wishes, landmarks |
 | Hope Street | [`hope/`](hope) | A metagame with base building and randomly generated people: take them in, pick a crew of four for each run |
 | Road to Evac | [`evac/`](evac) | A metagame for a co-op zombie survivor game (simulated runs) |
 | Safehouse | [`safehouse/`](safehouse) | Another metagame: meta-progression for a co-op zombie mobile game |
@@ -636,6 +637,34 @@ with the earlier metagame prototypes and isn't connected to the action game. A
 Open `/thrill/` (on Pages: `https://miikka-boom.github.io/FunLand2/thrill/`).
 The design, numbers and pacing are in [docs/THRILL-HILL.md](docs/THRILL-HILL.md).
 
+## Last Stop: an isometric base-building variation
+
+[`outpost/`](outpost) keeps Thrill Hill's loop (two static chests, Badges, a
+squad of three, three-crown raids, unchanged) and swaps the fixed park for an
+**isometric town you build yourself**, so players can get invested in their
+base. It isn't connected to the action game; raids are simulated.
+
+- You hold one gas station on a 35×35 map of 25 lots. **Tap a lot next to your
+  land and pay coins: it's yours instantly.** The squad bonks the zombies,
+  grass blooms tile by tile, the fence hops out and a sign names the lot after
+  the squad's MVP ("Mabel's Diner"). The prize knocks three times like a
+  chest (rescues, caches, decoration sets, mystery corners), and six landmarks
+  with costumed boss zombies each give one bonus forever.
+- **Anything goes anywhere on your land**: buildings, decorations, keepsakes
+  and souvenirs. Moving is free (long-press to lift, with a 5 s Undo), paths
+  are painted with a finger, and decorations can go in the box.
+- **Everyone who moves in gets a home** that places itself (near paths,
+  neighbours and siblings) and grows with its owner's level: tent, shack,
+  cabin, cottage, tower house, golden house. Residents walk about on paths.
+- One survivor at a time **wishes** for a decoration set near their home;
+  put one there (bought, unboxed or just moved) and they get Badges. Cleared
+  lots leave junk piles to pop (sometimes someone's in the trunk).
+- The gear (top right) has Thrill Hill's testing tools plus town cheats.
+  `npm run outpost:balance` checks the pacing against Thrill Hill.
+
+Open `/outpost/` (on Pages: `https://miikka-boom.github.io/FunLand2/outpost/`).
+The design, numbers and code map are in [docs/LAST-STOP.md](docs/LAST-STOP.md).
+
 ## Hope Street: a metagame prototype
 
 [`hope/`](hope) is a separate page built around **base building** and
@@ -721,7 +750,7 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
 - **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` (HORDE) once
   this is on the default branch (the Pages workflow only deploys from there).
   WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/thrill/`
-  (Thrill Hill), `/hope/` (Hope Street), `/evac/` (Road to Evac), `/safehouse/` (the Safehouse) and
+  (Thrill Hill), `/outpost/` (Last Stop), `/hope/` (Hope Street), `/evac/` (Road to Evac), `/safehouse/` (the Safehouse) and
   `/camp/` (the v1 camp).
 - **Locally:** `npm start` (or `python3 -m http.server 8080`), then open
   `http://localhost:8080`. To try it on a phone, open
@@ -760,11 +789,12 @@ src/playtest.js            playtest kit: rating card, reports (copy / share / hi
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
 thrill/                    Thrill Hill metagame prototype (separate page; map in docs/THRILL-HILL.md)
+outpost/                   Last Stop, the isometric base-building variation (separate page; map in docs/LAST-STOP.md)
 hope/                      Hope Street metagame prototype (separate page; map in docs/HOPE-STREET.md)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, Ben's traces + memory, playtest reports + daily seed, the five metagames, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

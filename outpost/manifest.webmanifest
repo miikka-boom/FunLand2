@@ -1,0 +1,24 @@
+{
+  "name": "FunLand2 · Thrill Hill (metagame prototype)",
+  "short_name": "Thrill Hill",
+  "description": "A Clash-Royale-inspired metagame prototype: two static chests, a theme-park base and randomly generated survivors",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#5fc3f2",
+  "theme_color": "#5fc3f2",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "../icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

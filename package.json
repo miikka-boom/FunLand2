@@ -12,6 +12,7 @@
     "evac:balance": "node evac/tools/balance-sim.mjs",
     "hope:balance": "node hope/tools/balance-sim.mjs",
     "thrill:balance": "node thrill/tools/balance-sim.mjs",
+    "outpost:balance": "node outpost/tools/balance-sim.mjs",
     "battle:balance": "node battle/tools/balance-arena.mjs"
   }
 }
