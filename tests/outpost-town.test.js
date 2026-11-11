@@ -1,17 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Town, newTownState, lotPriceFor, gapBetween, tierOf, fenceTierOf, lotNeighbours, ringOf, COMMON_DECOR } from '../outpost/src/town.js';
+import { Town, newTownState, powerOf, chanceOf, oddsLabel, threatOf, tierOf, heartsOf, homePriceFor, landPriceFor, stationLevelOf, fenceTierOf, lotNeighbours } from '../outpost/src/town.js';
 import { migrate } from '../outpost/src/save.js';
-import { LOTS, LOT, MAP, LAND_CAP, LOT_PRICES, DECOR, HOME_SIZE, WISH, STATUE_DAY } from '../outpost/src/config.js';
-
-const HOUR = 3600e3;
+import { LOTS, LOT, START, START_LOT, DECOR, DECOR_ORDER, HOME_SIZE, HOME_PRICES, LAND_PRICES, LEVEL_COST, MAX_LEVEL, PAY, LEGEND_BY, TUNING_DEFAULTS } from '../outpost/src/config.js';
+import { simulate } from '../outpost/tools/player.mjs';
 
 function make(seed = 7) {
-  let t = Date.UTC(2026, 5, 1, 9);
-  const clock = { now: () => t, set: (v) => (t = v), add: (ms) => (t += ms) };
+  const t = Date.UTC(2026, 5, 1, 9);
   const s = newTownState(t, seed);
-  const m = new Town(s, { clock });
-  return { m, s, clock };
+  const m = new Town(s, { clock: { now: () => t }, tuning: { ...TUNING_DEFAULTS } });
+  return { m, s };
 }
 
 const noOverlap = (s) => {
@@ -25,462 +23,268 @@ const noOverlap = (s) => {
       }
 };
 
-test('the start: one lot laid out, everyone housed, nothing overlapping, one free plot', () => {
+test('the start: the Gas Station, one Rookie in a tent, three decorations, on one lot', () => {
   const { m, s } = make();
+  assert.equal(s.coins, START.coins);
+  assert.equal(s.night, 1);
+  assert.equal(s.people.length, 1);
+  const p = s.people[0];
+  assert.equal(p.rarity, 'rookie');
+  assert.equal(p.level, 1);
+  assert.equal(m.picked().id, p.id);
+  assert.ok(m.station());
+  assert.ok(m.homeOf(p.id));
+  assert.equal(s.objects.filter((o) => o.kind === 'decor').length, START.decor.length);
   assert.equal(m.lotCount(), 1);
-  assert.equal(m.campers().length, 0);
-  assert.equal(s.objects.filter((o) => o.kind === 'home').length, 3);
   noOverlap(s);
-  for (const o of s.objects) for (let i = o.i; i < o.i + o.size; i++) for (let j = o.j; j < o.j + o.size; j++) assert.ok(m.ownsTile(i, j));
-  const spot = m.homeSpot({ id: 99, family: null });
-  assert.ok(spot, 'the snug free plot');
-  assert.equal(m.station().ref, 'bigtop');
+  for (const o of s.objects) for (let i = o.i; i < o.i + o.size; i++) for (let j = o.j; j < o.j + o.size; j++) assert.ok(m.ownsTile(i, j), `${o.kind} on your land`);
+  assert.ok(m.hasRoom(HOME_SIZE), 'room for a home');
+  assert.equal(m.hint(), 'play');
 });
 
-test('lots: adjacency, prices by count, the land cap by zone', () => {
+test('power, threat and odds: more power, better odds; labels in order', () => {
+  const p = { rarity: 'rookie', level: 1 };
+  assert.equal(powerOf(p), 10);
+  assert.equal(powerOf({ rarity: 'hero', level: 1 }), 15);
+  assert.ok(powerOf({ rarity: 'legend', level: 10 }) > powerOf({ rarity: 'hero', level: 10 }));
+  for (let n = 1; n < 200; n++) assert.ok(threatOf(n + 1) > threatOf(n), 'tougher every night');
+  assert.ok(chanceOf(20, 10) > chanceOf(12, 10) && chanceOf(12, 10) > chanceOf(8, 10));
+  assert.equal(chanceOf(1000, 1), 0.95);
+  assert.equal(chanceOf(1, 1000), 0.05);
+  assert.equal(oddsLabel(0.9).id, 'easy');
+  assert.equal(oddsLabel(0.6).id, 'good');
+  assert.equal(oddsLabel(0.4).id, 'tough');
+  assert.equal(oddsLabel(0.1).id, 'risky');
+});
+
+test('a night: the first is a sure win; a win pays and moves on, a loss pays a third and stays', () => {
   const { m, s } = make();
-  assert.deepEqual(
-    m
-      .frontier()
-      .map((f) => f.key)
-      .sort(),
-    ['1,2', '2,1', '2,3', '3,2'],
-  );
-  assert.equal(m.canClear(0, 0).far, true);
-  assert.equal(m.canClear(2, 2).owned, true);
-  assert.equal(lotPriceFor(2), 50);
-  assert.equal(lotPriceFor(13), 2800);
-  assert.equal(lotPriceFor(14), 3300);
-  assert.equal(lotNeighbours(0, 0).length, 2);
-  assert.equal(ringOf(0, 2), 2);
-  s.coins = 1e6;
-  assert.ok(m.clear(1, 2).ok);
-  assert.ok(m.clear(2, 1).ok);
-  assert.equal(m.lotCount(), LAND_CAP[0]);
-  const capped = m.canClear(3, 2);
-  assert.equal(capped.capped, true);
-  assert.equal(capped.zone, 2);
-  m.cheat('skulls', 100);
-  assert.equal(m.landCap(), LAND_CAP[1]);
-  assert.ok(m.canClear(3, 2).ok);
-  assert.equal(m.nextLotPrice(), LOT_PRICES[4]);
-  // Everything cleared stays legal.
-  noOverlap(s);
+  assert.equal(m.chance(), 1);
+  const r1 = m.play();
+  assert.ok(r1.ok && r1.win);
+  assert.equal(r1.coins, PAY.base + PAY.perNight);
+  assert.equal(s.night, 2);
+  assert.equal(s.coins, START.coins + r1.coins);
+  m.force.outcome = 'lose';
+  const before = s.coins;
+  const r2 = m.play();
+  assert.ok(!r2.win);
+  assert.equal(s.night, 2, 'the same night again');
+  assert.equal(r2.coins, Math.round((PAY.base + PAY.perNight * 2) * PAY.loss));
+  assert.equal(s.coins, before + r2.coins);
+  assert.equal(s.runs, 2);
+  assert.equal(s.wins, 1);
+  assert.equal(s.stats.losses, 1);
 });
 
-test('a clear: named after the squad MVP, pays a prize, leaves junk, the first one brings a newcomer', () => {
-  const { m, s } = make(3);
-  // Crowns since the last clear pick the name (ties: higher level, then newer).
-  m.raid();
-  const [a, b] = s.squad;
-  s.mvp = { [a]: 3, [b]: 6 };
-  s.coins = 500;
-  const before = s.people.length;
-  const r = m.clear(2, 1); // a cache: someone hides in the squad's pile
-  assert.ok(r.ok);
-  assert.equal(r.name.startsWith(m.person(b).first), true);
-  assert.equal(r.prize.kind, 'cache');
-  assert.ok(r.prize.coins >= 100 && r.prize.gems >= 10);
-  assert.equal(r.junk.length, 4);
-  assert.equal(s.junk.length, 3, 'the squad pops the first pile');
-  assert.equal(s.people.length, before + 1, 'the first clear always brings someone');
-  assert.deepEqual(s.mvp, {});
-  // Ties: higher level, then newer.
-  s.mvp = {};
-  const sq = m.squadPeople();
-  sq[0].level = 3;
-  assert.equal(m.mvp().id, sq[0].id);
-});
-
-test('lot prizes: rescues (outer ring from Silver), sets stand on the lot, landmarks restore and pay their bonus', () => {
-  const { m, s } = make(11);
-  s.coins = 1e6;
-  m.cheat('skulls', 900);
-  m.force.grade = 0;
-  const r1 = m.clear(1, 2);
-  assert.equal(r1.prize.kind, 'rescue');
-  assert.ok(['veteran', 'hero', 'legend'].includes(r1.prize.rarity));
-  m.force.grade = 0;
-  const r2 = m.clear(0, 2); // the School: the outer ring
-  assert.equal(r2.grade, 1);
-  assert.ok(['hero', 'legend'].includes(r2.prize.rarity));
-  m.force.grade = 2;
-  const r3 = m.clear(2, 3); // Mini Golf: party
-  assert.equal(r3.prize.kind, 'set');
-  assert.equal(r3.prize.items.filter((k) => k === 'disco').length, 2, 'Gold: both commons become rares');
-  assert.ok(r3.placed.every((p) => p.boxed || (Math.floor(p.i / LOT) === 2 && Math.floor(p.j / LOT) === 3)));
-  const period = m.chestPeriod('crate');
-  const gems = s.gems;
-  const r4 = m.clear(1, 1); // the Water Tower
-  assert.equal(r4.landmark, 'tower');
-  assert.deepEqual(r4.knocks, []);
-  assert.equal(s.gems - gems, 20);
-  assert.ok(m.chestPeriod('crate') < period);
-  assert.equal(m.objectAt(1 * LOT + 3, 1 * LOT + 3).kind, 'landmark');
-  assert.equal(m.move(m.objectAt(10, 10).id, 9, 9).ok, false, 'landmarks stay put');
-  noOverlap(s);
-});
-
-test('placement: on your land only, never overlapping, paths never block, junk pops under a drop', () => {
+test('the Gas Station and the fence fix themselves up as nights are won', () => {
+  assert.equal(stationLevelOf(1), 1);
+  assert.equal(stationLevelOf(6), 2);
+  assert.equal(stationLevelOf(11), 3);
+  assert.equal(stationLevelOf(31), 7);
+  assert.equal(stationLevelOf(500), 7);
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7].map(fenceTierOf), [0, 0, 1, 1, 2, 2, 3]);
   const { m, s } = make();
-  s.coins = 1e4;
-  // Off your land.
-  assert.equal(m.buy('bench', 0, 0).land, true);
-  // On top of the Gas Station.
-  const st = m.station();
-  assert.ok(m.buy('bench', st.i + 1, st.j + 1).blocked);
-  // A path tile is fine.
-  const pathTile = [16, 18];
-  assert.ok(m.pathAt(...pathTile));
-  const free = m.freeSpot(1, { near: { i: 19, j: 19 } });
-  assert.ok(m.buy('bench', free.i, free.j).ok);
-  // Junk under a drop pops.
-  m.clear(1, 2);
-  const pile = s.junk[0];
-  const coins = s.coins;
-  const r = m.buy('flamingo', pile.i, pile.j);
-  assert.ok(r.ok);
-  assert.equal(r.popped.length, 1);
-  assert.ok(!s.junk.some((k) => k.id === pile.id));
-  assert.ok(s.coins >= coins - 40);
-  noOverlap(s);
-  // Locked decorations.
-  assert.equal(m.canBuy('stage').locked, true);
-  assert.equal(m.canBuy('treehouse').unsold, true);
+  let ups = 0;
+  for (let k = 0; k < 12; k++) {
+    m.force.outcome = 'win';
+    const r = m.play();
+    if (r.station) {
+      ups++;
+      assert.equal(r.station.to, m.stationLevel());
+    }
+  }
+  assert.equal(s.night, 13);
+  assert.equal(ups, 2, 'nights 6 and 11');
 });
 
-test('moving is free and legal; the box takes decorations but not buildings or homes', () => {
-  const { m, s } = make();
-  s.coins = 1e4;
-  m.clear(1, 2);
-  const crate = s.objects.find((o) => o.ref === 'crate');
-  const spot = m.freeSpot(2, { lot: [1, 2] });
-  const coins = s.coins;
-  const r = m.move(crate.id, spot.i, spot.j);
-  assert.ok(r.ok);
-  assert.deepEqual(r.from, { i: 17, j: 14 });
-  assert.equal(s.coins, coins);
-  assert.equal(m.move(crate.id, m.station().i, m.station().j).ok, false);
-  assert.equal(m.toBox(crate.id).ok, false);
-  const fire = s.objects.find((o) => o.kind === 'decor');
-  assert.ok(m.toBox(fire.id).ok);
-  assert.equal(m.boxCounts()['decor:campfire'], 1);
-  const back = m.freeSpot(1, {});
-  assert.ok(m.unbox(m.boxIndex('decor', 'campfire'), back.i, back.j).ok);
-  noOverlap(s);
-});
-
-test('homes: auto-placed near paths and siblings, never on the forecourt; roof campers move down after a clear', () => {
-  const { m, s } = make(5);
-  const fc = m.forecourt();
-  for (let k = 0; k < 6; k++) m.cheat('people', 1);
-  const homes = s.objects.filter((o) => o.kind === 'home' && m.person(o.ref).origin !== 'founder');
-  assert.ok(homes.length > 0);
-  for (const h of homes) for (let i = h.i; i < h.i + HOME_SIZE; i++) for (let j = h.j; j < h.j + HOME_SIZE; j++) assert.ok(!fc.has(j * MAP + i), 'never on the forecourt');
-  assert.ok(m.campers().length > 0, 'the start lot is snug: extra people camp on the roof');
-  const campers = m.campers().length;
-  s.coins = 1e4;
-  const r = m.clear(1, 2);
-  assert.ok(r.campers.length > 0);
-  assert.ok(m.campers().length < campers + r.newcomers.length);
-  noOverlap(s);
-  // A sibling lands next to their family when there's room.
-  const { m: m2, s: s2 } = make(8);
-  s2.coins = 1e5;
-  m2.cheat('skulls', 100);
-  m2.clear(1, 2);
-  m2.clear(3, 2);
-  const elder = s2.people.find((p) => p.origin !== 'founder' && m2.homeOf(p.id));
-  elder.family = elder.id;
-  const kid = { ...elder, id: 900, family: elder.id };
-  const spot = m2.homeSpot(kid);
-  const eh = m2.homeOf(elder.id);
-  assert.ok(gapBetween({ i: spot.i, j: spot.j, w: 2, h: 2 }, { i: eh.i, j: eh.j, w: 2, h: 2 }) <= 1);
-});
-
-test('wishes: one at a time, granted by a free move into range, Badges and a heart', () => {
-  const { m, s, clock } = make(9);
-  s.coins = 1e4;
-  m.clear(1, 2);
-  m.clear(2, 1);
-  clock.add(WISH.after + 1);
-  const w = m.maybeWish();
-  assert.ok(w && w.set, 'a set wish');
-  assert.equal(m.maybeWish(), null, 'one at a time');
-  // Buy one far away, then move it next to the wisher's home.
-  const set = w.set;
-  const kind = COMMON_DECOR.find((k) => DECOR[k].set === set && (DECOR[k].zone || 1) <= s.zone) || COMMON_DECOR.find((k) => DECOR[k].set === set);
-  DECOR[kind].zone = 1;
-  const home = m.homeOf(w.id);
-  // Far: the farthest free tile from the home.
-  let far = null;
-  for (let i = 0; i < MAP; i++)
-    for (let j = 0; j < MAP; j++)
-      if (m._free(i, j, DECOR[kind].size) && gapBetween({ i, j, w: 1, h: 1 }, { i: home.i, j: home.j, w: 2, h: 2 }) > WISH.range && (!far || gapBetween({ i, j, w: 1, h: 1 }, { i: home.i, j: home.j, w: 2, h: 2 }) > far.g)) far = { i, j, g: gapBetween({ i, j, w: 1, h: 1 }, { i: home.i, j: home.j, w: 2, h: 2 }) };
-  const b = m.buy(kind, far.i, far.j);
-  assert.ok(b.ok);
-  assert.equal(b.wish, null);
-  const p = m.person(w.id);
-  const badges = p.badges;
-  const near = m.freeSpot(DECOR[kind].size, { near: { i: home.i + 1, j: home.j + 1 } });
-  assert.ok(gapBetween({ i: near.i, j: near.j, w: 1, h: 1 }, { i: home.i, j: home.j, w: 2, h: 2 }) <= WISH.range);
-  const mv = m.move(b.id, near.i, near.j);
-  assert.ok(mv.ok);
-  assert.ok(mv.wish, 'granted by a move');
-  assert.equal(s.wish, null);
-  assert.equal(p.hearts, 1);
-  assert.ok(p.badges > badges || p.level === 10);
-  // Not the same person twice in a row.
-  clock.add(WISH.after + 1);
-  const w2 = m.maybeWish();
-  if (w2) assert.notEqual(w2.id, w.id);
-});
-
-test('housewarming: a level-up that changes the tier says so', () => {
+test('upgrade: costs coins, one level at a time; the home grows every other level, a heart in between', () => {
   const { m, s } = make();
   const p = s.people[0];
-  p.badges = 100;
-  s.coins = 1000;
-  const r = m.levelUp(p.id);
-  assert.ok(r.ok);
-  assert.deepEqual([r.home.from, r.home.to], ['tent', 'shack']);
-  const r2 = m.levelUp(p.id);
-  assert.equal(r2.home, undefined, 'Lv 3 is still a shack');
-  assert.equal(tierOf(10), 5);
-  assert.deepEqual([fenceTierOf(1), fenceTierOf(3), fenceTierOf(5), fenceTierOf(7)], [0, 1, 2, 3]);
-});
-
-test('junk: coins mostly, a scripted flamingo in the first pile you pop, a trunk survivor by the 12th', () => {
-  const { m, s } = make(21);
-  s.coins = 1e6;
-  m.cheat('skulls', 900);
-  assert.ok(m.clear(1, 2).ok);
-  assert.ok(m.clear(2, 1).ok);
-  assert.ok(!s.box.some((x) => x.ref === 'flamingo'), 'the squad pops never take the scripted flamingo');
-  const mine = m.popJunk(s.junk[0].id);
-  assert.equal(mine.decor, 'flamingo');
-  assert.ok(s.wish && s.wish.set === 'party', 'the first wish follows the flamingo');
-  for (const [a, b] of [
-    [3, 2],
-    [2, 3],
-    [1, 1],
-  ])
-    assert.ok(m.clear(a, b).ok);
-  while (s.junk.length && s.junkPopped < 14) m.popJunk(s.junk[0].id);
-  assert.ok(s.town.stats.trunks >= 1, 'someone in the trunk by the 12th pile');
-  let coins = 0;
-  let total = 0;
-  for (let k = 0; k < 200; k++) {
-    s.junk.push({ id: 5000 + k, i: 14, j: 14, v: 0 });
-    const r = m.popJunk(5000 + k);
-    total++;
-    if (r.coins) coins++;
+  s.coins = 10;
+  assert.equal(m.canUpgrade(p.id).ok, false);
+  assert.ok(m.upgrade(p.id).short > 0, 'how many more coins');
+  s.coins = 10000;
+  const tiers = [tierOf(1)];
+  for (let L = 2; L <= MAX_LEVEL; L++) {
+    const before = s.coins;
+    const r = m.upgrade(p.id);
+    assert.ok(r.ok);
+    assert.equal(r.to, L);
+    assert.equal(before - s.coins, LEVEL_COST[L - 2]);
+    assert.ok(r.powerAfter > r.powerBefore);
+    assert.equal(r.newTier, tierOf(L) !== tierOf(L - 1));
+    tiers.push(tierOf(L));
   }
-  assert.ok(coins / total > 0.55 && coins / total < 0.85);
+  assert.deepEqual(tiers, [0, 1, 1, 2, 2, 3, 3, 4, 4, 5]);
+  assert.deepEqual([1, 2, 3, 4, 5, 10].map(heartsOf), [0, 0, 1, 0, 1, 0]);
+  assert.equal(m.upgrade(p.id).max, true);
 });
 
-test('next step: never junk, wishes or decorations; suggests rescues first', () => {
-  const { m, s } = make(4);
-  m.raid();
-  for (const k of ['crate', 'vault']) s.chests[k].readyAt = m.now() + 1e9;
-  s.coins = 60;
-  const n = m.nextStep();
-  assert.ok(['lot', 'build', 'play', 'ready', 'best'].includes(n.kind));
-  if (n.kind === 'lot') assert.equal(LOTS[n.key].kind, 'R');
-  s.coins = 1e4;
-  m.clear(1, 2);
-  s.wish = { id: s.people[0].id, set: 'garden', at: 0 };
-  for (let k = 0; k < 20; k++) {
-    const st = m.nextStep();
-    assert.ok(!['junk', 'wish', 'decor'].includes(st.kind));
-    if (st.kind === 'chest') s.chests[st.id].readyAt = m.now() + 1e9;
-    else if (st.kind === 'ready') s.people.find((p) => p.id === st.id).badges = 0;
-    else break;
-  }
-});
-
-test('zone gates fly in kits and souvenirs; the statue arrives on day 7; save round-trips', () => {
-  const { m, s, clock } = make(13);
-  const r = m.cheat('skulls', 360);
-  assert.ok(r.zones.length >= 2);
-  assert.ok(s.kits.some((k) => k.kind === 'building' && k.ref === 'tent'));
-  assert.ok(s.kits.some((k) => k.kind === 'souvenir' && k.ref === 'donut'));
-  assert.equal(m.nextStep().kind === 'kit' || m.readyChests().length > 0 || m.nextStep().kind === 'ready', true);
-  s.coins = 1e4;
-  m.clear(1, 2);
-  const kit = s.kits[0];
-  const spot = m.freeSpot(m.sizeOf(kit), {});
-  assert.ok(m.placeKit(spot.i, spot.j).ok);
-  clock.add(STATUE_DAY * 24 * HOUR);
-  m.tick();
-  assert.ok(s.kits.some((k) => k.kind === 'statue'));
-  const copy = migrate(JSON.parse(JSON.stringify(s)), clock.now());
-  assert.deepEqual(copy.objects, s.objects);
-  assert.equal(copy.paths, s.paths);
-  assert.deepEqual(copy.lots, s.lots);
-  const fresh = migrate({ people: [] }, clock.now());
-  assert.equal(fresh.objects.length > 0, true);
-});
-
-test('landmark bonuses reach the Thrill rules: coins, power, Glow-Up, strays, chest timers', () => {
-  const { m, s } = make(2);
-  const c0 = m.coinBonus();
-  const p0 = m.raidPreview().S;
-  const g0 = m.glowExtra();
-  const st0 = m.strayChance();
-  const v0 = m.chestPeriod('vault');
-  for (const id of ['drivein', 'fire', 'wheel', 'radio', 'light']) s.restored[id] = { day: 1, by: [] };
-  assert.ok(Math.abs(m.coinBonus() - c0 - 0.1) < 1e-9);
-  assert.ok(Math.abs(m.raidPreview().S / p0 - 1.05) < 1e-9);
-  assert.ok(Math.abs(m.glowExtra() - g0 - 0.02) < 1e-9);
-  assert.equal(m.strayChance(), st0 * 2);
-  assert.equal(m.chestPeriod('vault'), 7 * HOUR);
-  assert.ok(v0 > m.chestPeriod('vault'));
-});
-
-test('paths: painted on your land only, zone-locked types, erasable', () => {
-  const { m } = make();
-  assert.equal(m.paint(0, 0, 'dirt').land, true);
-  assert.equal(m.paint(19, 19, 'brick').locked, true);
-  assert.ok(m.paint(19, 19, 'dirt').changed);
-  assert.equal(m.pathAt(19, 19), 'dirt');
-  assert.ok(m.paint(19, 19, null).changed);
-  assert.equal(m.pathAt(19, 19), null);
-});
-
-test('pacing: the simulated player keeps Thrill Hill pace and puts about a third of coins into land', async () => {
-  const { simulate } = await import('../outpost/tools/player.mjs');
-  const { simulate: thrillSim } = await import('../thrill/tools/player.mjs');
-  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
-  const runs = [1, 2, 3, 4, 5, 6].map((seed) => simulate({ seed, days: 7 }));
-  const th = [1, 2, 3, 4, 5, 6].map((seed) => thrillSim({ seed, days: 7 }));
-  const lv = mean(runs.map((r) => r.daily[6].squadLv));
-  const lvT = mean(th.map((r) => r.daily[6].squadLv));
-  assert.ok(Math.abs(lv / lvT - 1) < 0.08, `squad level ${lv.toFixed(2)} vs ${lvT.toFixed(2)}`);
-  const share = mean(runs.map((r) => r.daily[6].land / r.daily[6].earned));
-  assert.ok(share > 0.2 && share < 0.38, `land share ${share.toFixed(2)}`);
-  const lots = mean(runs.map((r) => r.daily[6].lots));
-  assert.ok(lots >= 9 && lots <= 15, `lots on day 7: ${lots}`);
-  for (const r of runs) {
-    // Everything placed stays legal after a week of auto-placement, clears and wishes.
-    const seen = new Set();
-    for (const o of r.state.objects)
-      for (let i = o.i; i < o.i + o.size; i++)
-        for (let j = o.j; j < o.j + o.size; j++) {
-          assert.ok(!seen.has(`${i},${j}`));
-          seen.add(`${i},${j}`);
-          assert.ok(r.meta.ownsTile(i, j));
-        }
-  }
-});
-
-test('wishes only go where something fits; a boxed-in home gets no set wish', () => {
-  const { m, s, clock } = make(31);
-  s.coins = 1e5;
-  m.clear(1, 2);
-  // Box in every founder's home: no free tile within 2 tiles of any of them.
-  const founders = s.people.filter((p) => p.origin === 'founder');
-  for (const p of founders) {
-    const h = m.homeOf(p.id);
-    assert.equal(m.wishSpots(h, 1).length > 0, m.wishRoom({ i: h.i, j: h.j, w: 2, h: 2 }));
-  }
-  // Fill the whole start lot's free tiles.
-  for (let i = 14; i < 21; i++) for (let j = 14; j < 21; j++) if (m._free(i, j, 1)) m.buy('bench', i, j) || s.coins++;
-  clock.add(WISH.after + 1);
-  s.wish = null;
-  s.lastWisher = null;
-  const w = m.maybeWish({ force: true });
-  if (w) {
-    const h = m.homeOf(w.id);
-    assert.ok(w.sib != null || m.wishRoom({ i: h.i, j: h.j, w: 2, h: 2 }), 'the wisher has room for a piece');
-  }
-});
-
-test("a camper's keepsake comes out of the box by their new home", () => {
-  const { m, s } = make(3);
-  s.coins = 1e5;
-  // Fill the snug plot, then a Hero arrives: no room, a roof camper, keepsake boxed.
-  m.cheat('people', 1);
-  m.force.rarity = 'hero';
-  const nc = m._admit(m._makeNewcomer(() => 0.5, { rarity: 'hero' }, 'vault'));
-  assert.ok(nc.camper, 'the start lot is full: a roof camper');
-  {
-    assert.ok(s.box.some((x) => x.kind === 'keepsake' && x.owner === nc.person.id));
-    const r = m.clear(1, 2);
-    const moved = r.campers.find((c) => c.id === nc.person.id);
-    assert.ok(moved, 'the camper moves down');
-    assert.ok(moved.keepsake, 'and the keepsake comes out');
-    assert.ok(!s.box.some((x) => x.kind === 'keepsake' && x.owner === nc.person.id));
-  }
-});
-
-test('decoration milestones go round every common; late milestones still promise land', () => {
+test('a new home: pay, someone moves in there; the first is a Hero, a Legend comes by the 8th', () => {
   const { m, s } = make();
-  const seen = new Set();
-  for (let i = 3; i < 4 * 30; i += 4) {
-    const r = m.milestoneReward(i);
-    assert.equal(r.kind, 'decor');
-    seen.add(r.decor);
+  s.coins = 100000;
+  s.people[0].level = 5;
+  const at = m.freeSpot(HOME_SIZE);
+  const r = m.buildHome(at.i, at.j);
+  assert.ok(r.ok);
+  assert.equal(r.price, HOME_PRICES[0]);
+  assert.equal(r.person.rarity, 'hero');
+  assert.equal(r.person.level, 4, 'one below the best');
+  assert.equal(m.homeOf(r.person.id).i, at.i);
+  assert.ok(r.stronger, 'a Hero at Lv 4 beats a Rookie at Lv 5');
+  assert.notEqual(r.person.first, s.people[0].first, 'a new name');
+  assert.equal(m.buildHome(at.i, at.j).ok, false, 'not on top of a home');
+  assert.equal(m.buildHome(0, 0).ok, false, 'not off your land');
+  // More land, more homes: a Legend by the LEGEND_BY-th.
+  for (const [a, b] of [[3, 2], [1, 2], [2, 3], [2, 1]]) assert.ok(m.cheat('clear', [a, b]).ok);
+  for (let k = 2; k <= LEGEND_BY; k++) {
+    const spot = m.freeSpot(HOME_SIZE);
+    assert.ok(m.buildHome(spot.i, spot.j).ok);
   }
-  assert.ok(seen.size >= 10, `${seen.size} different decorations`);
-  s.coins = 1e7;
-  m.cheat('skulls', 2500);
-  for (let k = 0; k < 30 && m.lotCount() < m.landCap(); k++) {
-    const f = m.frontier().find((x) => x.can.ok);
-    if (!f) break;
-    m.clear(f.a, f.b);
-  }
-  const f = m.frontier()[0];
-  const c = m.canClear(f.a, f.b);
-  assert.equal(c.capped, true);
-  assert.ok(c.at > 2500, 'the next lot opens at a later milestone');
-  assert.ok(!/as big/.test(c.reason));
+  assert.ok(s.people.some((p) => p.rarity === 'legend'));
+  assert.equal(homePriceFor(2), HOME_PRICES[1]);
+  assert.ok(homePriceFor(20) > homePriceFor(19));
+  noOverlap(s);
 });
 
-test('only people with a home bring gifts (campers have no walker to carry one)', () => {
-  const { m, s } = make(5);
-  for (let k = 0; k < 8; k++) m.cheat('people', 1);
-  assert.ok(m.campers().length > 0);
-  for (let k = 0; k < 30; k++) {
-    s.gift = null;
-    const g = m.giftNow();
-    assert.ok(m.homeOf(g.id), 'the bearer has a home');
+test('no room for a home: canBuildHome says so (and the hint points at the lot next door)', () => {
+  const { m, s } = make();
+  s.coins = 100000;
+  for (;;) {
+    const spot = m.freeSpot(HOME_SIZE);
+    if (!spot) break;
+    assert.ok(m.buildHome(spot.i, spot.j).ok);
   }
+  const c = m.canBuildHome();
+  assert.equal(c.ok, false);
+  assert.equal(c.room, false);
+  s.runs = 3;
+  assert.equal(m.hint(), 'land');
 });
 
-test('the BUILD dot tracks new box items by serial, not by count', () => {
-  const { m, s } = make(7);
-  s.coins = 1e5;
-  m.cheat('people', 1);
-  assert.equal(m.boxHasNew(), false);
-  m._toBox({ kind: 'decor', ref: 'bench' });
-  assert.equal(m.boxHasNew(), true);
-  m.boxLooked();
-  assert.equal(m.boxHasNew(), false);
-  // One thing leaves the box and another arrives: still a dot.
-  const at = m.freeSpot(1, {});
-  assert.ok(m.unbox(0, at.i, at.j).ok);
-  m._toBox({ kind: 'decor', ref: 'planter' });
-  assert.equal(s.box.length, 1);
-  assert.equal(m.boxHasNew(), true);
-  // Placed things don't carry the serial.
-  assert.ok(!s.objects.some((o) => 'n' in o));
+test('decorations: buy one and put it down; only on free land of yours', () => {
+  const { m, s } = make();
+  s.coins = 1000;
+  const k = DECOR_ORDER[0];
+  const spot = m.freeSpot(DECOR[k].size);
+  const r = m.buy(k, spot.i, spot.j);
+  assert.ok(r.ok);
+  assert.equal(s.coins, 1000 - DECOR[k].price);
+  assert.equal(m.buy(k, spot.i, spot.j).reason, 'Something is in the way');
+  assert.equal(m.buy(k, 0, 0).reason, 'Only on your land');
+  s.coins = 0;
+  assert.ok(m.canBuy('carousel').short > 0);
+  for (let n = 1; n < DECOR_ORDER.length; n++) assert.ok(DECOR[DECOR_ORDER[n]].price >= DECOR[DECOR_ORDER[n - 1]].price, 'cheapest first');
 });
 
-test('a wish whose home stays boxed in for half an hour is let go; the first wish needs room', () => {
-  const { m, s, clock } = make(5);
-  s.coins = 1e6;
-  m.clear(1, 2);
-  const showoff = s.people.find((p) => p.origin === 'founder' && p.vibe === 'showoff');
-  const h = m.homeOf(showoff.id);
-  // Fill every tile around the home.
-  for (let i = h.i - 3; i < h.i + 5; i++) for (let j = h.j - 3; j < h.j + 5; j++) if (m.ownsTile(i, j) && m._free(i, j, 1)) m._addObject('decor', 'bench', i, j, 1);
-  assert.equal(m.wishRoom({ i: h.i, j: h.j, w: 2, h: 2 }), false);
-  assert.equal(m._scriptWish(), null, 'no scripted wish without room');
-  s.wish = { id: showoff.id, set: 'garden', at: m.now() };
-  m.tick();
-  assert.ok(s.wish && s.wish.blockedAt != null);
-  clock.add(31 * 60 * 1000);
-  m._wishStillPossible();
-  assert.equal(s.wish, null, 'let go');
+test('moving: anything goes anywhere free on your land', () => {
+  const { m, s } = make();
+  const st = m.station();
+  const home = m.homeOf(s.people[0].id);
+  assert.equal(m.move(home.id, st.i, st.j).ok, false, 'not onto the station');
+  const spot = m.freeSpot(HOME_SIZE, { i: 20, j: 20 });
+  const r = m.move(home.id, spot.i, spot.j);
+  assert.ok(r.ok);
+  assert.deepEqual([home.i, home.j], [spot.i, spot.j]);
+  assert.ok(m.move(st.id, st.i, st.j).ok, 'the station can stay where it is');
+  noOverlap(s);
+});
+
+test('land: next door only, prices rise, a landmark is restored, a surprise lot pays out', () => {
+  const { m, s } = make();
+  assert.deepEqual(m.frontier().map((f) => f.key).sort(), ['1,2', '2,1', '2,3', '3,2']);
+  assert.equal(m.canClear(0, 0).far, true);
+  s.coins = 100000;
+  const r = m.clear(3, 2);
+  assert.ok(r.ok);
+  assert.equal(r.price, LAND_PRICES[0]);
+  assert.equal(m.landPrice(), LAND_PRICES[1]);
+  assert.equal(m.clear(3, 2).owned, true);
+  // The Drive-in (3,3) is a landmark.
+  const d = m.clear(3, 3);
+  assert.equal(d.landmark, LOTS['3,3'].landmark);
+  assert.ok(s.objects.some((o) => o.kind === 'landmark' && o.ref === 'drivein'));
+  // The Water Park (4,4) is a surprise.
+  m.clear(4, 3);
+  const before = s.coins;
+  const w = m.clear(4, 4);
+  assert.ok(w.coins > 0);
+  assert.equal(s.coins, before - w.price + w.coins);
+  assert.ok(landPriceFor(30) > landPriceFor(29));
+  noOverlap(s);
+});
+
+test('the fence runs round your land', () => {
+  const { m, s } = make();
+  assert.equal(m.fenceEdges().length, 4);
+  s.coins = 1000;
+  m.clear(3, 2);
+  const e = m.fenceEdges();
+  assert.equal(e.length, 6);
+  assert.ok(!e.some((x) => x.a === 2 && x.b === 2 && x.side === 'i1'), 'no fence between your own lots');
+  assert.equal(lotNeighbours(0, 0).length, 2);
+});
+
+test('the hints walk the first nights: play, a home, upgrade, play', () => {
+  const { m, s } = make(3);
+  assert.equal(m.hint(), 'play');
+  m.play();
+  assert.equal(m.hint(), 'build', 'the first home as soon as it can be afforded');
+  const spot = m.freeSpot(HOME_SIZE);
+  const r = m.buildHome(spot.i, spot.j);
+  assert.equal(r.person.rarity, 'hero');
+  m.setPick(r.person.id);
+  assert.equal(m.hint(), 'play');
+  s.coins = 1000;
+  s.runs = 5;
+  s.night = 9;
+  assert.equal(m.hint(), 'upgrade', 'tonight looks tough and an upgrade is affordable');
+  s.runs = 40;
+  s.built = 5;
+  m.cheat('clear', m.suggestLot());
+  assert.equal(m.hint(), null, 'no more hints once you know your way around');
+});
+
+test('the same seed plays the same game', () => {
+  const a = simulate({ seed: 11, runs: 60 });
+  const b = simulate({ seed: 11, runs: 60 });
+  assert.deepEqual(a.rows.map((r) => [r.night, r.win, r.coins, r.people]), b.rows.map((r) => [r.night, r.win, r.coins, r.people]));
+});
+
+test('saves: a round trip keeps everything; anything else becomes a fresh town', () => {
+  const { m, s } = make();
+  s.coins = 1000;
+  m.play();
+  m.clear(3, 2);
+  const back = migrate(JSON.parse(JSON.stringify(s)));
+  assert.deepEqual(back, JSON.parse(JSON.stringify(s)));
+  const old = JSON.parse(JSON.stringify(s));
+  delete old.stats;
+  delete old.built;
+  old.objects.push({ id: 99, kind: 'junk', i: 1, j: 1, size: 1 });
+  const fixed = migrate(old);
+  assert.equal(fixed.built, 0);
+  assert.ok(fixed.stats.spent);
+  assert.ok(!fixed.objects.some((o) => o.kind === 'junk'), 'unknown objects go');
+  for (const bad of [null, 42, [], { people: [] }, { people: [{ id: 1 }] }]) assert.equal(migrate(bad).night, 1);
+});
+
+test('pacing: a new survivor early, land soon after, mostly winning, a Legend in the first hundred nights', () => {
+  const sims = Array.from({ length: 12 }, (_, k) => simulate({ seed: k + 1, runs: 100 }));
+  const med = (xs) => xs.slice().sort((p, q) => p - q)[Math.floor(xs.length / 2)];
+  assert.ok(med(sims.map((x) => x.first.home1)) <= 5, 'the first new home by night 5');
+  assert.ok(med(sims.map((x) => x.first.land1)) <= 20, 'the first lot by night 20');
+  assert.ok(med(sims.map((x) => x.first.fixedUp)) <= 15, 'the station Fixed up by night 15');
+  assert.ok(sims.every((x) => x.first.legend != null), 'a Legend for everyone');
+  const wins = med(sims.map((x) => x.rows.filter((r) => r.win).length / x.rows.length));
+  assert.ok(wins >= 0.65 && wins <= 0.95, `win rate ${wins}`);
+  const at100 = sims.map((x) => x.rows[99]);
+  assert.ok(med(at100.map((r) => r.people)) >= 8, 'a crowd by night 100');
+  assert.ok(med(at100.map((r) => r.lots)) >= 6, 'six lots by night 100');
+});
+
+test('START_LOT is the start lot', () => {
+  assert.equal(LOTS[`${START_LOT[0]},${START_LOT[1]}`].kind, 'S');
+  assert.equal(LOT, 7);
 });

@@ -1,13 +1,13 @@
 {
-  "name": "FunLand2 · Thrill Hill (metagame prototype)",
-  "short_name": "Thrill Hill",
-  "description": "A Clash-Royale-inspired metagame prototype: two static chests, a theme-park base and randomly generated survivors",
+  "name": "FunLand2 · Last Stop (metagame prototype)",
+  "short_name": "Last Stop",
+  "description": "A simple base-building metagame prototype: send one survivor out each night, build homes, upgrade them and take back the town",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
   "orientation": "landscape",
-  "background_color": "#5fc3f2",
-  "theme_color": "#5fc3f2",
+  "background_color": "#7fae5a",
+  "theme_color": "#7fae5a",
   "icons": [
     {
       "src": "icon.svg",

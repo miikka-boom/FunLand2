@@ -1,10 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BUILDINGS, HOME_TIERS, LANDMARKS, DECOR, KEEPSAKES, RUINS, FENCE_TIERS, TOWN_COLORS, SET_ORDER, ZONES, LOT, LOTS_ACROSS, CLASS_ORDER } from '../outpost/src/config.js';
+import { HOME_TIERS, LANDMARKS, DECOR, RUINS, FENCE_TIERS, TOWN, LOT, LOTS_ACROSS, CLASS_ORDER } from '../outpost/src/config.js';
 import { buildingArt, homeArt, landmarkArt, fenceArt, BOSS_SPOT, bossProp } from '../outpost/src/town-art.js';
-import { lotGroundSvg, ruinArt, mysteryArt, junkArt, sceneryBackdrop, bloomTiles } from '../outpost/src/ground-art.js';
+import { lotGroundSvg, ruinArt, mysteryArt, sceneryBackdrop, bloomTiles } from '../outpost/src/ground-art.js';
 import { existsSync } from 'node:fs';
-import { souvenirSvg } from '../outpost/src/thrill-art.js';
 import { generatePerson } from '../outpost/src/people.js';
 import { mulberry32 } from '../outpost/src/util.js';
 import * as A from '../outpost/src/art.js';
@@ -43,14 +42,13 @@ function footArt(art, w, h, what, maxKB = 16) {
 const rng = mulberry32(5);
 const people = CLASS_ORDER.flatMap((cls) => [generatePerson(rng, { id: 1, cls, rarity: 'rookie', level: 1 }), generatePerson(rng, { id: 2, cls, rarity: 'legend', level: 9, golden: true })]);
 
-test('buildings at every level and both town colours; homes in every tier for every class', () => {
-  for (const [id, B] of Object.entries(BUILDINGS))
-    for (let lv = 1; lv <= 7; lv++)
-      for (const color of [TOWN_COLORS[0], TOWN_COLORS[4]]) footArt(buildingArt(id, lv, { town: 'Pinecone Pals', color }), B.size, B.size, `${id} Lv ${lv}`);
+test('the Gas Station at every look level; homes in every tier for every class', () => {
+  for (let lv = 1; lv <= 7; lv++)
+    for (const color of [TOWN.color, '#b25cff']) footArt(buildingArt('bigtop', lv, { town: TOWN.name, color }), 3, 3, `Gas Station Lv ${lv}`);
   for (const p of people)
     for (const t of HOME_TIERS) {
       footArt(homeArt(p, t.id, {}), 2, 2, `${p.cls} ${t.id}`);
-      footArt(homeArt(p, t.id, { roof: TOWN_COLORS[2], hearts: 5, golden: true, legend: true }), 2, 2, `${p.cls} ${t.id} decked out`);
+      footArt(homeArt(p, t.id, { hearts: 1, legend: true }), 2, 2, `${p.cls} ${t.id} with a heart`);
     }
 });
 
@@ -74,8 +72,8 @@ test('landmarks ruined and restored, with a boss spot and prop; fences on every 
       }
 });
 
-test('ground for every lot owned, wild and hazed, paths joined; ruins, heaps, junk, scenery, bloom', () => {
-  const pathAt = (i, j) => (i === 17 || j === 17 ? ['dirt', 'planks', 'brick'][(i + j) % 3] : null);
+test('ground for every lot owned, wild and hazed; ruins, heaps, scenery, bloom', () => {
+  const pathAt = () => null;
   for (let a = 0; a < LOTS_ACROSS; a++)
     for (let b = 0; b < LOTS_ACROSS; b++)
       for (const opts of [{ owned: true }, { owned: false }, { owned: false, haze: true }]) {
@@ -86,7 +84,6 @@ test('ground for every lot owned, wild and hazed, paths joined; ruins, heaps, ju
       }
   for (const r of RUINS) footArt(ruinArt(r, { name: 'Burger Stand' }), 3, 3, `ruin ${r}`);
   footArt(mysteryArt(), 3, 3, 'mystery');
-  for (let v = 0; v < 3; v++) footArt(junkArt(v), 1, 1, `junk ${v}`);
   const sc = sceneryBackdrop();
   wellFormed(sc.svg, 'scenery');
   assert.ok(sc.left <= -1500 && sc.left + sc.width >= 1500 && sc.top <= -350 && sc.top + sc.height >= 1450, 'the scenery covers the map and around it');
@@ -98,15 +95,14 @@ test('ground for every lot owned, wild and hazed, paths joined; ruins, heaps, ju
 const HAS_DECOR = existsSync(new URL('../outpost/src/decor-art.js', import.meta.url));
 const HAS_ICONS = existsSync(new URL('../outpost/src/town-icons.js', import.meta.url));
 
-test('decorations, keepsakes, souvenir plinths, the statue, set badges and town icons', { skip: !HAS_DECOR || !HAS_ICONS ? 'decor art not drawn yet' : false }, async () => {
-  const { decorArt, keepsakeArt, plinthArt, statueArt, setBadgeSvg } = await import('../outpost/src/decor-art.js');
+test('every decoration for sale, and the town icons the game uses', { skip: !HAS_DECOR || !HAS_ICONS ? 'decor art not drawn yet' : false }, async () => {
+  const { decorArt, keepsakeArt } = await import('../outpost/src/decor-art.js');
   const { townIcon } = await import('../outpost/src/town-icons.js');
-  for (const [k, d] of Object.entries(DECOR)) footArt(decorArt(k), d.size, d.size, `decor ${k}`);
-  for (const [k, d] of Object.entries(KEEPSAKES)) footArt(keepsakeArt(k), d.size, d.size, `keepsake ${k}`);
-  for (const z of ZONES) if (z.souvenir) footArt(plinthArt(souvenirSvg(z.souvenir)), 2, 2, `souvenir ${z.souvenir}`, 24);
-  footArt(statueArt(), 2, 2, 'statue', 24);
-  for (const s of SET_ORDER) wellFormed(setBadgeSvg(s), `set badge ${s}`);
-  for (const n of ['build', 'home', 'move', 'box', 'eraser', 'ok', 'cancel', 'path', 'rescue', 'cache', 'set', 'landmark', 'mystery', 'junk', 'wish', 'flag', 'undo', 'focus', 'rename', 'lot', ...SET_ORDER]) {
+  for (const [k, d] of Object.entries(DECOR)) {
+    footArt(d.art === 'keepsake' ? keepsakeArt(k) : decorArt(k), d.size, d.size, `decor ${k}`);
+    footArt(A.decoration(k), d.size, d.size, `decor ${k} through the art door`);
+  }
+  for (const n of ['build', 'home', 'move', 'landmark', 'mystery', 'flag', 'focus', 'lot']) {
     const svg = townIcon(n);
     wellFormed(svg, `icon ${n}`);
     assert.ok(svg.includes('viewBox="0 0 24 24"'), `icon ${n}: 24 × 24`);
@@ -116,6 +112,6 @@ test('decorations, keepsakes, souvenir plinths, the statue, set badges and town 
 test('the art door: every module loaded, so no stand-in boxes on the map', { skip: !HAS_DECOR ? 'decor art not drawn yet' : false }, () => {
   assert.deepEqual(A.hasArt, { town: true, ground: true, decor: true, icons: true });
   // The wrappers hand back the real art.
-  assert.ok(A.building('bigtop', 3, { name: 'Last Stop', color: TOWN_COLORS[0] }).svg.length > 1000);
+  assert.ok(A.building('bigtop', 3, TOWN).svg.length > 1000);
   assert.ok(A.decor('bench').svg.length > 300);
 });

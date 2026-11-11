@@ -8,7 +8,7 @@ build step and no dependencies.
 | 0: HORDE | [`/`](index.html) | Twin-stick touch controls for zombie horde survival, in 3D |
 | 1: WOBBLE WAR | [`battle/`](battle/) | A real-time card battler with funny, satisfying 2D physics units and a fair free-to-play meta game |
 | Thrill Hill | [`thrill/`](thrill) | A Clash-Royale-inspired metagame: two static chests, a theme-park base, randomly generated survivors, a squad of three, three-crown raids |
-| Last Stop | [`outpost/`](outpost) | Thrill Hill's loop on an isometric town you expand lot by lot: place anything anywhere, homes that grow with their owners, wishes, landmarks |
+| Last Stop | [`outpost/`](outpost) | A simple base builder on an isometric town: one survivor goes out each night; build homes (someone new moves in), upgrade them (they grow), decorate, clear the lot next door |
 | Hope Street | [`hope/`](hope) | A metagame with base building and randomly generated people: take them in, pick a crew of four for each run |
 | Road to Evac | [`evac/`](evac) | A metagame for a co-op zombie survivor game (simulated runs) |
 | Safehouse | [`safehouse/`](safehouse) | Another metagame: meta-progression for a co-op zombie mobile game |
@@ -637,30 +637,28 @@ with the earlier metagame prototypes and isn't connected to the action game. A
 Open `/thrill/` (on Pages: `https://miikka-boom.github.io/FunLand2/thrill/`).
 The design, numbers and pacing are in [docs/THRILL-HILL.md](docs/THRILL-HILL.md).
 
-## Last Stop: an isometric base-building variation
+## Last Stop: a simple base builder
 
-[`outpost/`](outpost) keeps Thrill Hill's loop (two static chests, Badges, a
-squad of three, three-crown raids, unchanged) and swaps the fixed park for an
-**isometric town you build yourself**, so players can get invested in their
-base. It isn't connected to the action game; raids are simulated.
+[`outpost/`](outpost) is a deliberately simple base-building metagame on an
+isometric town. It isn't connected to the action game; nights are simulated.
+(An earlier, much bigger version with Thrill Hill's whole loop is in git
+history; playtesting said it was far too complex, so this one keeps the town
+and cuts the rest.)
 
-- You hold one gas station on a 35×35 map of 25 lots. **Tap a lot next to your
-  land and pay coins: it's yours instantly.** The squad bonks the zombies,
-  grass blooms tile by tile, the fence hops out and a sign names the lot after
-  the squad's MVP ("Mabel's Diner"). The prize knocks three times like a
-  chest (rescues, caches, decoration sets, mystery corners), and six landmarks
-  with costumed boss zombies each give one bonus forever.
-- **Anything goes anywhere on your land**: buildings, decorations, keepsakes
-  and souvenirs. Moving is free (long-press to lift, with a 5 s Undo), paths
-  are painted with a finger, and decorations can go in the box.
-- **Everyone who moves in gets a home** that places itself (near paths,
-  neighbours and siblings) and grows with its owner's level: tent, shack,
-  cabin, cottage, tower house, golden house. Residents walk about on paths.
-- One survivor at a time **wishes** for a decoration set near their home;
-  put one there (bought, unboxed or just moved) and they get Badges. Cleared
-  lots leave junk piles to pop (sometimes someone's in the trunk).
-- The gear (top right) has Thrill Hill's testing tools plus town cheats.
-  `npm run outpost:balance` checks the pacing against Thrill Hill.
+- **One currency, one survivor at a time.** PLAY sends tonight's survivor out:
+  a win pays coins and moves you to the next night, a loss pays a third. Tap
+  the face next to PLAY to send someone else.
+- **Build a home and someone new moves in**: put it anywhere on your land and
+  the stars knock in one by one (the first is a 3★ Hero).
+- **Upgrade a home and it grows** with its survivor: tent, shack, log cabin,
+  cottage, tower house, golden house. Stronger survivors win more nights.
+- **Decorations are just for fun**, and residents use them. **Clear the lot
+  next door** for more room: the ruin crumbles, grass blooms, the fence hops
+  out, landmarks come back to life.
+- The Gas Station and the fence fix themselves up as you win nights.
+- Tap anything on the map for what you can do with it; long-press to drag it.
+  The gear (top right) has testing tools. `npm run outpost:balance` prints the
+  pacing.
 
 Open `/outpost/` (on Pages: `https://miikka-boom.github.io/FunLand2/outpost/`).
 The design, numbers and code map are in [docs/LAST-STOP.md](docs/LAST-STOP.md).
@@ -789,7 +787,7 @@ src/playtest.js            playtest kit: rating card, reports (copy / share / hi
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
 thrill/                    Thrill Hill metagame prototype (separate page; map in docs/THRILL-HILL.md)
-outpost/                   Last Stop, the isometric base-building variation (separate page; map in docs/LAST-STOP.md)
+outpost/                   Last Stop, the simple isometric base builder (separate page; map in docs/LAST-STOP.md)
 hope/                      Hope Street metagame prototype (separate page; map in docs/HOPE-STREET.md)
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
