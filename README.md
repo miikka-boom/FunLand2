@@ -603,9 +603,10 @@ and no dependencies.
   (loads shell by shell; firing interrupts the reload) and hunting rifle
   (pierces lines of zombies). Reloading is automatic when empty.
 - **Night**: a flashlight cone, street lamps and burning wrecks. You can
-  turn it off in the panel. **Line-of-sight shadows** (under Presentation,
-  off by default) keep zombies behind buildings hidden until you round the
-  corner.
+  turn it off in the panel, and **Darkness** (under Presentation) sets how
+  dark it is where nothing is lit: 60% by default, up to 97%. **Line-of-sight
+  shadows** (under Presentation, off by default) keep zombies behind
+  buildings hidden until you round the corner.
 - **Feedback**: synthesized sound (no audio files), haptics on Android, blood
   decals that stay, casings, tracers, screen shake and recoil, off-screen
   threat arrows.

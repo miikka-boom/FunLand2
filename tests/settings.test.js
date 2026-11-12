@@ -103,6 +103,21 @@ test('old full saves: the old Hunter + Tank and line-of-sight defaults give way 
   assert.deepEqual(parseSaved(mine), { specials: true, los: true });
 });
 
+test('the night is 60% dark out of the box; an old full save holding the old 80% gives way, a chosen 80% sticks', () => {
+  assert.equal(DEFAULTS.darkness, 0.6);
+  const item = SCHEMA.flatMap((g) => g.items).find((i) => i.key === 'darkness');
+  assert.ok(item && item.min <= 0.6 && item.max >= 0.6, 'within the slider');
+  // Format 1 stored every value: 0.8 there is just the default of the day.
+  const old = { ...DEFAULTS, darkness: 0.8, moveSpeed: 220 };
+  assert.equal({ ...DEFAULTS, ...parseSaved(old) }.darkness, 0.6);
+  // Another value in an old save was somebody's choice.
+  assert.equal({ ...DEFAULTS, ...parseSaved({ ...DEFAULTS, darkness: 0.9 }) }.darkness, 0.9);
+  // Set to 80% since: saved (it differs from the default now) and kept.
+  const mine = JSON.parse(serializeSettings({ ...DEFAULTS, darkness: 0.8 }));
+  assert.deepEqual(mine, { _v: 2, darkness: 0.8 });
+  assert.deepEqual(parseSaved(mine), { darkness: 0.8 });
+});
+
 test('bad saves are ignored key by key', () => {
   assert.deepEqual(parseSaved(null), {});
   assert.deepEqual(parseSaved('nope'), {});

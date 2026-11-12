@@ -35,7 +35,7 @@ export class Lighting {
     this.sight = []; // sight blockers near the view this frame
     this.night = true;
     this.los = false;
-    this.dark = 0.8; // darkness where no light reaches
+    this.dark = 0.6; // darkness where no light reaches (the setting, each frame)
     this.hidden = 0.03; // what's left of the light out of the survivor's sight
     this.ex = 0;
     this.ey = 0;

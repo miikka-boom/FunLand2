@@ -119,7 +119,7 @@ export const DEFAULTS = Object.freeze({
 
   // --- Presentation -------------------------------------------------------
   night: true,
-  darkness: 0.8,
+  darkness: 0.6, // how much light the night takes away where nothing is lit
   los: false, // line-of-sight shadows: what's behind a building stays hidden until you round the corner
   threatIndicators: true,
   haptics: 'light', // 'off' | 'light' | 'full'
@@ -371,7 +371,7 @@ function pickControlDefaults() {
 // stored every value; there, a value equal to a default that has changed
 // since is dropped, so the new default applies (the teammate used to be on).
 const SAVE_FORMAT = 2;
-const CHANGED_DEFAULTS = { ally: true, specials: true, los: true };
+const CHANGED_DEFAULTS = { ally: true, specials: true, los: true, darkness: 0.8 };
 
 /** Saved JSON -> the values to apply over the defaults. */
 export function parseSaved(saved) {
