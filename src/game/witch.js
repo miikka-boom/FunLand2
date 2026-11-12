@@ -16,7 +16,7 @@
 //    counts many times over: a shotgun at point blank ends it before it
 //    starts.
 
-import { rand, wrapAngle, clamp, smoothstep } from '../util.js';
+import { rand, wrapAngle, clamp, smoothstep, pointInRect } from '../util.js';
 import { newId } from './zombies.js';
 import { flashlightOn } from './terror.js';
 import { WITCH_SPACE } from '../world/witch-gen.js';
@@ -289,7 +289,7 @@ export function updateWitch(game, w, dt) {
       w.heard = true;
       game.announce('SOMEONE IS CRYING', '#cdbfe6', 2.4, 'small');
     }
-    if (!w.warned && w.anger > 0.3) {
+    if (!w.warned && w.anger > 0.18) {
       w.warned = true;
       game.announce(S.night ? 'SHE HEARD YOU: BACK OFF, LIGHT OFF HER' : 'SHE HEARD YOU: BACK OFF', '#ff9d7a', 2.8, 'small');
     }
@@ -442,6 +442,30 @@ export function updatePhones(game, dt) {
       w.glow = WITCH.glow * 0.8 * clamp((WITCH.screenOff - w.phoneT) / 2.5, 0, 1);
     } else w.glow = WITCH.glow * (0.9 + 0.1 * Math.sin(game.time * 9.1 + w.id) * Math.sin(game.time * 2.3));
   }
+}
+
+/**
+ * Tuning panel: seat one a little way off, ahead of you if there is room
+ * (outside her space and your light, so you get to walk up to her).
+ */
+export function seatWitchNear(game) {
+  const p = game.player;
+  const W = game.world;
+  const map = W.map;
+  for (const dist of [330, 380, 290, 440]) {
+    for (let k = 0; k < 24; k++) {
+      const a = p.facing + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.262;
+      const x = p.x + Math.cos(a) * dist;
+      const y = p.y + Math.sin(a) * dist;
+      if (!W.isFree(x, y, 26) || W.sealedAt(x, y) || !Number.isFinite(W.flow.pathDist(x, y))) continue;
+      if (pointInRect(x, y, map.startRoom.outer, 40) || pointInRect(x, y, map.endRoom.outer, 40)) continue;
+      const w = spawnWitch(game, { x, y, face: a + Math.PI + rand(-1, 1) });
+      game.announce('A WITCH SITS NEARBY', '#cdbfe6', 1.8, 'small');
+      return w;
+    }
+  }
+  game.announce('No room for a Witch here', '#ffd27a', 1.8, 'small');
+  return null;
 }
 
 /**

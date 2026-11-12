@@ -490,10 +490,10 @@ function drawThreats(ctx, game, L) {
         if (wd < 720 && !(wsx > 0 && wsx < L.w && wsy > 0 && wsy < L.h)) {
           const ang = Math.atan2(wsy - ps.y, wsx - ps.x);
           const e = edgePoint(L, ps.x, ps.y, ang, 22);
-          const al = (0.45 + Math.sin(game.time * 2.2) * 0.15) * (1 - wd / 900);
+          const al = (0.75 + Math.sin(game.time * 2.2) * 0.15) * (1 - wd / 1100);
           ctx.fillStyle = `rgba(205,191,230,${al})`;
-          chevron(ctx, e.x, e.y, ang, 10);
-          ctx.font = `700 9px ${FONT}`;
+          chevron(ctx, e.x, e.y, ang, 11);
+          ctx.font = `800 10px ${FONT}`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText('CRYING', e.x - Math.cos(ang) * 30, e.y - Math.sin(ang) * 20);

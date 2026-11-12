@@ -16,7 +16,7 @@ globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null)
 
 const { Game, GENERATORS } = await import('../src/game/game.js');
 const { DEFAULTS, SCHEMA, WORLD_KEYS } = await import('../src/settings.js');
-const { WITCH, WITCH_TUNE, Witch, startle, witchOutcome } = await import('../src/game/witch.js');
+const { WITCH, WITCH_TUNE, Witch, startle, witchOutcome, seatWitchNear } = await import('../src/game/witch.js');
 const { addWitch, WITCH_SPACE } = await import('../src/world/witch-gen.js');
 const { addScavenging } = await import('../src/world/scavenge-gen.js');
 const { addWorldFeatures } = await import('../src/world/features-gen.js');
@@ -676,4 +676,32 @@ test('the tune she hums is hers: a short phrase with breaths in it, sung only wh
   notes.length = 0;
   step(game, 3);
   assert.equal(notes.length, 0);
+});
+
+test('the tuning panel can seat one on demand: a little way off, outside her space and your light', () => {
+  for (const level of ['city', 'interior', 'graveyard']) {
+    const game = make({ level, witch: false });
+    assert.equal(game.witches.length, 0);
+    const p = game.player;
+    // Out of the safe room, somewhere on the walk.
+    const c = { x: 0, y: 0 };
+    for (let i = 0; i < game.world.blocked.length; i++) {
+      if (game.world.blocked[i]) continue;
+      game.world.cellCenter(i, c);
+      const gd = game.goalField.pathDist(c.x, c.y);
+      if (gd < game.routeLen * 0.6 && gd > game.routeLen * 0.5 && game.world.isFree(c.x, c.y, 40)) break;
+    }
+    put(game, c, 0);
+    game.world.flow.compute(p.x, p.y);
+    const w = seatWitchNear(game);
+    assert.ok(w, `${level}: seated`);
+    assert.ok(game.witches.includes(w) && game.zombies.includes(w));
+    const d = Math.hypot(w.x - p.x, w.y - p.y);
+    assert.ok(d > WITCH.far + 60 && d < 460, `${level}: ${Math.round(d)} u off`);
+    assert.ok(game.world.isFree(w.x, w.y, 24));
+    assert.ok(game.messages.some((m) => m.text === 'A WITCH SITS NEARBY'));
+    step(game, 1.5);
+    assert.equal(w.mode, 'sit');
+    assert.ok(w.anger < 0.25, 'she is not bothered by where she was put');
+  }
 });

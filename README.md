@@ -353,8 +353,8 @@ and no dependencies.
   itself once. Zombies go for whichever of you is nearer. At 0 HP it goes
   **down** instead of dying and keeps shooting from the floor while it bleeds
   out (45 s). Stand next to it without shooting for 3 s to revive it. It never
-  shoots through you and never sets off alarms. The **Teammate** section also
-  sets its gun and accuracy.
+  shoots through you, never sets off alarms and never wakes the Witch. The
+  **Teammate** section also sets its gun and accuracy.
 - **Six map types**, picked on the title card or in the tuning panel:
   - **Streets:** a run across Center City after dark, from a safe room
     (bottom left) to the green safe room across town.
@@ -578,9 +578,27 @@ and no dependencies.
     the beam it shrieks, smokes and backs off, and after about 2 s of light
     in total it flees. Your heartbeat speeds up while it's close and unseen.
     One at a time, nights only.
+  - The **Witch** (on by default: **Witch** under **Specials**) tests
+    restraint. One sits somewhere near the way on every map, bent over the
+    light of a phone, crying. You hear her before you see her (sobbing, a
+    tune she hums; with the sound off, a "CRYING" pointer at the edge of the
+    screen), and the phone lights her up in the dark. Left alone she is no
+    threat: aim assist, the teammate and the threat arrows pass her over.
+    What she won't bear: you in her space (a dashed ring shows it as you
+    come near; the closer you are, the less time you have), your flashlight
+    on her at night, shots fired right next to her. The ring closes as her
+    patience runs out; back off and look away and it opens again. Any damage
+    at all (a stray bullet, a blast, a shove) ends it at once: she is up
+    with a scream and after you, half again as fast as you can run, with
+    900 HP. The first swipe takes 45, the rest 18 each. A shove as she comes
+    in buys a moment, once. Whole, with a full magazine and a steady aim,
+    you can put her down in a straight fight; hurt, you can't. Or: a shotgun
+    blast from arm's length while she still sits ends it on the spot ("GOOD
+    NIGHT."). There is always a way round her, somebody has usually sprayed
+    a warning on the way, and the end card says how it went.
   - The spec is in [docs/CONTROLS.md](docs/CONTROLS.md#special-infected-stress-tests-for-the-controls),
-    and the tuning panel has Spawn Hunter / Spawn Tank / Spawn Night Terror
-    buttons.
+    and the tuning panel has Spawn Hunter / Spawn Tank / Spawn Night Terror /
+    Spawn Witch buttons.
 - **Four guns** to compare feel: SMG, assault rifle (pierces 2), pump shotgun
   (loads shell by shell; firing interrupts the reload) and hunting rifle
   (pierces lines of zombies). Reloading is automatic when empty.
@@ -812,8 +830,8 @@ src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/iso.js                 the camera: orthographic projection (yaw + tilt), project / unproject, stick and mouse mapping, and the painter's order for boxes (pure, unit tested)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
-src/world/                 seeded generators for the six map types (city, building, docks; graveyard, suburbia and junkyard, which share gen-kit.js), Ben's traces (ben-content: every line; ben-gen: placement), world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
-src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), Ben at run time (ben.js: his bed, the glimpse, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects (particles in 3D), game state + the view
+src/world/                 seeded generators for the six map types (city, building, docks; graveyard, suburbia and junkyard, which share gen-kit.js), Ben's traces (ben-content: every line; ben-gen: placement), world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), where the Witch sits (witch-gen.js), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
+src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), the Witch (witch.js), Ben at run time (ben.js: his bed, the glimpse, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects (particles in 3D), game state + the view
 src/render/renderer.js     the passes: ground -> night overlay -> everything that stands (far to near) -> overhead -> bright -> HUD
 src/render/lighting.js     one list of lights: the ground overlay (night + line of sight) and the sampler that shades what stands on it
 src/render/prims.js        3D shapes on the 2D canvas: boxes, cylinders, prisms, balls, limbs; colour tones
@@ -822,7 +840,7 @@ src/render/models.js       a 3D model for every kind of obstacle (buildings, wal
 src/render/theme-models.js the newer maps' models, added to the table in models.js: headstones, mausoleums, the chapel; houses, garages, the mall, buses; wreck stacks, the crusher and crane
 src/render/theme-render.js the newer maps' ground (lawns and lots, grave plots and paths, the yard) and what lies on it
 src/render/decor3d.js      the small things that stand up (chairs, signs, the lemonade stand, Ben's fort and rabbit, boats)
-src/render/figures.js      survivors, the horde (batched), Hunter, Tank, Night Terror
+src/render/figures.js      survivors, the horde (batched), Hunter, Tank, Night Terror, the Witch
 src/render/*-render.js     what is painted flat (ground, graffiti, posters, chalk, Ben's crayon) and the big set pieces (docks: piers, cranes, the ferry; features: the canopy, fires, fireballs), hud.js
 src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
 src/audio.js               WebAudio synth SFX
@@ -834,7 +852,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

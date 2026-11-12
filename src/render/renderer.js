@@ -85,6 +85,7 @@ function corpseArm(ctx, c, ca, sa) {
 }
 
 const eyes = { x: 0, y: 0, z: 0 };
+const RING_DASHES = 64; // the edge of a Witch's space
 
 export class Renderer {
   constructor(canvas) {
@@ -1302,14 +1303,19 @@ export class Renderer {
         const a = Math.max(near * 0.5, w.anger > 0.02 ? 0.55 : 0);
         if (a > 0.02 && p.alive) {
           R.ground(v.flat ? 0 : 1);
-          ctx.setLineDash([7, 9]);
-          ctx.lineDashOffset = t * 6;
+          // (Dashes as short arcs in one path: far cheaper than a dashed stroke.)
           ctx.strokeStyle = `rgba(205,191,230,${a * 0.6})`;
           ctx.lineWidth = 1.5;
+          ctx.lineCap = 'butt';
           ctx.beginPath();
-          circle(ctx, w.x, w.y, WITCH.far);
+          const turn = t * 0.035;
+          for (let i = 0; i < RING_DASHES; i++) {
+            const a0 = turn + (i / RING_DASHES) * TAU;
+            ctx.moveTo(w.x + Math.cos(a0) * WITCH.far, w.y + Math.sin(a0) * WITCH.far);
+            ctx.arc(w.x, w.y, WITCH.far, a0, a0 + (TAU / RING_DASHES) * 0.44);
+          }
           ctx.stroke();
-          ctx.setLineDash([]);
+          ctx.lineCap = 'round';
           if (w.anger > 0.01) {
             const hot = Math.min(1, w.anger);
             ctx.strokeStyle = `rgba(255,${Math.round(160 - 100 * hot)},${Math.round(120 - 80 * hot)},${0.55 + 0.4 * hot})`;
