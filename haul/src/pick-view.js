@@ -1,0 +1,288 @@
+// Long Haul: the haul. Nine crates on a pallet and one pick for everyone who
+// came back standing. A tap opens a crate: the lid flies, the crate turns out
+// to be wood, steel or gold, and what was inside is yours at once. When the
+// picks are used up the crates left behind show what they held, and it's back
+// to camp or straight out again.
+
+import { CAST, AREAS, GRID } from './config.js';
+import { standChanceOf } from './rules.js';
+import { crateSvg, cansSvg, radioSvg, eyesSvg } from './crate-art.js';
+import { icon } from './icons.js';
+import { fmtNum, fmtLeft } from './format.js';
+import { face, tokenBar, esc, shortName, wait, nextFrame } from './ui.js';
+import { buzz } from './fx.js';
+
+const RADIO_LINES = ['A RADIO!', 'A RADIO!', 'ANOTHER RADIO!'];
+
+export class PickView {
+  constructor(root, ctx) {
+    this.root = root;
+    this.ctx = ctx; // { game, sfx, fx, tuning, save }
+  }
+
+  /**
+   * Show the haul in the save and let the player pick. `res` is the run that
+   * brought it (null when picking up where a reload left off).
+   * Resolves { next: 'camp' | 'again', open?: id | 'radio' } once every pick is used.
+   */
+  async show(res = null) {
+    const { game, sfx, fx, tuning } = this.ctx;
+    const s = game.s;
+    const h = s.haul;
+    const root = this.root;
+    const squad = res ? res.squad : h.squad || s.squad;
+    const standing = res ? res.standing : h.standing || squad.map((_, i) => i < h.picks);
+    const area = AREAS[h.area];
+    const danger = Math.round(area.danger * tuning.danger);
+    const hasRadio = h.crates.some((c) => c.kind === 'radio');
+    const cell = (i) => `<button class="crate" type="button" data-i="${i}" aria-label="Crate ${i + 1}">` + crateSvg() + `<span class="loot"></span></button>`;
+    // Why it is this many: whoever went down, and the two numbers that decided it
+    // (or that it was plain bad luck, when their number was the bigger one by a margin).
+    const avg = squad.reduce((a, id) => a + (game.has(id) ? game.power(id) : 0), 0) / squad.length;
+    const why = squad
+      .map((id, i) => {
+        if (standing[i] || !game.has(id)) return '';
+        const chance = res ? res.chances[i] : standChanceOf(game.power(id), avg, area.danger * tuning.danger);
+        const nums = `${icon('power')}<b>${game.power(id)}</b> against ${icon('danger')}<b>${danger}</b>`;
+        return `<p class="pick-why">${face(id, { cls: 'tiny', mood: 'ko' })}<span><b>${shortName(id)}</b> went down${chance >= 0.6 ? `. Bad luck: ${nums}` : `: ${nums}`}</span></p>`;
+      })
+      .join('');
+    root.innerHTML =
+      `<div class="pick">` +
+      `<div class="pick-left">` +
+      `<h2>THE HAUL</h2>` +
+      `<p class="pick-how">Everyone still standing carries <b>one crate</b> home.</p>` +
+      `<div class="carriers">${squad
+        .map((id, i) => `<span class="carrier${standing[i] ? '' : ' down'}" data-i="${i}">${face(id, { mood: standing[i] ? 'happy' : 'ko' })}<i>${standing[i] ? icon('crate') : 'DOWN'}</i></span>`)
+        .join('')}</div>` +
+      `<div class="pick-count"></div>` +
+      why +
+      `</div>` +
+      `<div class="pick-mid">` +
+      `<p class="pick-hunt">${hasRadio ? `${icon('radio')}<span>One of these hides a <b>radio</b></span>` : `${icon('crate')}<span>The rack is full: one of these is <b>gold</b></span>`}</p>` +
+      `<div class="pallet">${Array.from({ length: GRID }, (_, i) => cell(i)).join('')}</div>` +
+      `</div>` +
+      `<div class="pick-right">` +
+      `<span class="chip wallet pick-wallet">${icon('supplies')}<b>${fmtNum(s.supplies)}</b></span>` +
+      `<div class="got"><h3>Coming home</h3><ul></ul></div>` +
+      `<div class="pick-road"></div>` +
+      `<div class="pick-btns" hidden><button class="btn plain" type="button" data-next="camp">CAMP</button><button class="btn play small" type="button" data-next="again">${icon('play')}PLAY AGAIN</button></div>` +
+      `</div>` +
+      `</div>`;
+    root.classList.add('open');
+    const el = root.firstChild;
+    const crates = [...el.querySelectorAll('.crate')];
+    const count = el.querySelector('.pick-count');
+    const list = el.querySelector('.got ul');
+    const walletB = el.querySelector('.pick-wallet b');
+    let shown = s.supplies;
+    const carriers = [...el.querySelectorAll('.carrier:not(.down)')];
+
+    const setCount = () => {
+      const left = h.picks - h.picked.length;
+      count.innerHTML = left > 0 ? `<b>PICK ${left}</b><span>${left === h.picks ? 'Tap a crate' : 'more'}</span>` : `<b class="done">${icon('check')}ALL PICKED</b>`;
+      el.classList.toggle('picking', left > 0);
+      carriers.forEach((c, k) => c.classList.toggle('used', k < h.picked.length));
+    };
+
+    // The road: the stars this run was worth.
+    const road = el.querySelector('.pick-road');
+    const r = game.road();
+    const crossed = res && res.road.areaAfter > res.road.areaBefore;
+    const toName = r.next ? r.next.name : 'the ferry';
+    road.innerHTML =
+      `<span class="pr-stars">${icon('star')}<b>+${h.picks}</b></span>` +
+      `<span class="pr-bar"><span class="bar"><i style="width:${Math.round(r.t * 100)}%"></i></span><small>${crossed ? `<em>NEW STOP: ${esc(AREAS[r.area].name)}!</em>` : r.left > 0 ? `${r.left} to ${esc(toName)}` : 'Pier 9'}</small></span>`;
+
+    const lootHtml = (c) => {
+      if (c.kind === 'supplies') return `${cansSvg(c.gold ? 'gold' : c.tier)}<b class="loot-n">+${fmtNum(c.amount)}</b>`;
+      if (c.kind === 'tokens') return `<span class="tokface">${face(c.who)}</span><b class="loot-n">+${c.amount}</b>`;
+      return `${radioSvg()}<b class="loot-n radio">RADIO!</b>`;
+    };
+    const tierOf = (c) => (c.kind === 'radio' || c.gold ? 'gold' : c.tier);
+
+    /** Draw a crate as already opened (a reload, or the ones left behind). */
+    const showOpen = (i, c, peek = false) => {
+      const b = crates[i];
+      b.classList.add('open', `t-${tierOf(c)}`, peek ? 'peek' : 'mine');
+      b.querySelector('.loot').innerHTML = lootHtml(c);
+      b.disabled = true;
+    };
+    for (const i of h.picked) showOpen(i, h.crates[i]);
+
+    // Two little eyes by the special crate, looking at it.
+    if (h.eyes != null && !h.picked.includes(h.eyes)) {
+      const e = document.createElement('span');
+      e.className = 'eyes-spot';
+      e.innerHTML = eyesSvg(1, -1);
+      crates[h.eyes].appendChild(e);
+      setTimeout(() => sfx.play('eyes'), 900);
+    }
+    setCount();
+
+    // Crates thump down one after another.
+    if (!h.picked.length) {
+      crates.forEach((b, i) => {
+        b.style.setProperty('--drop', `${i * 45}ms`);
+        b.classList.add('dropping');
+        setTimeout(() => sfx.play('crateTap'), i * 45 + 160);
+      });
+      setTimeout(() => crates.forEach((b) => b.classList.remove('dropping')), 900);
+    }
+
+    const addGot = (html, cls = '') => {
+      const li = document.createElement('li');
+      li.className = cls;
+      li.innerHTML = html;
+      list.appendChild(li);
+      return li;
+    };
+    /** One line in "Coming home": tokens are a face and a bar, so nothing needs a name. */
+    const gotRow = (c, out = {}) => {
+      if (c.kind === 'supplies') return [`${icon('supplies')}<b>+${fmtNum(c.amount)}</b><span>supplies</span>`, ''];
+      if (c.kind === 'tokens') {
+        const info = game.levelInfo(c.who);
+        const tail = out.refund ? `<em class="ready">+${fmtNum(out.refund)} ${icon('supplies')}</em>` : info.ok ? `<em class="ready">READY</em>` : tokenBar(info, { compact: true });
+        return [`${face(c.who, { cls: 'tiny' })}<b>+${c.amount}</b>${tail}`, 'tok'];
+      }
+      const rad = out.radio;
+      return [`${icon('radio')}<b>Radio!</b>${rad ? `<em class="when">${fmtLeft(rad.readyAt - game.now())}</em>` : ''}`, 'radio'];
+    };
+    for (const i of h.picked) addGot(...gotRow(h.crates[i]));
+
+    // Each tap is a pick at once (so quick fingers aren't ignored); the opening plays out on its own.
+    let opening = 0;
+    let finished = false;
+    const open = async (i) => {
+      if (h.picked.includes(i) || h.picked.length >= h.picks) return;
+      const out = game.pick(i);
+      if (!out.ok) return;
+      this.ctx.save();
+      opening++;
+      const c = out.crate;
+      const b = crates[i];
+      const tier = tierOf(c);
+      const spot = b.querySelector('.eyes-spot');
+      if (spot) spot.classList.add('gone');
+      b.disabled = true;
+      b.classList.add('shake');
+      sfx.play('crateTap');
+      buzz(10, tuning.haptics);
+      setCount();
+      await wait(170);
+      b.classList.remove('shake');
+      b.classList.add('open', 'mine', 'fresh', `t-${tier}`);
+      b.querySelector('.loot').innerHTML = lootHtml(c);
+      sfx.play('crateOpen', { tier });
+      fx.ring(b, tier === 'gold' ? '#ffc531' : tier === 'steel' ? '#8fc4ff' : '#f4e3c0', tier === 'gold' ? 220 : 150);
+      if (tier === 'gold') {
+        fx.burst(b, { color: '#ffd36b', n: 16, r: 80 });
+        fx.shake(el, 4, 220);
+        buzz([15, 40, 25], tuning.haptics);
+      } else if (tier === 'steel') fx.burst(b, { color: '#bfe0ff', n: 9, r: 54, size: 7 });
+
+      const [row, cls] = gotRow(c, out);
+      const li = addGot(row, `new ${cls}`);
+      if (c.kind === 'supplies') {
+        const n = Math.min(12, Math.max(3, Math.round(c.amount / (8 * area.loot))));
+        const each = c.amount / n;
+        let landed = 0;
+        fx.fly({
+          from: b,
+          to: el.querySelector('.pick-wallet'),
+          html: icon('supplies'),
+          count: n,
+          size: 24,
+          onEach: () => {
+            landed++;
+            shown = Math.min(s.supplies, Math.round(shown + each));
+            walletB.textContent = fmtNum(shown);
+            sfx.play('supplies', { pitch: landed / n });
+            fx.pop(el.querySelector('.pick-wallet'), 1.12, 160);
+          },
+          onDone: () => {
+            if (opening === 0) {
+              shown = s.supplies;
+              walletB.textContent = fmtNum(shown);
+            }
+          },
+        });
+      } else if (c.kind === 'tokens') {
+        const n = Math.min(6, c.amount);
+        fx.fly({ from: b, to: li, html: icon('token'), count: n, size: 22, stagger: 70, onEach: (k) => sfx.play('token', { pitch: (k + 1) / n }) });
+        if (game.levelInfo(c.who).ready) setTimeout(() => sfx.play('ready'), 520);
+        if (out.refund) {
+          shown = s.supplies;
+          walletB.textContent = fmtNum(shown);
+        }
+      } else {
+        sfx.play('radioFound');
+        fx.float(b, RADIO_LINES[Math.min(2, s.rack.length - 1)], 'big gold');
+        fx.confetti({ n: 26, from: b });
+      }
+      await wait(c.kind === 'radio' ? 620 : 380);
+      b.classList.remove('fresh');
+      opening--;
+      if (h.picked.length >= h.picks && opening === 0) finish();
+    };
+
+    const result = new Promise((resolve) => {
+      this._resolve = resolve;
+    });
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('.crate');
+      if (b && !b.disabled) return open(Number(b.dataset.i));
+      const n = e.target.closest('[data-next]');
+      if (n) {
+        sfx.play('tap');
+        this._resolve({ next: n.dataset.next, open: n.dataset.open || null });
+      }
+      return undefined;
+    });
+
+    const finish = async () => {
+      if (finished) return;
+      finished = true;
+      setCount();
+      el.querySelector('.pick-hunt').classList.add('done');
+      await wait(350);
+      shown = s.supplies;
+      walletB.textContent = fmtNum(shown);
+      // What was in the others.
+      if (tuning.peek) {
+        const rest = [];
+        for (let i = 0; i < GRID; i++) if (!h.picked.includes(i)) rest.push(i);
+        for (const i of rest) {
+          showOpen(i, h.crates[i], true);
+          await wait(55);
+        }
+        await wait(250);
+      } else for (const b of crates) if (!b.classList.contains('open')) b.classList.add('left');
+      // The left button is the best next step: a call that has its answer, a level-up in the squad, or just camp.
+      const btns = el.querySelector('.pick-btns');
+      const camp = btns.querySelector('[data-next="camp"]');
+      const up = s.squad.find((id) => game.levelInfo(id).ok);
+      if (game.answered() > 0) {
+        camp.className = 'btn teal small';
+        camp.dataset.open = 'radio';
+        camp.innerHTML = `${icon('radio')}<span>ANSWER THE RADIO</span>`;
+      } else if (up) {
+        camp.className = 'btn up small';
+        camp.dataset.open = up;
+        camp.innerHTML = `${icon('up')}${face(up, { cls: 'tiny' })}<span>LEVEL UP</span>`;
+        camp.setAttribute('aria-label', `Level up ${CAST[up].name}`);
+      }
+      btns.hidden = false;
+      await nextFrame();
+      btns.classList.add('in');
+    };
+    if (h.picked.length >= h.picks) finish();
+
+    return result;
+  }
+
+  close() {
+    this.root.classList.remove('open');
+    this.root.innerHTML = '';
+  }
+}
