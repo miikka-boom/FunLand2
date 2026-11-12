@@ -214,7 +214,7 @@ function applyAimAssist(game, p) {
   const ax = Math.cos(p.aimAngle);
   const ay = Math.sin(p.aimAngle);
   for (const z of targets) {
-    if (!z.alive || z.ghost) continue; // an unlit Night Terror isn't there to aim at
+    if (!z.alive || z.ghost || z.passive) continue; // an unlit Night Terror isn't there to aim at; a Witch left alone isn't a target
     const dx = z.x - p.x;
     const dy = z.y - p.y;
     const d2 = dx * dx + dy * dy;
@@ -347,6 +347,7 @@ export function hitscan(game, p, mx, my, ang, def, alarms = true) {
   hitList.length = 0;
   for (const z of game.zombies) {
     if (!z.alive || z.ghost) continue; // bullets pass through a Night Terror in the dark
+    if (!alarms && z.passive) continue; // the teammate never wakes a Witch (as it never trips an alarm)
     const fx = z.x - p.x;
     const fy = z.y - p.y;
     const along = fx * dx + fy * dy;

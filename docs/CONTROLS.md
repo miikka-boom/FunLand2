@@ -128,7 +128,7 @@ The knob turns orange while firing, and the fire ring brightens.
 ## Special infected: stress tests for the controls
 
 The Hunter and the Tank are off by default (**Hunter + Tank** under
-**Specials**).
+**Specials**), and so is the Night Terror. The Witch is on.
 
 ### Hunter: shove timing
 
@@ -197,11 +197,62 @@ Off by default (**Night Terror** under **Specials**; it needs **Night** on).
   relax phase, paused while the Tank is on you). It spawns out of sight, in
   the dark, never under a lamp.
 
+### The Witch: leave her be
+
+On by default (**Witch** under **Specials**; switching it restarts the run,
+because where she sits is part of the map). One per map. Everything about
+her is in `src/game/witch.js`; where she sits, in `src/world/witch-gen.js`.
+
+- **Where:** a seeded pass seats her at least 950 u along the walk from the
+  start and 750 u from the goal, on open ground with room around her: four
+  maps in five within 110 u of the way, otherwise up to 340 u off it. She
+  keeps clear of stashes (230 u), medkits, fires, alarms, anything that
+  explodes, the holdout switch (620 u), the breach, checkpoints, landmarks
+  and the pier at the end of Pier 9. With her whole space walled off, the
+  goal must still be reachable for at most 430 u of extra walking; a map
+  with no such spot has no Witch (rare: the Building with every world
+  feature on).
+- **Finding her:** sobbing every 1.5–2.7 s and a tune she hums (from about
+  800 u), the light of her phone (a 92 u pool that also makes her visible in
+  the dark), "SOMEONE IS CRYING" at 640 u, and after that a "CRYING" pointer
+  at the screen edge while she is off screen within 720 u, for whoever plays
+  with the sound off. Usually a sprayed warning 240–640 u before her.
+- **Her space** is 170 u: a dashed ring, drawn once you are within about
+  340 u. Inside it, with a clear line between you (a wall hides you), her
+  patience runs out in 0.8 s at 62 u or closer, about 2 s at 100 u and
+  5–6 s at 130 u; at the very edge she only stirs.
+- **Your flashlight** (nights) on her from within 300 u: 2.2 s close up,
+  about 4 s from 230 u. Aim somewhere else and it stops. Further off than
+  300 u she would be off your screen, so it doesn't count.
+- **Shots** fired within 200 u of her each cost a little patience (7.5% for
+  an SMG round at point-blank; more for louder guns, less with distance).
+  The teammate's gun doesn't count.
+- **Patience** is the ring: the solid arc is what's gone. 1.1 s after the
+  last bother it starts to come back (7 s from the brink). At 18% she lifts
+  her head ("SHE HEARD YOU…"); the tune stops, her eyes show, and she
+  growls. **Witch patience** scales all of it.
+- **Startled** by a full ring, or at once by any damage or a shove: 0.95 s
+  on her feet, screaming (she doesn't move yet: shoot, or run), then she
+  runs down whoever did it at 285 u/s (× zombie speed; you run at 190). The
+  first swipe does 45, the rest 18 every 0.42 s (× zombie damage). A shove
+  as she comes in makes her stumble for 0.45 s, once every 2.4 s. 900 HP
+  (× **Witch health**), and bullets barely push her back. If she lands
+  nothing for 22 s, or the teammate she came for is down, she runs off.
+- **Caught sitting** from within 120 u, whatever hits her in that instant
+  counts ×6: a pump shotgun's full pattern (within about 85 u) kills her
+  outright. From further off the same blast only wakes her.
+- **Left alone** she is passive: aim assist, the teammate (its bullets pass
+  through her), the threat arrows and the Tank's swing all ignore her. Get
+  460 u further along the walk than she is, with her still seated, and it's
+  "LEFT HER IN PEACE".
+- **The phone** stays where she dropped it, lit for about 16 s.
+- **No recordings:** her voice is synthesised like every other sound here.
+
 **Pacing:** the first Hunter comes after 18–28 s of build-up, and always by
 22% of the route. After that, a new one comes every 25–45 s while none is
 alive (the relax phase halves that clock). The tuning panel has **Spawn
-Hunter**, **Spawn Tank** and **Spawn Night Terror** buttons for testing on
-demand.
+Hunter**, **Spawn Tank**, **Spawn Night Terror** and **Spawn Witch** buttons
+for testing on demand (the Witch is seated about 330 u ahead of you).
 
 ## AI teammate
 
@@ -215,7 +266,9 @@ someone else in the fight.
   aim its way. If it gets lost or stuck, it reappears next to you.
 - **Shoots** in this order: a Tank's rock, a Hunter riding you, a Hunter
   crouching or mid-pounce, zombies on you, zombies on it, then anything else
-  close. It never fires through you and never sets off car or fire alarms.
+  close. It never fires through you, never sets off car or fire alarms, and
+  never wakes the Witch (it doesn't aim at her, and its bullets pass through
+  her while she sits). Once she is up, she is its first target.
 - **Shoves** zombies that get on it (with the same fatigue as yours), and
   shoves a Hunter off you when you're pinned ("ALLY SAVED YOU"). Often it just
   shoots the Hunter first.
@@ -623,6 +676,10 @@ What a map gets:
 - **Night Terror:** do players notice the breath puff and the heartbeat
   before the first hit? Does turning the flashlight on it feel like a
   weapon? Is it scary, or just annoying?
+- **The Witch:** do players stop when they hear her, or walk straight in?
+  Do they read the ring without being told? Does keeping the light off her
+  with the right stick come naturally? When she is up: a plan, or panic?
+  Did anyone try the shotgun at arm's length?
 - **Ben:** what do players think happened to him? Do they notice that the
   eyes look at things, and follow them? Does anyone find his bed without
   being told, or read the map and go for the X? Did anyone notice the lamp?

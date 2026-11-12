@@ -1,6 +1,7 @@
 // Boot, resize/safe-area handling, screens and the frame loop.
 
 import { loadSettings, saveSettings, worldSignature } from './settings.js';
+import { seatWitchNear } from './game/witch.js';
 import { computeLayout } from './layout.js';
 import { Input } from './input/input.js';
 import { Game } from './game/game.js';
@@ -167,6 +168,10 @@ const panel = new SettingsPanel(panelEl, settings, {
   onSpawnTerror: () => {
     resume();
     game.director.forceTerror();
+  },
+  onSpawnWitch: () => {
+    resume();
+    seatWitchNear(game);
   },
   onRestart: () => {
     newRun();

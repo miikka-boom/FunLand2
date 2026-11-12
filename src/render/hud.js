@@ -5,6 +5,7 @@ import { FONT, rrect, circle } from './draw-utils.js';
 import { TAU, clamp } from '../util.js';
 import { ALLY } from '../game/ally.js';
 import { ARMOR_MAX, ADRENALINE_TIME } from '../game/loot.js';
+import { witchOutcome } from '../game/witch.js';
 
 let vignette = null;
 let vignetteKey = '';
@@ -479,6 +480,27 @@ function drawThreats(ctx, game, L) {
   // The projection inlined: this runs for every hunting zombie, every frame.
   const v = game.view;
   for (const z of game.zombies) {
+    if (z.passive) {
+      // A Witch left alone is no threat, but you should know where the crying comes from
+      // (not everybody plays with the sound on).
+      if (z.type === 'witch' && z.alive && z.heard) {
+        const wd = Math.hypot(z.x - p.x, z.y - p.y);
+        const wsx = v.ox + v.ax * z.x + v.ay * z.y;
+        const wsy = v.oy + v.bx * z.x + v.by * z.y;
+        if (wd < 720 && !(wsx > 0 && wsx < L.w && wsy > 0 && wsy < L.h)) {
+          const ang = Math.atan2(wsy - ps.y, wsx - ps.x);
+          const e = edgePoint(L, ps.x, ps.y, ang, 22);
+          const al = (0.75 + Math.sin(game.time * 2.2) * 0.15) * (1 - wd / 1100);
+          ctx.fillStyle = `rgba(205,191,230,${al})`;
+          chevron(ctx, e.x, e.y, ang, 11);
+          ctx.font = `800 10px ${FONT}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('CRYING', e.x - Math.cos(ang) * 30, e.y - Math.sin(ang) * 20);
+        }
+      }
+      continue;
+    }
     if (!z.alive || z.ghost || z.state !== 'chase') continue;
     const ddx = z.x - p.x;
     const ddy = z.y - p.y;
@@ -492,12 +514,12 @@ function drawThreats(ctx, game, L) {
       const ang = Math.atan2(zsy - ps.y, zsx - ps.x);
       const e = edgePoint(L, ps.x, ps.y, ang, z.type === 'tank' ? 26 : 22);
       const pulse = 0.7 + Math.sin(game.time * 8) * 0.3;
-      ctx.fillStyle = z.type === 'tank' ? `rgba(255,40,30,${pulse})` : z.type === 'terror' ? `rgba(220,230,245,${pulse})` : `rgba(190,140,255,${pulse})`;
+      ctx.fillStyle = z.type === 'tank' || z.type === 'witch' ? `rgba(255,40,30,${pulse})` : z.type === 'terror' ? `rgba(220,230,245,${pulse})` : `rgba(190,140,255,${pulse})`;
       chevron(ctx, e.x, e.y, ang, z.type === 'tank' ? 20 : 14);
       ctx.font = `800 10px ${FONT}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(z.type === 'tank' ? 'TANK' : z.type === 'terror' ? 'TERROR' : 'HUNTER', e.x - Math.cos(ang) * 28, e.y - Math.sin(ang) * 22);
+      ctx.fillText(z.type === 'tank' ? 'TANK' : z.type === 'terror' ? 'TERROR' : z.type === 'witch' ? 'WITCH' : 'HUNTER', e.x - Math.cos(ang) * 28, e.y - Math.sin(ang) * 22);
       continue;
     }
     const ang = Math.atan2(zsy - ps.y, zsx - ps.x);
@@ -646,6 +668,8 @@ function drawEnd(ctx, game, L, ui) {
   if (st.terrors || st.terrorsFled || st.terrorHits) {
     lines.push(`night terror: killed ${st.terrors}   ·   drove off ${st.terrorsFled}   ·   it hit you ${st.terrorHits}×`);
   }
+  const witch = witchLine(game);
+  if (witch) lines.push(witch);
   if (game.ally) {
     const a = game.ally;
     const state = !a.alive ? 'died' : a.down ? 'down' : game.won ? 'made it' : 'alive';
@@ -667,6 +691,20 @@ function drawEnd(ctx, game, L, ui) {
     ctx.fillText('tap to play again', cx, y0 + lines.length * lh + 18);
   }
   ctx.globalAlpha = 1;
+}
+
+/** The end card's line about the Witch (null if there was none, or you never came near her). */
+export function witchLine(game) {
+  const st = game.stats;
+  const got = st.witchHits ? `   ·   she got you ${st.witchHits}×` : '';
+  switch (witchOutcome(game)) {
+    case 'crowned': return 'the witch: one blast, good night';
+    case 'killed': return `the witch: startled and put down${got}`;
+    case 'startled': return `the witch: startled${got}${st.witchFled ? '   ·   she ran off' : ''}`;
+    case 'spared': return 'the witch: left in peace';
+    case 'crying': return 'the witch: still crying';
+    default: return null;
+  }
 }
 
 function drawBossBar(ctx, game, L) {

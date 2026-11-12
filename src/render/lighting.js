@@ -35,7 +35,7 @@ export class Lighting {
     this.sight = []; // sight blockers near the view this frame
     this.night = true;
     this.los = false;
-    this.dark = 0.8; // darkness where no light reaches
+    this.dark = 0.6; // darkness where no light reaches (the setting, each frame)
     this.hidden = 0.03; // what's left of the light out of the survivor's sight
     this.ex = 0;
     this.ey = 0;
@@ -125,6 +125,10 @@ export class Lighting {
     }
     for (const g of map.glows || []) {
       if (pointInRect(g.x, g.y, vr, 90)) this.radial(g.x, g.y, g.r, g.k);
+    }
+    // A Witch's phone: a small cold light, in her hands or where she dropped it.
+    for (const w of game.witches || []) {
+      if (w.glow > 0.01 && pointInRect(w.seat.x, w.seat.y, vr, w.glowR)) this.radial(w.seat.x, w.seat.y, w.glowR, w.glow);
     }
     for (const f of map.fires) {
       if (!pointInRect(f.x, f.y, vr, 260)) continue;

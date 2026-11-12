@@ -742,3 +742,299 @@ export function drawTerror(R, z) {
   }
   ctx.globalAlpha = prev;
 }
+
+// --- The Witch ---------------------------------------------------------------------------------
+
+const WITCH_HAIR = '#16141b';
+const WITCH_RISE = 0.95; // game/witch.js: WITCH.rise
+const lerp = (a, b, u) => a + (b - a) * u;
+const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+const WP = { u: 0, hipA: 0, hipZ: 0, chestA: 0, chestZ: 0, headA: 0, headZ: 0 };
+
+/**
+ * Where her hips, chest and head are (forward of her centre, and how high):
+ * folded up and rocking while she sits, coming up through the scream, leaning
+ * into the run.
+ */
+function witchPose(w, t) {
+  let u = 1;
+  if (w.mode === 'sit') u = 0;
+  else if (w.mode === 'rise') {
+    const k = 1 - Math.max(0, w.modeT) / WITCH_RISE;
+    u = k * k * (3 - 2 * k);
+  }
+  const look = w.look || 0;
+  const run = w.mode === 'charge' || w.mode === 'flee';
+  const lean = run ? 1 : w.mode === 'attack' ? 0.6 : w.mode === 'stumble' ? -0.6 : 0;
+  // Lost in it: she rocks, and the sobs shake her. Both stop as her head comes up.
+  const lost = (1 - look) * (1 - u);
+  const rock = Math.sin(t * 1.15 + w.id) * 1.3 * lost;
+  const sob = Math.pow(Math.max(0, Math.sin(t * 2.1 + w.id * 1.7)), 6) * Math.sin(t * 34) * 0.8 * lost;
+  const shake = (u === 0 && look > 0.5 ? Math.sin(t * 43) * 0.5 * look : 0) + (w.mode === 'rise' ? Math.sin(t * 52) * 0.9 : 0);
+  WP.u = u;
+  WP.hipA = lerp(-3, -1, u);
+  WP.hipZ = lerp(5, 19, u);
+  WP.chestA = lerp(4 + rock, 1 + lean * 5.5, u) + shake;
+  WP.chestZ = lerp(17 + sob + look * 1.5 + (w.flinch > 0 ? 1.4 : 0), 31.5 - Math.abs(lean) * 2.5, u);
+  WP.headA = lerp(8.5 + rock * 1.2 - look * 2.5, 3 + lean * 9, u) + shake;
+  WP.headZ = lerp(20 + sob * 1.3 + look * 5, 40 - Math.abs(lean) * 4.5 + (w.mode === 'rise' ? 1.5 : 0), u);
+  return WP;
+}
+
+/** Where a Witch's eyes are (they burn once she has heard you). */
+export function witchEyes(w, t, out) {
+  const P = witchPose(w, t);
+  const ca = Math.cos(w.face);
+  const sa = Math.sin(w.face);
+  out.x = w.x + ca * (P.headA + 4);
+  out.y = w.y + sa * (P.headA + 4);
+  out.z = P.headZ - 0.6;
+  return out;
+}
+
+/**
+ * The Witch: thin, in a long pale nightgown, dark hair over her face. Seated
+ * she is folded round the light of a phone, rocking; on her feet she is all
+ * arms.
+ */
+export function drawWitch(R, w, b) {
+  const { ctx, v } = R;
+  const s = v.scale;
+  const t = R.t;
+  const P = witchPose(w, t);
+  const u = P.u;
+  const ca = Math.cos(w.face);
+  const sa = Math.sin(w.face);
+  const fd = ca * v.gx + sa * v.gy; // > 0: facing the camera
+  const X = (a, c) => w.x + ca * a - sa * c;
+  const Y = (a, c) => w.y + sa * a + ca * c;
+  const mv = (a, c, z) => ctx.moveTo(v.px(X(a, c), Y(a, c)), v.py(X(a, c), Y(a, c), z));
+  const ln = (a, c, z) => ctx.lineTo(v.px(X(a, c), Y(a, c)), v.py(X(a, c), Y(a, c), z));
+  const held = !(w.phoneT > 0); // the phone is still in her hands (and lights her from below)
+  const lit = held ? Math.max(b, 0.6) : b;
+  const gown = tone(w.shirt, b);
+  const skin = tone(w.skin, lit);
+  const hair = tone(WITCH_HAIR, Math.min(1, Math.max(b, 0.1) * 1.5));
+  const run = w.mode === 'charge' || w.mode === 'flee';
+  const ph = w.anim * 15;
+  const stride = run ? Math.sin(ph) * 8 : w.mode === 'attack' ? Math.sin(ph) * 3 : 0;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const legs = () => {
+    // Bare shins under the hem: knees drawn up in front of her, or long strides.
+    ctx.strokeStyle = skin;
+    ctx.lineWidth = 3.4 * s;
+    ctx.beginPath();
+    for (const side of [-1, 1]) {
+      mv(lerp(8, 1 + stride * side * 0.5, u), lerp(4.2, 3, u) * side, lerp(11.5, 10, u));
+      ln(lerp(12.5, -1 + stride * side, u), lerp(4.6, 3.6, u) * side, 1.5 + (run ? Math.max(0, Math.cos(ph) * side) * 3 * u : 0));
+    }
+    ctx.stroke();
+    // The gown: over her thighs, or hanging to the knee.
+    ctx.strokeStyle = gown;
+    ctx.beginPath();
+    if (u < 0.6) {
+      ctx.lineWidth = 6.4 * s;
+      for (const side of [-1, 1]) {
+        mv(P.hipA, 2.6 * side, P.hipZ + 1);
+        ln(lerp(8, 1, u), lerp(4.2, 3, u) * side, lerp(11.5, 10, u));
+      }
+    } else {
+      ctx.lineWidth = 9 * s;
+      mv(P.hipA, 0, P.hipZ);
+      ln(P.hipA + stride * 0.15, 0, 10);
+    }
+    ctx.stroke();
+  };
+
+  // Hands: on the phone; flung wide as she comes up; swept back as she runs; one after the other when she strikes.
+  const hand = (side, out) => {
+    const sx = P.headA + 3.2;
+    const sz = P.chestZ - 4.2;
+    let a = sx;
+    let c = 1.7 * side;
+    let z = sz;
+    if (w.mode === 'rise') {
+      a = lerp(sx, -1, u);
+      c = lerp(1.7, 15, u) * side;
+      z = lerp(sz, 23 + Math.sin(t * 50 + side) * 1.2, u);
+    } else if (run) {
+      a = -6 + Math.sin(ph + side) * 2;
+      c = 12.5 * side;
+      z = 20;
+    } else if (w.mode === 'attack') {
+      // The arm that just struck follows through low; the other is already coming over.
+      const k = clamp01(1 - w.attackCd / 0.42);
+      if (side === -w.arm) {
+        a = lerp(15, -3, k);
+        c = lerp(1, 11, k) * side;
+        z = lerp(19, 26, k);
+      } else {
+        const wind = w.windup > 0 ? 1 : k;
+        a = lerp(-2, 12, wind * wind);
+        c = lerp(10, 3, wind) * side;
+        z = lerp(34, 30, wind);
+      }
+    } else if (w.mode === 'stumble') {
+      a = -5;
+      c = 13 * side;
+      z = 33;
+    }
+    out.a = a;
+    out.c = c;
+    out.z = z;
+    return out;
+  };
+  const H = [{ a: 0, c: 0, z: 0 }, { a: 0, c: 0, z: 0 }];
+  hand(-1, H[0]);
+  hand(1, H[1]);
+
+  const arms = () => {
+    ctx.strokeStyle = skin;
+    ctx.lineWidth = 2.9 * s;
+    ctx.beginPath();
+    for (let i = 0; i < 2; i++) {
+      const side = i ? 1 : -1;
+      const h = H[i];
+      const shA = P.chestA;
+      const shC = 5 * side;
+      const shZ = P.chestZ - 0.5;
+      // A sharp elbow, out to the side.
+      mv(shA, shC, shZ);
+      ln((shA + h.a) / 2 - 1.5 * u, (shC + h.c) / 2 + 3.5 * side, (shZ + h.z) / 2 - 3 + 4 * u);
+      ln(h.a, h.c, h.z);
+    }
+    ctx.stroke();
+    if (u > 0.4) {
+      // Long fingers.
+      ctx.lineWidth = 1.2 * s;
+      ctx.beginPath();
+      for (let i = 0; i < 2; i++) {
+        const h = H[i];
+        for (const q of [-1, 0, 1]) {
+          mv(h.a, h.c, h.z);
+          ln(h.a + 4.5, h.c + q * 2.2, h.z - 2.5);
+        }
+      }
+      ctx.stroke();
+    }
+  };
+
+  const phone = () => {
+    if (!held) return;
+    const a = P.headA + 3.6;
+    const z = P.chestZ - 4;
+    ctx.lineCap = 'butt';
+    if (fd < 0.5 || v.sp > 0.8) {
+      // The screen (it faces her, and up: from high above you always see it).
+      ctx.strokeStyle = '#dbe9ff';
+      ctx.lineWidth = 3.6 * s;
+      ctx.beginPath();
+      mv(a, -2.1, z);
+      ln(a, 2.1, z);
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = '#0c0d12';
+      ctx.lineWidth = 3.4 * s;
+      ctx.beginPath();
+      mv(a + 0.6, -2.1, z);
+      ln(a + 0.6, 2.1, z);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'round';
+    ctx.fillStyle = 'rgba(170,200,255,0.16)';
+    ctx.beginPath();
+    ball(ctx, v, X(a, 0), Y(a, 0), z, 8.5);
+    ctx.fill();
+  };
+
+  const trunk = () => {
+    ctx.strokeStyle = gown;
+    ctx.lineWidth = 9.2 * s;
+    ctx.beginPath();
+    mv(P.hipA, 0, P.hipZ);
+    ln(P.chestA, 0, P.chestZ);
+    ctx.stroke();
+    ctx.lineWidth = 5 * s;
+    ctx.beginPath();
+    mv(P.chestA, -5, P.chestZ);
+    ln(P.chestA, 5, P.chestZ);
+    ctx.stroke();
+  };
+
+  const hairBack = () => {
+    // Down her back while she sits; streaming behind her when she runs.
+    ctx.strokeStyle = hair;
+    ctx.lineWidth = 6 * s;
+    ctx.beginPath();
+    mv(P.headA - 1.5, 0, P.headZ + 1);
+    if (run) ln(P.chestA - 11, Math.sin(ph * 0.5) * 2, P.chestZ + 4);
+    else ln(lerp(P.hipA + 1.5, P.chestA - 3.5, u), 0, lerp(P.hipZ + 5.5, P.chestZ - 5, u));
+    ctx.stroke();
+  };
+
+  const head = () => {
+    ctx.fillStyle = hair;
+    ctx.beginPath();
+    ball(ctx, v, X(P.headA, 0), Y(P.headA, 0), P.headZ, 5.1);
+    ctx.fill();
+    if (fd > -0.35) {
+      // What shows of her face: lit blue-white from below while she has the phone.
+      ctx.fillStyle = held ? tone('#c3cde6', lit) : skin;
+      ctx.beginPath();
+      ball(ctx, v, X(P.headA + 2.4, 0), Y(P.headA + 2.4, 0), P.headZ - 1, 3.6);
+      ctx.fill();
+    }
+    if (u < 0.5) {
+      // The hair that hangs over it.
+      ctx.strokeStyle = hair;
+      ctx.lineWidth = 2.4 * s;
+      ctx.beginPath();
+      for (const side of [-1, 1]) {
+        mv(P.headA + 2, 3.6 * side, P.headZ + 1);
+        ln(P.headA + 3.4, 3.2 * side, P.headZ - 7 + (w.look || 0) * 2);
+      }
+      ctx.stroke();
+    }
+  };
+
+  if (u < 0.5) {
+    if (fd < 0) {
+      legs();
+      arms();
+      phone();
+      trunk();
+      hairBack();
+      head();
+    } else {
+      hairBack();
+      trunk();
+      legs();
+      arms();
+      phone();
+      head();
+    }
+  } else {
+    legs();
+    if (fd < 0) {
+      arms();
+      trunk();
+      hairBack();
+      head();
+    } else {
+      hairBack();
+      trunk();
+      head();
+      arms();
+    }
+  }
+  if (w.hitFlash > 0) {
+    ctx.strokeStyle = 'rgba(255,240,235,0.6)';
+    ctx.lineWidth = 10 * s;
+    ctx.beginPath();
+    mv(P.hipA, 0, P.hipZ);
+    ln(P.headA, 0, P.headZ);
+    ctx.stroke();
+  }
+}

@@ -72,6 +72,7 @@ export class SettingsPanel {
     mk('Spawn Hunter', () => this.actions.onSpawnHunter());
     mk('Spawn Tank', () => this.actions.onSpawnTank());
     mk('Spawn Night Terror', () => this.actions.onSpawnTerror());
+    mk('Spawn Witch', () => this.actions.onSpawnWitch());
     mk('Restart run', () => this.actions.onRestart());
     mk('New map', () => this.actions.onNewMap());
     this.fsBtn = mk('Fullscreen', () => this.actions.onFullscreen());

@@ -274,14 +274,16 @@ function pickTarget(game, a, rangeMul = 1) {
     candZ[i] = z;
   };
   for (const z of game.zombies) {
-    if (!z.alive || z.ghost) continue;
+    if (!z.alive || z.ghost || z.passive) continue; // (a Witch left alone stays left alone)
     const dx = z.x - a.x;
     const dy = z.y - a.y;
     const d2 = dx * dx + dy * dy;
     if (d2 > r2) continue;
     const d = Math.sqrt(d2);
     let s = d / range;
-    if (z.type === 'hunter') {
+    if (z.type === 'witch') {
+      s -= z.mode === 'attack' ? 1.1 : 0.8; // up and coming: nothing matters more
+    } else if (z.type === 'hunter') {
       if (z.mode === 'pin') s -= 1.2; // on you: top priority
       else if (z.mode === 'crouch' || z.mode === 'leap') s -= 0.7; // about to be
       else s -= 0.25;
@@ -375,7 +377,7 @@ function shoveAt(game, a, ang) {
   let hits = 0;
   game.killCredit = 'ally';
   game.zhash.query(a.x, a.y, SHOVE_REACH + 40, (z) => {
-    if (!z.alive || z.noCollide) return;
+    if (!z.alive || z.noCollide || z.passive) return;
     const dx = z.x - a.x;
     const dy = z.y - a.y;
     const d = Math.hypot(dx, dy) || 1;
@@ -443,7 +445,7 @@ function nearestZombie(game, a, radius) {
   let best = null;
   let bd = radius;
   game.zhash.query(a.x, a.y, radius, (z) => {
-    if (!z.alive || z.noCollide) return;
+    if (!z.alive || z.noCollide || z.passive) return;
     const d = Math.hypot(z.x - a.x, z.y - a.y) - z.r;
     if (d < bd) {
       bd = d;
@@ -456,7 +458,7 @@ function nearestZombie(game, a, radius) {
 function threatWithin(game, a, radius) {
   const r2 = radius * radius;
   for (const z of game.zombies) {
-    if (!z.alive || z.ghost || z.state !== 'chase') continue;
+    if (!z.alive || z.ghost || z.passive || z.state !== 'chase') continue;
     if ((z.x - a.x) ** 2 + (z.y - a.y) ** 2 < r2) return true;
   }
   return false;
