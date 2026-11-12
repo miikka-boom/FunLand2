@@ -5,6 +5,7 @@
 // tests; ReportCard is the DOM card shown over the end screen.
 
 import { diffFromDefaults, LEVEL_NAMES } from './settings.js';
+import { witchOutcome } from './game/witch.js';
 
 const HISTORY_KEY = 'funland2.p0.reports.v1';
 const DAILY_KEY = 'funland2.p0.daily.v1';
@@ -109,7 +110,11 @@ export function buildReport(game, { ratings = {}, perf = null, daily = null, dev
     damageTaken: Math.round(st.damage),
     hordes: st.hordes,
     shoves: st.shoves,
-    specials: { hunters: st.hunters, pins: st.pins, deadstops: st.deadstops, skeets: st.skeets, tanks: st.tanks, terrors: st.terrors || 0, terrorsFled: st.terrorsFled || 0, terrorHits: st.terrorHits || 0 },
+    specials: {
+      hunters: st.hunters, pins: st.pins, deadstops: st.deadstops, skeets: st.skeets, tanks: st.tanks,
+      terrors: st.terrors || 0, terrorsFled: st.terrorsFled || 0, terrorHits: st.terrorHits || 0,
+      witch: witchOutcome(game), witchHits: st.witchHits || 0,
+    },
     finds,
     world: {
       holdout: !!(E && E.holdout),
@@ -117,6 +122,7 @@ export function buildReport(game, { ratings = {}, perf = null, daily = null, dev
       landmarks: !!(E && E.explosives && E.explosives.length),
       lore: !!S.lore,
       nightTerror: !!S.nightTerror,
+      witch: !!S.witch,
       ben: !!S.ben,
     },
     events: {
@@ -153,6 +159,10 @@ export function reportText(r) {
   if (r.events.ferry) bits.push(`ferry: ${r.events.ferry}`);
   if (r.events.ben) bits.push(`Ben's bed ${r.events.ben.bed ? 'found' : 'not found'}${r.events.ben.glimpse ? ', saw the eyes' : ''}`);
   if (r.specials.terrors || r.specials.terrorsFled || r.specials.terrorHits) bits.push(`night terror: ${r.specials.terrors} killed, ${r.specials.terrorsFled} driven off, hit you ${r.specials.terrorHits}×`);
+  if (r.specials.witch && r.specials.witch !== 'unheard') {
+    const how = { crying: 'left crying', spared: 'left in peace', startled: 'startled', killed: 'startled and killed', crowned: 'killed with one blast' }[r.specials.witch];
+    bits.push(`the witch: ${how}${r.specials.witchHits ? `, hit you ${r.specials.witchHits}×` : ''}`);
+  }
   if (bits.length) lines.push(bits.join(' · '));
   if (r.device) {
     const fps = r.fps ? ` · ${r.fps.avg} fps avg, ${r.fps.low} low` : '';

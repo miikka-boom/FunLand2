@@ -14,6 +14,8 @@ import { World, SpatialHash, FlowField } from '../world/world.js';
 import { Player, updatePlayer, shove, startReload, swapWeapon } from './player.js';
 import { updateZombies, resolveCrowd, alertZombie, ZHASH_CELL } from './zombies.js';
 import { updateSpecials, updateRocks, releasePin } from './specials.js';
+import { spawnWitch, updatePhones } from './witch.js';
+import { addWitch } from '../world/witch-gen.js';
 import { Director } from './director.js';
 import { Ally, updateAlly, hurtAlly, allySpotNear } from './ally.js';
 import { Effects } from './effects.js';
@@ -85,6 +87,7 @@ export class Game {
     const featured = !map.theme || map.theme === 'interior';
     if (featured && (S.holdout || S.routes || S.landmarks)) addWorldFeatures(map, map.seed, { holdout: S.holdout, routes: S.routes, landmarks: S.landmarks });
     if (S.stashes || S.boardedRooms || S.secret) addScavenging(map, map.seed, { stashes: S.stashes, rooms: S.boardedRooms, secret: S.secret });
+    if (S.witch) addWitch(map, map.seed); // where she sits (the writing on the walls knows)
     if (S.lore) addLore(map, map.seed); // graffiti, posters, dens: visual only
     this.benMemory = loadBenMemory();
     if (S.ben) addBen(map, map.seed, { memory: this.benMemory, level: this.level }); // signs of Ben: visual only
@@ -100,6 +103,7 @@ export class Game {
     this.progress = 0;
     this.player = new Player(map.start.x, map.start.y);
     this.zombies = [];
+    this.witches = []; // every Witch of this run, alive or not (her phone outlasts her)
     this.rocks = [];
     this.zhash = new SpatialHash(map.w, map.h, ZHASH_CELL);
     this.effects = new Effects(map.w, map.h);
@@ -128,6 +132,7 @@ export class Game {
       stashes: 0, rooms: 0, secrets: 0, boards: 0,
       holdouts: 0, holdoutAt: 0, holdoutTime: 0, shortcut: 0, explosions: 0,
       terrors: 0, terrorsFled: 0, terrorHits: 0, terrorShoves: 0,
+      witches: 0, crowns: 0, witchStartled: 0, witchSpared: 0, witchHits: 0, witchShoves: 0, witchFled: 0,
       flareAt: 0, ferry: 0, benNest: 0, benGlimpse: 0,
     };
     this.terrorSeen = false;
@@ -136,6 +141,7 @@ export class Game {
     initWorldEvents(this, map);
     initBen(this, map, this.benMemory);
     this.killCredit = null; // 'ally' while the teammate's bullets/shoves land
+    for (const spot of map.witches || []) spawnWitch(this, spot);
     this.world.flow.compute(this.player.x, this.player.y);
     this.ally = null;
     this.syncAlly();
@@ -200,6 +206,7 @@ export class Game {
       const d2 = (z.x - x) ** 2 + (z.y - y) ** 2;
       if (d2 < r2) alertZombie(this, z, 0.1 + (Math.sqrt(d2) / radius) * 0.6 + rand(0, 0.3), false);
     }
+    for (const w of this.witches) w.hear(this, x, y, radius);
   }
 
   hurtPlayer(dmg, z, opts = {}) {
@@ -320,6 +327,7 @@ export class Game {
     this.director.update(dt);
     updateZombies(this, dt);
     updateSpecials(this, dt);
+    updatePhones(this, dt);
     resolveCrowd(this, dt);
     updateRocks(this, dt);
     const gd = this.goalField.pathDist(p.x, p.y);

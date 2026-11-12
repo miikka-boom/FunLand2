@@ -108,6 +108,9 @@ export const DEFAULTS = Object.freeze({
   tankHealth: 1.0,
   tankSpeed: 1.0, // 1.0 = 182 u/s, just under your run speed: kite it, don't stop
   nightTerror: false, // a stalker you only see in light: the flashlight is your weapon
+  witch: true, // one sits crying somewhere near the way: leave her be
+  witchPatience: 1.0, // how long she bears you in her space or your light on her
+  witchHealth: 1.0,
 
   // --- AI teammate --------------------------------------------------------
   ally: false, // a bot survivor that fights alongside you (off: solo is the baseline)
@@ -267,6 +270,9 @@ export const SCHEMA = [
       { key: 'tankHealth', label: 'Tank health', type: 'range', min: 0.25, max: 3, step: 0.05, fmt: mult },
       { key: 'tankSpeed', label: 'Tank speed', type: 'range', min: 0.6, max: 1.5, step: 0.05, fmt: mult },
       { key: 'nightTerror', label: 'Night Terror (only seen in light)', type: 'toggle' },
+      { key: 'witch', label: 'Witch: cries near the way, leave her be (restarts)', type: 'toggle' },
+      { key: 'witchPatience', label: 'Witch patience', type: 'range', min: 0.4, max: 3, step: 0.1, fmt: mult },
+      { key: 'witchHealth', label: 'Witch health', type: 'range', min: 0.25, max: 3, step: 0.05, fmt: mult },
     ],
   },
   {
@@ -325,7 +331,7 @@ export const SCHEMA = [
 ];
 
 /** Settings that change how a map is generated (holdoutTime / ferryTime only matter at run time). */
-export const WORLD_KEYS = ['level', 'daily', 'stashes', 'boardedRooms', 'secret', 'holdout', 'routes', 'landmarks', 'lore', 'ben'];
+export const WORLD_KEYS = ['level', 'daily', 'stashes', 'boardedRooms', 'secret', 'holdout', 'routes', 'landmarks', 'lore', 'ben', 'witch'];
 export const worldSignature = (S) => WORLD_KEYS.map((k) => String(S[k])).join('|');
 
 /** One-tap world setups, so nobody has to flip six switches to try things. */

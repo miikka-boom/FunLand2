@@ -126,6 +126,10 @@ export class Lighting {
     for (const g of map.glows || []) {
       if (pointInRect(g.x, g.y, vr, 90)) this.radial(g.x, g.y, g.r, g.k);
     }
+    // A Witch's phone: a small cold light, in her hands or where she dropped it.
+    for (const w of game.witches || []) {
+      if (w.glow > 0.01 && pointInRect(w.seat.x, w.seat.y, vr, w.glowR)) this.radial(w.seat.x, w.seat.y, w.glowR, w.glow);
+    }
     for (const f of map.fires) {
       if (!pointInRect(f.x, f.y, vr, 260)) continue;
       const fl = Math.sin(t * 11) * 0.06 + Math.sin(t * 23 + 1) * 0.04;

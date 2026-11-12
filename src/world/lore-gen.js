@@ -5,12 +5,13 @@
 // no inspect text), so every player sees the same thing. Runs last (after
 // features and scavenging) so it can keep clear of them. Seeded from the map.
 
-import { World } from './world.js';
+import { World, NAV_CELL } from './world.js';
 import { mulberry32, shuffle, pointInRect, rectsOverlap } from '../util.js';
 import { analyse, detour } from './scavenge-gen.js';
 import {
   CITY_GRAFFITI, BUILDING_GRAFFITI, DOCKS_GRAFFITI, SUBURBIA_GRAFFITI, GRAVEYARD_GRAFFITI, JUNKYARD_GRAFFITI,
   ROOF_MESSAGES, SAFE_ROOM, POSTERS, NOTES, DEN_SCRIBBLES, DEN_JOKES, VIGNETTES, SPRAY, MARKER,
+  WITCH_GRAFFITI,
 } from './lore-content.js';
 
 /** A map type's own lines (they go first; the rest of the ground is filled from town). */
@@ -44,6 +45,7 @@ export function addLore(map, seed) {
   if (map.holdout) busy.push({ x: map.holdout.x, y: map.holdout.y, r: 220 });
   if (map.breach) busy.push({ x: map.breach.x, y: map.breach.y, r: 260 });
   for (const c of map.checkpoints || []) busy.push({ x: c.x, y: c.y, r: 180 });
+  for (const w of map.witches || []) busy.push({ x: w.x, y: w.y, r: 200 }); // nothing is written, and nobody camps, in a Witch's space
   const clearOf = (x, y, pad = 0) => busy.every((b) => Math.hypot(b.x - x, b.y - y) >= b.r + pad);
   const inSafe = (x, y, pad = 30) => pointInRect(x, y, map.startRoom.outer, pad) || pointInRect(x, y, map.endRoom.outer, pad);
   const inSealed = (x, y) => (map.sealed || []).some((s) => pointInRect(x, y, s.interior, 20));
@@ -162,6 +164,37 @@ export function addLore(map, seed) {
     placed.push(q);
     busy.push({ x: q.x, y: q.y, r: 40 });
     made++;
+  }
+
+  // --- A warning on the way to the Witch ------------------------------------------------------
+  // Somebody sprayed it where you still have time to read it: on the walk, a
+  // little before the crying starts to matter.
+  for (const w of map.witches || []) {
+    const wd = A.fs.dist[world.nearestFree(world.navIndex(w.x, w.y))];
+    const g = WITCH_GRAFFITI[Math.floor(rnd() * WITCH_GRAFFITI.length)];
+    const size = interior ? 13 : 17;
+    const tw = g.text.length * size * (interior ? 0.68 : 0.64);
+    let best = null;
+    for (const q of onWay) {
+      const ahead = (wd - A.fs.dist[q.i]) * (NAV_CELL / 10); // how much further on she is, by the walk
+      const air = Math.hypot(q.x - w.x, q.y - w.y);
+      if (ahead < 230 || ahead > 620 || air < 240 || air > 640 || q.det > 90) continue;
+      if (!clearOf(q.x, q.y, 20) || !fits(q.x, q.y, tw, size + 6)) continue;
+      const box = boxOf(q.x, q.y, tw, size + 6, 0.06);
+      if (g.pair) box.y1 += size * 2 + 14;
+      if (crowded(box)) continue;
+      if (!best || Math.abs(ahead - 380) < Math.abs(best.ahead - 380)) best = { q, ahead, box };
+    }
+    if (!best) continue;
+    const { q, box } = best;
+    const color = interior ? MARKER[2] : SPRAY[0];
+    map.decor.push({ type: 'graffiti', x: q.x, y: q.y, text: g.text, color, size, a: (rnd() - 0.5) * 0.1, drip: !interior, marker: interior, witch: true });
+    if (g.pair && fits(q.x + 20, q.y + size + 14, g.pair.length * size * 0.55, size)) {
+      map.decor.push({ type: 'graffiti', x: q.x + 20, y: q.y + size + 14, text: g.pair, color: interior ? MARKER[1] : SPRAY[1], size: size * 0.85, a: 0, drip: false, marker: interior });
+    }
+    written.push(box);
+    placed.push(q);
+    busy.push({ x: q.x, y: q.y, r: tw / 2 + 30 });
   }
 
   // --- Rooftop messages (streets) -------------------------------------------------------------

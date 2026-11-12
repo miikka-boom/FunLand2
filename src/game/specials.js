@@ -13,6 +13,7 @@
 import { rand, wrapAngle, clamp } from '../util.js';
 import { newId, damageZombie } from './zombies.js';
 import { updateTerror } from './terror.js';
+import { updateWitch } from './witch.js';
 
 const tmp = { x: 0, y: 0 };
 
@@ -447,7 +448,7 @@ function tankPunch(game, t) {
   }
   // Commons caught in the swing go flying.
   game.zhash.query(t.x, t.y, reach + 24, (z) => {
-    if (!z.alive || z === t || z.type === 'tank') return;
+    if (!z.alive || z === t || z.type === 'tank' || z.type === 'witch') return; // (the Witch is not his quarrel)
     const zx = z.x - t.x;
     const zy = z.y - t.y;
     const zd = Math.hypot(zx, zy) || 1;
@@ -668,5 +669,6 @@ export function updateSpecials(game, dt) {
     if (z.type === 'hunter') updateHunter(game, z, dt);
     else if (z.type === 'tank') updateTank(game, z, dt);
     else if (z.type === 'terror') updateTerror(game, z, dt);
+    else if (z.type === 'witch') updateWitch(game, z, dt);
   }
 }

@@ -55,6 +55,7 @@ const { hasModel } = await import('../src/render/models.js');
 const { computeLayout } = await import('../src/layout.js');
 const { Hunter, Tank } = await import('../src/game/specials.js');
 const { NightTerror } = await import('../src/game/terror.js');
+const { Witch, startle } = await import('../src/game/witch.js');
 const { Zombie } = await import('../src/game/zombies.js');
 
 // Audio and haptics: anything can be called on them.
@@ -166,6 +167,31 @@ for (const camera of Object.keys(CAMERAS)) {
         if (!game.zombies.includes(terror)) game.zombies.push(terror);
         renderer.render(game, { source: 'mouse', touch: { pressed: new Map(), move: {}, aim: {}, taps: [] }, frame: frame() }, { layout: computeLayout(W, H, { l: 0, r: 0, t: 0, b: 0 }, game.settings), fps: 60, frameMs: 16, hintAlpha: 0, input: { touch: { pressed: new Map() } }, title: false });
       }
+      // The Witch: seated (calm, then with her head up), rising, running, striking, stumbling, running off;
+      // her phone in her hands, on the ground, dark.
+      const witch = new Witch(p.x - 70, p.y + 90, 1.1);
+      game.zombies.push(witch);
+      game.witches.push(witch);
+      witch.heard = true;
+      step(1);
+      witch.anger = 0.7;
+      witch.look = 0.8;
+      step(1);
+      startle(game, witch, p);
+      step(2);
+      for (const mode of ['rise', 'charge', 'attack', 'stumble', 'flee']) {
+        witch.mode = mode;
+        witch.modeT = 0.4;
+        witch.windup = mode === 'attack' ? 0.1 : 0;
+        witch.alive = true;
+        witch.x = p.x - 70;
+        witch.y = p.y + 90;
+        if (!game.zombies.includes(witch)) game.zombies.push(witch);
+        renderer.render(game, { source: 'mouse', touch: { pressed: new Map(), move: {}, aim: {}, taps: [] }, frame: frame() }, { layout: computeLayout(W, H, { l: 0, r: 0, t: 0, b: 0 }, game.settings), fps: 60, frameMs: 16, hintAlpha: 0, input: { touch: { pressed: new Map() } }, title: false });
+      }
+      witch.phoneT = 30; // the screen has timed out
+      witch.alive = false;
+      step(1);
       // Effects in the air, a blast, the teammate down.
       game.effects.explosion(p.x + 60, p.y, 120);
       game.effects.blood(p.x, p.y, 1, 0, 6);
@@ -351,6 +377,38 @@ test('every map type has a camera of its own: the Building is seen from the corn
     assert.equal(game.view.flat, true);
     assert.equal(game.viewSize, 620);
   }
+});
+
+test('the Witch off screen: a quiet pointer to where the crying comes from, a loud one once she is up', () => {
+  const texts = [];
+  const { game, renderer, step } = setup({ level: 'city', wanderers: 0 });
+  const ctx = renderer.ctx;
+  const fill = ctx.fillText;
+  ctx.fillText = (s, ...a) => {
+    texts.push(String(s));
+    return fill(s, ...a);
+  };
+  game.zombies.length = 0;
+  game.director.update = () => {};
+  const w = game.witches[0];
+  assert.ok(w, 'there is one on the map');
+  const p = game.player;
+  // Seat her off the top of the screen, a little way off.
+  w.seat.x = p.x;
+  w.seat.y = p.y - 420;
+  w.x = w.seat.x;
+  w.y = w.seat.y;
+  game.zombies.push(w);
+  step(3);
+  assert.equal(w.heard, true);
+  assert.ok(texts.includes('CRYING'), 'you are shown where she is');
+  assert.ok(!texts.includes('WITCH'));
+  texts.length = 0;
+  startle(game, w, p);
+  step(2);
+  assert.ok(texts.includes('WITCH'), 'up: she is a threat like any other');
+  assert.ok(!texts.includes('CRYING'));
+  assert.equal(bad, null, `drawn with a bad number: ${bad}`);
 });
 
 test('boarded doorways the camera cannot look into are marked in plan, where the door is', () => {

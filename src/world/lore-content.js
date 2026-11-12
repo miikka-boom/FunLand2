@@ -307,6 +307,21 @@ export const NOTES = {
 };
 
 /** Scribbled all around a den (floor and walls). */
+/**
+ * Sprayed on the way to where a Witch sits (only on maps that have one): how
+ * she works, from the people who found out.
+ */
+export const WITCH_GRAFFITI = [
+  { text: 'SHE\'S CRYING. LET HER.' },
+  { text: 'CRYING AHEAD. GO AROUND.' },
+  { text: 'LIGHT OFF THE ONE WHO CRIES' },
+  { text: 'DON\'T LOOK AT HER. — TEO', pair: 'TEO LOOKED — MAGS' },
+  { text: 'THE ONE WITH THE PHONE: LEAVE HER BE' },
+  { text: 'SHE\'S STILL SCROLLING. DON\'T ASK.' },
+  { text: 'QUIET PAST THE CRYING ONE' },
+  { text: 'LOU: 0   HER: 1' },
+];
+
 export const DEN_SCRIBBLES = [
   'T. WAS HERE', 'AND HERE', 'AND HERE TOO', 'LOUD = BAD', 'CANS = DINNER', 'DON\'T WAKE THE BIG ONE',
   '3 KNOCKS = FRIEND', 'THE DARK IS FINE. THE QUIET IS NOT.', 'LEAVE A JOKE', 'PIER 9 ??', 'SHOVE', 'THEY COUNT IN THREES',

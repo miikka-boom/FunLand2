@@ -25,7 +25,8 @@ import { TAU, rectsOverlap, pointInRect, lampLit, clamp } from '../util.js';
 import { Scene, boxHides } from './scene3d.js';
 import { CRANE_H, drawDoorPlans } from './models.js';
 import { tone, box, boxShadow, disc, ball, line3 } from './prims.js';
-import { Horde, drawSurvivor, drawLying, drawHunter, drawTank, drawTerror, drawRock, ghostPath, hunterLift, hunterEyes, PLAYER_LOOK, ALLY_LOOK } from './figures.js';
+import { Horde, drawSurvivor, drawLying, drawHunter, drawTank, drawTerror, drawWitch, witchEyes, drawRock, ghostPath, hunterLift, hunterEyes, PLAYER_LOOK, ALLY_LOOK } from './figures.js';
+import { WITCH } from '../game/witch.js';
 import { drawFloors, drawChalk, drawLoot, drawStash, drawLootBright } from './loot-render.js';
 import { drawCanopies, drawFeatureDecor, drawFeaturesBright } from './features-render.js';
 import { drawLoreDecor, drawPosters, roofText, drawLoreBright } from './lore-render.js';
@@ -737,8 +738,10 @@ export class Renderer {
         if (seen > 0.3) sh.push(z.x, z.y, z.r);
       } else {
         if (z.type === 'hunter' && z.mode === 'pin') continue; // drawn with the survivor it's on
-        if (z.type === 'terror' ? seen < 0.05 : b < 0.032) continue;
-        this._mover(T_SPECIAL, z, z.x, z.y, z.r, b);
+        // A Witch on her feet is never lost in the dark: the pale gown shows.
+        const up = z.type === 'witch' && !z.passive && seen > 0.05;
+        if (z.type === 'terror' ? seen < 0.05 : b < 0.032 && !up) continue;
+        this._mover(T_SPECIAL, z, z.x, z.y, z.r, up ? Math.max(b, 0.42 * seen) : b);
         if (seen > 0.3 && z.type !== 'terror') sh.push(z.x, z.y, z.r * (z.type === 'tank' ? 1.15 : 1));
       }
       // You could see it from above, but something stands between it and the camera.
@@ -837,6 +840,7 @@ export class Renderer {
         case T_SPECIAL:
           if (o.type === 'hunter') drawHunter(R, o, it.b);
           else if (o.type === 'tank') drawTank(R, o, it.b);
+          else if (o.type === 'witch') drawWitch(R, o, it.b);
           else if (o.type === 'terror') {
             ctx.globalAlpha = Math.min(1, o._vis * 1.2);
             drawTerror(R, o);
@@ -1064,6 +1068,7 @@ export class Renderer {
     }
 
     this.drawSpecialTells(ctx, game, vr);
+    this.drawWitchTells(ctx, game, vr);
     this.drawAllyTells(ctx, game, vr);
 
     ctx.globalCompositeOperation = 'lighter';
@@ -1251,6 +1256,92 @@ export class Renderer {
       ctx.stroke();
     }
     R.reset();
+  }
+
+  /**
+   * The Witch, over the darkness: the cold pool of her phone (in her hands, or
+   * where she dropped it), the edge of her space as you come near it, how much
+   * of her patience is gone, and her eyes once she has heard you.
+   */
+  drawWitchTells(ctx, game, vr) {
+    const list = game.witches;
+    if (!list || !list.length) return;
+    const p = game.player;
+    const t = game.time;
+    const R = this.R;
+    const v = R.v;
+    for (const w of list) {
+      if (!pointInRect(w.seat.x, w.seat.y, vr, 260) && !(w.alive && pointInRect(w.x, w.y, vr, 60))) continue;
+      const night = game.settings.night;
+      if (w.glow > 0.01) {
+        const k = w.glow / WITCH.glow;
+        const held = !(w.phoneT > 0);
+        R.ground(0);
+        if (night) {
+          ctx.fillStyle = `rgba(150,185,255,${0.11 * k})`;
+          ctx.beginPath();
+          circle(ctx, held ? w.seat.x : w.phoneX, held ? w.seat.y : w.phoneY, held ? 30 : 20);
+          ctx.fill();
+        }
+        if (!held) {
+          // Face up on the ground, still lit (until the screen times out).
+          ctx.translate(w.phoneX, w.phoneY);
+          ctx.rotate(w.phoneA);
+          ctx.fillStyle = '#0c0d12';
+          ctx.fillRect(-5, -2.8, 10, 5.6);
+          ctx.fillStyle = `rgba(219,233,255,${0.25 + 0.75 * k})`;
+          ctx.fillRect(-4.2, -2.1, 8.4, 4.2);
+        }
+        R.reset();
+      }
+      if (!w.alive) continue;
+      if (w.mode === 'sit') {
+        const d = Math.hypot(p.x - w.x, p.y - w.y);
+        // Her space: a faint dashed line as you come near; the part of her patience that's gone, solid and hot.
+        const near = 1 - clamp((d - WITCH.far * 1.12) / (WITCH.far * 0.9), 0, 1);
+        const a = Math.max(near * 0.5, w.anger > 0.02 ? 0.55 : 0);
+        if (a > 0.02 && p.alive) {
+          R.ground(v.flat ? 0 : 1);
+          ctx.setLineDash([7, 9]);
+          ctx.lineDashOffset = t * 6;
+          ctx.strokeStyle = `rgba(205,191,230,${a * 0.6})`;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          circle(ctx, w.x, w.y, WITCH.far);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          if (w.anger > 0.01) {
+            const hot = Math.min(1, w.anger);
+            ctx.strokeStyle = `rgba(255,${Math.round(160 - 100 * hot)},${Math.round(120 - 80 * hot)},${0.55 + 0.4 * hot})`;
+            ctx.lineWidth = 3 + (hot > 0.7 ? Math.sin(t * 26) : 0);
+            ctx.beginPath();
+            ctx.arc(w.x, w.y, WITCH.far, -Math.PI / 2, -Math.PI / 2 + hot * TAU);
+            ctx.stroke();
+          }
+          R.reset();
+        }
+      }
+      // Her eyes: embers once she has heard you, burning when she is up.
+      const heat = w.mode === 'sit' ? clamp((w.look - 0.25) / 0.5, 0, 1) : 1;
+      if (heat <= 0.02 || !v.onScreen(w.x, w.y, 40, 60)) continue;
+      if (game.settings.los && !game.world.segmentClear(p.x, p.y, w.x, w.y)) continue; // not through walls
+      witchEyes(w, t, eyes);
+      const ex = v.px(eyes.x, eyes.y);
+      const ey = v.py(eyes.x, eyes.y, v.flat ? 0 : eyes.z);
+      ctx.fillStyle = `rgba(255,70,50,${0.2 * heat})`;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 7 * v.scale, 0, TAU);
+      ctx.fill();
+      const fd = Math.cos(w.face) * v.gx + Math.sin(w.face) * v.gy;
+      if (fd > -0.2 || v.flat) {
+        ctx.fillStyle = `rgba(255,96,70,${0.5 + 0.45 * heat})`;
+        ctx.beginPath();
+        ctx.arc(ex - 2.4, ey, 1.5, 0, TAU);
+        ctx.moveTo(ex + 3.9, ey);
+        ctx.arc(ex + 2.4, ey, 1.5, 0, TAU);
+        ctx.fill();
+      }
+    }
   }
 
   /** Telegraphs drawn over the darkness: you must be able to read them in time. */

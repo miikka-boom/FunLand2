@@ -78,6 +78,7 @@ export function addBen(map, seed, opts = {}) {
   for (const p of map.posters || []) busy.push({ x: p.x + p.w / 2, y: p.y + p.h / 2, r: 46 });
   if (map.holdout) busy.push({ x: map.holdout.x, y: map.holdout.y, r: 200 });
   if (map.breach) busy.push({ x: map.breach.x, y: map.breach.y, r: 240 });
+  for (const w of map.witches || []) busy.push({ x: w.x, y: w.y, r: 240 }); // he keeps well clear of her too
   const clearOf = (x, y, pad = 0) => busy.every((b) => Math.hypot(b.x - x, b.y - y) >= b.r + pad);
   const inSafe = (x, y, pad = 30) => pointInRect(x, y, map.startRoom.outer, pad) || pointInRect(x, y, map.endRoom.outer, pad);
   const inSealed = (x, y) => (map.sealed || []).some((s) => pointInRect(x, y, s.interior, 16));

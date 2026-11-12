@@ -44,6 +44,20 @@ function beam(face, dx, dy, d, half, range) {
 }
 
 /**
+ * How squarely your flashlight is on the point, 0..1 (0 by day, out of the
+ * beam, or with something that blocks sight in between).
+ */
+export function flashlightOn(game, x, y) {
+  const p = game.player;
+  if (!game.settings.night || !p.alive) return 0;
+  const dx = x - p.x;
+  const dy = y - p.y;
+  const d = Math.hypot(dx, dy);
+  const c = Math.max(0.85 * beam(p.facing, dx, dy, d, 0.56, 440), beam(p.facing, dx, dy, d, 0.3, 500));
+  return c > 0.02 && game.world.segmentClear(p.x, p.y, x, y) ? c : 0;
+}
+
+/**
  * How lit the point is: `see` (0..1) is how visible something there is,
  * `burn` (0..1) how hard the light is on it (flashlights, fire, burning fuel;
  * lamps and muzzle flashes only show it). Mirrors the lighting renderer.
@@ -69,8 +83,8 @@ export function lightAt(game, x, y) {
     const dy = y - p.y;
     const d = Math.hypot(dx, dy);
     if (d < 115) add(0.08 + 0.42 * (1 - d / 115), 0); // the all-round glow: only a hint of it
-    const c = Math.max(0.85 * beam(p.facing, dx, dy, d, 0.56, 440), beam(p.facing, dx, dy, d, 0.3, 500));
-    if (c > 0.02 && W.segmentClear(p.x, p.y, x, y)) add(c, c);
+    const c = flashlightOn(game, x, y);
+    if (c > 0) add(c, c);
   }
   const a = game.ally;
   if (a && a.alive && !a.down) {
@@ -94,6 +108,12 @@ export function lightAt(game, x, y) {
   for (const g of map.glows || []) {
     const d = Math.hypot(x - g.x, y - g.y);
     if (d < g.r) add((1 - d / g.r) * g.k * 1.2, 0);
+  }
+  // A Witch's phone: enough to see by.
+  for (const w of game.witches || []) {
+    if (w.glow <= 0.01) continue;
+    const d = Math.hypot(x - w.seat.x, y - w.seat.y);
+    if (d < w.glowR) add((1 - d / w.glowR) * w.glow * 1.2, 0);
   }
   if (game.events) {
     for (const b of game.events.burns) {

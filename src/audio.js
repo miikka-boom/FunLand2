@@ -672,6 +672,116 @@ export class Audio {
     this._noise({ dur: 0.8, type: 'bandpass', freq: 2200, sweepTo: 300, q: 1.5, gain: 0.16, out });
   }
 
+  // --- witch -------------------------------------------------------------------------
+
+  /** A slow wobble on an oscillator's pitch (the tremble in a voice). */
+  _vibrato(o, rate, depth, at, dur) {
+    if (!o) return;
+    const c = this.ctx;
+    const lfo = c.createOscillator();
+    const lg = c.createGain();
+    lfo.frequency.value = rate;
+    lg.gain.value = depth;
+    lfo.connect(lg);
+    lg.connect(o.frequency);
+    const t0 = c.currentTime + at;
+    lfo.start(t0);
+    lfo.stop(t0 + dur + 0.1);
+  }
+
+  /** A sob: a few short breaths of voice, each a little lower, and the breath in after. */
+  witchSob(x, y) {
+    if (!this._ok('wsob', 0.5)) return;
+    const s = this._spatial(x, y, 820);
+    if (s.gain < 0.02) return;
+    const out = this._out(s.pan, s.gain * 0.85);
+    const n = 2 + ((Math.random() * 3) | 0);
+    const base = 520 + Math.random() * 120;
+    let at = 0;
+    for (let i = 0; i < n; i++) {
+      const f = base * (1 - i * 0.07) * (0.97 + Math.random() * 0.06);
+      const dur = i === n - 1 ? 0.34 + Math.random() * 0.2 : 0.12 + Math.random() * 0.07;
+      const o = this._tone({ type: 'triangle', f0: f, f1: f * 0.86, dur, gain: 0.11, attack: 0.03, at, out, filter: { type: 'bandpass', freq: 950, q: 2.2 } });
+      this._vibrato(o, 7 + Math.random() * 3, f * 0.035, at, dur);
+      this._noise({ dur: dur * 0.9, type: 'bandpass', freq: 1700, q: 1.4, gain: 0.035, attack: 0.02, at, out });
+      at += dur + 0.05 + Math.random() * 0.06;
+    }
+    this._noise({ dur: 0.3, type: 'bandpass', freq: 900, sweepTo: 2300, q: 2.5, gain: 0.03, attack: 0.18, at: at + 0.08, out });
+  }
+
+  /** One note of the tune she hums (semitones above A4): a small breathy voice, a shade flat. */
+  witchNote(x, y, semi) {
+    if (!this._ok('wnote', 0.2)) return;
+    const s = this._spatial(x, y, 760);
+    if (s.gain < 0.02) return;
+    const out = this._out(s.pan, s.gain * 0.75);
+    const f = 440 * Math.pow(2, (semi - 0.18) / 12);
+    const o = this._tone({ f0: f * 0.985, f1: f, dur: 0.56, gain: 0.085, attack: 0.09, out });
+    this._vibrato(o, 5.2, f * 0.012, 0.15, 0.5);
+    this._tone({ type: 'triangle', f0: f * 2, dur: 0.4, gain: 0.012, attack: 0.1, out });
+    this._noise({ dur: 0.5, type: 'bandpass', freq: f * 2, q: 9, gain: 0.012, attack: 0.1, out });
+  }
+
+  /** She has stopped crying and started listening: a rattle low in the throat, rising with k (0..1). */
+  witchGrowl(x, y, k) {
+    if (!this._ok('wgrowl', 0.3)) return;
+    const s = this._spatial(x, y, 760);
+    if (s.gain < 0.02) return;
+    const out = this._out(s.pan, s.gain * (0.5 + 0.5 * k));
+    const f = 95 + k * 70;
+    const dur = 0.5 - 0.15 * k;
+    const o = this._tone({ type: 'sawtooth', f0: f, f1: f * 1.18, dur, gain: 0.2, attack: 0.06, out, filter: { type: 'bandpass', freq: 520 + k * 500, q: 3 } });
+    this._vibrato(o, 26 + k * 14, f * 0.22, 0, dur);
+    this._noise({ dur: dur * 0.9, type: 'bandpass', freq: 1500 + k * 900, q: 1.5, gain: 0.05 + 0.06 * k, attack: 0.05, out });
+  }
+
+  /** She is up: a scream that climbs, breaks and comes down, and a cold drop under it. */
+  witchScream(x, y, size = 1) {
+    if (!this._ok('wscream', 0.4)) return;
+    const c = this.ctx;
+    const s = this._spatial(x, y, 1500);
+    const out = this._out(s.pan * 0.7, (0.4 + s.gain * 0.6) * Math.min(1, size + 0.2));
+    const dur = 1.25 * size;
+    const t0 = c.currentTime;
+    for (const [mul, g, fq] of [[1, 0.2, 1800], [1.012, 0.12, 2500], [2.01, 0.05, 3400]]) {
+      const o = this._tone({ type: 'sawtooth', f0: 620 * mul, dur, gain: g, attack: 0.03, out, filter: { type: 'bandpass', freq: fq, q: 2.2 } });
+      o.frequency.cancelScheduledValues(t0);
+      o.frequency.setValueAtTime(620 * mul, t0);
+      o.frequency.exponentialRampToValueAtTime(1750 * mul, t0 + dur * 0.22);
+      o.frequency.setValueAtTime(1500 * mul, t0 + dur * 0.3);
+      o.frequency.exponentialRampToValueAtTime(1900 * mul, t0 + dur * 0.5);
+      o.frequency.exponentialRampToValueAtTime(780 * mul, t0 + dur);
+      this._vibrato(o, 11, 60 * mul, dur * 0.3, dur * 0.7);
+    }
+    this._noise({ dur: dur * 0.95, type: 'bandpass', freq: 2800, sweepTo: 1500, q: 1.2, gain: 0.13, attack: 0.05, out });
+    if (size >= 1) {
+      this._tone({ type: 'sawtooth', f0: 58, dur: 2.4, gain: 0.2, attack: 0.3, filter: { freq: 240 } });
+      this._tone({ type: 'sawtooth', f0: 61.5, dur: 2.4, gain: 0.2, attack: 0.3, filter: { freq: 240 } });
+    }
+  }
+
+  /** Her nails: a fast rip (the first one lands like a blow). */
+  witchSlash(first) {
+    if (!this._ok('wslash', 0.08)) return;
+    this._noise({ dur: 0.12, type: 'bandpass', freq: 3200, sweepTo: 900, q: 1.6, gain: 0.5 });
+    this._noise({ dur: 0.09, type: 'highpass', freq: 4200, q: 0.8, gain: 0.2, at: 0.02 });
+    if (first) {
+      this._noise({ dur: 0.18, type: 'lowpass', freq: 500, gain: 0.8 });
+      this._tone({ f0: 120, f1: 42, dur: 0.22, gain: 0.6 });
+    }
+  }
+
+  /** A wail that falls all the way down, and one last small sob. */
+  witchDie(x, y) {
+    if (!this._ok('wdie', 0.2)) return;
+    const s = this._spatial(x, y, 1200);
+    const out = this._out(s.pan, 0.4 + s.gain * 0.6);
+    const o = this._tone({ type: 'sawtooth', f0: 1300, f1: 180, dur: 1.3, gain: 0.16, attack: 0.02, out, filter: { type: 'bandpass', freq: 1300, q: 2 } });
+    this._vibrato(o, 9, 40, 0, 1.3);
+    this._noise({ dur: 1.1, type: 'bandpass', freq: 2000, sweepTo: 400, q: 1.5, gain: 0.12, out });
+    this._tone({ type: 'triangle', f0: 430, f1: 330, dur: 0.4, gain: 0.07, attack: 0.05, at: 1.25, out, filter: { type: 'bandpass', freq: 900, q: 2 } });
+  }
+
   /** Your pulse: two soft thumps, not placed in the world. k 0..1 = how close it is. */
   heartbeat(k) {
     if (!this._ok('heart', 0.3)) return;
