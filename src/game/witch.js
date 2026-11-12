@@ -452,16 +452,20 @@ export function seatWitchNear(game) {
   const p = game.player;
   const W = game.world;
   const map = W.map;
-  for (const dist of [330, 380, 290, 440]) {
-    for (let k = 0; k < 24; k++) {
-      const a = p.facing + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.262;
-      const x = p.x + Math.cos(a) * dist;
-      const y = p.y + Math.sin(a) * dist;
-      if (!W.isFree(x, y, 26) || W.sealedAt(x, y) || !Number.isFinite(W.flow.pathDist(x, y))) continue;
-      if (pointInRect(x, y, map.startRoom.outer, 40) || pointInRect(x, y, map.endRoom.outer, 40)) continue;
-      const w = spawnWitch(game, { x, y, face: a + Math.PI + rand(-1, 1) });
-      game.announce('A WITCH SITS NEARBY', '#cdbfe6', 1.8, 'small');
-      return w;
+  // Somewhere you can walk straight up to, if there is such a place; anywhere you can reach, if not.
+  for (const straight of [true, false]) {
+    for (const dist of [330, 380, 290, 440]) {
+      for (let k = 0; k < 24; k++) {
+        const a = p.facing + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.262;
+        const x = p.x + Math.cos(a) * dist;
+        const y = p.y + Math.sin(a) * dist;
+        if (!W.isFree(x, y, 26) || W.sealedAt(x, y) || !Number.isFinite(W.flow.pathDist(x, y))) continue;
+        if (pointInRect(x, y, map.startRoom.outer, 40) || pointInRect(x, y, map.endRoom.outer, 40)) continue;
+        if (straight && !W.segmentClear(p.x, p.y, x, y, W.moveBlockers)) continue;
+        const w = spawnWitch(game, { x, y, face: a + Math.PI + rand(-1, 1) });
+        game.announce('A WITCH SITS NEARBY', '#cdbfe6', 1.8, 'small');
+        return w;
+      }
     }
   }
   game.announce('No room for a Witch here', '#ffd27a', 1.8, 'small');
