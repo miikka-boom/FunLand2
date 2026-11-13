@@ -73,6 +73,8 @@ export class Witch {
     this.vy = 0;
     this.r = WITCH.r;
     this.hp = Math.round(WITCH.hp * hpMul);
+    // Caught sitting, a hit counts this many times over (scaled with her health, so one blast is one blast at any setting).
+    this.crown = WITCH.crown * hpMul;
     this.maxHp = this.hp;
     this.alive = true;
     this.state = 'chase'; // never one of the idle pack (a shot nearby doesn't "alert" her)
@@ -141,12 +143,12 @@ export class Witch {
       // Caught sitting, from arm's length: this hit, and whatever lands with it, counts many times over.
       if (Math.hypot(who.x - this.x, who.y - this.y) <= WITCH.crownRange) {
         this.crownT = game.time + WITCH.crownWindow;
-        this.hp -= dmg * (WITCH.crown - 1);
+        this.hp -= dmg * (this.crown - 1);
       }
       startle(game, this, who);
       return;
     }
-    if (game.time <= this.crownT) this.hp -= dmg * (WITCH.crown - 1);
+    if (game.time <= this.crownT) this.hp -= dmg * (this.crown - 1);
     // A shove as she comes in: she stumbles (once in a while; otherwise she shrugs it off).
     if (stagger >= 0.5 && (this.mode === 'charge' || this.mode === 'attack')) {
       if (this.stumbleCd <= 0) {

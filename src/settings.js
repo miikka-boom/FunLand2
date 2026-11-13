@@ -109,8 +109,8 @@ export const DEFAULTS = Object.freeze({
   tankSpeed: 1.0, // 1.0 = 182 u/s, just under your run speed: kite it, don't stop
   nightTerror: false, // a stalker you only see in light: the flashlight is your weapon
   witch: true, // one sits crying somewhere near the way: leave her be
-  witchPatience: 1.0, // how long she bears you in her space or your light on her
-  witchHealth: 1.0,
+  witchPatience: 0.5, // how long she bears you in her space or your light on her (x1 = the base times in witch.js)
+  witchHealth: 3.0, // x the base 900 HP
 
   // --- AI teammate --------------------------------------------------------
   ally: false, // a bot survivor that fights alongside you (off: solo is the baseline)

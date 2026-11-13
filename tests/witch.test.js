@@ -38,7 +38,8 @@ const frame = (aim = null, fire = false, events = []) => ({ source: 'mouse', mov
 
 /** A run with nobody on the map but her (and you). */
 function make(over = {}) {
-  const settings = { ...DEFAULTS, playtestPrompt: false, wanderers: 0, ...over };
+  // The mechanics are tested at the base values (x1); the shipped defaults have their own test.
+  const settings = { ...DEFAULTS, playtestPrompt: false, wanderers: 0, witchPatience: 1, witchHealth: 1, ...over };
   const game = new Game(settings, audio, () => {});
   game.setViewport(844, 390);
   game.director.update = () => {};
@@ -704,4 +705,26 @@ test('the tuning panel can seat one on demand: a little way off, outside her spa
     assert.equal(w.mode, 'sit');
     assert.ok(w.anger < 0.25, 'she is not bothered by where she was put');
   }
+});
+
+test('out of the box she is three times as tough and has half the patience', () => {
+  assert.equal(DEFAULTS.witchHealth, 3);
+  assert.equal(DEFAULTS.witchPatience, 0.5);
+  const items = SCHEMA.flatMap((g) => g.items);
+  for (const [k, v] of [['witchHealth', 3], ['witchPatience', 0.5]]) {
+    const it = items.find((i) => i.key === k);
+    assert.ok(it.min <= v && it.max >= v, `${k} within its slider`);
+  }
+  const game = make({ witchPatience: DEFAULTS.witchPatience, witchHealth: DEFAULTS.witchHealth });
+  assert.equal(game.witches[0].hp, WITCH.hp * 3);
+  // Half the patience: she is up in about half the time.
+  const base = stand(make(), 100, 'away', 12);
+  const short = stand(make({ witchPatience: DEFAULTS.witchPatience }), 100, 'away', 12);
+  assert.ok(short < base * 0.6 && short > base * 0.4, `${short.toFixed(2)} s against ${base.toFixed(2)} s`);
+  // The point-blank shotgun still ends it where she sits.
+  const w = game.witches[0];
+  const s = spotAt(game, w, 70);
+  put(game, s, s.a + Math.PI);
+  shootHer(game, SHOTGUN);
+  assert.equal(w.alive, false, `left with ${Math.round(w.hp)} HP`);
 });

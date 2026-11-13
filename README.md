@@ -590,11 +590,12 @@ and no dependencies.
     patience runs out; back off and look away and it opens again. Any damage
     at all (a stray bullet, a blast, a shove) ends it at once: she is up
     with a scream and after you, half again as fast as you can run, with
-    900 HP. The first swipe takes 45, the rest 18 each. A shove as she comes
-    in buys a moment, once. Whole, with a full magazine and a steady aim,
-    you can put her down in a straight fight; hurt, you can't. Or: a shotgun
-    blast from arm's length while she still sits ends it on the spot ("GOOD
-    NIGHT."). There is always a way round her, somebody has usually sprayed
+    2700 HP (**Witch health** ×3 by default). The first swipe takes 45, the
+    rest 18 each. A shove as she comes in buys a moment, once. Alone, you
+    won't put her down before she reaches you: it takes the teammate, a
+    lot of you, or the one clean way: a shotgun blast from arm's length
+    while she still sits ends it on the spot ("GOOD NIGHT."), at any health
+    setting. There is always a way round her, somebody has usually sprayed
     a warning on the way, and the end card says how it went.
   - The spec is in [docs/CONTROLS.md](docs/CONTROLS.md#special-infected-stress-tests-for-the-controls),
     and the tuning panel has Spawn Hunter / Spawn Tank / Spawn Night Terror /
