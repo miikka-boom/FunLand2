@@ -78,6 +78,8 @@ const up = () => {
 canvas.addEventListener('pointerup', up);
 canvas.addEventListener('pointercancel', up);
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+// Some phones only allow sound from the end of a touch.
+for (const type of ['pointerup', 'touchend', 'click']) document.addEventListener(type, () => sfx.unlock(), { passive: true });
 
 function key(el, name) {
   const act = () => {
@@ -144,11 +146,22 @@ window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
   if (e.key === '`' || e.key === '§') dev.toggle();
   else if (e.key === 'Escape' && dev.open) dev.toggle();
-  else if (e.key === ' ' || e.key === 'Enter') {
-    if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
+  else if (e.key === ' ' || e.key === 'g' || e.key === 'G') {
+    if (e.key === ' ' && document.activeElement && document.activeElement.tagName === 'BUTTON') return;
     e.preventDefault();
     sfx.unlock();
     block.press('go');
+  } else if (e.key === 'Enter') {
+    if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
+    e.preventDefault();
+    sfx.unlock();
+    block.tapCursor();
+  } else if (e.key.startsWith('Arrow')) {
+    e.preventDefault();
+    block.moveCursor(e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0, e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0);
+  } else if (e.key === 'z' || e.key === 'Z') {
+    sfx.unlock();
+    block.tap(140, 70);
   } else if (e.key === 'b' || e.key === 'B') {
     sfx.unlock();
     block.press('book');

@@ -300,7 +300,7 @@ export class Dev {
       `<h3>The save</h3><textarea aria-label="Save data" spellcheck="false"></textarea>` +
       `<div class="toy-dev-row">${btn('Copy save', 'copy')}${btn('Load save', 'load')}` +
       `<button type="button" class="toy-dev-danger" data-do="reset" data-arg="${this.resetAsk ? 'sure' : ''}">${this.resetAsk ? 'Yes, start a new block' : 'New block'}</button></div>` +
-      `<p>Keys: Space go out, B the Book, M sound, \` this drawer.</p>`;
+      `<p>Keys: arrows and Enter tap a room, Space go out, Z bonk, B the Book, M sound, \` this drawer.</p>`;
     this.resetAsk = false;
   }
 }

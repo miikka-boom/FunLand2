@@ -15,6 +15,7 @@ const GROUND = 66;
 const RUNNER_X = 34;
 const SPEED = 62; // street pixels per second
 const MEET = 2600; // when the zombie reaches the runner
+const FOLLOW = MEET + 450; // when a stray comes running up from behind
 const END = 3900; // when the result comes up
 
 
@@ -122,8 +123,9 @@ export class Outing {
       }
     }
     // The stray.
-    if (this.res.follower && !this.followed && this.t >= MEET + 600) {
+    if (this.res.follower && !this.followed && this.t >= FOLLOW) {
       this.followed = true;
+      this.followT = this.t;
       b.sfx.play('follow');
       this.float('!', 14, GROUND - 22, COL.gold);
     }
@@ -136,6 +138,7 @@ export class Outing {
     this.found = this.res.cans;
     this.zState = this.zState === 'coming' ? 'gone' : this.zState;
     this.followed = !!this.res.follower;
+    if (this.followed && this.followT == null) this.followT = -9999;
     this.result = 1;
     this.block.sfx.play(this.res.outcome);
   }
@@ -211,10 +214,10 @@ export class Outing {
     if (this.res.follower) {
       const rarity = KIND_BY_ID[b.game.person(this.res.follower.id).kind].rarity;
       const down = Math.floor(t / 130) % 2 === 0;
-      if (this.followed) lcd.draw(bank.stray(rarity, { down, face: 'happy' }), 10, GROUND - 16);
-      else {
-        const x = Math.round(10 + ((MEET + 600 - t) / 1000) * SPEED);
-        if (x < LCD_W) lcd.draw(bank.stray(rarity, { face: Math.floor(t / 300) % 5 === 0 ? 'blink' : 'plain' }), x, GROUND - 16);
+      if (this.followed) {
+        // Running to catch up, then keeping a few steps behind.
+        const k = this.result ? 1 : Math.min(1, (t - (this.followT ?? t)) / 500);
+        lcd.draw(bank.stray(rarity, { down: this.result ? false : down, face: 'happy' }), Math.round(-16 + 26 * k), GROUND - 16);
       }
     }
     // The zombie.

@@ -316,7 +316,7 @@ export class Block {
         else {
           a.target = null;
           a.pause = 1200 + this.rnd() * 4200;
-          if (this.rnd() < 0.25) this.hop(a, 42);
+          this.habit(a);
         }
         continue;
       }
@@ -332,6 +332,63 @@ export class Block {
     if (a.y < 0) return;
     a.vy = -v;
     a.y = -0.01;
+  }
+
+  /** Everybody has a little habit: what they do when they stop walking. For show only. */
+  habit(a) {
+    const p = this.game.person(a.id);
+    if (!p || a.stage < SOMEBODY) return;
+    const r = this.rnd();
+    switch (p.quirk) {
+      case 'pacer': // never still for long
+        a.pause *= 0.35;
+        break;
+      case 'dancer': // a hop, and another
+        if (r < 0.7) {
+          this.hop(a, 46);
+          a.face = 'happy';
+          a.faceUntil = this.time + 900;
+          a.pause = 520;
+          a.target = a.x + (this.rnd() < 0.5 ? -2 : 2);
+          a.target = Math.max(-2, Math.min(11, a.target));
+        }
+        break;
+      case 'gazer': // stands and looks, a long while
+        a.pause *= 2.2;
+        a.dir = this.rnd() < 0.5 ? 1 : -1;
+        break;
+      case 'hummer': // a little tune
+        if (r < 0.6) {
+          const box = roomBox(a.room);
+          this.parts.push({ sprite: this.bank.art('BITS', 'note'), x: box.x + Math.round(a.x) + 12, y: box.y + box.h - 14, vx: 5, vy: -11, g: 0, age: 0, life: 900 });
+        }
+        break;
+      case 'napper': // a yawn
+        if (r < 0.5) {
+          a.face = 'sleep';
+          a.faceUntil = this.time + 1300;
+          a.pause += 1300;
+        }
+        break;
+      default: // 'stretcher': up on the toes
+        if (r < 0.5) this.hop(a, 30);
+        break;
+    }
+  }
+
+  /** Move the keyboard's cursor (dx, dy in rooms); it shows as corners on a room. */
+  moveCursor(dx, dy) {
+    const cur = this.cursor ?? this.game.s.rooms.findIndex((r) => r.open);
+    const c = Math.max(0, Math.min(COLS - 1, (cur % COLS) + dx));
+    const r = Math.max(0, Math.min(ROWS - 1, Math.floor(cur / COLS) + dy));
+    this.cursor = r * COLS + c;
+  }
+
+  /** Tap whatever the keyboard's cursor is on. */
+  tapCursor() {
+    if (this.cursor == null) this.moveCursor(0, 0);
+    const b = roomBox(this.cursor);
+    this.tap(b.x + b.w / 2, b.y + b.h / 2);
   }
 
   // --------------------------------------------------------------- zombies
@@ -1029,6 +1086,7 @@ export class Block {
     a.dir = 1;
     await this.wipe(false);
     // Home: the cans go into the counter, the hearts into the bar.
+    this.say(res.hurt ? SAY.cameBackHurt(p.name, res.cans) : SAY.cameBack(p.name, res.cans), { instant: true, ms: 6000 });
     this.sfx.play('pop');
     this.hop(a, 50);
     a.face = res.hurt ? 'ouch' : 'happy';
@@ -1050,7 +1108,7 @@ export class Block {
     this.cansShown = g.s.cans - 0;
     await this.hearts(i, a, res.hearts);
     this.busy.delete(i);
-    let text = res.hurt ? SAY.cameBackHurt(p.name, res.cans) : SAY.cameBack(p.name, res.cans);
+    let text = null;
     if (res.follower) {
       this.sfx.play('follow');
       if (res.follower.room >= 0) {
@@ -1072,7 +1130,7 @@ export class Block {
       }
     }
     this.lock--;
-    this.say(text, { colour: res.follower ? COL.gold : COL.cream, ms: 4500 });
+    if (text) this.say(text, { colour: COL.gold, ms: 4500 });
     if (res.ready) this.sfx.play('ready');
     this.save();
   }
@@ -1250,6 +1308,7 @@ export class Block {
     });
     this.drawHeartBar(lcd, a, box);
     if (this.sel && this.sel.room === i) this.drawCorners(lcd, box, COL.white);
+    else if (this.cursor === i) this.drawCorners(lcd, box, COL.gold);
   }
 
   drawClosed(lcd, i, box) {
@@ -1274,6 +1333,8 @@ export class Block {
       lcd.rect(tx - 3, y + 6, tw + 6, 9, COL.ink);
       lcd.rect(tx - 2, y + 7, tw + 4, 7, this.ask.poor ? COL.rose : pulse ? COL.gold : COL.cream);
       lcd.text(label, tx, y + 8, COL.ink);
+    } else if (this.cursor === i) {
+      this.drawCorners(lcd, box, COL.gold);
     } else if (can.ok && (this.game.s.door || this.game.freeRoom() < 0) && Math.floor(this.time / 600) % 2 === 0) {
       // A room that could be opened right now beckons.
       const plus = this.bank.art('BITS', 'plus');

@@ -881,6 +881,7 @@ export const BITS = {
   dust: ['.W.', 'WWW', '.W.'],
   crumb: ['u'],
   zed: ['GG.', '.G.', 'GGG'],
+  note: ['.kk', '.k.', 'kk.', 'kk.'],
   arrow: ['yyyyy', 'kyyyk', '.kyk.', '..k..'],
   plus: ['.w.', 'www', '.w.'],
   bonk: ['y...y', '.y.y.', '..w..', '.y.y.', 'y...y'],
