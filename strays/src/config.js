@@ -48,12 +48,12 @@ export const KINDS = [
   { id: 'firefighter', name: 'FIREFIGHTER', rarity: 'rare', says: 'EVERYBODY OUT? GOOD.' },
   { id: 'dj', name: 'DJ', rarity: 'rare', says: 'ONE MORE SONG.' },
   { id: 'clown', name: 'CLOWN', rarity: 'rare', says: 'HONK.' },
-  { id: 'wrestler', name: 'WRESTLER', rarity: 'rare', says: 'I FIGHT FOR THE BLOCK!' },
+  { id: 'wrestler', name: 'WRESTLER', rarity: 'rare', says: 'FOR THE BLOCK!' },
   { id: 'scientist', name: 'SCIENTIST', rarity: 'rare', says: 'I HAVE A THEORY.' },
   { id: 'magician', name: 'MAGICIAN', rarity: 'rare', says: 'PICK A CAN. ANY CAN.' },
   { id: 'astronaut', name: 'ASTRONAUT', rarity: 'epic', says: 'I LANDED A BIT LATE.' },
   { id: 'mascot', name: 'MASCOT', rarity: 'epic', says: 'THE ZIP IS STUCK.' },
-  { id: 'knight', name: 'KNIGHT', rarity: 'epic', says: 'THE MUSEUM WAS CLOSED.' },
+  { id: 'knight', name: 'KNIGHT', rarity: 'epic', says: 'MUSEUM WAS SHUT.' },
   { id: 'zed', name: 'NICE ZOMBIE', rarity: 'secret', says: 'HUG?' },
 ];
 export const KIND_BY_ID = Object.fromEntries(KINDS.map((k) => [k.id, k]));

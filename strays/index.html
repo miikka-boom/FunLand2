@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#f4c531">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Strays">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../icon-180.png">
+  <title>Strays</title>
+  <link rel="stylesheet" href="strays.css">
+  <script>
+    (function () {
+      var d = document.documentElement;
+      // Phones have no console: surface the first error on screen.
+      function show(msg) {
+        var el = document.getElementById('boot-error');
+        if (!el || el.dataset.shown) return;
+        el.dataset.shown = '1';
+        el.textContent = msg;
+        el.style.display = 'block';
+      }
+      window.addEventListener('error', function (e) { show('Error: ' + (e.message || e) + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+      window.addEventListener('unhandledrejection', function (e) { show('Error: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)); });
+      setTimeout(function () {
+        if (!d.classList.contains('booted')) {
+          show(location.protocol === 'file:'
+            ? 'Strays did not start: browsers block ES modules on file://. Serve the folder instead, e.g. "python3 -m http.server", or use the GitHub Pages URL.'
+            : 'Strays did not start. Try a hard refresh.');
+        }
+      }, 4000);
+    })();
+  </script>
+</head>
+<body>
+  <main id="toy" aria-label="Strays, a pocket shelter">
+    <div class="toy-side">
+      <div class="toy-brand" aria-hidden="true"><b>STRAYS</b><i>POCKET SHELTER</i></div>
+      <button id="key-book" class="toy-key toy-key-book" type="button" aria-label="The Book: everybody you have met">
+        <span class="toy-cap"><span class="toy-glyph toy-glyph-book"></span></span>
+        <span class="toy-label">BOOK</span>
+      </button>
+      <div class="toy-grille" aria-hidden="true"></div>
+      <button id="key-sound" class="toy-switch" type="button" aria-pressed="true" aria-label="Sound">
+        <span class="toy-switch-track"><span class="toy-switch-knob"></span></span>
+        <span class="toy-label">SOUND</span>
+      </button>
+    </div>
+    <div class="toy-bezel">
+      <canvas id="lcd" width="152" height="84" role="img" aria-label="The block: twelve rooms and whoever lives in them"></canvas>
+      <div class="toy-glass" aria-hidden="true"></div>
+    </div>
+    <div class="toy-side">
+      <div class="toy-lamp-row" aria-hidden="true"><span id="lamp" class="toy-lamp"></span><span class="toy-label">WANTS YOU</span></div>
+      <button id="key-go" class="toy-key" type="button" aria-label="Go out: send somebody to find cans">
+        <span class="toy-cap"><span class="toy-glyph toy-glyph-go"></span></span>
+        <span class="toy-label">GO OUT</span>
+      </button>
+      <button id="key-test" class="toy-pin" type="button" aria-label="Testing tools"><span></span>TEST</button>
+    </div>
+  </main>
+  <p id="live" class="toy-live" aria-live="polite"></p>
+  <div id="dev" class="toy-dev" aria-label="Testing tools" hidden></div>
+  <div id="rotate"><div><b>Turn your phone sideways</b><span>Strays is played in landscape.</span></div></div>
+  <div id="boot-error"></div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

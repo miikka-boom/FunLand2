@@ -1,0 +1,570 @@
+/* Strays: the toy around the little screen. Everything that happens is
+   drawn on the canvas; this is only the plastic. Every class starts with
+   "toy-" so nothing here can clash with anything else. */
+
+:root {
+  --shell: #f4c531;
+  --shell-hi: #ffe58a;
+  --shell-lo: #d9a514;
+  --shell-ink: rgba(74, 48, 0, 0.66);
+  --ink: #1b1a2b;
+  --go: #ef5a4a;
+  --go-lo: #96291f;
+  --book: #3d4a8c;
+  --book-lo: #1f2752;
+  --side: 100px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #201f33;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+body {
+  display: grid;
+  place-items: center;
+  font-family: ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui, sans-serif;
+  background: radial-gradient(120% 90% at 50% 0%, #35335a 0%, #201f33 60%, #16152a 100%);
+}
+
+/* ------------------------------------------------------------- the shell */
+
+#toy {
+  position: relative;
+  width: min(100vw, 1180px);
+  height: min(100vh, 640px);
+  height: min(100dvh, 640px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background:
+    radial-gradient(60% 80% at 22% 8%, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 60%),
+    radial-gradient(70% 90% at 85% 100%, rgba(120, 70, 0, 0.3) 0%, rgba(120, 70, 0, 0) 60%),
+    var(--shell);
+}
+
+/* On a big screen the toy lies on a table, with its own rounded corners. */
+@media (min-width: 1000px) and (min-height: 600px) {
+  #toy {
+    border-radius: 74px;
+    box-shadow:
+      0 34px 60px rgba(0, 0, 0, 0.55),
+      inset 0 -12px 0 rgba(120, 70, 0, 0.28),
+      inset 0 8px 0 rgba(255, 255, 255, 0.45);
+  }
+}
+
+.toy-bezel {
+  position: relative;
+  padding: 8px;
+  background: var(--ink);
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 3px rgba(120, 70, 0, 0.35),
+    0 3px 0 3px rgba(255, 255, 255, 0.4),
+    inset 0 2px 8px #000;
+}
+
+#lcd {
+  display: block;
+  background: var(--ink);
+  border-radius: 3px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  touch-action: none;
+  cursor: pointer;
+}
+
+.toy-glass {
+  position: absolute;
+  inset: 8px;
+  border-radius: 3px;
+  pointer-events: none;
+  background: linear-gradient(118deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0.03) 22%, rgba(255, 255, 255, 0) 38%);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.5);
+}
+
+.toy-side {
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(6px, 3.2vh, 22px);
+  padding: 8px 4px;
+}
+
+.toy-label {
+  font-weight: 900;
+  font-size: clamp(8px, calc(var(--side) * 0.115), 13px);
+  letter-spacing: 0.12em;
+  color: var(--shell-ink);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+}
+
+.toy-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  transform: rotate(-4deg);
+}
+
+.toy-brand b {
+  font-size: clamp(11px, calc(var(--side) * 0.2), 30px);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.5);
+}
+
+.toy-brand i {
+  margin-top: 3px;
+  font-style: normal;
+  font-weight: 900;
+  font-size: clamp(5px, calc(var(--side) * 0.075), 9px);
+  letter-spacing: 0.16em;
+  color: #fff;
+  background: var(--ink);
+  padding: 2px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- the keys */
+
+.toy-key {
+  border: 0;
+  padding: 0;
+  background: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font: inherit;
+  touch-action: none;
+}
+
+.toy-cap {
+  --d: clamp(40px, calc(var(--side) - 30px), 88px);
+  position: relative;
+  width: var(--d);
+  height: var(--d);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 34% 28%, #ff9d8e 0%, var(--go) 52%, #c9392c 100%);
+  box-shadow:
+    0 6px 0 var(--go-lo),
+    0 9px 12px rgba(0, 0, 0, 0.4),
+    0 0 0 5px rgba(120, 70, 0, 0.22),
+    inset 0 3px 0 rgba(255, 255, 255, 0.4);
+  transition: transform 0.05s, box-shadow 0.05s;
+}
+
+.toy-key-book .toy-cap {
+  --d: clamp(32px, calc(var(--side) - 52px), 60px);
+  background: radial-gradient(circle at 34% 28%, #7f8ed8 0%, var(--book) 55%, #2a3570 100%);
+  box-shadow:
+    0 5px 0 var(--book-lo),
+    0 8px 10px rgba(0, 0, 0, 0.4),
+    0 0 0 4px rgba(120, 70, 0, 0.22),
+    inset 0 3px 0 rgba(255, 255, 255, 0.35);
+}
+
+.toy-key:active .toy-cap,
+.toy-key.is-down .toy-cap {
+  transform: translateY(5px);
+  box-shadow:
+    0 1px 0 var(--go-lo),
+    0 2px 4px rgba(0, 0, 0, 0.4),
+    0 0 0 5px rgba(120, 70, 0, 0.22),
+    inset 0 3px 0 rgba(255, 255, 255, 0.25);
+}
+
+.toy-key-book:active .toy-cap,
+.toy-key-book.is-down .toy-cap {
+  transform: translateY(4px);
+  box-shadow:
+    0 1px 0 var(--book-lo),
+    0 2px 4px rgba(0, 0, 0, 0.4),
+    0 0 0 4px rgba(120, 70, 0, 0.22),
+    inset 0 3px 0 rgba(255, 255, 255, 0.25);
+}
+
+.toy-key:focus-visible .toy-cap,
+.toy-switch:focus-visible .toy-switch-track,
+.toy-pin:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+/* The picture on each key: a door with an arrow out, and a book. */
+.toy-glyph {
+  display: block;
+  position: relative;
+}
+
+.toy-glyph-go {
+  width: 44%;
+  height: 44%;
+  background: #fff;
+  clip-path: polygon(0 30%, 52% 30%, 52% 0, 100% 50%, 52% 100%, 52% 70%, 0 70%);
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.25));
+}
+
+.toy-glyph-book {
+  width: 50%;
+  height: 40%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #fff 0 46%, rgba(255, 255, 255, 0) 46% 54%, #fff 54% 100%);
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.25));
+}
+
+/* "Press me": the key pulses when going out is the next thing to do. */
+@keyframes toy-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  50% {
+    filter: brightness(1.25);
+    transform: scale(1.07);
+  }
+}
+
+.toy-key.is-hint .toy-cap {
+  animation: toy-pulse 0.9s ease-in-out infinite;
+}
+
+.toy-key.is-hint:active .toy-cap {
+  animation: none;
+}
+
+/* ------------------------------------------------------ the small fittings */
+
+.toy-lamp-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.toy-lamp {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #6b2a22;
+  box-shadow:
+    0 0 0 3px rgba(120, 70, 0, 0.3),
+    inset 0 2px 2px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes toy-blink {
+  0%,
+  55% {
+    background: #ff5a44;
+    box-shadow:
+      0 0 0 3px rgba(120, 70, 0, 0.3),
+      0 0 12px 3px rgba(255, 90, 60, 0.9);
+  }
+  56%,
+  100% {
+    background: #6b2a22;
+    box-shadow:
+      0 0 0 3px rgba(120, 70, 0, 0.3),
+      inset 0 2px 2px rgba(0, 0, 0, 0.4);
+  }
+}
+
+.toy-lamp.is-on {
+  animation: toy-blink 1.1s steps(1) infinite;
+}
+
+.toy-grille {
+  width: clamp(26px, calc(var(--side) * 0.42), 46px);
+  aspect-ratio: 5 / 3;
+  background-image: radial-gradient(circle, rgba(74, 48, 0, 0.7) 0 38%, rgba(74, 48, 0, 0) 42%);
+  background-size: 20% 33.4%;
+}
+
+.toy-switch {
+  border: 0;
+  padding: 0;
+  background: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.toy-switch-track {
+  width: 34px;
+  height: 14px;
+  border-radius: 7px;
+  background: rgba(74, 48, 0, 0.75);
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.5);
+  position: relative;
+}
+
+.toy-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 10px;
+  border-radius: 5px;
+  background: #ded6c6;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+  transition: left 0.1s;
+}
+
+.toy-switch[aria-pressed='true'] .toy-switch-knob {
+  left: 18px;
+  background: #fff;
+}
+
+.toy-pin {
+  border: 0;
+  background: none;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-weight: 900;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  color: rgba(74, 48, 0, 0.55);
+  cursor: pointer;
+}
+
+.toy-pin span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(40, 24, 0, 0.8);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* Narrow sides (small phones): only what is needed. */
+.toy-narrow .toy-brand i,
+.toy-narrow .toy-lamp-row .toy-label {
+  display: none;
+}
+
+.toy-narrow .toy-pin {
+  padding: 6px 2px;
+  font-size: 7px;
+}
+
+/* Short screens: fewer trimmings, so the two keys keep their room. */
+@media (max-height: 420px) {
+  .toy-grille {
+    display: none;
+  }
+  .toy-side {
+    gap: clamp(5px, 2.6vh, 14px);
+  }
+}
+
+@media (max-height: 340px) {
+  .toy-brand i,
+  .toy-lamp-row .toy-label {
+    display: none;
+  }
+}
+
+.toy-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------ the testing drawer */
+
+.toy-dev {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(360px, 92vw);
+  z-index: 50;
+  overflow-y: auto;
+  padding: 12px 14px calc(14px + env(safe-area-inset-bottom));
+  background: #f6f1e4;
+  color: #26233a;
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+  touch-action: pan-y;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.toy-dev[hidden] {
+  display: none;
+}
+
+.toy-dev h2 {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+
+.toy-dev h3 {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b6580;
+}
+
+.toy-dev p {
+  margin: 4px 0;
+  color: #55506b;
+  line-height: 1.35;
+}
+
+.toy-dev-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.toy-dev button,
+.toy-dev select {
+  font: inherit;
+  font-weight: 700;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 2px solid #26233a;
+  background: #fff;
+  color: #26233a;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.toy-dev button:active {
+  background: #f4c531;
+}
+
+.toy-dev button.is-set {
+  background: #26233a;
+  color: #fff;
+}
+
+.toy-dev button.toy-dev-close {
+  float: right;
+  border-radius: 50%;
+  width: 36px;
+  padding: 0;
+}
+
+.toy-dev button.toy-dev-danger {
+  border-color: #b4372c;
+  color: #b4372c;
+}
+
+.toy-dev label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  margin: 8px 0;
+  font-weight: 700;
+}
+
+.toy-dev label input[type='range'] {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.toy-dev label output {
+  font-variant-numeric: tabular-nums;
+  color: #6b6580;
+}
+
+.toy-dev textarea {
+  width: 100%;
+  height: 70px;
+  font: 11px/1.3 ui-monospace, Menlo, monospace;
+  border: 2px solid #26233a;
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.toy-dev-note {
+  min-height: 1.4em;
+  font-weight: 700;
+  color: #2c7a4b;
+}
+
+/* -------------------------------------------------------- phones held up */
+
+#rotate {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: var(--shell);
+  color: var(--ink);
+  place-items: center;
+  text-align: center;
+  padding: 24px;
+}
+
+#rotate b {
+  display: block;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+#rotate span {
+  display: block;
+  margin-top: 6px;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+@media (orientation: portrait) and (max-width: 700px) {
+  #rotate {
+    display: grid;
+  }
+}
+
+#boot-error {
+  display: none;
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 100;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #b4372c;
+  color: #fff;
+  font: 700 13px/1.35 system-ui, sans-serif;
+}

@@ -1,0 +1,24 @@
+{
+  "name": "FunLand2 · Strays (metagame prototype)",
+  "short_name": "Strays",
+  "description": "A pocket shelter: strays follow your people home, you feed and hug them until they show who they are, and the block fills up room by room",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#f4c531",
+  "theme_color": "#f4c531",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "../icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
