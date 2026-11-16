@@ -7,6 +7,7 @@ build step and no dependencies.
 |---|---|---|
 | 0: HORDE | [`/`](index.html) | Twin-stick touch controls for zombie horde survival, in 3D |
 | 1: WOBBLE WAR | [`battle/`](battle/) | A real-time card battler with funny, satisfying 2D physics units and a fair free-to-play meta game |
+| Strays | [`strays/`](strays) | A tamagotchi-like pocket shelter: hooded strays follow your people home, you feed and hug them until they show who they are (18 random kinds, 4 rarities), and a 4×3 block of rooms lights up one by one. One screen, one number, one button |
 | Long Haul | [`haul/`](haul) | A simple metagame that crosses The Walking Dead: No Man's Land with Clash Royale: three go out, everyone still standing carries a crate home (stars = picks from nine crates), survivors are cards, radios call new people on a timer, and the road leads to Pier 9 |
 | Thrill Hill | [`thrill/`](thrill) | A Clash-Royale-inspired metagame: two static chests, a theme-park base, randomly generated survivors, a squad of three, three-crown raids |
 | Last Stop | [`outpost/`](outpost) | A simple base builder on an isometric town: one survivor goes out each night; build homes (someone new moves in), upgrade them (they grow), decorate, clear the lot next door |
@@ -630,9 +631,43 @@ and no dependencies.
     The chip shows your best time (or furthest run) today. **New map** turns
     it off. The run timer says "daily" while it's on.
 
+## Strays: a pocket shelter
+
+[`strays/`](strays) is the newest metagame prototype, written from scratch: it
+shares no code, art or systems with the others. The brief was "another zombie
+base metagame; the previous ones were too complex and not satisfying enough; a
+tamagotchi-like feel; you collect random survivors to your grid-based base".
+So it is a toy: a yellow pocket handheld with a 152×84 pixel screen and two
+buttons. Trips out are simulated (a few seconds of street).
+
+- **The base is a grid of rooms, and the base is the people.** Twelve rooms,
+  four across, three up. Nothing to build or upgrade: a room gets its
+  wallpaper and its one piece of furniture from whoever lives in it.
+- **Everybody arrives as a hooded stray.** Who is under the hood (one of
+  eighteen kinds: a cook, a clown, an astronaut, a nice zombie...) is settled
+  when they turn up, but you find out by looking after them: a meal and a hug
+  fill the heart bar under their room, and the hood comes off.
+- **One wish at a time.** Hungry, wants a hug, hurt, ready to grow: a bubble
+  over their head, and you tap it. Slide a finger across the rooms to feed a
+  whole row.
+- **GO OUT** sends one somebody for cans. They rest afterwards; sometimes a
+  stray follows them home and waits at the door for a room.
+- **Cans** are the only number: they feed people and open rooms.
+- Everything runs on the clock while the toy is closed. Zombies gather at the
+  back fence to be bonked. Nobody dies, nobody leaves, nobody is turned away.
+- Twelve somebodies is a full house; twelve heroes is the end.
+- The TEST pinhole (or the `` ` `` key) opens the testing drawer: jump time,
+  pick the next stray's rarity or kind, force a trip's outcome, skip ahead,
+  sliders. `npm run strays:balance` plays the first two weeks for three kinds
+  of player.
+
+Open `/strays/` (on Pages: `https://miikka-boom.github.io/FunLand2/strays/`).
+The rulebook, the numbers, the pacing, what was left out on purpose and the
+code map are in [docs/STRAYS.md](docs/STRAYS.md).
+
 ## Long Haul: No Man's Land × Clash Royale
 
-[`haul/`](haul) is the newest metagame prototype, written from scratch: it
+[`haul/`](haul) is a metagame prototype, written from scratch: it
 shares no code or systems with the others. The brief was "a simple and
 satisfying combination of The Walking Dead: No Man's Land and Clash Royale".
 Runs are simulated; the people and places are borrowed from We Left Ben (the
@@ -806,8 +841,8 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
 
 - **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` (HORDE) once
   this is on the default branch (the Pages workflow only deploys from there).
-  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/haul/`
-  (Long Haul), `/thrill/` (Thrill Hill), `/outpost/` (Last Stop), `/hope/`
+  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/strays/`
+  (Strays), `/haul/` (Long Haul), `/thrill/` (Thrill Hill), `/outpost/` (Last Stop), `/hope/`
   (Hope Street), `/evac/` (Road to Evac), `/safehouse/` (the Safehouse) and
   `/camp/` (the v1 camp).
 - **Locally:** `npm start` (or `python3 -m http.server 8080`), then open
@@ -846,6 +881,7 @@ src/render/*-render.js     what is painted flat (ground, graffiti, posters, chal
 src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
+strays/                    Strays metagame prototype: a tamagotchi-like pocket shelter (separate page; map in docs/STRAYS.md)
 haul/                      Long Haul metagame prototype: No Man's Land × Clash Royale (separate page; map in docs/LONG-HAUL.md)
 thrill/                    Thrill Hill metagame prototype (separate page; map in docs/THRILL-HILL.md)
 outpost/                   Last Stop, the simple isometric base builder (separate page; map in docs/LAST-STOP.md)
@@ -853,7 +889,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules, Long Haul's rules, art and sheets, and Strays' rules, pixel art and lettering, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.
