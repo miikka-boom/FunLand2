@@ -39,12 +39,30 @@ if (params.has('fast')) block.rate = Number(params.get('fast')) || 6;
 
 const toy = document.getElementById('toy');
 function layout() {
-  const r = toy.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
   const dpr = window.devicePixelRatio || 1;
-  const minSide = r.width < 720 ? 56 : 84;
   const bezel = 16;
-  const css = lcd.fit(r.width - 2 * minSide - bezel, r.height - 20 - bezel, dpr);
-  const side = (r.width - (LCD_W * css + bezel)) / 2;
+  let side;
+  if (vw >= 1000 && vh >= 600) {
+    // A big screen: the toy lies on the table, wrapped snugly around its screen.
+    side = 132;
+    const lip = 52;
+    const css = lcd.fit(Math.min(vw - 80, 1340) - 2 * side - bezel, Math.min(vh - 80, 760) - 2 * lip - bezel, dpr);
+    toy.style.width = `${Math.round(LCD_W * css + bezel + 2 * side)}px`;
+    toy.style.height = `${Math.round(LCD_H * css + bezel + 2 * lip)}px`;
+  } else {
+    // A phone: the toy is the whole screen.
+    toy.style.width = '';
+    toy.style.height = '';
+    const r = toy.getBoundingClientRect();
+    const minSide = r.width < 720 ? 56 : 84;
+    const css = lcd.fit(r.width - 2 * minSide - bezel, r.height - 20 - bezel, dpr);
+    side = (r.width - (LCD_W * css + bezel)) / 2;
+    // Held upright on something tall (a tablet): don't stretch into a slab.
+    const snug = LCD_H * css + bezel + 96;
+    if (vh > snug + 60) toy.style.height = `${Math.round(snug)}px`;
+  }
   toy.style.setProperty('--side', `${Math.round(side)}px`);
   toy.classList.toggle('toy-narrow', side < 84);
 }
