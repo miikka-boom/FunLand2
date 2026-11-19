@@ -7,6 +7,8 @@ import { Input } from './input/input.js';
 import { Game } from './game/game.js';
 import { Renderer } from './render/renderer.js';
 import { Audio } from './audio.js';
+import { MusicPlayer } from './music-player.js';
+import { MusicDirector, readGame, cueLevel, cueFade } from './game/music-director.js';
 import { SettingsPanel } from './settings-panel.js';
 import { clamp } from './util.js';
 import { ReportCard, buildReport, saveReport, recordDaily, dailyBest, todayKey, dateLabel, perfSummary, osName, fmtTime, LEVEL_NAMES } from './playtest.js';
@@ -20,6 +22,12 @@ const probe = document.getElementById('safe-probe');
 
 const audio = new Audio();
 audio.setVolume(settings.volume);
+// Music from files (assets/music); the synth Tank theme in audio.js steps aside for it.
+const music = new MusicPlayer(audio);
+music.setVolume(settings.musicVolume);
+audio.fileMusic = true;
+const musicDirector = new MusicDirector();
+let musicPreloadT = 0;
 const haptics = (ms) => {
   try {
     if (navigator.vibrate) navigator.vibrate(ms);
@@ -142,7 +150,11 @@ const panel = new SettingsPanel(panelEl, settings, {
   onClose: () => resume(),
   onChange: (key) => {
     const all = key === '*'; // presets / reset all
-    if (key === 'volume' || all) audio.setVolume(settings.volume);
+    if (key === 'volume' || all) {
+      audio.setVolume(settings.volume);
+      music.refresh();
+    }
+    if (key === 'musicVolume' || all) music.setVolume(settings.musicVolume);
     // Level / world switches regenerate the map (only if something really changed).
     if (game.worldSig !== worldSignature(settings)) newRun();
     if (key === 'level' || key === 'daily' || all) {
@@ -259,6 +271,8 @@ syncDaily();
 titleEl.addEventListener('click', () => {
   if (state === 'title') start();
 });
+// The first touch on the title (even on the level picker) wakes the sound, so the title music plays.
+titleEl.addEventListener('pointerdown', () => audio.unlock());
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     pause();
@@ -349,6 +363,17 @@ function frame(now) {
 
   audio.listener.x = game.player.x;
   audio.listener.y = game.player.y;
+  if (audio.ctx) {
+    const ms = readGame(game, state);
+    const out = musicDirector.update(dt, ms);
+    music.play(out.cue, cueFade(out.cue), cueLevel(out.cue));
+    for (const id of out.stingers) music.stinger(id);
+    musicPreloadT -= dt;
+    if (musicPreloadT <= 0) {
+      musicPreloadT = 1;
+      music.preload(musicDirector.preload(ms));
+    }
+  }
   ui.hintAlpha = state === 'title' ? 1 : clamp(1 - (game.stats.time - 10) / 8, 0, 1);
   ui.forceSticks = state === 'title' && isTouch;
   ui.title = state === 'title';
@@ -357,5 +382,5 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // Handy for tuning sessions and automated smoke tests.
-window.__p0 = { game, settings, input, renderer, start, pause, resume, newRun, card, frames };
+window.__p0 = { game, settings, input, renderer, start, pause, resume, newRun, card, frames, music, musicDirector };
 document.documentElement.classList.add('booted');

@@ -124,6 +124,7 @@ export const DEFAULTS = Object.freeze({
   threatIndicators: true,
   haptics: 'light', // 'off' | 'light' | 'full'
   volume: 0.8,
+  musicVolume: 0.7, // the music on top of the master volume (0 = no music)
 
   // --- Playtest -----------------------------------------------------------
   playtestPrompt: true, // after each run: rate it in three taps, copy / share the report
@@ -311,6 +312,7 @@ export const SCHEMA = [
         ],
       },
       { key: 'volume', label: 'Volume', type: 'range', min: 0, max: 1, step: 0.05, fmt: pct },
+      { key: 'musicVolume', label: 'Music', type: 'range', min: 0, max: 1, step: 0.05, fmt: pct },
     ],
   },
   {

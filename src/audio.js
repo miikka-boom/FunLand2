@@ -790,9 +790,11 @@ export class Audio {
     this._tone({ f0: 55, f1: 40, dur: 0.12, gain: g * 0.7, attack: 0.008, at: 0.17, filter: { freq: 160 } });
   }
 
-  /** Tank theme: a driving low ostinato + kick for as long as it lives. */
+  /** Tank theme: a driving low ostinato + kick for as long as it lives. Silent when the game plays
+   *  music from files (fileMusic: src/music-player.js has its own Tank cue). */
   tankMusic(on) {
     if (!this.ctx) return;
+    if (on && this.fileMusic) return;
     if (on) {
       if (this.music) return;
       const g = this.ctx.createGain();
