@@ -215,6 +215,20 @@ test('the writing knows about her: a warning on the way, nothing written or camp
 
 // --- In the game -------------------------------------------------------------------------------
 
+test('however far from the start she sits, the director never clears her away (default Graveyard and Junkyard runs)', () => {
+  for (const level of ['graveyard', 'junkyard']) {
+    const game = new Game({ ...DEFAULTS, playtestPrompt: false, level }, audio, () => {});
+    game.setViewport(844, 390);
+    const w = game.witches[0];
+    assert.ok(w, `${level}: a Witch`);
+    const far = Math.hypot(w.x - game.player.x, w.y - game.player.y);
+    assert.ok(far > 2800, `${level}: this seed seats her far from the start (${Math.round(far)} u), which is the case under test`);
+    step(game, 3);
+    assert.ok(w.alive && game.zombies.includes(w), `${level}: still sitting there, ${Math.round(far)} u away`);
+    assert.equal(w.mode, 'sit');
+  }
+});
+
 test('on by default: one Witch per run, seated at the map\'s spot, and no threat while she is left alone', () => {
   assert.equal(DEFAULTS.witch, true);
   assert.ok(WORLD_KEYS.includes('witch'), 'switching her on or off restarts the run (she is part of the map)');

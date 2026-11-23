@@ -212,8 +212,31 @@ export function addBen(map, seed, opts = {}) {
       map.decor.push({ type: 'benfort', x, y, a, slept: 17 + Math.floor(rnd() * 19) });
       const rab = at(-12, 8); // sitting on the bed
       map.decor.push({ type: 'rabbit', x: rab.x, y: rab.y, a: a + 0.5, nest: true });
-      const lt = at(34, -32);
-      crayon(lt.x, lt.y, BEN_NEST.light, 9, (rnd() - 0.5) * 0.1);
+      // His note, on open ground in front of the fort: the first spot where the whole line fits,
+      // smaller if it must be; in an alley too narrow for it, written along the alley instead.
+      const tilt = (rnd() - 0.5) * 0.1;
+      const lineFits = (x, y, w, rot) => [-0.5, -0.25, 0, 0.25, 0.5].every((f) => world.isFree(x + Math.cos(rot) * f * w, y + Math.sin(rot) * f * w, 5));
+      const alley = Math.abs(oy) > Math.abs(ox) ? -Math.PI / 2 : 0; // reads up the alley, toward the fort
+      let note = null;
+      for (const [rot, spots] of [
+        [tilt, [[34, -32], [34, 32], [34, 0], [52, 0], [52, -32], [52, 32], [72, 0], [94, 0], [118, 0]]],
+        [alley + tilt, [[70, 0], [90, 0], [110, 0], [70, 22], [70, -22]]],
+      ]) {
+        for (const size of [9, 7.5]) {
+          const lw = BEN_NEST.light.length * size * 0.56;
+          for (const [along, side] of spots) {
+            const q = at(along, side);
+            if (lineFits(q.x, q.y, lw, rot)) {
+              note = { x: q.x, y: q.y, size, rot };
+              break;
+            }
+          }
+          if (note) break;
+        }
+        if (note) break;
+      }
+      if (!note) note = { ...at(34, 0), size: 6.5, rot: tilt };
+      crayon(note.x, note.y, BEN_NEST.light, note.size, note.rot);
       // In chalk on the ground nearby: his map of this place, and the squad (plus one more).
       for (const [kind, cw, chh] of [['map', 190, 124], ['drawing', 210, 100]]) {
         const spot = chalkSpot(world, map, busy, B.chalk, x, y, cw, chh, rnd);

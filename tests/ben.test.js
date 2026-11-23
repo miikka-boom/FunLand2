@@ -51,6 +51,22 @@ for (const [name, gen] of LEVELS) {
     }
   });
 
+  test(`${name}: his note by the bed ("${BEN_NEST.light}") lies whole on open ground, never under a wall`, () => {
+    for (const seed of SEEDS) {
+      for (const opts of [{}, { all: true }]) {
+        const map = build(gen, seed, opts);
+        const W = new World({ ...map, obstacles: map.obstacles.filter((o) => !o.opens && !o.boards), sealed: [] }, { strict: true });
+        const d = of(map, 'bentext').find((t) => t.text === BEN_NEST.light);
+        const tag = `seed ${seed} ${JSON.stringify(opts)}`;
+        assert.ok(d, `${tag}: the note by his bed`);
+        const w = d.text.length * d.size * 0.56;
+        for (const f of [-0.5, -0.25, 0, 0.25, 0.5]) {
+          assert.ok(W.isFree(d.x + Math.cos(d.a) * f * w, d.y + Math.sin(d.a) * f * w, 2), `${tag}: the note runs into something at ${f} of its width`);
+        }
+      }
+    }
+  });
+
   test(`${name}: every map has his signs (first room, his bed, the eyes, a vent, somewhere impossible)`, () => {
     for (const seed of SEEDS) {
       for (const opts of [{}, { lore: false }, { all: true }]) {

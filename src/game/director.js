@@ -271,7 +271,9 @@ export class Director {
         }
         if (d < 1600) idleNear++;
       } else {
-        if (d > 2800 && !inView && z.type !== 'tank') {
+        // The Tank and the Witch are part of the run, however far off (she sits far from the
+        // start on some maps, and her state is 'chase' only so a shot nearby doesn't alert her).
+        if (d > 2800 && !inView && z.type !== 'tank' && z.type !== 'witch') {
           z.alive = false;
           continue;
         }
