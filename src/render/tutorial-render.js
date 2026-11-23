@@ -335,7 +335,7 @@ function coach(ctx, game, input, view, L, touch) {
   }
   if (kind === 'kite') {
     // Both thumbs at once: the left one walks you away from them while the right one shoots at them.
-    const toward = screenDir(game, nearestOn(game, T.group) || T.L.packSpawn, { x: -1, y: 0 });
+    const toward = screenDir(game, nearestOn(game, T.group) || T.L.packSpawns[0][0], { x: -1, y: 0 });
     moveGhost(ctx, L.fixedMove, { x: -toward.x, y: -toward.y }, R, moveA, 'LEFT THUMB: BACK OFF', t, S);
     aimGhost(ctx, L.fixedAim, toward, R, aimA, true, 'RIGHT THUMB: FIRE', t, S);
     return;

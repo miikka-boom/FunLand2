@@ -1,32 +1,33 @@
 // The tutorial: Day 1, the squad's practice run. Hand-built and the same on
 // every device and every run (the seed is only kept for the report). Three
-// streets joined by short connectors, each connector shut by a steel gate in
+// short streets joined by connectors, each connector shut by a steel gate in
 // a wall that runs east-west, so the camera (looking north) sees the bars
 // face on. A lesson opens the gate to the next street (src/game/tutorial.js
-// runs them; src/render/tutorial-render.js draws the coaching).
+// runs them; src/render/tutorial-render.js draws the coaching). It's kept
+// short on purpose: about four thousand units of walking, start to end.
 //
 //   north
-//   ┌───────────────────────────────────────────────────────────────┐
-//   │ ███████ yard ████████████ alley █[SAFE ROOM]┊C3 ███████████████ │
-//   │ █  S3 → → → → → → → → → → alarm car → → horde ─┴─ G3 ███████████ │
-//   │ █ G2 ████████████ pack alley ████ door ██ alley ████████████████ │
-//   │ █  S2 ← ← stash nook ← ← ← both thumbs ← ← ← shove ─┬─ ███████████ │
-//   │ ████████ nook ███████ [PEN] ████████████████████ G1 ███████████ │
-//   │ [START] → S1 → move ring → pen → → → → → → → → → ─┘ ███████████ │
-//   │ ███████████████████████████████████████████████████████████████ │
-//   └───────────────────────────────────────────────────────────────┘
+//   ┌──────────────────────────────────────┐
+//   │ ████ alley ██ [SAFE ROOM] ◄┐ C3 ████ │
+//   │ █ S3 → → alarm car → → → → ┴ G3 ████ │
+//   │ █ G2 ████ door █████ alley █████████ │
+//   │ █ S2 ← ← ← ← shove ← ← ← ← ┬ G1 ████ │
+//   │ ███████████ [PEN] ████████ │ ███████ │
+//   │ [START] → S1 → ring → → → ─┘ ███████ │
+//   │ ████████████████████████████████████ │
+//   └──────────────────────────────────────┘
 //
 // The start room is bottom left and the safe room top right, as on the
 // Streets. Everything with a place in a lesson is in map.tutorial.
 //
-// The course is laid out on a 2048 x 1824 plan (the numbers below), then
+// The course is laid out on a 1472 x 1824 plan (the numbers below), then
 // framed with more buildings all round (FRAME) and moved over by the frame,
 // so the camera never looks past the edge of the map.
 
 import { NAV_CELL } from './world.js';
 import { ob, dice, safeRoom, border } from './gen-kit.js';
 
-const PLAN_W = 2048;
+const PLAN_W = 1472;
 const PLAN_H = 1824;
 const FRAME = { l: 384, r: 384, t: 192, b: 192 }; // half a screen and more, on every side
 export const TUT_W = PLAN_W + FRAME.l + FRAME.r;
@@ -34,26 +35,24 @@ export const TUT_H = PLAN_H + FRAME.t + FRAME.b;
 const SW = 22; // sidewalk
 
 // Streets, curb to curb (what the lamps lean over and the lines are painted on).
-const S1 = { dir: 'h', x: 394, y: 1408, w: 1484, h: 224 };
-const S2 = { dir: 'h', x: 170, y: 896, w: 1708, h: 224 };
-const S3 = { dir: 'h', x: 170, y: 384, w: 1708, h: 224 };
-const C1 = { dir: 'v', x: 1632, y: 1120, w: 224, h: 288 };
-const C2 = { dir: 'v', x: 192, y: 608, w: 224, h: 288 };
-const C3 = { dir: 'v', x: 1632, y: 42, w: 224, h: 342 };
+const C1 = { dir: 'v', x: 1056, y: 1120, w: 224, h: 288 }; // row 1 -> row 2, east end
+const C2 = { dir: 'v', x: 192, y: 608, w: 224, h: 288 }; // row 2 -> row 3, west end
+const C3 = { dir: 'v', x: 1056, y: 42, w: 224, h: 342 }; // row 3 -> the safe room, east end
+const EAST = C1.x + C1.w + SW; // where every street ends, at the east: the building line
+const S1 = { dir: 'h', x: 394, y: 1408, w: EAST - 394, h: 224 };
+const S2 = { dir: 'h', x: 170, y: 896, w: EAST - 170, h: 224 };
+const S3 = { dir: 'h', x: 170, y: 384, w: EAST - 170, h: 224 };
 
 // The safe rooms (232 x 192 outside; doors face east).
 const START_ROOM = { x: 162, y: 1424 };
-const END_ROOM = { x: 1378, y: 96 };
+const END_ROOM = { x: C3.x - SW - 232, y: 96 }; // its door opens on the stub's sidewalk
 
-// Holes in the buildings: alleys, nooks, the pen (rects you can walk in). Edges
-// line up where they can, so the buildings between them come out deep.
-const ALCOVE = { x: 624, y: 210, w: 224, h: 152 }; // a little yard off row 3 (bins, nobody in it)
-const NORTH_ALLEY = { x: 1200, y: 210, w: 96, h: 152 }; // row 3, north side
-const SOUTH_ALLEY = { x: 1472, y: 630, w: 96, h: 90 }; // row 3, south side
-const PACK_ALLEY = { x: 960, y: 720, w: 96, h: 154 }; // row 2, north side
-const SHOVE_DOOR = { x: 1328, y: 800, w: 64, h: 74 }; // row 2, north side
-const STASH_NOOK = { x: 560, y: 1142, w: 96, h: 138 }; // row 2, south side
-const PEN = { x: 864, y: 1216, w: 352, h: 170 }; // the lot behind the fence, row 1
+// Holes in the buildings: alleys, a doorway, the pen (rects you can walk in).
+// Edges line up where they can, so the buildings between them come out deep.
+const NORTH_ALLEY = { x: 640, y: 210, w: 96, h: 152 }; // row 3, north side: right behind the alarm car
+const SOUTH_ALLEY = { x: 900, y: 630, w: 96, h: 90 }; // row 3, south side
+const SHOVE_DOOR = { x: 760, y: 800, w: 64, h: 74 }; // row 2, north side: the two you shove come out of it
+const PEN = { x: 560, y: 1216, w: 352, h: 170 }; // row 1, the lot behind the fence
 
 /** Everything you can walk on: the streets with their sidewalks, the holes, the rooms. */
 const OPEN = [
@@ -65,7 +64,7 @@ const OPEN = [
   { x: C3.x - SW, y: C3.y, w: C3.w + 2 * SW, h: C3.h - SW },
   { ...START_ROOM, w: 232, h: 192 },
   { ...END_ROOM, w: 232, h: 192 },
-  ALCOVE, NORTH_ALLEY, SOUTH_ALLEY, PACK_ALLEY, SHOVE_DOOR, STASH_NOOK, PEN,
+  NORTH_ALLEY, SOUTH_ALLEY, SHOVE_DOOR, PEN,
 ];
 
 /**
@@ -74,14 +73,14 @@ const OPEN = [
  * buildings into strips).
  */
 const BUILT = [
-  { x: 0, y: 0, w: 1610, h: 362 }, // north of row 3 (the alcove, an alley, the safe room)
-  { x: 1610, y: 0, w: 268, h: 42 }, // the end of the stub to the safe room
-  { x: 1878, y: 0, w: 170, h: PLAN_H }, // the east edge
-  { x: 0, y: 362, w: 170, h: 780 }, // the west edge
-  { x: 438, y: 630, w: 1440, h: 244 }, // between rows 3 and 2
-  { x: 394, y: 1142, w: 1216, h: 244 }, // between rows 2 and 1 (the nook, the pen)
-  { x: 0, y: 1142, w: 394, h: 682 }, // around the start room
-  { x: 394, y: 1654, w: 1484, h: 170 }, // south of row 1
+  { x: 0, y: 0, w: C3.x - SW, h: S3.y - SW }, // north of row 3 (an alley, the safe room)
+  { x: C3.x - SW, y: 0, w: C3.w + 2 * SW, h: C3.y }, // the end of the stub to the safe room
+  { x: EAST, y: 0, w: PLAN_W - EAST, h: PLAN_H }, // the east edge
+  { x: 0, y: S3.y - SW, w: S3.x, h: S2.y + S2.h + SW - (S3.y - SW) }, // the west edge
+  { x: C2.x + C2.w + SW, y: S3.y + S3.h + SW, w: EAST - (C2.x + C2.w + SW), h: S2.y - SW - (S3.y + S3.h + SW) }, // between rows 3 and 2
+  { x: S1.x, y: S2.y + S2.h + SW, w: C1.x - SW - S1.x, h: S1.y - SW - (S2.y + S2.h + SW) }, // between rows 2 and 1 (the pen)
+  { x: 0, y: S2.y + S2.h + SW, w: S1.x, h: PLAN_H - (S2.y + S2.h + SW) }, // around the start room
+  { x: S1.x, y: S1.y + S1.h + SW, w: EAST - S1.x, h: PLAN_H - (S1.y + S1.h + SW) }, // south of row 1
   // The frame: the rest of the town, all round.
   { x: -FRAME.l, y: -FRAME.t, w: FRAME.l, h: PLAN_H + FRAME.t + FRAME.b },
   { x: PLAN_W, y: -FRAME.t, w: FRAME.r, h: PLAN_H + FRAME.t + FRAME.b },
@@ -91,15 +90,15 @@ const BUILT = [
 
 /** The ground under it all: strips of pavement between the streets (cosmetic: sidewalk + lot colour). */
 const BLOCKS = [
-  { x: 0, y: 0, w: 1632, h: 384, sides: 'br', type: 'end' },
-  { x: 1856, y: 0, w: 192, h: 384, sides: 'lb' },
-  { x: 1632, y: 0, w: 224, h: 42, sides: 'b' },
-  { x: 0, y: 608, w: 192, h: 288, sides: 'tbr' },
-  { x: 416, y: 608, w: 1632, h: 288, sides: 'tbl' },
-  { x: 0, y: 1120, w: 1632, h: 288, sides: 'tbr' },
-  { x: 1856, y: 1120, w: 192, h: 288, sides: 'tbl' },
-  { x: 0, y: 1408, w: 394, h: 224, sides: '', type: 'start' },
-  { x: 0, y: 1632, w: 2048, h: 192, sides: 't' },
+  { x: 0, y: 0, w: C3.x, h: S3.y, sides: 'br', type: 'end' },
+  { x: C3.x + C3.w, y: 0, w: PLAN_W - C3.x - C3.w, h: S3.y, sides: 'lb' },
+  { x: C3.x, y: 0, w: C3.w, h: C3.y, sides: 'b' },
+  { x: 0, y: C2.y, w: C2.x, h: C2.h, sides: 'tbr' },
+  { x: C2.x + C2.w, y: C2.y, w: PLAN_W - C2.x - C2.w, h: C2.h, sides: 'tbl' },
+  { x: 0, y: C1.y, w: C1.x, h: C1.h, sides: 'tbr' },
+  { x: C1.x + C1.w, y: C1.y, w: PLAN_W - C1.x - C1.w, h: C1.h, sides: 'tbl' },
+  { x: 0, y: S1.y, w: S1.x, h: S1.h, sides: '', type: 'start' },
+  { x: 0, y: S1.y + S1.h, w: PLAN_W, h: PLAN_H - S1.y - S1.h, sides: 't' },
   { x: -FRAME.l, y: -FRAME.t, w: FRAME.l, h: PLAN_H + FRAME.t + FRAME.b, sides: '' },
   { x: PLAN_W, y: -FRAME.t, w: FRAME.r, h: PLAN_H + FRAME.t + FRAME.b, sides: '' },
   { x: 0, y: -FRAME.t, w: PLAN_W, h: FRAME.t, sides: '' },
@@ -180,23 +179,22 @@ export const TUTORIAL_WALLS = [
   { x: 278, y: 1570, text: 'LEFT THUMB WALKS.', size: 11, color: '#f2c94c' },
   { x: 278, y: 1586, text: 'RIGHT THUMB TALKS. — LOU', size: 11, color: '#f2c94c' },
   // Row 1.
-  { x: 1040, y: 1446, text: 'LIVE TARGETS. DON\'T ASK. — LOU', size: 12, color: '#f2c94c' },
+  { x: PEN.x + PEN.w / 2, y: 1430, text: 'LIVE TARGETS. DON\'T ASK. — LOU', size: 12, color: '#f2c94c' },
   // Row 2.
-  { x: 1500, y: 1088, text: 'SHOVE FIRST. ASK NEVER.', size: 14, color: '#e8e8e0' },
-  { x: 1130, y: 1088, text: 'THEY COME IN PACKS. — MAGS', size: 12, color: '#9fd8ff' },
-  { x: 608, y: 1110, text: 'GOOD STUFF', size: 13, color: '#e8e8e0' },
-  // Row 3: the squad's oldest argument, the tip by the car, the way out.
-  { x: 440, y: 580, text: 'WHO TOOK THE LAST CAN OF PEACHES', size: 13, color: '#e8e8e0' },
-  { x: 470, y: 600, text: 'NOT ME — TEO', size: 11, color: '#9fd8ff' },
-  { x: 1230, y: 590, text: 'RED LIGHT CARS = DINNER BELLS', size: 12, color: '#ffb37a' },
-  { x: 1560, y: 414, text: 'HOLD THE LINE', size: 15, color: '#e8e8e0' },
+  { x: 1150, y: 1088, text: 'SHOVE FIRST. ASK NEVER.', size: 14, color: '#e8e8e0' },
+  { x: 640, y: 1088, text: 'THEY COME IN PACKS. — MAGS', size: 12, color: '#9fd8ff' },
+  // Row 3: the squad's oldest argument, and the tip by the car.
+  { x: 440, y: 560, text: 'WHO TOOK THE LAST CAN OF PEACHES', size: 13, color: '#e8e8e0' },
+  { x: 470, y: 580, text: 'NOT ME — TEO', size: 11, color: '#9fd8ff' },
+  { x: 520, y: 598, text: 'IT WAS TEO', size: 11, color: '#f2c94c' },
+  { x: 720, y: 590, text: 'RED LIGHT CARS = DINNER BELLS', size: 12, color: '#ffb37a' },
   // The safe room (medkits in the top corners, its name across the middle).
-  { x: 1494, y: 230, text: 'DAY 1: DONE. — ODILE', size: 11, color: '#e8e8e0' },
-  { x: 1494, y: 246, text: 'YOU\'LL DO. — LOU', size: 11, color: '#f2c94c' },
+  { x: END_ROOM.x + 116, y: 230, text: 'DAY 1: DONE. — ODILE', size: 11, color: '#e8e8e0' },
+  { x: END_ROOM.x + 116, y: 246, text: 'YOU\'LL DO. — LOU', size: 11, color: '#f2c94c' },
 ];
 
 /** Ben was with them on day 1. One line, in his crayon, under theirs. */
-export const TUTORIAL_BEN = { x: 1494, y: 262, text: 'my turn tomorrow.' };
+export const TUTORIAL_BEN = { x: END_ROOM.x + 116, y: 262, text: 'my turn tomorrow.' };
 
 /**
  * Move everything on the map by (dx, dy): from the plan into the frame. Each
@@ -227,8 +225,8 @@ function shiftMap(map, dx, dy) {
   mv(map.start);
   for (const room of [map.startRoom, map.endRoom]) for (const k of ['interior', 'door', 'outer']) mv(room[k]);
   const T = map.tutorial;
-  for (const k of ['moveRing', 'pen', 'shoveSpawn', 'packSpawn']) mv(T[k]);
-  for (const k of ['penZombies', 'alarmSpawns', 'panicSpawns', 'hordeSpawns']) for (const q of T[k]) mv(q);
+  for (const k of ['moveRing', 'pen', 'shoveSpawn']) mv(T[k]);
+  for (const k of ['penZombies', 'packSpawns', 'alarmSpawns', 'panicSpawns', 'rushSpawns']) for (const q of T[k].flat()) mv(q);
   for (const g of Object.values(T.gates)) mv(g);
 }
 
@@ -286,27 +284,19 @@ export function generateTutorial(seed = 1) {
   const g3 = gateLine(C3.x - SW, C3.x + C3.w + SW, 296);
   for (const g of [g1, g2, g3]) obstacles.push(...g.walls, g.bars);
 
-  // --- Row 3: a yard with its bins; the alarm car, parked across the north lane just past the alley it hides
-  obstacles.push(ob('dumpster', ALCOVE.x + 18, ALCOVE.y + 10, 62, 34, { color: '#2f4f3a' }));
-  obstacles.push(ob('crate', ALCOVE.x + ALCOVE.w - 52, ALCOVE.y + 12, 34, 34));
-  decor.push({ type: 'trash', x: ALCOVE.x + 112, y: ALCOVE.y + 40, s: 1.2 });
-  const car = ob('car', 1214, 446, 86, 44, { color: '#b8b8b2', alarm: true, vertical: false, front: 1 });
+  // --- Row 3: the alarm car, parked across the north lane in front of the alley it hides ----------
+  const car = ob('car', NORTH_ALLEY.x + 14, 446, 86, 44, { color: '#b8b8b2', alarm: true, vertical: false, front: 1 });
   obstacles.push(car);
-  // Two more cars for company (no alarm: one in each row, nowhere near a lesson).
-  obstacles.push(ob('car', 1180, 1580, 86, 44, { color: '#6b6b6b', vertical: false, front: -1 }));
-  obstacles.push(ob('car', 560, 912, 86, 44, { color: '#2e4a6d', vertical: false, front: 1 }));
-
-  // --- The stash, and the chalk that leads to it ---------------------------------------------------
-  const stash = { id: 1, tier: 'stash', x: STASH_NOOK.x + STASH_NOOK.w / 2, y: STASH_NOOK.y + STASH_NOOK.h - 34, loot: ['armor', 'hot'], a: 0.08 };
-  for (const [x, y] of [[880, 1036], [750, 1066]]) {
-    decor.push({ type: 'chalk', x, y, a: Math.atan2(stash.y - y, stash.x - x), sym: 'stash', s: 1 });
-  }
-  // The way to go, the first thing you see out of the door.
+  // Two more cars for company (no alarm, out of the way of every lesson).
+  obstacles.push(ob('car', 900, 1580, 86, 44, { color: '#6b6b6b', vertical: false, front: -1 }));
+  obstacles.push(ob('car', S2.x + 8, 1064, 86, 44, { color: '#2e4a6d', vertical: false, front: 1 }));
+  // The way to go: the first thing you see out of the door, and the last turn.
   decor.push({ type: 'spray', x: 520, y: 1594, text: 'THIS WAY', color: '#e8e8e0', a: 0, s: 0.9 });
+  decor.push({ type: 'spray', x: C3.x + C3.w / 2, y: 566, text: 'SAFE ROOM', color: '#7dffa1', a: -Math.PI / 2, s: 0.8 });
 
-  // --- Medkits: one in each room (safeRoom), one on each of the long fights' streets ------------------
-  pickups.push({ kind: 'medkit', x: 1180, y: 884 });
-  pickups.push({ kind: 'medkit', x: 1380, y: 618 });
+  // --- Medkits: one in each room (safeRoom), one on each street with a fight ------------------------
+  pickups.push({ kind: 'medkit', x: 1000, y: 884 });
+  pickups.push({ kind: 'medkit', x: 600, y: 618 });
 
   // --- Light: lamps along the streets (alternating sides), a glow at every gate ------------------------
   const inMouth = (l) => [C1, C2, C3].some((c) => l.x > c.x - 30 && l.x < c.x + c.w + 30 && l.y > c.y - 30 && l.y < c.y + c.h + 30);
@@ -326,13 +316,12 @@ export function generateTutorial(seed = 1) {
     glows.push({ x: g.x, y: g.y - 90, r: 170, k: 0.42 });
   }
   glows.push({ x: PEN.x + PEN.w / 2, y: PEN.y + PEN.h / 2, r: 230, k: 0.5 });
-  glows.push({ x: stash.x, y: stash.y - 30, r: 120, k: 0.35 });
 
   // --- Paint, clutter and the squad's writing --------------------------------------------------
   const markings = { dashes: [], crosswalks: [], parking: [] };
   for (const s of [S1, S2, S3]) markings.dashes.push({ x0: s.x + 60, y0: s.y + s.h / 2, x1: C1.x - 20, y1: s.y + s.h / 2 });
   for (const c of [C1, C2, C3]) markings.dashes.push({ x0: c.x + c.w / 2, y0: c.y + 20, x1: c.x + c.w / 2, y1: c.y + c.h - 20 });
-  for (let k = 0; k < 70; k++) {
+  for (let k = 0; k < 48; k++) {
     const s = D.pick([S1, S2, S3, S1, S2, S3, C1, C2, C3]);
     const x = D.r(s.x + 20, s.x + s.w - 20);
     const y = D.r(s.y + 16, s.y + s.h - 16);
@@ -371,7 +360,7 @@ export function generateTutorial(seed = 1) {
     startFacing: 0, // looking down the first street, out of the door
     startRoom,
     endRoom,
-    stashes: [stash],
+    stashes: [], // no crates to search: that comes later
     sealed: [],
     witches: [], // no Witch in the first tutorial: she comes later
     posters: [],
@@ -379,27 +368,43 @@ export function generateTutorial(seed = 1) {
     darknessBoost: -0.12, // dusk on day 1: a little lighter than the nights to come
     wanderDensity: 0,
     tutorial: {
-      moveRing: { x: 1000, y: 1490, r: 42 }, // right in front of the pen: they come to the fence to meet you
+      moveRing: { x: PEN.x + PEN.w / 2 - 40, y: 1490, r: 42 }, // right in front of the pen: they come to the fence to meet you
       pen: { ...PEN },
       penZombies,
       fence,
       gates: { g1, g2, g3 },
       shoveSpawn: { x: SHOVE_DOOR.x + SHOVE_DOOR.w / 2, y: SHOVE_DOOR.y + 30 },
-      packSpawn: { x: PACK_ALLEY.x + PACK_ALLEY.w / 2, y: PACK_ALLEY.y + 40 },
-      stash: stash.id,
+      // The crowds turn up where you can't see them (src/game/tutorial.js picks
+      // the first group with a spot out of sight). The pack comes down row 2
+      // from the far end, out of the stub before gate 2 (the corner hides it), so
+      // you see them coming across the screen; if you're too close to that, up
+      // through gate 1 behind you. The rush at the end comes up through gate 2,
+      // behind you: that one you outrun.
+      packSpawns: [
+        [
+          { x: C2.x + 58, y: 790 },
+          { x: C2.x + C2.w - 58, y: 790 },
+        ],
+        [
+          { x: C1.x + 54, y: 1560 },
+          { x: C1.x + C1.w - 54, y: 1560 },
+        ],
+      ],
       car,
       alarmSpawns: [
         { x: NORTH_ALLEY.x + NORTH_ALLEY.w / 2, y: NORTH_ALLEY.y + 36 },
         { x: SOUTH_ALLEY.x + SOUTH_ALLEY.w / 2, y: SOUTH_ALLEY.y + 60 },
       ],
       panicSpawns: [
-        { x: 1830, y: 446 },
+        { x: EAST - 50, y: 446 },
         { x: SOUTH_ALLEY.x + SOUTH_ALLEY.w / 2, y: SOUTH_ALLEY.y + 60 },
       ],
-      hordeSpawns: [
-        { x: 1830, y: 440 },
-        { x: 1830, y: 560 },
-        { x: SOUTH_ALLEY.x + SOUTH_ALLEY.w / 2, y: SOUTH_ALLEY.y + 60 },
+      rushSpawns: [
+        [
+          { x: C2.x + 60, y: 846 },
+          { x: C2.x + C2.w - 60, y: 846 },
+        ],
+        [{ x: C2.x + C2.w / 2 + 40, y: 1010 }],
       ],
     },
   };

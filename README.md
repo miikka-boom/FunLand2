@@ -287,22 +287,22 @@ and no dependencies.
 - **A tutorial for the thumbs** (**Tutorial** on the title card, first in the
   list; the first time the game opens on a phone or tablet it is picked for
   you, with a "start here" badge). Day 1, the squad's practice run: three
-  streets of Center City joined by gates, a lesson in each stretch, about
-  three minutes. One thing at a time, by doing it, with one gun all the way
-  (the final game won't have weapon changing, so the tutorial doesn't teach
-  it: the gun panel doesn't swap here):
+  short streets of Center City joined by gates, eight lessons, a couple of
+  minutes (kept short on purpose). One thing at a time, by doing it, with one
+  gun all the way (the final game won't have weapon changing, so the tutorial
+  doesn't teach it: the gun panel doesn't swap here):
   - **Move** (walk to a ring), **aim** (laser on one of six drowsers shut
     behind a fence), **fire** (past the dashed ring), then through the first
     gate.
   - **Shove**: the SMG clicks empty and two come out of a doorway; reloading
-    is held back until you've shoved three times. Then **reload** (⟳),
-    finish them, and **both thumbs**: a pack of five, and you walk back with
-    the left thumb while you shoot with the right.
-  - **Search** a supply crate (chalk arrows lead to it: armor and hot
-    rounds), then through the second gate.
+    is held back until you've shoved three times. Then **reload** (⟳) and
+    finish them off, and **both thumbs**: a pack of five comes down the
+    street at you, and you walk back with the left thumb while you shoot with
+    the right.
   - **Don't shoot the car** with the blinking red light while four come round
-    it (shoot it and the alarm brings two small waves), **hold the line**
-    against ten, and the last gate opens on the safe room.
+    it (shoot it and the alarm brings two small waves). The last gate opens,
+    and **run for it**: a crowd comes up behind you as you make for the safe
+    room.
 
   No Witch: she's too much for a first run, and comes later.
 
@@ -894,7 +894,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), the tutorial (the course: one walk, gates, no slivers; the lessons in order, what they hold back, one gun and no Witch, the second wind, the coaching on a phone; a bot that plays it to the safe room), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), the tutorial (the course: one short walk, gates, no slivers; the lessons in order, what they hold back, one gun and no Witch, crowds that turn up out of sight, the second wind, the coaching on a phone; a bot that plays it to the safe room), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

@@ -10,7 +10,9 @@
 // tutorial doesn't teach it: the gun panel stays shut). No Witch either: she
 // is too much for a first run. Nobody dies in the tutorial: at 0 HP you get a
 // second wind instead.
-// Everything the player reads is in STEPS, at the top, for editing.
+// It's short on purpose: eight lessons on three short streets, a couple of
+// minutes for a first-timer. Everything the player reads is in STEPS, at the
+// top, for editing.
 
 import { startFlee } from './witch.js';
 import { releasePin } from './specials.js';
@@ -18,7 +20,7 @@ import { DEG, wrapAngle, clamp } from '../util.js';
 
 const KEY = 'funland2.p0.tutorial.v1';
 const GATE_OPEN = 1.1; // s for the bars to slide back into the wall
-const PAUSE = 0.9; // s between a lesson done (✓) and the next prompt
+const PAUSE = 0.6; // s between a lesson done (✓) and the next prompt
 const AIM_HOLD = 0.45; // s of laser on a target that counts as "aimed"
 const RESCUE_HP = 0.55; // of max HP: the second wind
 const RESCUE_PUSH = 180; // u: what's that close gets thrown back
@@ -30,8 +32,9 @@ const ease = (f) => f * f * (3 - 2 * f);
 /**
  * The lessons. text: what the card says, per input (pad falls back to mouse);
  * coach: the gesture drawn for touch ('move' | 'aim' | 'fire' | 'tap' |
- * 'reload' | 'kite': both thumbs at once); dot: it is one of the lessons counted along the top of
- * the card. The functions get the Tutorial and the Game.
+ * 'reload' | 'kite': both thumbs at once), or a function that picks one as the
+ * lesson goes; dot: it is one of the lessons counted along the top of the
+ * card. The functions get the Tutorial and the Game.
  */
 export const STEPS = [
   {
@@ -117,26 +120,23 @@ export const STEPS = [
     id: 'reload',
     dot: true,
     title: 'RELOAD',
-    coach: 'reload',
+    // The ⟳ button pulses until the gun is loading; then the fire thumb.
+    coach: (t) => (t.reloaded ? 'fire' : 'reload'),
     text: {
-      touch: "Tap ⟳ to reload. Don't wait to run dry.",
-      mouse: "Press R to reload. Don't wait to run dry.",
-      pad: "Press X to reload. Don't wait to run dry.",
+      touch: 'Tap ⟳ to reload, then finish them off.',
+      mouse: 'Press R to reload, then finish them off.',
+      pad: 'Press X to reload, then finish them off.',
     },
-    enter: (t) => t.lock(false, true),
-    update: (t, g) => g.player.weapon.reloading || g.player.weapon.mag > 0,
-  },
-  {
-    id: 'finish',
-    title: 'FINISH THEM',
-    coach: 'fire',
-    text: {
-      touch: 'Aim at one and push past the ring.',
-      mouse: 'Click to shoot.',
-      pad: 'Right stick all the way, or RT.',
+    enter: (t) => {
+      t.reloaded = false;
+      t.lock(false, true);
     },
     count: (t) => `${t.group.length - left(t.group)}/${t.group.length}`,
-    update: (t) => t.spawned(t.group) && t.cleared(t.group),
+    update: (t, g) => {
+      const w = g.player.weapon;
+      if (w.reloading || w.mag > 0) t.reloaded = true;
+      return t.reloaded && t.spawned(t.group) && t.cleared(t.group);
+    },
   },
   {
     id: 'kite',
@@ -149,23 +149,14 @@ export const STEPS = [
       pad: 'Five of them. Back off with the left stick while you shoot with the right.',
     },
     enter: (t, g) => {
+      // Down the street at you, so you see them coming (map.tutorial.packSpawns).
+      const from = t.unseen(t.L.packSpawns);
       t.group = [];
-      t.spawn([t.L.packSpawn], 5, 1.4, t.group);
-      g.audio.horde(t.L.packSpawn.x, t.L.packSpawn.y);
+      t.spawn(from, 5, 1.4, t.group);
+      g.audio.horde(from[0].x, from[0].y);
     },
     count: (t) => `${t.group.length - left(t.group)}/5`,
     update: (t) => t.spawned(t.group) && t.cleared(t.group),
-  },
-  {
-    id: 'search',
-    dot: true,
-    title: 'SUPPLIES',
-    text: { touch: 'Follow the chalk arrows. Stand on the crate to search it.' },
-    target: (t) => {
-      const s = t.stash();
-      return s ? { x: s.x, y: s.y, label: 'CRATE' } : null;
-    },
-    update: (t) => !t.stash() || t.stash().opened,
     done: (t) => t.openGate('g2'),
   },
   {
@@ -186,34 +177,22 @@ export const STEPS = [
     },
     count: (t) => `${t.group.length - left(t.group)}/4`,
     update: (t, g) => t.spawned(t.group) && t.cleared(t.group) && !g.director.alarm,
-  },
-  {
-    id: 'horde',
-    dot: true,
-    title: 'HOLD THE LINE',
-    coach: 'tap',
-    text: {
-      touch: 'Back to a wall. Shoot, and tap to shove the ones that get on you.',
-      mouse: 'Back to a wall. Shoot, and shove (Space) the ones that get on you.',
-      pad: 'Back to a wall. Shoot, and shove (RB) the ones that get on you.',
-    },
-    enter: (t, g) => {
-      t.group = [];
-      t.spawn(t.L.hordeSpawns, 10, 3.2, t.group);
-      const s = t.L.hordeSpawns[0];
-      g.audio.horde(s.x, s.y);
-      g.stats.hordes++;
-      g.announce('HERE THEY COME!', '#ff6b5a', 2.2);
-    },
-    count: (t) => `${t.group.length - left(t.group)}/10`,
-    update: (t) => t.spawned(t.group) && t.cleared(t.group),
     done: (t) => t.openGate('g3'),
   },
   {
     id: 'saferoom',
     dot: true,
-    title: 'SAFE ROOM',
-    text: { touch: 'The gate is open. Get inside the safe room.' },
+    title: 'RUN FOR IT',
+    text: { touch: 'They heard the shooting. The last gate is open: get inside the safe room!' },
+    enter: (t, g) => {
+      // A crowd up through the last gate, behind you: no need to fight it.
+      const from = t.unseen(t.L.rushSpawns);
+      t.group = [];
+      t.spawn(from, 8, 2.4, t.group);
+      g.audio.horde(from[0].x, from[0].y);
+      g.stats.hordes++;
+      g.announce('HERE THEY COME!', '#ff6b5a', 2.2);
+    },
     target: (t, g) => {
       const er = g.world.map.endRoom.interior;
       return { x: er.x + er.w / 2, y: er.y + er.h / 2, label: 'SAFE' };
@@ -247,6 +226,7 @@ export class Tutorial {
     this.base = { hits: 0 };
     this.aimT = 0;
     this.aimed = null;
+    this.reloaded = false; // the reload lesson: the gun is loading
     this.rescues = 0;
     this.alarmed = false;
     this.finished = false; // reached the safe room (remembered on the device)
@@ -255,7 +235,7 @@ export class Tutorial {
     // The gates, shut.
     this.gates = {};
     for (const [id, G] of Object.entries(this.L.gates)) this.gates[id] = { ...G, state: 'shut', f: 0 };
-    // Three of them in the pen, waiting for the lesson that needs them.
+    // Six of them in the pen, waiting for the lesson that needs them.
     this.pen = this.L.penZombies.map((q) => game.director.spawnAt(q.x, q.y, false)).filter(Boolean);
     for (const z of this.pen) z.penned = true;
     this.next();
@@ -409,7 +389,7 @@ export class Tutorial {
 
   // --- What the lessons look at ------------------------------------------------------------
 
-  /** The nearest of the pen's three still up (the edge arrow shows the way to them until one is in view). */
+  /** The nearest of the pen's six still up (the edge arrow shows the way to them until one is in view). */
   penTarget() {
     const p = this.game.player;
     let best = null;
@@ -425,7 +405,7 @@ export class Tutorial {
     return best ? { x: best.x, y: best.y, label: 'TARGETS' } : null;
   }
 
-  /** One of the pen's three has been hit. */
+  /** One of the pen's six has been hit. */
   penHurt() {
     return this.pen.some((z) => !z.alive || z.hp < 50);
   }
@@ -449,8 +429,22 @@ export class Tutorial {
     return null;
   }
 
-  stash() {
-    return this.game.loot.stashes.find((s) => s.id === this.L.stash) || null;
+  /**
+   * Where a crowd comes from: groups of spots, best first. The spots of the
+   * first group with any you can't see (off screen, or far off round a
+   * corner); if you can see them all, the furthest one.
+   */
+  unseen(groups) {
+    const g = this.game;
+    const p = g.player;
+    const far = (q) => Math.hypot(q.x - p.x, q.y - p.y);
+    for (const group of groups) {
+      const hidden = group.filter((q) => !g.onScreen(q.x, q.y, 40) || (far(q) > 380 && !g.world.segmentClear(p.x, p.y, q.x, q.y)));
+      if (hidden.length) return hidden;
+    }
+    let best = groups[0][0];
+    for (const q of groups.flat()) if (far(q) > far(best)) best = q;
+    return [best];
   }
 
   /**
@@ -525,7 +519,7 @@ export class Tutorial {
       title: s.title,
       text: stepText(s, source),
       count: s.count && !this.over ? s.count(this, g) : null,
-      coach: this.pause > 0 || this.over ? null : s.coach || null,
+      coach: this.pause > 0 || this.over ? null : (typeof s.coach === 'function' ? s.coach(this, g) : s.coach) || null,
       done: this.pause > 0 || this.over,
       lessons: this.lessonsDone,
       of: LESSONS,

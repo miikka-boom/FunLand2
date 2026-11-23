@@ -135,8 +135,10 @@ it. Once you reach its safe room the device remembers, and the next run is
 the Streets.
 
 It's a hand-built course (`src/world/tutorial-gen.js`), the same every time:
-three streets joined by short connectors, each shut by a gate in a wall that
-runs east-west, so the camera, looking north, sees the bars face on. The
+three short streets joined by short connectors, each shut by a gate in a wall
+that runs east-west, so the camera, looking north, sees the bars face on.
+It's kept short on purpose: eight lessons, about 3,800 u of walking (a bot
+does it in about half a minute, a first-timer in a couple of minutes). The
 lessons are in `src/game/tutorial.js` (every word the player reads is in
 `STEPS`, at the top), and the coaching is drawn by
 `src/render/tutorial-render.js`.
@@ -147,20 +149,17 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
 | Aim | Right thumb inside the dashed ring, laser on a target behind the fence | 0.45 s of laser on one (or you've already hit one) |
 | Fire | Push past the ring | The six in the pen are down: gate 1 opens |
 | Shove | The SMG is empty; tap the right side (or SHOVE) | 3 shoves that land |
-| Reload | Tap ⟳ | It's reloading |
-| Finish them | Fire | Both down |
-| Both thumbs | Five from an alley: walk back with the left thumb while you shoot with the right | Down |
-| Search | Stand on the crate the chalk points at | Opened (armor + hot rounds): gate 2 opens |
-| Don't shoot the car | Four come round the alarm car | Down, and any alarm over |
-| Hold the line | Ten at once | Down: gate 3 opens |
-| Safe room | Get in | The run is won |
+| Reload | Tap ⟳, then finish off the two you shoved | Reloading, and both down |
+| Both thumbs | Five come down the street: walk back with the left thumb while you shoot with the right | Down: gate 2 opens |
+| Don't shoot the car | Four come round the alarm car | Down, and any alarm over: gate 3 opens |
+| Run for it | A crowd comes up through gate 2 behind you; make for the safe room | You're in: the run is won |
 
 - **The card** sits at the bottom, between the two sticks: what you're
   coaching is mostly ahead of you, up the screen, and the top is the HUD's.
   A title, a count where there is one ("2/3", or the gun you hold), the
   words (up to four lines; a size smaller on the smallest phones, never cut
   short), and a dot per lesson. A lesson done turns it green with a ✓ for
-  0.9 s before the next one. The words follow the device you last used:
+  0.6 s before the next one. The words follow the device you last used:
   touch ("tap ⟳"), mouse and keys ("press R") or a pad ("press X").
 - **Ghost thumbs** (touch only), on the half of the screen the gesture
   belongs to, at the resting stick positions: a thumb that lands and slides
@@ -168,7 +167,8 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
   inside the dashed ring and sweeps (aim); one that pushes past it while the
   ring lights orange (fire, "PAST THE RING: FIRE"); quick taps with ripples
   (shove, "QUICK TAP: SHOVE"); and both at once for the pack (the left thumb
-  slides away from them, the right one fires at them). Each fades while your
+  slides away from them, the right one fires at them). In the reload lesson
+  the ⟳ button pulses until the gun is loading, then the fire thumb shows. Each fades while your
   own thumb is on that stick, so it never covers the real one. Buttons to
   press (⟳, SHOVE) pulse amber, with a tapping thumb and "TAP".
 - **In the world:** a dashed green ring where to walk, brackets on the
@@ -180,8 +180,15 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
   Swapping is off all the way through: the final game won't have weapon
   changing, so the tutorial plays with one gun (the gun panel doesn't swap
   and doesn't show the ⇄). Pressing a locked button clicks.
-- **What it leaves out:** the Witch (too much for a first run), the Hunter,
-  the Tank and the Night Terror, the teammate.
+- **What it leaves out:** the Witch (too much for a first run), searching
+  crates, the Hunter, the Tank and the Night Terror, the teammate.
+- **Where the crowds come from:** a spot you can't see (off screen, or far
+  off round a corner; `Tutorial.unseen` picks), so nobody pops up in plain
+  view. The pack comes down row 2 from the far end, round the corner by gate
+  2, so you see it coming across the screen, in the band between the HUD
+  and the card (not up from under the card or the thumbs); if you're
+  already down that end, it comes up through gate 1 instead. The rush at the
+  end comes up through gate 2, behind you: you outrun it.
 - **Forgiving on purpose:** nobody dies. At 0 HP you get a second wind
   (55% HP, everything within 180 u thrown back and staggered, "CLOSE ONE!");
   the report counts them. An alarm brings two small waves (5, then 3) and
@@ -712,8 +719,9 @@ What a map gets:
   aim lesson, or only after fire? Do they tap the right side to shove, or go
   for the SHOVE button? Does anyone hold the shove tap too long and aim
   instead? Do they really use both thumbs on the pack, or stand and shoot?
-  Which lessons are slowest (the report's longest line)? Who sets off the
-  alarm, and does the next car survive in their first real run?
+  Do they run for the safe room at the end, or turn and fight? Which lessons
+  are slowest (the report's longest line)? Who sets off the alarm, and does
+  the next car survive in their first real run?
 - Can you circle-kite a mob while shooting behind you without the move stick
   drifting?
 - Does the shove come out every time you tap, and never when you meant to aim?

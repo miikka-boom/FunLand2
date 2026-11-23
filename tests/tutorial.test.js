@@ -83,9 +83,10 @@ function skipTo(game, id) {
       const G = T.L.gates[s === 'gate1' ? 'g1' : 'g2'];
       Object.assign(p, { x: G.x, y: G.y - 80 });
     } else if (s === 'shove') game.stats.shoveHits += 3;
-    else if (s === 'reload') game.update(1 / 60, idle(['reload']));
-    else if (s === 'finish' || s === 'kite' || s === 'alarm' || s === 'horde') kill(T.group.concat(T.extra));
-    else if (s === 'search') T.stash().opened = true;
+    else if (s === 'reload') {
+      game.update(1 / 60, idle(['reload']));
+      kill(T.group.concat(T.extra));
+    } else if (s === 'kite' || s === 'alarm') kill(T.group.concat(T.extra));
     run(game, 1 / 30);
   }
   assert.equal(T.step.id, id);
@@ -123,15 +124,15 @@ function walker(map, gatesOpen) {
   return { world, f };
 }
 
-test('one walk: from the start room past every lesson to the safe room, through the gates and only through them', () => {
+test('one short walk: from the start room past every lesson to the safe room, through the gates and only through them', () => {
   const map = generateTutorial(1);
   const T = map.tutorial;
   const er = map.endRoom.interior;
   const goal = { x: er.x + er.w / 2, y: er.y + er.h / 2 };
   const open = walker(map, true);
   const d = open.f.pathDist(goal.x, goal.y);
-  assert.ok(Number.isFinite(d) && d > 4500 && d < 7000, `the walk is ${Math.round(d)} u (about half a minute at a run)`);
-  const spots = { moveRing: T.moveRing, shove: T.shoveSpawn, pack: T.packSpawn, stash: map.stashes[0], ...Object.fromEntries(T.alarmSpawns.concat(T.hordeSpawns).map((q, i) => [`spawn${i}`, q])) };
+  assert.ok(Number.isFinite(d) && d > 3000 && d < 4200, `the walk is ${Math.round(d)} u (about twenty seconds at a run)`);
+  const spots = { moveRing: T.moveRing, shove: T.shoveSpawn, ...Object.fromEntries([...T.packSpawns.flat(), ...T.alarmSpawns, ...T.panicSpawns, ...T.rushSpawns.flat()].map((q, i) => [`spawn${i}`, q])) };
   for (const [name, q] of Object.entries(spots)) assert.ok(Number.isFinite(open.f.pathDist(q.x, q.y)), `${name} can be walked to`);
   // Everything a body can stand on is part of the walk, except the pen (that's the point of it).
   let pocket = 0;
@@ -145,7 +146,12 @@ test('one walk: from the start room past every lesson to the safe room, through 
   // With the gates shut you get no further than the first one.
   const shut = walker(map, false);
   assert.ok(Number.isFinite(shut.f.pathDist(T.moveRing.x, T.moveRing.y)));
-  for (const q of [T.shoveSpawn, map.stashes[0], T.alarmSpawns[0], goal]) assert.equal(shut.f.pathDist(q.x, q.y), Infinity, 'a shut gate is shut');
+  for (const q of [T.shoveSpawn, T.packSpawns[0][0], T.rushSpawns[0][0], T.alarmSpawns[0], goal]) assert.equal(shut.f.pathDist(q.x, q.y), Infinity, 'a shut gate is shut');
+  // The pack comes down row 2 from the far end (short of gate 2), or else up through gate 1; the rush comes up through gate 2.
+  const [ahead, behind] = T.packSpawns;
+  for (const q of ahead) assert.ok(q.y > T.gates.g2.y && q.y < T.gates.g1.y, 'the pack: row 2, from the far end');
+  for (const q of behind) assert.ok(q.y > T.gates.g1.y, 'or up through gate 1');
+  for (const q of T.rushSpawns.flat()) assert.ok(q.y > T.gates.g2.y && q.y < T.gates.g1.y, 'the rush comes up through gate 2');
   // Gates are bars in a wall that runs east-west (the camera sees them face on), each with a wall either side.
   for (const G of Object.values(T.gates)) {
     assert.ok(G.bars.w > G.bars.h * 5 && G.bars.navOpen && G.bars.opens && !G.bars.shot);
@@ -199,9 +205,10 @@ test('the pen: six of them behind a fence they can neither cross nor reach throu
   assert.ok(Math.hypot(T.moveRing.x - (T.pen.x + T.pen.w / 2), T.moveRing.y - fence.y) < 260, 'the ring is right in front of it');
 });
 
-test('what a first run leaves out: no Witch (and nobody writes about her), one gun, one thing not to shoot', () => {
+test('what a first run leaves out: no Witch (and nobody writes about her), one gun, nothing to search, one thing not to shoot', () => {
   const map = generateTutorial(1);
   assert.deepEqual(map.witches, []);
+  assert.deepEqual(map.stashes, [], 'searching crates comes later');
   assert.ok(!map.decor.some((d) => /CRYING|HER\b|WITCH/i.test(d.text || '')), 'no warnings about someone who is not there');
   assert.equal(map.obstacles.filter((o) => o.alarm).length, 1, 'one thing not to shoot');
   assert.ok(!STEPS.some((q) => /swap|witch/i.test(q.id + q.title + stepText(q, 'touch'))), 'no lesson about guns to swap or a Witch');
@@ -283,8 +290,9 @@ test('every lesson can be done (by hand), in order, and the safe room ends it: d
   for (const G of Object.values(T.gates)) assert.equal(G.state, 'open');
 });
 
-test('what a lesson holds back: no reload while you learn to shove, then the reload lesson', () => {
+test('what a lesson holds back: no reload while you learn to shove, then reload and finish them off', () => {
   const game = make();
+  const T = game.tutorial;
   const p = game.player;
   skipTo(game, 'shove');
   run(game, 0.1);
@@ -293,10 +301,68 @@ test('what a lesson holds back: no reload while you learn to shove, then the rel
   startReload(game, p);
   assert.equal(p.weapon.reloading, false, 'no reloading yet');
   skipTo(game, 'reload');
+  assert.equal(T.view('touch').coach, 'reload', 'the ⟳ button pulses');
+  assert.equal(T.view('touch').count, '0/2', 'the two you shoved are still up');
   game.update(1 / 60, idle(['reload']));
   assert.equal(p.weapon.reloading, true);
+  run(game, 0.1);
+  assert.equal(T.view('touch').coach, 'fire', 'then the fire thumb');
+  assert.equal(T.step.id, 'reload', 'not done while they are up');
+  for (const z of T.group) z.alive = false;
+  run(game, 0.1);
+  assert.ok(T.pause > 0, 'done');
   swapWeapon(game, p);
   assert.equal(p.wi, 0, 'and never a swap');
+});
+
+test('short: eight lessons, and the crowds turn up out of sight (the pack down the street ahead of you, the rush at the end behind you)', () => {
+  assert.equal(LESSONS, 8);
+  assert.equal(STEPS.length, 10);
+  const game = make();
+  const T = game.tutorial;
+  // Where each one turns up, and whether you could see the spot right then.
+  const born = [];
+  const spawnAt = game.director.spawnAt.bind(game.director);
+  game.director.spawnAt = (x, y, aware) => {
+    born.push({ x, y, seen: game.onScreen(x, y, 40), step: T.step.id });
+    return spawnAt(x, y, aware);
+  };
+  const at = (list) => (b) => list.some((q) => q.x === b.x && q.y === b.y);
+  // The pack: five, down row 2 from the far end, none of them popping up on screen.
+  skipTo(game, 'kite');
+  run(game, 2);
+  const pack = born.filter((b) => b.step === 'kite');
+  assert.equal(pack.length, 5);
+  assert.ok(pack.every(at(T.L.packSpawns[0])), 'from the far end of the street');
+  assert.ok(pack.every((b) => !b.seen), 'out of sight');
+  // The rush at the end: eight, from row 2, while the last gate opens.
+  skipTo(game, 'saferoom');
+  assert.ok(game.messages.some((m) => m.text === 'HERE THEY COME!'));
+  run(game, 2.5);
+  const rush = born.filter((b) => b.step === 'saferoom');
+  assert.equal(rush.length, 8);
+  assert.ok(rush.every(at(T.L.rushSpawns.flat())), 'up through gate 2');
+  assert.ok(rush.every((b) => !b.seen), 'out of sight');
+  assert.equal(T.gates.g3.state, 'open', 'the way out');
+  // Wherever you stand, they turn up where you can't see them.
+  const p = game.player;
+  const G1 = T.L.gates.g1;
+  const G2 = T.L.gates.g2;
+  const from2 = (list, spot) => {
+    Object.assign(p, spot);
+    game.camera.x = p.x;
+    game.camera.y = p.y;
+    game.syncView();
+    const out = T.unseen(list);
+    assert.ok(out.length >= 1);
+    for (const q of out) assert.ok(!game.onScreen(q.x, q.y, 40) || !game.world.segmentClear(p.x, p.y, q.x, q.y), `seen from ${Math.round(spot.x)},${Math.round(spot.y)}`);
+    return out;
+  };
+  const s2 = T.L.shoveSpawn.y + 170; // the middle of row 2
+  assert.ok(from2(T.L.packSpawns, { x: G1.x, y: s2 }).every(at(T.L.packSpawns[0])), 'by gate 1: down the street');
+  assert.ok(from2(T.L.packSpawns, { x: T.L.shoveSpawn.x, y: s2 }).every(at(T.L.packSpawns[0])), 'half way: still down the street');
+  assert.ok(from2(T.L.packSpawns, { x: G2.x + 60, y: s2 }).every(at(T.L.packSpawns[1])), 'at the far end: up through gate 1');
+  for (const spot of [{ x: G2.x, y: G2.y - 60 }, { x: G2.x + 200, y: G2.y - 300 }, { x: T.L.car.x, y: T.L.car.y + 120 }]) from2(T.L.rushSpawns, spot);
 });
 
 test('the shove lesson counts shoves that land, and the zombies come to you', () => {
@@ -411,14 +477,21 @@ test('the coaching draws on a phone at every lesson (touch, mouse, pad) without 
   const seen = new Set();
   for (const s of STEPS) {
     skipTo(game, s.id);
-    for (const src of ['touch', 'mouse', 'gamepad']) {
-      texts.length = 0;
-      bad = null;
-      drawTutorialHud(ctx, game, touchIn(src), { title: false, forceSticks: false }, L);
-      drawTutorialBright(R, game, game.viewRect(40));
-      assert.equal(bad, null, `${s.id} (${src}): ${bad}`);
-      assert.ok(texts.includes(s.title) || texts.includes(`✓ ${s.title}`), `${s.id}: the card says what it is`);
-      if (src === 'touch') for (const t of texts) seen.add(t);
+    // The reload lesson shows two things: the ⟳ button, then (loading) the fire thumb.
+    for (const loaded of s.id === 'reload' ? [false, true] : [false]) {
+      if (loaded) {
+        game.update(1 / 60, idle(['reload']));
+        run(game, 0.1);
+      }
+      for (const src of ['touch', 'mouse', 'gamepad']) {
+        texts.length = 0;
+        bad = null;
+        drawTutorialHud(ctx, game, touchIn(src), { title: false, forceSticks: false }, L);
+        drawTutorialBright(R, game, game.viewRect(40));
+        assert.equal(bad, null, `${s.id} (${src}): ${bad}`);
+        assert.ok(texts.includes(s.title) || texts.includes(`✓ ${s.title}`), `${s.id}: the card says what it is`);
+        if (src === 'touch') for (const t of texts) seen.add(t);
+      }
     }
   }
   for (const label of ['LEFT THUMB: SLIDE', 'RIGHT THUMB: AIM', 'PAST THE RING: FIRE', 'QUICK TAP: SHOVE', 'TAP', 'LEFT THUMB: BACK OFF', 'RIGHT THUMB: FIRE']) assert.ok(seen.has(label), `a ghost thumb says ${label}`);
@@ -550,16 +623,22 @@ test('a bot gets through every lesson to the safe room through the real game loo
     else if (s === 'gate1' || s === 'gate2') {
       const t = T.arrow();
       f.move = walkTo(t.x, t.y - 60);
-    } else if (s === 'search' || s === 'saferoom') {
+    } else if (s === 'saferoom') {
+      // Run for it (and shove off any that catch up).
       const t = T.arrow();
       if (t) f.move = walkTo(t.x, t.y);
+      const z = nearest(T.group);
+      if (z && Math.hypot(z.x - p.x, z.y - p.y) < 55 && evT <= 0) {
+        f.events.push('shove');
+        evT = 0.5;
+      }
     } else if (s === 'shove') {
       const z = nearest(T.group);
       if (z && Math.hypot(z.x - p.x, z.y - p.y) < 55 && evT <= 0) {
         f.events.push('shove');
         evT = 0.45;
       }
-    } else if (s === 'reload') {
+    } else if (s === 'reload' && !T.reloaded) {
       if (evT <= 0) {
         f.events.push('reload');
         evT = 0.5;
@@ -572,8 +651,8 @@ test('a bot gets through every lesson to the safe room through the real game loo
   assert.equal(game.lost, false);
   assert.deepEqual(order, STEPS.map((q) => q.id), 'every lesson, in order');
   assert.equal(T.lessonsDone, LESSONS);
-  assert.ok(game.stats.time < 150, `${game.stats.time.toFixed(0)} s for a bot`);
+  assert.ok(game.stats.time < 100, `${game.stats.time.toFixed(0)} s for a bot`);
   assert.equal(tutorialDone(), true);
   assert.equal(p.weapon.def.id, 'smg', 'one gun, all the way');
-  assert.ok(game.stats.shoveHits >= 3 && game.stats.kills >= 27);
+  assert.ok(game.stats.shoveHits >= 3 && game.stats.kills >= 17, `${game.stats.shoveHits} shoves, ${game.stats.kills} kills`);
 });
