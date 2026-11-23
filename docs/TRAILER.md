@@ -83,7 +83,7 @@ trailer/fonts/             Bebas Neue and Gochi Hand (SIL OFL), Special Elite an
   stand-in whose `currentTime` is the film clock: every gunshot, groan, alarm and Witch scream is
   scheduled at the frame it happens in, the music edit and the mix moves go into the same graph, and
   the whole track renders at the end, in sync. Live, it is the same graph on a real AudioContext.
-  The render tool masters it to -14 LUFS with a -1 dBTP ceiling.
+  The render tool masters it to -14 LUFS with a -1.5 dBTP ceiling.
 - **Deterministic:** the same files film the same trailer, frame for frame.
 
 ### Render options

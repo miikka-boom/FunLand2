@@ -176,7 +176,7 @@ if (withAudio) {
   await writeFile(wavFile, Buffer.concat(parts));
   console.log(`sound: ${wavFile} (rendered in ${((Date.now() - a0) / 1000).toFixed(0)} s)`);
   const seek = from > 0 ? ['-ss', String(from)] : [];
-  // Loudness for the web: measure, then normalise to -14 LUFS with a -1 dBTP ceiling (two passes).
+  // Loudness for the web: measure, then normalise to -14 LUFS with a -1.5 dBTP ceiling (two passes; AAC overshoots a little).
   const run = (args) =>
     new Promise((ok, bad) => {
       const p = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -184,7 +184,7 @@ if (withAudio) {
       p.stderr.on('data', (d) => (err += d));
       p.on('close', (code) => (code === 0 ? ok(err) : bad(new Error(`ffmpeg exited ${code}: ${err.slice(-400)}`))));
     });
-  const TARGET = 'I=-14:TP=-1.0:LRA=11';
+  const TARGET = 'I=-14:TP=-1.5:LRA=20'; // (a wide LRA keeps it one linear gain: a trailer lives on its dynamics)
   const probe = await run(['-hide_banner', '-nostats', ...seek, '-i', wavFile, '-af', `loudnorm=${TARGET}:print_format=json`, '-f', 'null', '-']);
   const m = JSON.parse(probe.slice(probe.lastIndexOf('{'), probe.lastIndexOf('}') + 1));
   const norm = `loudnorm=${TARGET}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`;
