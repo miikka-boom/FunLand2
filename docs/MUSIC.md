@@ -2,11 +2,12 @@
 
 The zombie run plays a Left 4 Dead–style score: quiet dread while you explore, rising tension,
 a horde cue when a mob hits, and set pieces for the Tank, the Witch and the Pier 9 finale. All
-of it is instrumental orchestral horror rendered with YuE2 in the ai-music-studio project.
+of it is instrumental orchestral horror rendered with YuE2 in the ai-music-studio project. The cues
+are cut from HQ renders: the same takes re-synthesised at 64 steps instead of 32.
 
 | File | Role |
 |---|---|
-| `assets/music/*.mp3` | 34 cues: MP3, VBR about 110 kbps stereo, 21 MB in total |
+| `assets/music/*.mp3` | 34 cues: MP3, VBR about 110 kbps stereo, 20 MB in total |
 | `assets/music/cues.js` | Loop points per file. Generated; do not edit by hand |
 | `src/game/music-director.js` | Decides which cue should play. Pure logic, tested in `tests/music.test.js` |
 | `src/music-player.js` | Plays the cues through WebAudio: gapless loops, crossfades, stingers, a 150 MB decoded-audio cap |
@@ -49,7 +50,9 @@ least recently used ones above 150 MB, so phones don't hold the whole score in m
 ## Changing the music
 
 Cues are cut from renders in the ai-music-studio project:
-- The source list is `Outputs/who_ate_bob/l4d_game/picks.toml`.
+- The source list is `Outputs/who_ate_bob/l4d_game/picks.toml`. It points at the HQ renders in
+  `Outputs/l4d_game_hq/renders/*__hq64.wav`.
+- Render a new pick's HQ version first: add a `[[remaster]]` entry at 64 steps and run it with `studio.yue2_batch`.
 - To rebuild, run `python -m studio.game_loops Outputs/who_ate_bob/l4d_game` with the YuE2 venv's python.
 
 The tool finds bar-aligned seamless loops, levels every cue to the same loudness, encodes MP3,
