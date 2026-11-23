@@ -18,9 +18,8 @@
 //   rate(lt) (slow motion), camera: { follow, offset, zoom, tilt, yaw, smooth, ease, shake } }.
 // ctx: { game, take, lead (the lead survivor's autopilot), squad, rig, data }.
 
-import { DEG } from '../../src/util.js';
 import { startle } from '../../src/game/witch.js';
-import { openNear, decor, poster, alarmNear, middle, drowsers, horde, tankAt, hunterAt, witchAt, put, clearShot } from './staging.js';
+import { openNear, decor, poster, alarmNear, middle, drowsers, horde, tankAt, hunterAt, witchAt, clearShot } from './staging.js';
 
 export const BPM = 75;
 export const BEAT = 60 / BPM;

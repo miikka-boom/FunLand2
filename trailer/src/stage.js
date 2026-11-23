@@ -67,7 +67,6 @@ const ease = {
   inOut: (u) => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2),
   sine: (u) => 0.5 - Math.cos(Math.PI * u) / 2,
 };
-export const EASE = ease;
 const lerp = (a, b, u) => a + (b - a) * u;
 
 /** A camera value: a number, [from, to] over the shot, or a function of (u, lt). */
