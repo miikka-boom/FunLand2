@@ -17,8 +17,10 @@ build step and no dependencies.
 
 **Trailer:** [`trailer/we-left-ben-coop-trailer.mp4`](trailer/we-left-ben-coop-trailer.mp4) (1:29)
 pitches We Left Ben in 2-player co-op, filmed frame by frame from the game itself and cut to its own
-score. How it's made, how to rebuild it, and what to change before it goes public (the music's
-license) are in [tools/trailer/README.md](tools/trailer/README.md).
+score. [`trailer/we-left-ben-coop-spot30.mp4`](trailer/we-left-ben-coop-spot30.mp4) is a
+30-second spot, cut like a 2008 horror-movie trailer with no logo. How they're made, how to rebuild
+them, and what to change before they go public (the music's license) are in
+[tools/trailer/README.md](tools/trailer/README.md).
 
 # Prototype 1: "WOBBLE WAR"
 

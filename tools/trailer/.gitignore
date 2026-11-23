@@ -1,2 +1,3 @@
 # Filmed shots, previews, scouting views, fonts and renders: all rebuilt by the scripts.
 out/
+__pycache__/

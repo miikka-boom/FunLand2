@@ -651,3 +651,115 @@ shot({
     }
   },
 });
+
+// --- The 30-second spot (spot30 in edit.py) -------------------------------------------------------
+
+// Endless infected: a horde pouring down the street at the two of them.
+shot({
+  name: 'horde_big',
+  level: 'city',
+  seed: 1337,
+  rng: 41,
+  seconds: 7,
+  camera: ISO(32),
+  settings: { ...CITY, godMode: true },
+  setup(S, T) {
+    const g = S.game;
+    S.calm();
+    S.clear(2500, 2250, 1500);
+    S.place(g.player, 2330, 2232, 0);
+    S.place(g.ally, 2290, 2282, 0);
+    // From up the street and down the side street, all at once.
+    for (let i = 0; i < 6; i++) S.crowd(2720 + i * 70, 2215 + (i % 2) * 60, 13, 70, true);
+    S.crowd(2890, 1960, 18, 80, true);
+    S.crowd(2890, 1780, 14, 80, true);
+    S.pilot.autoAim = true;
+    S.pilot.autoRange = 640;
+    S.pilot.goal = { x: 2300, y: 2236 };
+    S.pilot.speed = 0.35;
+    S.cam.zoom = (t) => 430 - S.ease(t / 7) * 40;
+    S.cam.mode = 'track';
+    S.cam.k = 2;
+    S.cam.target = () => ({ x: g.player.x + 170, y: g.player.y - 20 });
+    S.snapCamera(2500, 2215);
+  },
+  tick(S, t, k, T) {
+    const g = S.game;
+    if (k === 6) {
+      g.audio.horde(2900, 2200);
+      g.announce('HERE THEY COME!', '#ff6b5a', 2.2);
+    }
+    if (g.ally.hp < 50) g.ally.hp = 50;
+    if (g.ally.down) {
+      g.ally.down = false;
+      g.ally.hp = 50;
+    }
+  },
+});
+
+// The last scare: walking the rows in the dark, a heartbeat, you turn round, and it's right there.
+shot({
+  name: 'terror_scare',
+  level: 'graveyard',
+  seed: 1337,
+  rng: 43,
+  seconds: 5,
+  camera: ISO(42),
+  settings: { ally: true, darkness: 0.9, nightTerror: true },
+  hud: { threats: false, objective: false, panels: false, marker: false, buttons: false, sticks: false, bars: false, pinned: false, messages: false, end: false },
+  setup(S, T) {
+    const g = S.game;
+    S.calm();
+    T.from = { x: 1960, y: 2385 };
+    S.clear(T.from.x, T.from.y, 1400);
+    // Side by side, lights forward.
+    S.ALLY.spotBack = 6;
+    S.ALLY.spotSide = 58;
+    S.place(g.player, T.from.x, T.from.y, 0);
+    S.place(g.ally, T.from.x - 10, T.from.y - 58, 0);
+    S.pilot.goal = { x: T.from.x + 400, y: T.from.y };
+    S.pilot.speed = 0.38;
+    S.pilot.aim = { x: T.from.x + 700, y: T.from.y };
+    T.z = S.spawnTerror(g, T.from.x - 150, T.from.y + 24);
+    T.revealAt = 2.6;
+    S.cam.zoom = 232;
+    S.cam.mode = 'track';
+    S.cam.k = 7;
+    S.cam.target = () => ({ x: g.player.x - 66, y: g.player.y + 14 });
+    S.snapCamera(T.from.x - 66, T.from.y + 14);
+  },
+  tick(S, t, k, T) {
+    const g = S.game;
+    const p = g.player;
+    // You turn round.
+    if (t >= T.revealAt) {
+      S.pilot.goal = null;
+      S.pilot.aim = { x: T.z.x, y: T.z.y };
+      if (!T.noted) {
+        T.noted = true;
+        S.note('turn');
+      }
+    } else S.pilot.aim = { x: p.x + 700, y: p.y };
+    if (!T.lit && T.z.lit > 0.4) {
+      T.lit = true;
+      // Where it is on screen (1920x1080 px), for the edit's punch-in.
+      const v = g.view;
+      S.note(`lit at ${Math.round(v.px(T.z.x, T.z.y) * 2)},${Math.round(v.py(T.z.x, T.z.y, 30) * 2)}`);
+    }
+  },
+  post(S, t, k, T) {
+    const g = S.game;
+    const p = g.player;
+    const z = T.z;
+    // It keeps a step behind you in the dark until you turn.
+    if (t < T.revealAt) {
+      z.x = p.x - 150;
+      z.y = p.y + 24;
+      z.vx = p.vx;
+      z.vy = p.vy;
+      z.mode = 'stalk';
+      z.attackCd = 5;
+      z.face = Math.atan2(p.y - z.y, p.x - z.x);
+    }
+  },
+});

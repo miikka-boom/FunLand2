@@ -24,6 +24,7 @@ import { spawnHunter, spawnTank } from '../../src/game/specials.js';
 import { spawnWitch, startle } from '../../src/game/witch.js';
 import { hurtAlly, allySpotNear, ALLY } from '../../src/game/ally.js';
 import { detonate } from '../../src/game/world-events.js';
+import { spawnTerror } from '../../src/game/terror.js';
 import { FlowField } from '../../src/world/world.js';
 import { GUN_Z } from '../../src/game/player.js';
 
@@ -376,6 +377,7 @@ const api = {
   allySpotNear,
   ALLY,
   detonate,
+  spawnTerror,
   /** A zombie at (x, y), chasing or idle. */
   zombie(x, y, alert = true) {
     const z = new Zombie(x, y, alert);
