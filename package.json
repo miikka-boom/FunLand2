@@ -14,6 +14,7 @@
     "thrill:balance": "node thrill/tools/balance-sim.mjs",
     "outpost:balance": "node outpost/tools/balance-sim.mjs",
     "haul:balance": "node haul/tools/balance-sim.mjs",
-    "battle:balance": "node battle/tools/balance-arena.mjs"
+    "battle:balance": "node battle/tools/balance-arena.mjs",
+    "build:itch": "bash scripts/build-itch.sh"
   }
 }
