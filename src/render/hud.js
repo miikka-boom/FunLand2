@@ -630,7 +630,7 @@ function drawEnd(ctx, game, L, ui) {
     }
   }
   const tut = game.tutorial;
-  const title = game.won ? (tut ? 'TUTORIAL COMPLETE' : game.level === 'docks' ? 'YOU MADE THE LAST FERRY' : 'SAFE ROOM REACHED') : 'YOU DIED';
+  const title = game.won ? (tut ? (tut.day > 1 ? `TUTORIAL ${tut.day} COMPLETE` : 'TUTORIAL COMPLETE') : game.level === 'docks' ? 'YOU MADE THE LAST FERRY' : 'SAFE ROOM REACHED') : 'YOU DIED';
   let tf = 34;
   ctx.font = `900 ${tf}px ${FONT}`;
   while (tf > 18 && ctx.measureText(title).width > maxW) ctx.font = `900 ${(tf -= 2)}px ${FONT}`;
@@ -692,7 +692,8 @@ function drawEnd(ctx, game, L, ui) {
     if (tut.alarmed) parts.push('you set off the alarm (now you know)');
     if (tut.rescues) parts.push(`close calls ${tut.rescues}`);
     if (parts.length) lines.push(parts.join('   ·   '));
-    if (game.won) lines.unshift("you're ready for the streets");
+    // Day 1 leads to Day 2; after Day 2, the real thing.
+    if (game.won) lines.unshift(tut.day > 1 ? "you're ready for the streets" : 'next: day 2, supplies and the Witch');
   }
   if (game.ally) {
     const a = game.ally;
@@ -712,7 +713,7 @@ function drawEnd(ctx, game, L, ui) {
   if (game.endT > 1.4 && !card) {
     ctx.font = `700 15px ${FONT}`;
     ctx.fillStyle = `rgba(255,255,255,${0.6 + Math.sin(game.time * 4) * 0.3})`;
-    ctx.fillText(tut && game.won ? 'tap to play the Streets' : 'tap to play again', cx, y0 + lines.length * lh + 18);
+    ctx.fillText(tut && game.won ? (tut.day > 1 ? 'tap to play the Streets' : 'tap for Tutorial 2') : 'tap to play again', cx, y0 + lines.length * lh + 18);
   }
   ctx.globalAlpha = 1;
 }

@@ -29,7 +29,7 @@ const MAPS = {
 test('every map type has a generator, a title-card button and a line in the panel', () => {
   assert.deepEqual(Object.keys(GENERATORS).sort(), LEVEL_IDS.slice().sort());
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  const buttons = [...html.matchAll(/data-level="([a-z]+)"><b>([^<]+)<\/b><span>([^<]+)<\/span>/g)].map((m) => ({ id: m[1], name: m[2], sub: m[3] }));
+  const buttons = [...html.matchAll(/data-level="([a-z0-9]+)"><b>([^<]+)<\/b><span>([^<]+)<\/span>/g)].map((m) => ({ id: m[1], name: m[2], sub: m[3] }));
   assert.deepEqual(buttons, LEVELS.map((l) => ({ id: l.id, name: l.name, sub: l.sub })), 'index.html lists the map types exactly as settings.js names them');
 });
 

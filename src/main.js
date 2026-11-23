@@ -2,7 +2,7 @@
 
 import { loadSettings, saveSettings, worldSignature, DEFAULTS } from './settings.js';
 import { seatWitchNear } from './game/witch.js';
-import { tutorialDone } from './game/tutorial.js';
+import { tutorialDone, TUTORIAL_LEVELS } from './game/tutorial.js';
 import { computeLayout } from './layout.js';
 import { Input } from './input/input.js';
 import { Game } from './game/game.js';
@@ -119,10 +119,16 @@ function enterFullscreen() {
 // --- Screens -------------------------------------------------------------------------------
 
 /** Every restart goes through here: closes the rating card, resets the fps sample. */
+/** After a tutorial you've won: the next one, and after the last, the real thing. */
+function nextAfterTutorial(level) {
+  const i = TUTORIAL_LEVELS.indexOf(level);
+  return i >= 0 && i + 1 < TUTORIAL_LEVELS.length ? TUTORIAL_LEVELS[i + 1] : 'city';
+}
+
 function newRun(seed = settings.seed) {
-  // Through the tutorial: the next run is the real thing.
-  if (game.tutorial && game.won && settings.level === 'tutorial') {
-    settings.level = 'city';
+  // Through a tutorial: on to the next (Day 1, then Day 2), then the real thing.
+  if (game.tutorial && game.won && settings.level === game.level && TUTORIAL_LEVELS.includes(settings.level)) {
+    settings.level = nextAfterTutorial(settings.level);
     saveSettings(settings);
     syncLevelPicker();
   }
@@ -152,9 +158,10 @@ function onRunEnd() {
   saveReport(report);
   syncDaily();
   if (!settings.playtestPrompt) return;
-  let tag = game.tutorial ? 'Tutorial' : `${LEVEL_NAMES[game.level] || game.level} · seed ${game.seed}`;
+  let tag = game.tutorial ? LEVEL_NAMES[game.level] || 'Tutorial' : `${LEVEL_NAMES[game.level] || game.level} · seed ${game.seed}`;
   if (game.dailyKey) tag = `Daily ${dateLabel(game.dailyKey)}${best && best.time !== null ? ` · best ${fmtTime(best.time)}` : ''}`;
-  card.show(report, tag, game.tutorial && game.won ? 'Play the Streets' : 'Play again');
+  const next = game.tutorial && game.won ? nextAfterTutorial(game.level) : null;
+  card.show(report, tag, next === 'city' ? 'Play the Streets' : next ? `Play ${LEVEL_NAMES[next]}` : 'Play again');
   ui.reportRect = card.rect();
 }
 
@@ -246,8 +253,10 @@ const levelButtons = [...document.querySelectorAll('[data-level]')];
 function syncLevelPicker() {
   for (const b of levelButtons) {
     b.classList.toggle('active', b.dataset.level === settings.level);
-    // "start here" on the tutorial, for as long as it's the one picked for a newcomer.
-    b.classList.toggle('suggest', suggestTutorial && b.dataset.level === 'tutorial' && settings.level === 'tutorial');
+    // "start here" on the tutorial, for as long as it's the one picked for a newcomer;
+    // "next" on Tutorial 2 once Day 1 is done (and Day 2 isn't) and it's the one picked.
+    const day2 = b.dataset.level === 'tutorial2' && settings.level === 'tutorial2' && tutorialDone(1) && !tutorialDone(2);
+    b.classList.toggle('suggest', (suggestTutorial && b.dataset.level === 'tutorial' && settings.level === 'tutorial') || day2);
   }
 }
 for (const b of levelButtons) {

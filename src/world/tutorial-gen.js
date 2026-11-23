@@ -27,12 +27,13 @@
 import { NAV_CELL } from './world.js';
 import { ob, dice, safeRoom, border } from './gen-kit.js';
 
-const PLAN_W = 1472;
-const PLAN_H = 1824;
-const FRAME = { l: 384, r: 384, t: 192, b: 192 }; // half a screen and more, on every side
+// The plan and its frame (Tutorial 2, world/tutorial2-gen.js, is laid out on the same).
+export const PLAN_W = 1472;
+export const PLAN_H = 1824;
+export const FRAME = { l: 384, r: 384, t: 192, b: 192 }; // half a screen and more, on every side
 export const TUT_W = PLAN_W + FRAME.l + FRAME.r;
 export const TUT_H = PLAN_H + FRAME.t + FRAME.b;
-const SW = 22; // sidewalk
+export const SW = 22; // sidewalk
 
 // Streets, curb to curb (what the lamps lean over and the lines are painted on).
 const C1 = { dir: 'v', x: 1056, y: 1120, w: 224, h: 288 }; // row 1 -> row 2, east end
@@ -109,7 +110,7 @@ const BLOCKS = [
 const LOTS = [{ ...PEN, type: 'construction' }];
 
 /** A gate in a wall across a connector (the wall runs from building line to building line). */
-function gateLine(cx0, cx1, y, open = 150) {
+export function gateLine(cx0, cx1, y, open = 150) {
   const T = 16;
   const mid = (cx0 + cx1) / 2;
   const g0 = Math.round(mid - open / 2);
@@ -167,7 +168,69 @@ export function builtRects(region, open) {
   return out;
 }
 
-const ROOFS = ['#3d4148', '#4a4540', '#3a4446', '#47423f', '#3f3b45', '#434a4f', '#4b4744'];
+export const ROOFS = ['#3d4148', '#4a4540', '#3a4446', '#47423f', '#3f3b45', '#434a4f', '#4b4744'];
+
+/**
+ * Buildings on everything that isn't open ground: each region minus the
+ * open rects, and long rects cut into a row of buildings that touch (130 to
+ * 250 u each, never leaving a stub to get stuck by).
+ */
+export function cutBuildings(D, regions, open, obstacles) {
+  for (const r of regions.flatMap((region) => builtRects(region, open))) {
+    const along = r.w >= r.h ? 'x' : 'y';
+    const len = along === 'x' ? r.w : r.h;
+    let pos = 0;
+    while (pos < len) {
+      let piece = Math.round(D.r(130, 250));
+      if (len - pos - piece < 90) piece = len - pos; // never leave a stub
+      const b = along === 'x' ? { x: r.x + pos, y: r.y, w: piece, h: r.h } : { x: r.x, y: r.y + pos, w: r.w, h: piece };
+      obstacles.push(ob('building', b.x, b.y, b.w, b.h, { color: D.pick(ROOFS), vents: D.ri(0, 3), seed: D.ri(1, 1e6) }));
+      pos += piece;
+    }
+  }
+}
+
+/** The ground blocks (sidewalk on the sides named) and the lots, as the map has them. */
+export function groundBlocks(blocks, lots) {
+  const out = blocks.map((b) => {
+    const l = b.sides.includes('l') ? SW : 0;
+    const r = b.sides.includes('r') ? SW : 0;
+    const t = b.sides.includes('t') ? SW : 0;
+    const bb = b.sides.includes('b') ? SW : 0;
+    return { x: b.x, y: b.y, w: b.w, h: b.h, inner: { x: b.x + l, y: b.y + t, w: b.w - l - r, h: b.h - t - bb }, type: b.type || 'buildings' };
+  });
+  for (const lot of lots) out.push({ x: lot.x, y: lot.y, w: lot.w, h: lot.h, inner: { x: lot.x, y: lot.y, w: lot.w, h: lot.h }, type: lot.type });
+  return out;
+}
+
+/** Lamps along the rows (alternating sides, none in a connector's mouth) and one by each connector. skip(lamp) leaves one out. */
+export function streetLamps(rows, connectors, lamps, skip = () => false) {
+  const inMouth = (l) => connectors.some((c) => l.x > c.x - 30 && l.x < c.x + c.w + 30 && l.y > c.y - 30 && l.y < c.y + c.h + 30);
+  for (const s of rows) {
+    let side = 0;
+    for (let x = s.x + 120; x < s.x + s.w - 60; x += 240) {
+      side ^= 1;
+      const l = { x, y: side ? s.y - 8 : s.y + s.h + 8 };
+      if (inMouth(l) || skip(l)) continue;
+      lamps.push(l);
+    }
+  }
+  for (const c of connectors) {
+    const l = { x: c.x - 8, y: c.y + c.h / 2 };
+    if (!skip(l)) lamps.push(l);
+  }
+}
+
+/** n bits of street clutter (puddles, cracks, trash, manholes) on the streets listed (repeat one to weight it). */
+export function streetClutter(D, streets, n, decor) {
+  for (let k = 0; k < n; k++) {
+    const s = D.pick(streets);
+    const x = D.r(s.x + 20, s.x + s.w - 20);
+    const y = D.r(s.y + 16, s.y + s.h - 16);
+    const t = D.rnd();
+    decor.push({ type: t < 0.38 ? 'puddle' : t < 0.66 ? 'crack' : t < 0.9 ? 'trash' : 'manhole', x, y, s: D.r(0.7, 1.4), a: D.r(0, Math.PI) });
+  }
+}
 
 /**
  * The squad's own writing, sprayed for the practice run (no line ever runs
@@ -199,9 +262,10 @@ export const TUTORIAL_BEN = { x: END_ROOM.x + 116, y: 262, text: 'my turn tomorr
 /**
  * Move everything on the map by (dx, dy): from the plan into the frame. Each
  * object moves once (the gate bars, the car and the fence are obstacles that
- * map.tutorial points at too).
+ * map.tutorial points at too). keys names map.tutorial's spots: one (an
+ * object with x, y) or many (a list of them, or a list of lists).
  */
-function shiftMap(map, dx, dy) {
+export function shiftMap(map, dx, dy, keys) {
   const done = new Set();
   const mv = (o) => {
     if (!o || done.has(o)) return;
@@ -224,9 +288,15 @@ function shiftMap(map, dx, dy) {
   }
   mv(map.start);
   for (const room of [map.startRoom, map.endRoom]) for (const k of ['interior', 'door', 'outer']) mv(room[k]);
+  // Boarded rooms (their boards are obstacles; normal is a direction, not a place).
+  for (const room of map.sealed || []) {
+    for (const k of ['interior', 'door', 'outside', 'stash']) mv(room[k]);
+    for (const q of room.sleepers) mv(q);
+  }
+  for (const f of map.floors || []) mv(f);
   const T = map.tutorial;
-  for (const k of ['moveRing', 'pen', 'shoveSpawn']) mv(T[k]);
-  for (const k of ['penZombies', 'packSpawns', 'alarmSpawns', 'panicSpawns', 'rushSpawns']) for (const q of T[k].flat()) mv(q);
+  for (const k of keys.one) mv(T[k]);
+  for (const k of keys.many) for (const q of T[k].flat()) mv(q);
   for (const g of Object.values(T.gates)) mv(g);
 }
 
@@ -246,19 +316,7 @@ export function generateTutorial(seed = 1) {
   const start = { x: si.x + si.w / 2, y: si.y + si.h / 2 + 10 };
 
   // --- Buildings: everything that isn't open ground ---------------------------------------------
-  for (const r of BUILT.flatMap((region) => builtRects(region, OPEN))) {
-    // Long rects are cut into a row of buildings that touch (no slivers to get stuck in).
-    const along = r.w >= r.h ? 'x' : 'y';
-    const len = along === 'x' ? r.w : r.h;
-    let pos = 0;
-    while (pos < len) {
-      let piece = Math.round(D.r(130, 250));
-      if (len - pos - piece < 90) piece = len - pos; // never leave a stub
-      const b = along === 'x' ? { x: r.x + pos, y: r.y, w: piece, h: r.h } : { x: r.x, y: r.y + pos, w: r.w, h: piece };
-      obstacles.push(ob('building', b.x, b.y, b.w, b.h, { color: D.pick(ROOFS), vents: D.ri(0, 3), seed: D.ri(1, 1e6) }));
-      pos += piece;
-    }
-  }
+  cutBuildings(D, BUILT, OPEN, obstacles);
 
   // --- The pen: a building site behind a fence, three of them shut in ----------------------------
   // Thick enough that what presses on it can't reach through it.
@@ -299,17 +357,7 @@ export function generateTutorial(seed = 1) {
   pickups.push({ kind: 'medkit', x: 600, y: 618 });
 
   // --- Light: lamps along the streets (alternating sides), a glow at every gate ------------------------
-  const inMouth = (l) => [C1, C2, C3].some((c) => l.x > c.x - 30 && l.x < c.x + c.w + 30 && l.y > c.y - 30 && l.y < c.y + c.h + 30);
-  for (const s of [S1, S2, S3]) {
-    let side = 0;
-    for (let x = s.x + 120; x < s.x + s.w - 60; x += 240) {
-      side ^= 1;
-      const l = { x, y: side ? s.y - 8 : s.y + s.h + 8 };
-      if (inMouth(l)) continue;
-      lamps.push(l);
-    }
-  }
-  for (const c of [C1, C2, C3]) lamps.push({ x: c.x - 8, y: c.y + c.h / 2 });
+  streetLamps([S1, S2, S3], [C1, C2, C3], lamps);
   for (const g of [g1, g2, g3]) {
     // Light only (no tint: no coloured pool painted on the ground).
     glows.push({ x: g.x, y: g.y + 90, r: 210, k: 0.5 });
@@ -321,25 +369,12 @@ export function generateTutorial(seed = 1) {
   const markings = { dashes: [], crosswalks: [], parking: [] };
   for (const s of [S1, S2, S3]) markings.dashes.push({ x0: s.x + 60, y0: s.y + s.h / 2, x1: C1.x - 20, y1: s.y + s.h / 2 });
   for (const c of [C1, C2, C3]) markings.dashes.push({ x0: c.x + c.w / 2, y0: c.y + 20, x1: c.x + c.w / 2, y1: c.y + c.h - 20 });
-  for (let k = 0; k < 48; k++) {
-    const s = D.pick([S1, S2, S3, S1, S2, S3, C1, C2, C3]);
-    const x = D.r(s.x + 20, s.x + s.w - 20);
-    const y = D.r(s.y + 16, s.y + s.h - 16);
-    const t = D.rnd();
-    decor.push({ type: t < 0.38 ? 'puddle' : t < 0.66 ? 'crack' : t < 0.9 ? 'trash' : 'manhole', x, y, s: D.r(0.7, 1.4), a: D.r(0, Math.PI) });
-  }
+  streetClutter(D, [S1, S2, S3, S1, S2, S3, C1, C2, C3], 48, decor);
   for (const w of TUTORIAL_WALLS) decor.push({ type: 'graffiti', x: w.x, y: w.y, text: w.text, color: w.color, size: w.size, a: w.a || 0, drip: false, marker: w.size < 13 });
   decor.push({ type: 'bentext', x: TUTORIAL_BEN.x, y: TUTORIAL_BEN.y, text: TUTORIAL_BEN.text, size: 10, a: -0.03 });
 
   // --- Ground --------------------------------------------------------------------------------
-  const blocks = BLOCKS.map((b) => {
-    const l = b.sides.includes('l') ? SW : 0;
-    const r = b.sides.includes('r') ? SW : 0;
-    const t = b.sides.includes('t') ? SW : 0;
-    const bb = b.sides.includes('b') ? SW : 0;
-    return { x: b.x, y: b.y, w: b.w, h: b.h, inner: { x: b.x + l, y: b.y + t, w: b.w - l - r, h: b.h - t - bb }, type: b.type || 'buildings' };
-  });
-  for (const lot of LOTS) blocks.push({ x: lot.x, y: lot.y, w: lot.w, h: lot.h, inner: { x: lot.x, y: lot.y, w: lot.w, h: lot.h }, type: lot.type });
+  const blocks = groundBlocks(BLOCKS, LOTS);
 
   const map = {
     seed,
@@ -408,7 +443,7 @@ export function generateTutorial(seed = 1) {
       ],
     },
   };
-  shiftMap(map, FRAME.l, FRAME.t);
+  shiftMap(map, FRAME.l, FRAME.t, { one: ['moveRing', 'pen', 'shoveSpawn'], many: ['penZombies', 'packSpawns', 'alarmSpawns', 'panicSpawns', 'rushSpawns'] });
   border(obstacles, TUT_W, TUT_H);
   return map;
 }

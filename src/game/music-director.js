@@ -8,7 +8,8 @@
 import { FERRY } from './finale.js';
 
 export const LEVEL_BEDS = {
-  tutorial: ['bed_city_a', 'bed_city_b'], // the practice run is a few streets of Center City
+  tutorial: ['bed_city_a', 'bed_city_b'], // the practice runs are a few streets of Center City
+  tutorial2: ['bed_city_a', 'bed_city_b'],
   city: ['bed_city_a', 'bed_city_b'],
   interior: ['bed_interior_a', 'bed_interior_b'],
   docks: ['bed_docks_a', 'bed_docks_b'],

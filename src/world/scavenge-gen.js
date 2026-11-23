@@ -224,7 +224,8 @@ function outsideOf(world, A, dx, dy, nx, ny) {
   return null;
 }
 
-function boardsFor(rect, vertical) {
+/** Boards nailed across a doorway (Tutorial 2 nails up its own room with these too). */
+export function boardsFor(rect, vertical) {
   return {
     kind: 'boards',
     x: Math.round(rect.x),

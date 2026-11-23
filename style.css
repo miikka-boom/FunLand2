@@ -222,10 +222,12 @@ html.is-ios .ios-only {
   box-shadow: 0 0 0 1px var(--accent) inset;
 }
 
-/* The tutorial: its own row above the six maps, in the safe room's green. */
+/* The tutorials (day 1, day 2): their own row above the six maps, in the safe room's green. */
 .tutorial-row {
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
   margin: 0 0 8px;
 }
 

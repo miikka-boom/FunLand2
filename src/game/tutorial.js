@@ -13,12 +13,17 @@
 // It's short on purpose: eight lessons on three short streets, a couple of
 // minutes for a first-timer. Everything the player reads is in STEPS, at the
 // top, for editing.
+//
+// Tutorial 2 (Day 2: supplies, a boarded room, the Witch) runs on the same
+// runner with its own lessons (tutorial-day2.js) and map (map.tutorial.day).
 
 import { startFlee } from './witch.js';
 import { releasePin } from './specials.js';
-import { DEG, wrapAngle, clamp } from '../util.js';
+import { DAY2_STEPS } from './tutorial-day2.js';
+import { DEG, wrapAngle, clamp, pointInRect } from '../util.js';
 
-const KEY = 'funland2.p0.tutorial.v1';
+/** Done on this device, per day (Day 1's key is the one it always had). */
+const KEYS = { 1: 'funland2.p0.tutorial.v1', 2: 'funland2.p0.tutorial2.v1' };
 const GATE_OPEN = 1.1; // s for the bars to slide back into the wall
 const PAUSE = 0.6; // s between a lesson done (✓) and the next prompt
 const AIM_HOLD = 0.45; // s of laser on a target that counts as "aimed"
@@ -204,6 +209,12 @@ export const STEPS = [
 /** The lessons that count (the dots along the top of the card). */
 export const LESSONS = STEPS.filter((s) => s.dot).length;
 
+/** Each day's lessons, by map.tutorial.day. */
+export const COURSES = { 1: STEPS, 2: DAY2_STEPS };
+
+/** The tutorial level ids, in order (each one, won, leads to the next; after the last, the Streets). */
+export const TUTORIAL_LEVELS = ['tutorial', 'tutorial2'];
+
 /** Words for an input source: touch | mouse | gamepad. */
 export function stepText(step, source) {
   const T = step.text;
@@ -216,6 +227,9 @@ export class Tutorial {
   constructor(game) {
     this.game = game;
     this.L = game.world.map.tutorial;
+    this.day = this.L.day || 1;
+    this.steps = COURSES[this.day] || STEPS;
+    this.of = this.steps.filter((s) => s.dot).length;
     this.i = -1;
     this.t = 0; // seconds in this lesson
     this.pause = 0; // seconds left of the ✓ before the next one
@@ -235,20 +249,24 @@ export class Tutorial {
     // The gates, shut.
     this.gates = {};
     for (const [id, G] of Object.entries(this.L.gates)) this.gates[id] = { ...G, state: 'shut', f: 0 };
-    // Six of them in the pen, waiting for the lesson that needs them.
-    this.pen = this.L.penZombies.map((q) => game.director.spawnAt(q.x, q.y, false)).filter(Boolean);
+    // Day 1: six of them in the pen, waiting for the lesson that needs them.
+    this.pen = (this.L.penZombies || []).map((q) => game.director.spawnAt(q.x, q.y, false)).filter(Boolean);
     for (const z of this.pen) z.penned = true;
+    // Day 2: whoever is nailed in with the good stuff (spawned with the map's boarded room).
+    this.sleepers = this.L.room ? game.zombies.filter((z) => z.alive && pointInRect(z.x, z.y, this.L.room, 4)) : [];
+    this.need = 0;
+    this.witch = null;
     this.next();
   }
 
   get step() {
-    return STEPS[Math.max(0, Math.min(this.i, STEPS.length - 1))];
+    return this.steps[Math.max(0, Math.min(this.i, this.steps.length - 1))];
   }
 
   /** How many of the counted lessons are behind you. */
   get lessonsDone() {
     let n = 0;
-    for (let k = 0; k < STEPS.length; k++) if (STEPS[k].dot && (k < this.i || (k === this.i && this.pause > 0) || this.over)) n++;
+    for (let k = 0; k < this.steps.length; k++) if (this.steps[k].dot && (k < this.i || (k === this.i && this.pause > 0) || this.over)) n++;
     return n;
   }
 
@@ -262,13 +280,13 @@ export class Tutorial {
     const g = this.game;
     for (;;) {
       this.i++;
-      if (this.i >= STEPS.length) {
+      if (this.i >= this.steps.length) {
         this.over = true;
-        this.i = STEPS.length - 1;
+        this.i = this.steps.length - 1;
         this.lock(false, true);
         return;
       }
-      const s = STEPS[this.i];
+      const s = this.steps[this.i];
       if (s.skip && s.skip(this, g)) continue;
       this.t = 0;
       if (s.enter) s.enter(this, g);
@@ -292,7 +310,7 @@ export class Tutorial {
     this.watchWitch(dt);
     if (g.won && !this.finished) {
       this.finished = true;
-      saveTutorialDone(g.stats.time);
+      saveTutorialDone(g.stats.time, this.day);
     }
     if (this.over) return;
     if (this.pause > 0) {
@@ -334,6 +352,11 @@ export class Tutorial {
     return !this.queue.some((q) => q.list === list);
   }
 
+  /** How many queued for this list are still to turn up. */
+  pending(list) {
+    return this.queue.reduce((n, q) => n + (q.list === list ? 1 : 0), 0);
+  }
+
   /** This lesson's zombies are down, and so is anything an alarm brought. */
   cleared(list) {
     return left(list) === 0 && left(this.extra) === 0 && this.spawned(this.extra);
@@ -343,7 +366,7 @@ export class Tutorial {
   alarmWave(wave) {
     const g = this.game;
     const n = [5, 3][wave] || 0;
-    if (!n) return;
+    if (!n || !this.L.panicSpawns) return;
     this.alarmed = true;
     this.spawn(this.L.panicSpawns, n, 1.6, this.extra);
     const s = this.L.panicSpawns[0];
@@ -429,6 +452,11 @@ export class Tutorial {
     return null;
   }
 
+  /** One of this map's stashes, by id (Day 2's crates). */
+  crate(id) {
+    return this.game.loot.stashes.find((s) => s.id === id) || null;
+  }
+
   /**
    * Where a crowd comes from: groups of spots, best first. The spots of the
    * first group with any you can't see (off screen, or far off round a
@@ -503,6 +531,13 @@ export class Tutorial {
 
   // --- For the HUD and the report ------------------------------------------------------------
 
+  /** Something the lesson wants in view, for the camera to lean toward: { x, y, k } or null. */
+  focus() {
+    if (this.over) return null;
+    const s = this.step;
+    return s.focus ? s.focus(this, this.game) : null;
+  }
+
   /** Where the edge arrow points now (null: nowhere in particular). */
   arrow() {
     if (this.over || this.pause > 0) return null;
@@ -522,16 +557,17 @@ export class Tutorial {
       coach: this.pause > 0 || this.over ? null : (typeof s.coach === 'function' ? s.coach(this, g) : s.coach) || null,
       done: this.pause > 0 || this.over,
       lessons: this.lessonsDone,
-      of: LESSONS,
+      of: this.of,
       t: this.t,
     };
   }
 
   report() {
     return {
+      day: this.day,
       step: this.step.id,
       lessons: this.lessonsDone,
-      of: LESSONS,
+      of: this.of,
       rescues: this.rescues,
       alarm: this.alarmed,
       times: { ...this.times },
@@ -541,19 +577,19 @@ export class Tutorial {
 
 // --- On this device ------------------------------------------------------------------------------
 
-/** Has this device been through the tutorial (to the safe room)? */
-export function tutorialDone() {
+/** Has this device been through the tutorial of this day (to the safe room)? */
+export function tutorialDone(day = 1) {
   try {
-    const v = JSON.parse(localStorage.getItem(KEY) || 'null');
+    const v = JSON.parse(localStorage.getItem(KEYS[day]) || 'null');
     return !!(v && v.done);
   } catch {
     return false;
   }
 }
 
-export function saveTutorialDone(time = 0) {
+export function saveTutorialDone(time = 0, day = 1) {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ done: true, time: +clamp(time, 0, 1e5).toFixed(1), at: new Date().toISOString().slice(0, 10) }));
+    localStorage.setItem(KEYS[day], JSON.stringify({ done: true, time: +clamp(time, 0, 1e5).toFixed(1), at: new Date().toISOString().slice(0, 10) }));
   } catch {
     // storage blocked: it'll be offered again, that's all
   }

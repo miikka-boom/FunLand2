@@ -33,7 +33,7 @@ const { pointInRect } = await import('../src/util.js');
 const INF = 0x3fffffff;
 // The map passes that seat her and write about her (and the maps they run on). The tutorial is
 // hand-built, runs none of them and has no Witch (tutorial.test.js checks it stays that way).
-const PROCEDURAL = Object.entries(GENERATORS).filter(([level]) => level !== 'tutorial');
+const PROCEDURAL = Object.entries(GENERATORS).filter(([level]) => !level.startsWith('tutorial')); // the tutorials are hand-built
 const SHOTGUN = WEAPONS.find((w) => w.id === 'shotgun');
 const SMG = WEAPONS.find((w) => w.id === 'smg');
 const audio = new Proxy({ listener: { x: 0, y: 0 } }, { get: (o, k) => (k in o ? o[k] : () => {}) });

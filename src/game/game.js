@@ -7,7 +7,8 @@ import { generateGraveyard } from '../world/graveyard-gen.js';
 import { generateSuburbia } from '../world/suburbia-gen.js';
 import { generateJunkyard } from '../world/junkyard-gen.js';
 import { generateTutorial } from '../world/tutorial-gen.js';
-import { Tutorial } from './tutorial.js';
+import { generateTutorial2 } from '../world/tutorial2-gen.js';
+import { Tutorial, TUTORIAL_LEVELS } from './tutorial.js';
 import { finaleOpen } from './finale.js';
 import { addScavenging } from '../world/scavenge-gen.js';
 import { addWorldFeatures } from '../world/features-gen.js';
@@ -26,7 +27,7 @@ import { initWorldEvents, updateWorldEvents, spawnNest, openBreach, takeAmmo } f
 import { addLore } from '../world/lore-gen.js';
 import { addBen } from '../world/ben-gen.js';
 import { loadBenMemory, initBen, updateBen } from './ben.js';
-import { DEG, dampFactor, pointInRect, rand } from '../util.js';
+import { DEG, clamp, dampFactor, pointInRect, rand } from '../util.js';
 import { todayKey, dailySeed } from '../playtest.js';
 import { IsoView, ISO_YAW, ISO_PITCH } from '../iso.js';
 
@@ -38,9 +39,10 @@ const ISO_ZOOM = 0.42;
 const CAMERA_LIFT = 18;
 const kickTmp = { x: 0, y: 0 };
 
-/** The map generators, by level id (settings.js: LEVELS). The tutorial's is hand-built (the same every run). */
+/** The map generators, by level id (settings.js: LEVELS). The tutorials' are hand-built (the same every run). */
 export const GENERATORS = {
   tutorial: generateTutorial,
+  tutorial2: generateTutorial2,
   city: generateCity,
   interior: generateBuilding,
   docks: generateDocks,
@@ -65,8 +67,8 @@ export class Game {
     this.audio.alarmStop();
     this.audio.tankMusic(false);
     this.level = this.settings.level;
-    // The daily map: today's date picks the seed, the same on every device (the tutorial is always the same).
-    this.dailyKey = this.settings.daily && this.level !== 'tutorial' ? todayKey() : null;
+    // The daily map: today's date picks the seed, the same on every device (the tutorials are always the same).
+    this.dailyKey = this.settings.daily && !TUTORIAL_LEVELS.includes(this.level) ? todayKey() : null;
     if (this.dailyKey) seed = dailySeed(this.dailyKey);
     this.seed = seed;
     this.runSerial = (this.runSerial || 0) + 1;
@@ -87,8 +89,8 @@ export class Game {
     const base = map.obstacles.slice();
     this.benMemory = loadBenMemory();
     if (map.tutorial) {
-      // Hand-built: it brings its own stash and writing (and no Witch: not on a first run).
-      if (!S.ben) map.decor = map.decor.filter((d) => d.type !== 'bentext');
+      // Hand-built: it brings its own stashes, writing and Witch (Day 2 only: not on a first run).
+      if (!S.ben) map.decor = map.decor.filter((d) => d.type !== 'bentext' && d.type !== 'beneyes');
     } else {
       // The holdout gate, the two routes and the landmarks are built for the streets and the building
       // (Pier 9 has its own finale; the graveyard, suburbia and the junkyard don't have them yet).
@@ -435,6 +437,14 @@ export class Game {
     } else {
       const sp = Math.hypot(p.vx, p.vy);
       if (sp > 1) lead(p.vx / sp, p.vy / sp, S.lookAhead * viewWorld * 0.45 * Math.min(1, sp / S.moveSpeed));
+    }
+    // A tutorial lesson can ask for something to be in view (Day 2: the Witch, as
+    // you pass her on the far side): the camera leans part of the way toward it.
+    const f = this.tutorial && this.tutorial.focus();
+    if (f) {
+      const max = viewWorld * 0.3;
+      lx += clamp((f.x - p.x) * f.k, -max, max);
+      ly += clamp((f.y - p.y) * f.k, -max, max);
     }
     const kl = dampFactor(3.2, dt);
     c.lookX += (lx - c.lookX) * kl;

@@ -169,7 +169,7 @@ export function reportText(r) {
   if (r.tutorial) {
     const T = r.tutorial;
     const slow = Object.entries(T.times).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} ${v}s`);
-    lines.push(`Tutorial: ${T.lessons}/${T.of} lessons, reached "${T.step}"${T.rescues ? ` · ${T.rescues} close call${T.rescues > 1 ? 's' : ''}` : ''}${T.alarm ? ' · set off the alarm' : ''}${slow.length ? ` · longest: ${slow.join(', ')}` : ''}`);
+    lines.push(`Tutorial${T.day > 1 ? ` ${T.day}` : ''}: ${T.lessons}/${T.of} lessons, reached "${T.step}"${T.rescues ? ` · ${T.rescues} close call${T.rescues > 1 ? 's' : ''}` : ''}${T.alarm ? ' · set off the alarm' : ''}${slow.length ? ` · longest: ${slow.join(', ')}` : ''}`);
   }
   if (r.device) {
     const fps = r.fps ? ` · ${r.fps.avg} fps avg, ${r.fps.low} low` : '';
@@ -311,7 +311,7 @@ export class ReportCard {
     document.body.append(this.root);
   }
 
-  /** again: the label on the play-again button (after the tutorial it's the Streets next). */
+  /** again: the label on the play-again button (after a tutorial it's the next one, then the Streets). */
   show(report, tag = '', again = 'Play again') {
     this.report = report;
     this.tag.textContent = tag;
