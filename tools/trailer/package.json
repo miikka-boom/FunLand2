@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "commonjs",
+  "description": "Trailer kit: the scripts here are CommonJS (the repo root is an ES module package)."
+}

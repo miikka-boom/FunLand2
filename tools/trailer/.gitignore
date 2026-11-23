@@ -1,0 +1,13 @@
+# Captured frames, renders and working files (make.sh recreates them)
+frames/
+prev*/
+edit/
+edit[0-9]/
+edit*-prev/
+check*/
+probe/
+fontpkg/
+*.wav
+*.mp4
+*.jpg
+*.txt
