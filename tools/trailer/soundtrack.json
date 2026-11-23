@@ -1,0 +1,62 @@
+{
+  "about": "How tools/trailer/soundtrack.mp3 was made: Scenario (scenario.com), model ElevenLabs Music Advanced v2.5. Same model, sections and seed give the same track.",
+  "model": "model_elevenlabs-music-advanced-v2-5",
+  "asset": "asset_oqC9qNFDMLb7Fpz12CQqxvQs",
+  "licenseTerms": "https://elevenlabs.io/terms",
+  "measured": { "seconds": 106.03, "bpm": 139.75, "firstBarOfTheBuild": 18.52, "drop": 39.09, "breakdown": 66.53, "climax": 73.38, "lastHit": 100.82 },
+  "parameters": {
+    "seed": 1103,
+    "outputFormat": "mp3_48000_320",
+    "sections": [
+      {
+        "text": "[Intro] {ominous low drone, slow heavy piano notes in D minor, distant war drums, deep sub booms, a lone whistled melody far away}",
+        "durationSeconds": 14,
+        "positiveStyles": ["dark cinematic trailer", "ominous", "low strings drone", "sparse piano", "sub boom hits", "tension", "D minor"],
+        "negativeStyles": ["vocals", "singing", "lyrics", "rap", "spoken word", "happy", "lo-fi"],
+        "contextAdherence": "high"
+      },
+      {
+        "text": "[Build] {driving staccato cello and violin ostinato, pounding taiko drums building, ticking percussion, rising brass, tension mounting}",
+        "durationSeconds": 18,
+        "positiveStyles": ["epic hybrid trailer", "staccato strings ostinato", "taiko drums", "building tension", "angry", "aggressive", "140 bpm", "D minor"],
+        "negativeStyles": ["vocals", "singing", "lyrics", "rap", "happy"],
+        "contextAdherence": "high"
+      },
+      {
+        "text": "[Pre-Chorus] {massive accelerating riser, snare roll, reverse cymbal swell, then one beat of silence}",
+        "durationSeconds": 4,
+        "positiveStyles": ["trailer riser", "drum roll", "tension peak"],
+        "negativeStyles": ["vocals", "singing", "lyrics"],
+        "contextAdherence": "high"
+      },
+      {
+        "text": "[Chorus] {explosive full drop: furious distorted electric guitars, heavy drum kit and taiko, aggressive brass braams, epic wordless choir, relentless fast strings}",
+        "durationSeconds": 26,
+        "positiveStyles": ["angry epic", "hybrid orchestral metal", "distorted guitars", "heavy drums", "brass braams", "epic choir", "aggressive", "intense", "140 bpm", "D minor"],
+        "negativeStyles": ["lyrics", "rap", "spoken word", "pop", "happy", "lo-fi"],
+        "contextAdherence": "high"
+      },
+      {
+        "text": "[Bridge] {sudden drop to near silence, slow heartbeat kick drum, eerie music box melody, high tense string tremolo}",
+        "durationSeconds": 8,
+        "positiveStyles": ["breakdown", "eerie", "heartbeat", "music box", "suspense"],
+        "negativeStyles": ["vocals", "singing", "lyrics"],
+        "contextAdherence": "medium"
+      },
+      {
+        "text": "[Final Chorus] {biggest climax, double-time drums, distorted guitars, full orchestra and wordless choir at maximum intensity, furious and triumphant, unstoppable}",
+        "durationSeconds": 26,
+        "positiveStyles": ["angry epic", "hybrid orchestral metal", "maximum intensity", "double time drums", "epic choir", "brass", "triumphant", "furious", "140 bpm", "D minor"],
+        "negativeStyles": ["lyrics", "rap", "spoken word", "pop", "happy", "lo-fi"],
+        "contextAdherence": "high"
+      },
+      {
+        "text": "[Outro] {final massive impact hit, then a low ringing drone and a distant whistle fading out}",
+        "durationSeconds": 10,
+        "positiveStyles": ["trailer ending", "final impact", "ringing drone", "fade out"],
+        "negativeStyles": ["vocals", "singing", "lyrics"],
+        "contextAdherence": "high"
+      }
+    ]
+  }
+}

@@ -638,6 +638,9 @@ and no dependencies.
     date picks the seed, so everyone plays the same map today, on each level.
     The chip shows your best time (or furthest run) today. **New map** turns
     it off. The run timer says "daily" while it's on.
+- **A trailer**: 1:46 of the game filmed frame by frame in headless Chromium
+  and cut to an angry, epic 140 BPM track (`npm run trailer:shots`, then
+  `npm run trailer:edit`). How it's made: [docs/TRAILER.md](docs/TRAILER.md).
 
 ## Long Haul: No Man's Land × Clash Royale
 
