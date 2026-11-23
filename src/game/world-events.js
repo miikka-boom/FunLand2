@@ -256,7 +256,7 @@ export function explode(game, x, y, R) {
 export function takeAmmo(game, k) {
   k.taken = true;
   game.player.hot += AMMO_ROUNDS;
-  game.audio.pickup();
+  game.audio.pickup('ammo');
   game.haptic(15);
   game.announce(`+${AMMO_ROUNDS} HOT ROUNDS`, '#ffa451', 1.2, 'small');
 }

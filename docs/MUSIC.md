@@ -14,7 +14,7 @@ are cut from HQ renders: the same takes re-synthesised at 64 steps instead of 32
 | `src/main.js` | Calls both every frame |
 
 The settings panel has a separate **Music** volume slider. It applies on top of the main volume, and 0 turns the music off. The old synth Tank theme in
-`src/audio.js` stays silent while file music is on.
+`src/audio-synth.js` stays silent while file music is on. The sound effects have their own path and mix: see [SFX.md](SFX.md).
 
 ## What plays when
 

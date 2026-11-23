@@ -1,17 +1,100 @@
-// Tiny WebAudio synth: every sound is generated, nothing to download.
-// Positional sounds are panned/attenuated relative to the survivor.
+// The game's sound. Recorded effects (assets/sfx, cut from the sound libraries by
+// tools/sfx/build_sfx.py) play through a small mixer: every sound placed in the world gets
+// distance (quieter, duller), walls in the way (muffled), a pan by where it is on screen and a
+// send to a reverb shaped like the level (streets, a room, open ground, the yard). On top of
+// that: voice limits per kind of sound, ducking, each level's ambience beds and far-off sounds,
+// loops that sit in the world (fires, floodlight generators, the flare, the ferry's engine) and
+// the horde as a crowd bed. src/game/soundscape.js says what is where; this plays it.
+//
+// Anything whose file hasn't loaded yet (or can't be had) falls back to the synth this builds on
+// (audio-synth.js), and a few sounds stay synthesized on purpose: the alarms, Ben's whistle, the
+// Witch's crying and humming, the ferry's horn and the heartbeat.
+
+import { SynthAudio } from './audio-synth.js';
+import { SfxBank, spriteOf } from './sfx-bank.js';
+import { AMBIENCE, VERB } from './game/soundscape.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const NONE = {};
+const tmp = { x: 0, y: 0 };
 
-export class Audio {
+// What loads as soon as there is sound: the guns and the world's one-shots, then the voices.
+// Ambience beds load per level.
+const PRELOAD = ['stereo', 'mono', 'lo'];
+
+// Voice limits per group: past the limit a new sound only plays if it is louder than the
+// quietest one playing (which then gives way). MAX_VOICES caps them all.
+const CAPS = {
+  gun: 8, tail: 2, gun2: 4, tail2: 1, mech: 3, impact: 6, flesh: 5, gore: 6, body: 5, zv: 7, zdie: 3,
+  special: 6, step: 2, step2: 4, foley: 3, world: 10, boom: 3, sweet: 3, ui: 2, hurt: 3,
+};
+const MAX_VOICES = 64;
+
+// The player's guns. The automatic ones are a first shot, short bodies, and a tail restarted with
+// every shot that rings out after the last one.
+const GUNS = {
+  smg: { first: 'smg.first', shot: 'smg.shot', tail: 'smg.tail', gain: 0.6, tailGain: 0.9, auto: true },
+  rifle: { first: 'rifle.first', shot: 'rifle.shot', tail: 'rifle.tail', gain: 0.68, tailGain: 0.9, auto: true },
+  shotgun: { shot: 'shotgun.shot', gain: 0.95 },
+  hunting: { shot: 'hunting.shot', gain: 0.9 },
+};
+const MAG_GUNS = new Set(['smg', 'rifle', 'hunting']);
+
+// Footsteps by surface (soundscape.js: surfaceAt): [running, walking].
+const STEPS = {
+  concrete: ['step.concrete.run', 'step.concrete.walk'],
+  grass: ['step.grass.run', 'step.grass.walk'],
+  gravel: ['step.gravel.run', 'step.gravel.walk'],
+  dirt: ['step.dirt', 'step.dirt'],
+  wood: ['step.wood.run', 'step.wood.walk'],
+  metal: ['step.metal', 'step.metal'],
+};
+// Some surfaces come out quieter than others for the same step (wood planks are mostly low thud).
+const STEP_TRIM = { wood: 1.45, metal: 1.15, grass: 1.1 };
+
+// Bullet impacts by material (soundscape.js: materialOf).
+const IMPACTS = { concrete: 'imp.concrete', metal: 'imp.metal', metallight: 'imp.metallight', wood: 'imp.wood', dirt: 'imp.dirt', rock: 'imp.rock' };
+
+// Far-off sounds that drift in now and then (soundscape.js: AMBIENCE[level].sweet). Gain and
+// playback rate are [low, high]; lp darkens them with distance; repeat plays a few in a row.
+const SWEETENERS = {
+  'far.scream': { id: 'z.scream', gain: [0.07, 0.14], rate: [0.78, 0.98], lp: 1300 },
+  'far.glass': { id: 'imp.glass', gain: [0.05, 0.09], rate: [0.7, 0.9], lp: 3200 },
+  'far.thunder': { id: 'thunder', gain: [0.12, 0.22], rate: [0.85, 1.0], lp: 900 },
+  'far.boom': { id: 'explosion', gain: [0.06, 0.11], rate: [0.6, 0.75], lp: 600 },
+  'far.clank': { id: 'metal.clank', gain: [0.05, 0.1], rate: [0.55, 0.85], lp: 2600 },
+  'far.bang': { id: 'body.punch', gain: [0.14, 0.22], rate: [0.7, 0.9], lp: 900, repeat: [2, 4] }, // someone pounding on a door
+  'far.groan': { id: 'z.groan', gain: [0.08, 0.14], rate: [0.82, 0.98], lp: 900 },
+  'far.creak': { id: 'wood.creak', gain: [0.05, 0.1], rate: [0.6, 0.8], lp: 2500 },
+  'far.door': { id: 'door.creak', gain: [0.05, 0.09], rate: [0.7, 0.9], lp: 2000 },
+  'far.hull': { id: 'metal.lid', gain: [0.06, 0.1], rate: [0.35, 0.5], lp: 1200 }, // a hull or a crane groaning
+  'far.swing': { id: 'door.creak', gain: [0.04, 0.07], rate: [1.0, 1.2], lp: 3000, repeat: [2, 3] }, // a swing set in the wind
+  'far.crow': { id: 'crow', gain: [0.07, 0.12], rate: [0.95, 1.05], lp: 5000 },
+};
+
+export class Audio extends SynthAudio {
   constructor() {
-    this.ctx = null;
-    this.master = null;
-    this.volume = 0.8;
-    this.listener = { x: 0, y: 0 };
-    this.last = new Map();
-    this.alarmNodes = null;
+    super();
+    this.bank = new SfxBank(() => this.ctx);
+    this.view = null; // the camera: sounds pan by where they are on screen
+    this.occluder = null; // (x0, y0, x1, y1) => true when a wall is in the way
+    this.ambVolume = 1;
+    this.voices = [];
+    this.lastShot = { player: -9, ally: -9 };
+    this.tails = { player: null, ally: null };
+    this.reloadVoices = [];
+    this.run = null;
+    this.level = null;
+    this.wantBeds = [];
+    this.beds = new Map(); // id -> loop voice
+    this.emitters = new Map(); // emitter key -> loop voice
+    this.crowd = { voices: null, feet: null }; // the horde bed's two loops
+    this.sweetT = 6;
+    this.sceneT = 0;
   }
+
+  // --- the mixer -------------------------------------------------------------------------------
 
   /** Must be called from a user gesture (iOS). Safe to call repeatedly. */
   unlock() {
@@ -20,20 +103,13 @@ export class Audio {
         const AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return;
         this.ctx = new AC();
-        const comp = this.ctx.createDynamicsCompressor();
-        comp.threshold.value = -14;
-        comp.ratio.value = 6;
-        comp.attack.value = 0.003;
-        comp.release.value = 0.2;
-        this.master = this.ctx.createGain();
-        this.master.gain.value = this.volume;
-        this.master.connect(comp);
-        comp.connect(this.ctx.destination);
+        this._graph();
         const len = this.ctx.sampleRate * 1.5;
         this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
         const d = this.noise.getChannelData(0);
         for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
         this._ambience();
+        for (const key of PRELOAD) this.bank.load(key);
       }
       if (this.ctx.state === 'suspended') this.ctx.resume();
       // Old iOS: a silent buffer finishes the unlock.
@@ -46,98 +122,67 @@ export class Audio {
     }
   }
 
-  setVolume(v) {
-    this.volume = v;
-    if (this.master) this.master.gain.value = v;
+  /**
+   * master (volume) -> muffle (death, blasts) -> glue compressor -> limiter, and the buses into it.
+   * The limiter and the music (src/music-player.js, which skips the compressor so it doesn't pump
+   * with every shot) meet in one last safety limiter, so a gunshot on a loud bar can't clip.
+   */
+  _graph() {
+    const c = this.ctx;
+    this.mixOut = c.createDynamicsCompressor();
+    this.mixOut.threshold.value = -1;
+    this.mixOut.knee.value = 0;
+    this.mixOut.ratio.value = 20;
+    this.mixOut.attack.value = 0.001;
+    this.mixOut.release.value = 0.08;
+    this.mixOut.connect(c.destination);
+    this.master = this._gain(this.volume);
+    this.muffle = c.createBiquadFilter();
+    this.muffle.type = 'lowpass';
+    this.muffle.frequency.value = 20000;
+    this.muffle.Q.value = 0.5;
+    const glue = c.createDynamicsCompressor();
+    glue.threshold.value = -16;
+    glue.knee.value = 10;
+    glue.ratio.value = 3;
+    glue.attack.value = 0.004;
+    glue.release.value = 0.22;
+    const limit = c.createDynamicsCompressor();
+    limit.threshold.value = -2.5;
+    limit.knee.value = 0;
+    limit.ratio.value = 20;
+    limit.attack.value = 0.001;
+    limit.release.value = 0.12;
+    this.master.connect(this.muffle);
+    this.muffle.connect(glue);
+    glue.connect(limit);
+    limit.connect(this.mixOut);
+    this.out = limit; // the effects' output (for metering)
+    this.sfxBus = this._gain(1, this.master); // your guns, your body, what you handle
+    this.worldBus = this._gain(1, this.master); // everything placed in the world
+    this.ambDuck = this._gain(1, this.master);
+    this.ambBus = this._gain(this.ambVolume, this.ambDuck); // beds, far-off sounds, loops in the world
+    this.uiBus = this._gain(0.6, this.master);
+    try {
+      this.verb = c.createConvolver();
+      this.verbIn = this._gain(1, this.verb);
+      this.verbOut = this._gain(0.3, this.master);
+      this.verb.connect(this.verbOut);
+      this._setVerb('street');
+    } catch {
+      this.verb = null;
+      this.verbIn = null;
+    }
   }
 
-  suspend() {
-    if (this.ctx && this.ctx.state === 'running') this.ctx.suspend();
-  }
-
-  resume() {
-    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
-  }
-
-  // --- building blocks -------------------------------------------------------------
-
-  _ok(key, minGap) {
-    if (!this.ctx || this.ctx.state !== 'running') return false;
-    const now = this.ctx.currentTime;
-    if (minGap && now - (this.last.get(key) || -1) < minGap) return false;
-    this.last.set(key, now);
-    return true;
-  }
-
-  _out(pan = 0, gain = 1) {
+  _gain(v, to) {
     const g = this.ctx.createGain();
-    g.gain.value = gain;
-    if (pan && this.ctx.createStereoPanner) {
-      const p = this.ctx.createStereoPanner();
-      p.pan.value = clamp(pan, -1, 1);
-      g.connect(p);
-      p.connect(this.master);
-    } else g.connect(this.master);
+    g.gain.value = v;
+    if (to) g.connect(to);
     return g;
   }
 
-  _spatial(x, y, range = 900) {
-    const dx = x - this.listener.x;
-    const dy = y - this.listener.y;
-    const d = Math.hypot(dx, dy);
-    return { pan: clamp(dx / 520, -0.9, 0.9), gain: Math.pow(clamp(1 - d / range, 0, 1), 1.5) };
-  }
-
-  _noise({ dur, type = 'bandpass', freq = 1000, q = 1, gain = 0.5, attack = 0.002, at = 0, rate = 1, sweepTo, out }) {
-    const c = this.ctx;
-    const t = c.currentTime + at;
-    const src = c.createBufferSource();
-    src.buffer = this.noise;
-    src.loop = true; // long sounds (horde) outlast the buffer
-    src.playbackRate.value = rate;
-    const f = c.createBiquadFilter();
-    f.type = type;
-    f.frequency.setValueAtTime(freq, t);
-    if (sweepTo) f.frequency.exponentialRampToValueAtTime(sweepTo, t + dur);
-    f.Q.value = q;
-    const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain, t + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(f);
-    f.connect(g);
-    g.connect(out || this.master);
-    src.start(t, Math.random() * 0.5);
-    src.stop(t + dur + 0.05);
-  }
-
-  _tone({ type = 'sine', f0, f1, dur, gain = 0.4, attack = 0.004, at = 0, out, filter }) {
-    const c = this.ctx;
-    const t = c.currentTime + at;
-    const o = c.createOscillator();
-    o.type = type;
-    o.frequency.setValueAtTime(f0, t);
-    if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
-    const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain, t + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    let node = o;
-    if (filter) {
-      const f = c.createBiquadFilter();
-      f.type = filter.type || 'lowpass';
-      f.frequency.value = filter.freq;
-      f.Q.value = filter.q || 1;
-      o.connect(f);
-      node = f;
-    }
-    node.connect(g);
-    g.connect(out || this.master);
-    o.start(t);
-    o.stop(t + dur + 0.05);
-    return o;
-  }
-
+  /** The air under everything (the synth's low noise), now on the ambience bus at the level's level. */
   _ambience() {
     const c = this.ctx;
     const src = c.createBufferSource();
@@ -146,704 +191,1030 @@ export class Audio {
     const f = c.createBiquadFilter();
     f.type = 'lowpass';
     f.frequency.value = 380;
-    const g = c.createGain();
-    g.gain.value = 0.035;
+    this.air = this._gain(0.02, this.ambBus);
     src.connect(f);
-    f.connect(g);
-    g.connect(this.master);
+    f.connect(this.air);
     src.start();
   }
 
-  // --- weapons ---------------------------------------------------------------------
-
-  shot(kind) {
-    if (!this._ok('shot', 0.02)) return;
-    this._shot(kind);
+  /** Synth sounds placed in the world get a little of the room too. */
+  _out(pan = 0, gain = 1) {
+    const g = super._out(pan, gain);
+    if (this.verbIn) g.connect(this._gain(0.16, this.verbIn));
+    return g;
   }
 
-  /** The teammate's gunfire: same guns, quieter and placed where it stands. */
-  allyShot(kind, x, y) {
-    if (!this._ok('allyShot', 0.035)) return;
-    const s = this._spatial(x, y, 1200);
-    if (s.gain < 0.02) return;
-    this._shot(kind, this._out(s.pan, s.gain * 0.55));
+  setAmbience(v) {
+    this.ambVolume = v;
+    if (this.ambBus) this.ambBus.gain.setTargetAtTime(v, this.ctx.currentTime, 0.1);
   }
 
-  _shot(kind, out) {
-    const r = 0.92 + Math.random() * 0.16;
-    if (kind === 'shotgun') {
-      this._noise({ dur: 0.32, type: 'lowpass', freq: 2600, gain: 0.95, rate: r * 0.8, out });
-      this._tone({ f0: 95, f1: 38, dur: 0.22, gain: 0.9, out });
-      this._noise({ dur: 0.05, type: 'highpass', freq: 2500, gain: 0.12, at: 0.42, out });
-      this._noise({ dur: 0.06, type: 'highpass', freq: 1800, gain: 0.14, at: 0.52, out });
-    } else if (kind === 'hunting') {
-      this._noise({ dur: 0.05, type: 'highpass', freq: 3000, gain: 0.5, out });
-      this._noise({ dur: 0.24, type: 'bandpass', freq: 1300, q: 0.6, gain: 0.8, rate: r, out });
-      this._tone({ f0: 130, f1: 45, dur: 0.18, gain: 0.75, out });
-      this._noise({ dur: 0.3, type: 'lowpass', freq: 700, gain: 0.18, at: 0.14, out });
-    } else if (kind === 'rifle') {
-      this._noise({ dur: 0.12, type: 'bandpass', freq: 1500, q: 0.7, gain: 0.6, rate: r, out });
-      this._tone({ f0: 125, f1: 50, dur: 0.1, gain: 0.55, out });
-    } else {
-      this._noise({ dur: 0.085, type: 'bandpass', freq: 2000, q: 0.8, gain: 0.45, rate: r, out });
-      this._tone({ f0: 150, f1: 62, dur: 0.07, gain: 0.4, out });
+  /** A reverb shaped like the level: noise that decays (darker as it goes) after a few early reflections. */
+  _setVerb(type) {
+    if (!this.verb || this.verbType === type) return;
+    this.verbType = type;
+    const P = VERB[type] || VERB.street;
+    const c = this.ctx;
+    const sr = c.sampleRate;
+    const len = Math.floor(sr * Math.min(3, P.decay * 1.15 + 0.1));
+    const ir = c.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      let lp = 0;
+      for (let i = 0; i < len; i++) {
+        const t = i / sr;
+        const a = clamp(P.damp * (0.3 + t / P.decay), 0, 0.96);
+        lp = lp * a + (Math.random() * 2 - 1) * (1 - a);
+        d[i] = lp * Math.exp((-6.9 * t) / P.decay) * (t < 0.01 ? t / 0.01 : 1);
+      }
+      for (const [dt, g] of P.early) {
+        const i = Math.floor(dt * (ch ? 1.07 : 0.93) * sr);
+        if (i < len) d[i] += g * 0.25 * (Math.random() < 0.5 ? -1 : 1);
+      }
+    }
+    try {
+      this.verb.buffer = ir;
+      this.verbOut.gain.setTargetAtTime(P.level, c.currentTime, 0.3);
+    } catch {
+      // a convolver that won't take it keeps the old room
     }
   }
 
-  /** The teammate goes down (or dies): a pained grunt where it is. */
-  allyDown(x, y) {
-    if (!this._ok('allyDown', 0.5)) return;
-    const s = this._spatial(x, y, 1600);
-    const out = this._out(s.pan, 0.35 + s.gain * 0.65);
-    this._tone({ type: 'sawtooth', f0: 210, f1: 120, dur: 0.45, gain: 0.22, attack: 0.02, out, filter: { freq: 900 } });
-    this._noise({ dur: 0.35, type: 'lowpass', freq: 500, gain: 0.3, out });
+  /**
+   * Where a sound at (x, y) sits for the listener: level, pan, dullness, reverb, and walls in the
+   * way. `occlude`: true runs the wall test, false skips it, 'yes' applies a wall known from before.
+   */
+  _place(x, y, range = 900, occlude = true) {
+    const L = this.listener;
+    const dx = x - L.x;
+    const dy = y - L.y;
+    const d = Math.hypot(dx, dy);
+    const near = 110;
+    let gain = d <= near ? 1 : Math.pow(clamp(1 - (d - near) / Math.max(1, range - near), 0, 1), 1.6);
+    const s = this.view ? this.view.dirToScreen(dx, dy, tmp) : { x: dx };
+    const pan = clamp(s.x / 520, -0.85, 0.85);
+    const f = clamp(d / range, 0, 1);
+    let lp = 16000 * Math.pow(0.09, f); // 16 kHz up close, about 1.4 kHz at the edge of hearing
+    let send = 0.06 + 0.3 * f;
+    const walled = occlude === 'yes' || (occlude === true && d > 70 && gain > 0.01 && !!this.occluder && this.occluder(L.x, L.y, x, y));
+    if (walled) {
+      gain *= 0.55;
+      lp = Math.min(lp, 1100);
+      send *= 1.4;
+    }
+    return { gain, pan, lp, send, d, walled };
   }
 
-  dryFire() {
-    if (this._ok('dry', 0.3)) this._noise({ dur: 0.025, type: 'highpass', freq: 3500, gain: 0.25 });
+  /** Room for one more voice in this group? (Makes room by stopping the quietest if this one is louder.) */
+  _admit(group, gain, cap, force) {
+    const now = this.ctx.currentTime;
+    const vs = this.voices;
+    let j = 0;
+    for (let i = 0; i < vs.length; i++) if (vs[i].end > now) vs[j++] = vs[i];
+    vs.length = j;
+    const max = cap || CAPS[group] || 4;
+    let n = 0;
+    let weakest = null; // the one to give way: the oldest for a forced sound, else the quietest
+    for (const v of vs) {
+      if (v.group !== group) continue;
+      n++;
+      if (!weakest || (force ? v.t0 < weakest.t0 : v.gain < weakest.gain)) weakest = v;
+    }
+    if (n >= max) {
+      if (!weakest || (!force && weakest.gain >= gain * 1.15)) return false;
+      this._fade(weakest, 0.04);
+    } else if (vs.length >= MAX_VOICES) {
+      let w = null;
+      for (const v of vs) if (!w || v.gain < w.gain) w = v;
+      if (!w || (!force && w.gain >= gain)) return false;
+      this._fade(w, 0.04);
+    }
+    return true;
   }
 
-  reloadStart() {
-    if (!this._ok('rl', 0.05)) return;
-    this._noise({ dur: 0.03, type: 'highpass', freq: 3000, gain: 0.3 });
-    this._noise({ dur: 0.12, type: 'bandpass', freq: 1400, q: 2, gain: 0.15, at: 0.08 });
+  /** Fade a playing voice out and stop it. */
+  _fade(v, time = 0.06) {
+    if (!v || !v.g) return;
+    v.end = 0;
+    try {
+      const t = this.ctx.currentTime;
+      const g = v.g.gain;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(g.value, t);
+      g.linearRampToValueAtTime(0, t + time);
+      v.src.stop(t + time + 0.02);
+    } catch {
+      // already stopped
+    }
   }
 
-  reloadDone() {
-    if (!this._ok('rd', 0.05)) return;
-    this._noise({ dur: 0.03, type: 'highpass', freq: 2600, gain: 0.35 });
-    this._noise({ dur: 0.04, type: 'highpass', freq: 2000, gain: 0.3, at: 0.09 });
+  /**
+   * Play a recorded sound. Returns the voice, or null if it can't (not loaded, too far, no room).
+   * o.x/o.y place it in the world (o.range: where it fades out; o.occlude: false skips the wall
+   * test); o.pan places it by hand. o.gain; o.rate (playback rate = pitch) and o.vary (+- on it);
+   * o.gvary (+- on the gain); o.at: delay (s); o.bus; o.send / o.verb: reverb send / scale on the
+   * placed one; o.lp / o.hp (Hz); o.group / o.cap: voice limit; o.force; o.i: a given variant.
+   */
+  _play(id, o = NONE) {
+    const c = this.ctx;
+    if (!c || c.state !== 'running') return null;
+    const v = this.bank.get(id, o.i === undefined ? -1 : o.i);
+    if (!v) return null;
+    let gain = o.gain === undefined ? 1 : o.gain;
+    let pan = o.pan || 0;
+    let lp = o.lp || 0;
+    let send = o.send || 0;
+    if (o.x !== undefined) {
+      const sp = this._place(o.x, o.y, o.range, o.occlude !== false);
+      gain *= sp.gain;
+      if (gain < 0.003) return null;
+      pan = sp.pan;
+      lp = lp ? Math.min(lp, sp.lp) : sp.lp;
+      send += sp.send * (o.verb === undefined ? 1 : o.verb);
+    }
+    const group = o.group || 'world';
+    if (!this._admit(group, gain, o.cap, o.force)) return null;
+    const rate = (o.rate || 1) * (1 + (Math.random() * 2 - 1) * (o.vary === undefined ? 0.04 : o.vary));
+    const t = c.currentTime + (o.at || 0);
+    const src = c.createBufferSource();
+    src.buffer = v.buffer;
+    src.playbackRate.value = rate;
+    const g = c.createGain();
+    g.gain.value = gain * (1 + (Math.random() * 2 - 1) * (o.gvary === undefined ? 0.1 : o.gvary));
+    let head = src;
+    if (o.hp) {
+      const f = c.createBiquadFilter();
+      f.type = 'highpass';
+      f.frequency.value = o.hp;
+      head.connect(f);
+      head = f;
+    }
+    if (lp && lp < 17000) {
+      const f = c.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = lp;
+      f.Q.value = 0.6;
+      head.connect(f);
+      head = f;
+    }
+    head.connect(g);
+    let out = g;
+    if (pan && c.createStereoPanner) {
+      const p = c.createStereoPanner();
+      p.pan.value = clamp(pan, -1, 1);
+      g.connect(p);
+      out = p;
+    }
+    out.connect(o.bus || this.worldBus);
+    if (send > 0.002 && this.verbIn) out.connect(this._gain(Math.min(1, send), this.verbIn));
+    const dur = o.dur ? Math.min(o.dur, v.dur) : v.dur;
+    src.start(t, v.offset, dur);
+    const voice = { src, g, group, gain, t0: t, end: t + dur / rate + 0.05 };
+    src.onended = () => {
+      try {
+        out.disconnect();
+      } catch {
+        // gone
+      }
+    };
+    this.voices.push(voice);
+    return voice;
+  }
+
+  /** Duck the ambience (beds, far-off sounds) by `amount` (0..1), hold, then let it back over `release` s. */
+  _duck(amount, hold = 0.2, release = 1.5) {
+    if (!this.ambDuck) return;
+    const g = this.ambDuck.gain;
+    const t = this.ctx.currentTime;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    g.setTargetAtTime(Math.max(0.05, 1 - amount), t, 0.02);
+    g.setTargetAtTime(1, t + hold, release / 3);
+  }
+
+  /** Muffle everything (not the music) down to `freq`, over `time` s; back with 20000. */
+  _muffle(freq, time = 0.5) {
+    if (!this.muffle) return;
+    const f = this.muffle.frequency;
+    const t = this.ctx.currentTime;
+    f.cancelScheduledValues(t);
+    f.setValueAtTime(Math.max(40, f.value), t);
+    f.exponentialRampToValueAtTime(freq, t + Math.max(0.02, time));
+  }
+
+  /** A blast close by: the world goes dull for a moment and the ears ring (k: 0..1, how close). */
+  _shellshock(k) {
+    if (!this.muffle || k <= 0) return;
+    const f = this.muffle.frequency;
+    const t = this.ctx.currentTime;
+    f.cancelScheduledValues(t);
+    f.setValueAtTime(Math.max(40, f.value), t);
+    f.exponentialRampToValueAtTime(600 + 2400 * (1 - k), t + 0.05);
+    f.setTargetAtTime(20000, t + 0.4 + 0.6 * k, 0.9);
+    this._tone({ f0: 3700, f1: 3500, dur: 2.2 + 1.5 * k, gain: 0.025 + 0.035 * k, attack: 0.05, at: 0.05, out: this.uiBus });
+  }
+
+  // --- the soundscape (once a frame from main.js) -----------------------------------------------
+
+  /** The listener, the level's ambience, the loops in the world and the horde: see soundscape.js readScene. */
+  update(dt, scene) {
+    const c = this.ctx;
+    if (!c || c.state !== 'running' || !scene) return;
+    if (scene.run !== this.run) {
+      this.run = scene.run;
+      this._newRun();
+    }
+    if (scene.level !== this.level) this._setLevel(scene.level);
+    this._sweeten(dt, scene);
+    this.sceneT -= dt;
+    if (this.sceneT > 0) return;
+    this.sceneT = 0.1; // the loops follow at 10 Hz (smoothed), which is plenty
+    this._updateBeds(scene.screen);
+    this._updateEmitters(scene.emitters);
+    this._updateHorde(scene.horde, scene.screen);
+  }
+
+  _newRun() {
+    this._muffle(20000, 0.6);
+    for (const w of ['player', 'ally']) {
+      this._fade(this.tails[w], 0.2);
+      this.tails[w] = null;
+    }
+    this._cancelReload();
+  }
+
+  _setLevel(level) {
+    this.level = level;
+    const A = AMBIENCE[level] || AMBIENCE.city;
+    this._setVerb(A.verb);
+    if (this.air) this.air.gain.setTargetAtTime(A.air, this.ctx.currentTime, 1);
+    for (const [id] of A.beds) this.bank.load(spriteOf(id));
+    this.wantBeds = A.beds;
+    this.sweetT = rnd(4, 9);
+  }
+
+  /** A looping voice over a loop's seamless part, started at a random point in it, fading in. */
+  _loopVoice(id, bus, rate = 1, placed = false) {
+    const L = this.bank.loop(id);
+    if (!L) return null;
+    const c = this.ctx;
+    const src = c.createBufferSource();
+    src.buffer = L.buffer;
+    src.loop = true;
+    src.loopStart = L.a;
+    src.loopEnd = L.b;
+    src.playbackRate.value = rate;
+    const g = this._gain(0.0001);
+    const v = { id, src, g, cur: 0 };
+    let head = src;
+    if (placed) {
+      v.f = c.createBiquadFilter();
+      v.f.type = 'lowpass';
+      v.f.frequency.value = 8000;
+      src.connect(v.f);
+      head = v.f;
+    }
+    head.connect(g);
+    let out = g;
+    if (c.createStereoPanner) {
+      v.p = c.createStereoPanner();
+      g.connect(v.p);
+      out = v.p;
+    }
+    out.connect(bus);
+    if (placed && this.verbIn) {
+      v.s = this._gain(0.1, this.verbIn);
+      out.connect(v.s);
+    }
+    src.start(c.currentTime, L.a + Math.random() * (L.b - L.a));
+    return v;
+  }
+
+  _stopLoop(v, fade = 1.5) {
+    if (!v) return;
+    try {
+      const t = this.ctx.currentTime;
+      v.g.gain.cancelScheduledValues(t);
+      v.g.gain.setValueAtTime(v.g.gain.value, t);
+      v.g.gain.setTargetAtTime(0.0001, t, fade / 3);
+      v.src.stop(t + fade * 1.6);
+    } catch {
+      // already stopped
+    }
+  }
+
+  _updateBeds(screen) {
+    const t = this.ctx.currentTime;
+    const want = new Map(this.wantBeds);
+    for (const [id, v] of this.beds) {
+      if (want.has(id)) continue;
+      this._stopLoop(v, 2.5);
+      this.beds.delete(id);
+    }
+    const k = screen === 'play' ? 1 : 0.6;
+    for (const [id, gain] of want) {
+      let v = this.beds.get(id);
+      if (!v) {
+        v = this._loopVoice(id, this.ambBus);
+        if (!v) continue; // still loading
+        this.beds.set(id, v);
+      }
+      const target = gain * k;
+      if (Math.abs(target - v.cur) > 0.001) {
+        v.g.gain.setTargetAtTime(target, t, 0.8);
+        v.cur = target;
+      }
+    }
+  }
+
+  _updateEmitters(list) {
+    const t = this.ctx.currentTime;
+    const seen = this._seen || (this._seen = new Set());
+    seen.clear();
+    for (const e of list) {
+      let v = this.emitters.get(e.key);
+      // The wall test is the expensive part: every few updates is enough for something standing still.
+      const test = !v || (v.n = (v.n || 0) + 1) % 4 === 0;
+      const sp = this._place(e.x, e.y, e.range, test ? true : v.walled ? 'yes' : false);
+      const gain = e.gain * sp.gain;
+      if (!v) {
+        if (gain < 0.003) continue;
+        v = this._loopVoice(e.id, this.ambBus, e.rate * (1 + rnd(-0.03, 0.03)), true);
+        if (!v) continue;
+        this.emitters.set(e.key, v);
+      }
+      if (test) v.walled = sp.walled;
+      seen.add(e.key);
+      this._steer(v, gain, sp.pan, sp.lp, sp.send * 0.7);
+    }
+    for (const [k, v] of this.emitters) {
+      if (seen.has(k)) continue;
+      this._stopLoop(v, 0.9);
+      this.emitters.delete(k);
+    }
+  }
+
+  /**
+   * Move a placed loop's level, pan, dullness and reverb send toward new values (smoothed), only
+   * sending the ones that really changed: the automation timelines stay short.
+   */
+  _steer(v, gain, pan, lp, send, rise = 0.15, fall = 0.15) {
+    const t = this.ctx.currentTime;
+    if (Math.abs(gain - v.cur) > Math.max(0.002, v.cur * 0.03)) {
+      v.g.gain.setTargetAtTime(gain, t, gain > v.cur ? rise : fall);
+      v.cur = gain;
+    }
+    if (v.p && Math.abs(pan - (v.pan || 0)) > 0.02) {
+      v.p.pan.setTargetAtTime(pan, t, 0.12);
+      v.pan = pan;
+    }
+    if (v.f && Math.abs(lp - (v.lp || 0)) > (v.lp || 1) * 0.05) {
+      v.f.frequency.setTargetAtTime(lp, t, 0.2);
+      v.lp = lp;
+    }
+    if (v.s && Math.abs(send - (v.send || 0)) > 0.01) {
+      v.s.gain.setTargetAtTime(send, t, 0.3);
+      v.send = send;
+    }
+  }
+
+  _updateHorde(H, screen) {
+    if (!H) return;
+    const sp = this._place(H.x, H.y, 2000, false);
+    for (const [key, id, level, top, lp] of [['voices', 'loop.horde', H.voices, 0.5, 7000], ['feet', 'loop.feet', H.feet, 0.42, 5000]]) {
+      const target = screen === 'play' ? level * top : 0;
+      let v = this.crowd[key];
+      if (!v) {
+        if (target < 0.01) continue;
+        v = this._loopVoice(id, this.worldBus, 1, true);
+        if (!v) continue;
+        this.crowd[key] = v;
+      }
+      // Comes up quickly as they close in, lets go slowly as they thin out.
+      this._steer(v, target, sp.pan * 0.7, lp, 0.18, 0.5, 1.4);
+    }
+  }
+
+  _sweeten(dt, scene) {
+    if (scene.screen !== 'play') return;
+    this.sweetT -= dt;
+    if (this.sweetT > 0) return;
+    this.sweetT = rnd(8, 18);
+    const A = AMBIENCE[this.level];
+    if (!A) return;
+    const S = SWEETENERS[A.sweet[Math.floor(Math.random() * A.sweet.length)]];
+    if (!S || !this.bank.ready(S.id)) return;
+    const pan = rnd(-0.8, 0.8);
+    const n = S.repeat ? Math.round(rnd(S.repeat[0], S.repeat[1])) : 1;
+    for (let i = 0; i < n; i++) {
+      this._play(S.id, { pan, bus: this.ambBus, gain: rnd(S.gain[0], S.gain[1]), rate: rnd(S.rate[0], S.rate[1]), lp: S.lp, send: 0.55, group: 'sweet', at: i * rnd(0.35, 0.6) });
+    }
+  }
+
+  // --- weapons ---------------------------------------------------------------------------------
+
+  shot(kind) {
+    const G = GUNS[kind];
+    if (!G || !this.bank.ready(G.shot)) return super.shot(kind);
+    if (!this._ok('s:shot', 0.02)) return;
+    this._gunshot(G, 'player');
+    this._duck(0.3, 0.12, 1.2);
+  }
+
+  allyShot(kind, x, y) {
+    const G = GUNS[kind];
+    if (!G || !this.bank.ready(G.shot)) return super.allyShot(kind, x, y);
+    if (!this._ok('s:allyShot', 0.035)) return;
+    this._gunshot(G, 'ally', x, y);
+  }
+
+  _gunshot(G, who, x, y) {
+    const now = this.ctx.currentTime;
+    const burst = now - this.lastShot[who] < 0.2;
+    this.lastShot[who] = now;
+    const o = who === 'ally'
+      ? { x, y, range: 1300, gain: G.gain * 0.6, lp: 9000, group: 'gun2', vary: 0.03 }
+      : { bus: this.sfxBus, gain: G.gain, group: 'gun', send: 0.04, force: true, vary: 0.025, gvary: 0.06 };
+    if (!G.auto) {
+      this._play(G.shot, o);
+      return;
+    }
+    this._play(burst ? G.shot : G.first, o);
+    this._fade(this.tails[who], 0.07);
+    this.tails[who] = this._play(G.tail, { ...o, gain: o.gain * G.tailGain, group: who === 'ally' ? 'tail2' : 'tail', send: (o.send || 0) + 0.08, gvary: 0.04 });
+  }
+
+  dryFire(kind) {
+    if (!this.bank.ready('gun.dry')) return super.dryFire(kind);
+    if (this._ok('s:dry', 0.3)) this._play('gun.dry', { bus: this.sfxBus, gain: 0.4, group: 'mech' });
+  }
+
+  /** Mag out now, mag in a little past halfway (the bolt or charging handle comes with reloadDone). */
+  reloadStart(kind, dur = 1.6) {
+    if (!this.bank.ready('smg.magout')) return super.reloadStart(kind, dur);
+    if (!this._ok('s:rl', 0.05)) return;
+    this._cancelReload();
+    const o = { bus: this.sfxBus, group: 'mech', gain: 0.38 };
+    if (!MAG_GUNS.has(kind)) {
+      this._play('foley.cloth', { ...o, gain: 0.35, group: 'foley' }); // the shotgun: tip it to load
+      return;
+    }
+    this.reloadVoices.push(
+      this._play(`${kind}.magout`, o),
+      this._play('foley.cloth', { ...o, gain: 0.22, group: 'foley', at: 0.05 }),
+      this._play(`${kind}.magin`, { ...o, at: Math.max(0.3, dur * 0.55) }),
+    );
+  }
+
+  reloadDone(kind) {
+    if (!this.bank.ready('smg.cock')) return super.reloadDone(kind);
+    if (!this._ok('s:rd', 0.05)) return;
+    this.reloadVoices.length = 0;
+    if (MAG_GUNS.has(kind)) this._play(`${kind}.cock`, { bus: this.sfxBus, group: 'mech', gain: 0.4 });
+  }
+
+  _cancelReload() {
+    for (const v of this.reloadVoices) if (v && v.end > this.ctx.currentTime) this._fade(v, 0.05);
+    this.reloadVoices.length = 0;
   }
 
   shell() {
-    if (this._ok('shell', 0.05)) this._noise({ dur: 0.05, type: 'bandpass', freq: 1900, q: 3, gain: 0.3 });
+    if (!this.bank.ready('shotgun.shell')) return super.shell();
+    if (this._ok('s:shell', 0.05)) this._play('shotgun.shell', { bus: this.sfxBus, gain: 0.38, group: 'mech' });
   }
 
   pump() {
-    if (!this._ok('pump', 0.1)) return;
-    this._noise({ dur: 0.06, type: 'highpass', freq: 1800, gain: 0.3 });
-    this._noise({ dur: 0.07, type: 'highpass', freq: 1400, gain: 0.3, at: 0.12 });
+    if (!this.bank.ready('shotgun.pump')) return super.pump();
+    if (this._ok('s:pump', 0.1)) this._play('shotgun.pump', { bus: this.sfxBus, gain: 0.42, group: 'mech' });
   }
 
-  swap() {
-    if (this._ok('swap', 0.05)) this._noise({ dur: 0.1, type: 'bandpass', freq: 900, q: 1.5, gain: 0.25 });
+  /** Swapped to `kind`: a grab, then that gun's own sound. */
+  swap(kind) {
+    if (!this.bank.ready('foley.grab')) return super.swap(kind);
+    if (!this._ok('s:swap', 0.05)) return;
+    this._cancelReload();
+    this._play('foley.grab', { bus: this.sfxBus, gain: 0.35, group: 'foley' });
+    if (GUNS[kind]) this._play(`swap.${kind}`, { bus: this.sfxBus, gain: 0.36, group: 'mech', at: 0.08 });
   }
 
   shove(hit) {
-    if (!this._ok('shove', 0.05)) return;
-    this._noise({ dur: 0.13, type: 'bandpass', freq: 500, sweepTo: 2600, q: 1.2, gain: 0.35 });
+    if (!this.bank.ready('whoosh')) return super.shove(hit);
+    if (!this._ok('s:shove', 0.05)) return;
+    const o = { bus: this.sfxBus, group: 'body' };
+    this._play('whoosh', { ...o, gain: 0.32, rate: 0.95 });
+    this._play('foley.cloth', { ...o, gain: 0.3, group: 'foley' });
     if (hit) {
-      this._noise({ dur: 0.09, type: 'lowpass', freq: 380, gain: 0.8, at: 0.03 });
-      this._tone({ f0: 110, f1: 60, dur: 0.08, gain: 0.4, at: 0.03 });
+      this._play('body.punch', { ...o, gain: 0.62, at: 0.035 });
+      this._play('body.wet', { ...o, gain: 0.3, at: 0.04 });
     }
   }
 
-  // --- bodies -------------------------------------------------------------------------
+  /** A bullet stopped on something (material: soundscape.js materialOf). */
+  impact(x, y, material) {
+    const id = IMPACTS[material] || IMPACTS.concrete;
+    if (!this.bank.ready(id) || !this._ok('s:imp:' + material, 0.04)) return;
+    this._play(id, { x, y, range: 1000, gain: material === 'metal' ? 0.5 : 0.42, group: 'impact', vary: 0.08 });
+    if ((material === 'concrete' || material === 'rock') && Math.random() < 0.3) this._play('debris', { x, y, range: 700, gain: 0.2, group: 'impact', at: 0.03 });
+  }
 
-  splat(x, y) {
-    if (!this._ok('splat', 0.035)) return;
-    const s = this._spatial(x, y);
-    if (s.gain < 0.02) return;
-    const out = this._out(s.pan, s.gain);
-    this._noise({ dur: 0.12, type: 'bandpass', freq: 420 + Math.random() * 200, q: 1.2, gain: 0.45, rate: 0.7 + Math.random() * 0.3, out });
+  /** A bullet went into one of the infected (heavy: the Tank or the Witch). */
+  bulletHit(x, y, heavy = false) {
+    if (!this.bank.ready('imp.flesh') || !this._ok('s:flesh', 0.03)) return;
+    this._play(heavy ? 'imp.thump' : 'imp.flesh', { x, y, range: 900, gain: heavy ? 0.5 : 0.4, group: 'flesh', vary: 0.1 });
+  }
+
+  // --- you ---------------------------------------------------------------------------------------
+
+  /** A footstep on `surface` (soundscape.js surfaceAt); k: 0..1 how fast; who: 'player' or 'ally'. */
+  footstep(x, y, surface, k = 1, who = 'player') {
+    const ids = STEPS[surface] || STEPS.concrete;
+    const id = ids[k > 0.6 ? 0 : 1];
+    if (!this.bank.ready(id)) return;
+    const trim = (STEP_TRIM[surface] || 1) * (0.55 + 0.45 * k);
+    if (who === 'player') {
+      this.stepSide = -(this.stepSide || 1);
+      this._play(id, { bus: this.sfxBus, gain: 0.26 * trim, pan: this.stepSide * 0.06, send: 0.03, group: 'step', force: true, vary: 0.06 });
+      if (k > 0.6 && Math.random() < 0.3) this._play('foley.rattle', { bus: this.sfxBus, gain: 0.1, group: 'foley' });
+    } else {
+      this._play(id, { x, y, range: 650, gain: 0.22 * trim, group: 'step2', vary: 0.06 });
+    }
   }
 
   hurt() {
-    if (!this._ok('hurt', 0.12)) return;
-    this._noise({ dur: 0.14, type: 'lowpass', freq: 420, gain: 0.7 });
-    this._tone({ type: 'sawtooth', f0: 200, f1: 120, dur: 0.14, gain: 0.12, filter: { freq: 700 } });
+    if (!this.bank.ready('body.punch')) return super.hurt();
+    if (!this._ok('s:hurt', 0.12)) return;
+    const o = { bus: this.sfxBus, group: 'hurt' };
+    this._play('body.punch', { ...o, gain: 0.6, rate: 1.05 });
+    this._play('imp.flesh', { ...o, gain: 0.26, rate: 0.85 });
+    if (Math.random() < 0.4) this._play('foley.cloth', { ...o, gain: 0.25, group: 'foley' });
   }
 
   death() {
-    if (!this._ok('death')) return;
-    this._tone({ type: 'sawtooth', f0: 180, f1: 50, dur: 1.4, gain: 0.25, filter: { freq: 600 } });
-    this._noise({ dur: 1.2, type: 'lowpass', freq: 300, gain: 0.4 });
+    if (!this.bank.ready('body.fall')) return super.death();
+    if (!this._ok('s:death')) return;
+    const o = { bus: this.sfxBus, group: 'hurt', force: true };
+    this._play('gore.bone', { ...o, gain: 0.45 });
+    this._play('body.fall', { ...o, gain: 0.8, rate: 0.85, at: 0.25 });
+    this._play('rumble', { ...o, gain: 0.55, group: 'boom' });
+    this._muffle(450, 1.8); // the world goes far away
   }
 
-  pickup() {
-    if (!this._ok('pickup', 0.1)) return;
-    this._tone({ f0: 660, dur: 0.08, gain: 0.2 });
-    this._tone({ f0: 990, dur: 0.12, gain: 0.2, at: 0.07 });
+  armorHit() {
+    if (!this.bank.ready('imp.metallight')) return super.armorHit();
+    if (!this._ok('s:armor', 0.1)) return;
+    this._play('imp.metallight', { bus: this.sfxBus, gain: 0.3, rate: 1.25, group: 'hurt' });
+    this._play('body.punch', { bus: this.sfxBus, gain: 0.35, rate: 1.2, group: 'hurt' });
   }
 
-  // --- scavenging -----------------------------------------------------------------------
+  /** Picked something up: a medkit (bag, zip) or ammo ('ammo': a magazine), and a small tick that it counted. */
+  pickup(kind) {
+    if (!this.bank.ready('foley.bag')) return super.pickup(kind);
+    if (!this._ok('s:pickup', 0.1)) return;
+    const o = { bus: this.sfxBus, group: 'foley' };
+    if (kind === 'ammo') {
+      this._play('rifle.magin', { ...o, gain: 0.5, group: 'mech' });
+      this._play('foley.grab', { ...o, gain: 0.4, at: 0.1 });
+    } else {
+      this._play('foley.bag', { ...o, gain: 0.5 });
+      this._play('foley.zip', { ...o, gain: 0.32, at: 0.12 });
+    }
+    this._tone({ type: 'triangle', f0: 1320, dur: 0.14, gain: 0.05, at: 0.06, out: this.uiBus });
+  }
 
-  /** Rummaging through a stash (repeats while you search). */
+  /** The safe room door shuts behind you (or the ferry's). */
+  win() {
+    if (!this.bank.ready('door.slam')) return super.win();
+    if (!this._ok('s:win')) return;
+    this._play('door.slam', { bus: this.sfxBus, gain: 0.8, send: 0.25, force: true, group: 'world' });
+    this._play('door.lock', { bus: this.sfxBus, gain: 0.55, at: 0.75, group: 'world' });
+    this._duck(0.6, 1, 3);
+  }
+
+  /** UI: a click (the title card's buttons) or 'start'. */
+  ui(kind = 'click') {
+    if (!this.ctx || !this.bank.ready('ui.click') || !this._ok('s:ui', 0.05)) return;
+    this._play('ui.click', { bus: this.uiBus, gain: kind === 'start' ? 0.7 : 0.45, i: kind === 'start' ? 0 : 1, group: 'ui', vary: 0.02 });
+  }
+
+  // --- scavenging and the world -------------------------------------------------------------------
+
   rummage() {
-    if (!this._ok('rummage', 0.12)) return;
-    this._noise({ dur: 0.07, type: 'bandpass', freq: 1300 + Math.random() * 900, q: 0.9, gain: 0.13, rate: 0.8 + Math.random() * 0.5 });
+    if (!this.bank.ready('foley.search')) return super.rummage();
+    if (this._ok('s:rummage', 0.45)) this._play('foley.search', { bus: this.sfxBus, gain: 0.4, rate: rnd(0.9, 1.15), group: 'foley' });
   }
 
   stashOpen(tier) {
-    if (!this._ok('stash', 0.2)) return;
-    // Lid creak, then a chime: bigger finds get a longer one.
-    this._tone({ type: 'sawtooth', f0: 220, f1: 150, dur: 0.12, gain: 0.07, filter: { freq: 1200 } });
+    if (!this.bank.ready('metal.lid')) return super.stashOpen(tier);
+    if (!this._ok('s:stash', 0.2)) return;
+    const o = { bus: this.sfxBus, group: 'foley' };
+    if (tier === 'secret') {
+      this._play('metal.lid', { ...o, gain: 0.6, rate: 0.7 });
+      this._play('door.creak', { ...o, gain: 0.35, rate: 0.8, at: 0.05 });
+    } else {
+      this._play('metal.lid', { ...o, gain: 0.45 });
+      this._play('foley.zip', { ...o, gain: 0.3, at: 0.15 });
+    }
+    // The find: a soft chime, longer for a better one.
     const notes = tier === 'secret' ? [523, 659, 784, 1046, 1318, 1568] : tier === 'room' ? [523, 784, 1046, 1568] : [660, 880, 1320];
-    notes.forEach((f, i) => this._tone({ type: 'triangle', f0: f, dur: 0.28, gain: 0.16, at: 0.06 + i * 0.075 }));
+    notes.forEach((f, i) => this._tone({ type: 'triangle', f0: f, dur: 0.3, gain: 0.07, at: 0.2 + i * 0.075, out: this.uiBus }));
   }
 
   boardHit(x, y) {
-    if (!this._ok('boardHit', 0.06)) return;
-    const s = this._spatial(x, y, 1100);
-    const out = this._out(s.pan, 0.3 + s.gain * 0.7);
-    this._noise({ dur: 0.12, type: 'lowpass', freq: 320, gain: 0.7, out });
-    this._tone({ f0: 130, f1: 70, dur: 0.11, gain: 0.35, out });
-    this._noise({ dur: 0.04, type: 'bandpass', freq: 2200, q: 1.5, gain: 0.25, out });
+    if (!this.bank.ready('imp.wood')) return super.boardHit(x, y);
+    if (!this._ok('s:boardHit', 0.06)) return;
+    this._play('imp.wood', { x, y, range: 1200, gain: 0.7, rate: 0.85, group: 'impact' });
+    if (Math.random() < 0.5) this._play('wood.creak', { x, y, range: 900, gain: 0.3, rate: 1.2, group: 'world', at: 0.05 });
   }
 
   boardBreak(x, y) {
-    if (!this._ok('boardBreak', 0.2)) return;
-    const s = this._spatial(x, y, 1600);
-    const out = this._out(s.pan, 0.35 + s.gain * 0.65);
-    this._noise({ dur: 0.32, type: 'bandpass', freq: 800, sweepTo: 300, q: 0.8, gain: 0.8, out });
-    this._noise({ dur: 0.08, type: 'highpass', freq: 2500, gain: 0.4, out });
-    this._tone({ f0: 95, f1: 40, dur: 0.3, gain: 0.45, out });
+    if (!this.bank.ready('imp.wood')) return super.boardBreak(x, y);
+    if (!this._ok('s:boardBreak', 0.2)) return;
+    const o = { x, y, range: 1700, group: 'world' };
+    this._play('imp.wood', { ...o, gain: 0.85, rate: 0.75 });
+    this._play('imp.wood', { ...o, gain: 0.6, rate: 1.1, at: 0.05 });
+    this._play('gore.bone', { ...o, gain: 0.4, rate: 1.25, at: 0.02 }); // the splinter
+    this._play('wood.creak', { ...o, gain: 0.4, at: 0.06 });
+    this._play('debris', { ...o, gain: 0.3, at: 0.12 });
+    this._play('body.fall', { ...o, gain: 0.45, rate: 1.15, at: 0.2 }); // the planks hit the floor
   }
 
-  /** The holdout control box clunks on. */
+  /** The holdout control box clunks on: a breaker, a spark, the machine coming up. */
   switchOn() {
-    if (!this._ok('switch', 0.3)) return;
-    this._noise({ dur: 0.05, type: 'highpass', freq: 2400, gain: 0.4 });
-    this._tone({ type: 'square', f0: 660, dur: 0.12, gain: 0.08, at: 0.08 });
-    this._tone({ type: 'square', f0: 990, dur: 0.16, gain: 0.08, at: 0.22 });
+    if (!this.bank.ready('switch')) return super.switchOn();
+    if (!this._ok('s:switch', 0.3)) return;
+    this._play('switch', { bus: this.sfxBus, gain: 0.7, group: 'world' });
+    this._play('zap', { bus: this.sfxBus, gain: 0.3, at: 0.06, group: 'world' });
+    this._tone({ type: 'square', f0: 660, dur: 0.12, gain: 0.05, at: 0.18, out: this.uiBus });
+    this._tone({ type: 'square', f0: 990, dur: 0.16, gain: 0.05, at: 0.32, out: this.uiBus });
   }
 
-  /** The holdout gate slams fully open. */
+  /** The holdout gate (or the ferry's gangway) slams fully open. */
   gateOpen(x, y) {
-    if (!this._ok('gateOpen', 0.5)) return;
-    const s = this._spatial(x, y, 2000);
-    const out = this._out(s.pan, 0.4 + s.gain * 0.6);
-    this._noise({ dur: 0.4, type: 'lowpass', freq: 500, gain: 0.8, out });
-    this._tone({ f0: 120, f1: 60, dur: 0.35, gain: 0.4, out });
-    [523, 659, 784].forEach((f, i) => this._tone({ type: 'triangle', f0: f, dur: 0.3, gain: 0.14, at: 0.25 + i * 0.09 }));
+    if (!this.bank.ready('door.slam')) return super.gateOpen(x, y);
+    if (!this._ok('s:gateOpen', 0.5)) return;
+    const o = { x, y, range: 2400, occlude: false, group: 'world', verb: 1.4 };
+    this._play('door.creak', { ...o, gain: 0.5, rate: 0.6 });
+    this._play('door.slam', { ...o, gain: 0.9, rate: 0.8, at: 0.25 });
+    this._play('metal.clank', { ...o, gain: 0.5, rate: 0.7, at: 0.3 });
+    [523, 659, 784].forEach((f, i) => this._tone({ type: 'triangle', f0: f, dur: 0.3, gain: 0.1, at: 0.45 + i * 0.09, out: this.uiBus }));
   }
 
   explosion(x, y) {
-    if (!this._ok('boom', 0.15)) return;
-    const s = this._spatial(x, y, 3000);
-    const out = this._out(s.pan, 0.45 + s.gain * 0.55);
-    this._noise({ dur: 1.4, type: 'lowpass', freq: 900, sweepTo: 120, gain: 1, attack: 0.004, out });
-    this._noise({ dur: 0.25, type: 'bandpass', freq: 1800, q: 0.7, gain: 0.5, out });
-    this._tone({ f0: 70, f1: 28, dur: 1.1, gain: 0.7, out });
-    this._noise({ dur: 0.9, type: 'highpass', freq: 3000, gain: 0.12, at: 0.15, out });
+    if (!this.bank.ready('explosion')) return super.explosion(x, y);
+    if (!this._ok('s:boom', 0.15)) return;
+    const sp = this._place(x, y, 3200, false);
+    const o = { x, y, range: 3200, occlude: false, group: 'boom', force: true };
+    this._play('explosion', { ...o, gain: 0.9, vary: 0.06, verb: 1.3 });
+    this._play('fire.whoomp', { ...o, gain: 0.42, at: 0.02 });
+    for (let i = 0; i < 3; i++) this._play('debris', { x, y, range: 1400, gain: rnd(0.25, 0.4), rate: rnd(0.8, 1.2), at: rnd(0.15, 0.6), group: 'impact' });
+    this._play('metal.clank', { x, y, range: 1400, gain: 0.3, rate: 0.7, at: rnd(0.3, 0.8), group: 'impact' });
+    this._duck(0.7, 0.8, 2.5);
+    if (sp.d < 420) this._shellshock(1 - sp.d / 420);
   }
 
-  /** Armor soaked a hit. */
-  armorHit() {
-    if (!this._ok('armorHit', 0.1)) return;
-    this._tone({ type: 'square', f0: 980, f1: 720, dur: 0.05, gain: 0.05 });
-    this._noise({ dur: 0.05, type: 'highpass', freq: 3200, gain: 0.18 });
-  }
-
-  win() {
-    if (!this._ok('win')) return;
-    [523, 659, 784, 1046].forEach((f, i) => this._tone({ type: 'triangle', f0: f, dur: 0.35, gain: 0.22, at: i * 0.11 }));
-  }
+  // --- the infected ------------------------------------------------------------------------------
 
   groan(x, y) {
-    if (!this._ok('groan', 0.6)) return;
-    const s = this._spatial(x, y, 650);
-    if (s.gain < 0.03) return;
-    const c = this.ctx;
-    const out = this._out(s.pan, s.gain * 0.6);
-    const base = 85 + Math.random() * 50;
-    const dur = 0.7 + Math.random() * 0.6;
-    const o = this._tone({ type: 'sawtooth', f0: base, f1: base * 0.8, dur, gain: 0.25, attack: 0.15, out, filter: { type: 'bandpass', freq: 520 + Math.random() * 220, q: 4 } });
-    const lfo = c.createOscillator();
-    lfo.frequency.value = 5 + Math.random() * 3;
-    const lg = c.createGain();
-    lg.gain.value = 6;
-    lfo.connect(lg);
-    lg.connect(o.frequency);
-    lfo.start();
-    lfo.stop(c.currentTime + dur + 0.1);
+    if (!this.bank.ready('z.groan')) return super.groan(x, y);
+    if (this._ok('s:groan', 0.3)) this._play('z.groan', { x, y, range: 700, gain: 0.5, group: 'zv', vary: 0.12, verb: 1.2 });
   }
 
   snarl(x, y) {
-    if (!this._ok('snarl', 0.25)) return;
-    const s = this._spatial(x, y, 700);
-    if (s.gain < 0.03) return;
-    const out = this._out(s.pan, s.gain * 0.55);
-    const f = 150 + Math.random() * 90;
-    this._tone({ type: 'sawtooth', f0: f, f1: f * 0.7, dur: 0.32, gain: 0.25, attack: 0.03, out, filter: { type: 'bandpass', freq: 900, q: 3 } });
-    this._noise({ dur: 0.28, type: 'bandpass', freq: 1300, q: 2, gain: 0.12, out });
+    if (!this.bank.ready('z.snarl')) return super.snarl(x, y);
+    if (this._ok('s:snarl', 0.18)) this._play('z.snarl', { x, y, range: 750, gain: 0.6, group: 'zv', vary: 0.1 });
   }
 
-  /** The mob is coming: a distant scream chorus + low sting. */
+  /** One of them winds up a swipe at you. */
+  zombieAttack(x, y) {
+    if (!this.bank.ready('z.attack') || !this._ok('s:zatk', 0.12)) return;
+    this._play('z.attack', { x, y, range: 600, gain: 0.6, group: 'zv', vary: 0.1 });
+  }
+
+  /** One of them dies: a splat, sometimes a bone and a last sound, then the body drops. */
+  splat(x, y) {
+    if (!this.bank.ready('gore.splat')) return super.splat(x, y);
+    if (!this._ok('s:splat', 0.03)) return;
+    const o = { x, y, range: 900, group: 'gore' };
+    this._play('gore.splat', { ...o, gain: 0.45, vary: 0.1 });
+    if (Math.random() < 0.3) this._play('gore.bone', { ...o, gain: 0.3, at: 0.02 });
+    if (Math.random() < 0.45 && this._ok('s:zdie', 0.15)) this._play('z.death', { x, y, range: 800, gain: 0.5, group: 'zdie', vary: 0.12 });
+    if (this._ok('s:fall', 0.06)) this._play('body.fall', { x, y, range: 700, gain: 0.4, group: 'body', at: rnd(0.25, 0.45), vary: 0.1 });
+  }
+
+  /** The mob is coming: a rise, then screams from where they'll come from, and a low hit under them. */
   horde(x, y) {
-    if (!this._ok('horde', 1)) return;
-    const s = this._spatial(x, y, 4000);
-    const out = this._out(s.pan * 0.8, 0.5 + s.gain * 0.5);
-    for (let i = 0; i < 6; i++) {
-      const f = 260 + Math.random() * 260;
-      this._tone({ type: 'sawtooth', f0: f, f1: f * 0.62, dur: 1.6 + Math.random() * 0.8, gain: 0.07, attack: 0.25 + Math.random() * 0.2, at: Math.random() * 0.35, out, filter: { type: 'bandpass', freq: 900 + Math.random() * 500, q: 1.5 } });
+    if (!this.bank.ready('z.scream')) return super.horde(x, y);
+    if (!this._ok('s:horde', 1)) return;
+    const sp = this._place(x, y, 4000, false);
+    this._play('riser', { pan: sp.pan * 0.6, gain: 0.38, group: 'world' });
+    for (let i = 0; i < 5; i++) {
+      this._play('z.scream', { x, y, range: 4200, occlude: false, gain: rnd(0.55, 0.85), rate: rnd(0.82, 1.12), at: 1.45 + rnd(0, 1.1), group: 'world', lp: 2800, verb: 2.2, cap: 12 });
     }
-    this._noise({ dur: 2.2, type: 'bandpass', freq: 1100, q: 0.8, gain: 0.16, attack: 0.4, out });
-    this._tone({ type: 'sawtooth', f0: 55, dur: 3.2, gain: 0.16, attack: 0.6, filter: { freq: 260 } });
-    this._tone({ type: 'sawtooth', f0: 55.8, dur: 3.2, gain: 0.16, attack: 0.6, filter: { freq: 260 } });
+    this._play('rumble', { pan: sp.pan * 0.5, gain: 0.4, at: 1.6, group: 'boom' });
   }
 
   alarm(x, y, dur, kind = 'car') {
+    if (kind === 'icecream') return this._icecream(x, y, dur);
+    super.alarm(x, y, dur, kind);
+  }
+
+  /** The ice-cream truck's jingle, a little warped, for as long as the alarm runs (stops with alarmStop). */
+  _icecream(x, y, dur) {
     if (!this._ok('alarm', 1)) return;
     this.alarmStop();
     const c = this.ctx;
     const s = this._spatial(x, y, 2200);
-    const out = this._out(s.pan, 0.25 + s.gain * 0.6);
+    const out = this._out(s.pan, 0.3 + s.gain * 0.6);
     const o = c.createOscillator();
-    o.type = 'square';
-    const t0 = c.currentTime;
+    o.type = 'triangle';
+    const lfo = c.createOscillator();
+    const lg = c.createGain();
+    lfo.frequency.value = 5.5;
+    lg.gain.value = 7; // a speaker on its last legs
+    lfo.connect(lg);
+    lg.connect(o.frequency);
     const f = c.createBiquadFilter();
     f.type = 'lowpass';
-    f.frequency.value = 2600;
+    f.frequency.value = 2800;
     const g = c.createGain();
+    const t0 = c.currentTime;
     g.gain.setValueAtTime(0.0001, t0);
-    if (kind === 'siren') {
-      // Holdout siren: a slow rising and falling wail.
-      o.type = 'sawtooth';
-      for (let t = 0; t < dur; t += 2.4) {
-        o.frequency.setValueAtTime(420, t0 + t);
-        o.frequency.linearRampToValueAtTime(880, t0 + t + 1.2);
-        o.frequency.linearRampToValueAtTime(420, t0 + t + 2.4);
-      }
-      g.gain.exponentialRampToValueAtTime(0.1, t0 + 0.4);
-      g.gain.setValueAtTime(0.1, t0 + Math.max(0.5, dur - 0.5));
-    } else if (kind === 'fire') {
-      // Fire alarm: a flat horn, gated on/off.
-      o.frequency.setValueAtTime(960, t0);
-      for (let t = 0; t < dur - 0.3; t += 0.3) {
-        g.gain.setValueAtTime(0.11, t0 + t);
-        g.gain.setValueAtTime(0.0001, t0 + t + 0.18);
-      }
-    } else {
-      for (let t = 0, k = 0; t < dur; t += 0.2, k++) o.frequency.setValueAtTime(k % 2 ? 1250 : 950, t0 + t);
-      g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.03);
-      g.gain.setValueAtTime(0.12, t0 + dur - 0.3);
+    const tune = [523, 659, 784, 659, 698, 587, 494, 392, 523, 659, 784, 1046, 988, 784, 659, 523];
+    const step = 0.22;
+    for (let t = 0, i = 0; t < dur - 0.3; t += step, i++) {
+      o.frequency.setValueAtTime(tune[i % tune.length] * 0.985, t0 + t);
+      g.gain.setValueAtTime(0.0001, t0 + t);
+      g.gain.exponentialRampToValueAtTime(0.11, t0 + t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.02, t0 + t + step * 0.95);
+      if (i % tune.length === tune.length - 1) t += step * 2; // a breath between rounds
     }
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     o.connect(f);
     f.connect(g);
     g.connect(out);
     o.start(t0);
+    lfo.start(t0);
     o.stop(t0 + dur + 0.05);
+    lfo.stop(t0 + dur + 0.05);
     this.alarmNodes = { o, g };
   }
 
-  // --- special infected ------------------------------------------------------------
-
   hunterGrowl(x, y) {
-    if (!this._ok('hgrowl', 0.8)) return;
-    const s = this._spatial(x, y, 800);
-    if (s.gain < 0.03) return;
-    const out = this._out(s.pan, s.gain * 0.7);
-    for (let i = 0; i < 3; i++) {
-      this._noise({ dur: 0.09, type: 'lowpass', freq: 420, gain: 0.35, at: i * 0.13, rate: 0.6, out });
-      this._tone({ type: 'sawtooth', f0: 75 + i * 6, f1: 60, dur: 0.1, gain: 0.12, at: i * 0.13, out, filter: { freq: 380 } });
-    }
+    if (!this.bank.ready('hunter.growl')) return super.hunterGrowl(x, y);
+    if (this._ok('s:hgrowl', 0.8)) this._play('hunter.growl', { x, y, range: 850, gain: 0.6, group: 'special', vary: 0.06 });
   }
 
-  /** The pounce telegraph: a rising shriek you learn to react to. */
+  /** The pounce telegraph: the scream you learn to react to. */
   hunterScreech(x, y) {
-    if (!this._ok('hscreech', 0.3)) return;
-    const s = this._spatial(x, y, 1100);
-    const out = this._out(s.pan, 0.35 + s.gain * 0.65);
-    this._tone({ type: 'sawtooth', f0: 520, f1: 1500, dur: 0.6, gain: 0.22, attack: 0.05, out, filter: { type: 'bandpass', freq: 1700, q: 2 } });
-    this._tone({ type: 'sawtooth', f0: 540, f1: 1580, dur: 0.6, gain: 0.14, attack: 0.05, out, filter: { type: 'bandpass', freq: 2200, q: 3 } });
-    this._noise({ dur: 0.55, type: 'bandpass', freq: 2600, q: 1.5, gain: 0.12, attack: 0.08, out });
+    if (!this.bank.ready('hunter.screech')) return super.hunterScreech(x, y);
+    if (this._ok('s:hscreech', 0.3)) this._play('hunter.screech', { x, y, range: 1300, gain: 1, rate: 1.08, vary: 0.05, group: 'special', force: true });
   }
 
   hunterPounce(x, y) {
-    if (!this._ok('hpounce', 0.2)) return;
-    const s = this._spatial(x, y, 1000);
-    const out = this._out(s.pan, 0.4 + s.gain * 0.6);
-    this._tone({ type: 'sawtooth', f0: 1100, f1: 520, dur: 0.45, gain: 0.2, out, filter: { type: 'bandpass', freq: 1400, q: 1.5 } });
-    this._noise({ dur: 0.35, type: 'bandpass', freq: 700, sweepTo: 2400, q: 1, gain: 0.25, out });
+    if (!this.bank.ready('hunter.pounce')) return super.hunterPounce(x, y);
+    if (!this._ok('s:hpounce', 0.2)) return;
+    this._play('whoosh', { x, y, range: 1000, gain: 0.55, rate: 0.8, group: 'special' });
+    this._play('hunter.pounce', { x, y, range: 1050, gain: 0.8, group: 'special', force: true });
   }
 
   hunterPin() {
-    if (!this._ok('hpin', 0.2)) return;
-    this._noise({ dur: 0.2, type: 'lowpass', freq: 320, gain: 0.9 });
-    this._tone({ f0: 90, f1: 40, dur: 0.22, gain: 0.7 });
-    this._tone({ type: 'sawtooth', f0: 900, f1: 400, dur: 0.5, gain: 0.18, filter: { type: 'bandpass', freq: 1200, q: 2 } });
+    if (!this.bank.ready('body.punch')) return super.hunterPin();
+    if (!this._ok('s:hpin', 0.2)) return;
+    const o = { bus: this.sfxBus, group: 'hurt', force: true };
+    this._play('body.punch', { ...o, gain: 0.9 });
+    this._play('body.fall', { ...o, gain: 0.6, at: 0.04 });
+    this._play('gore.squish', { ...o, gain: 0.4, at: 0.1, group: 'gore' });
+    this._play('z.attack', { ...o, gain: 0.6, rate: 1.15, group: 'zv' });
   }
 
   hunterDie(x, y) {
-    if (!this._ok('hdie', 0.2)) return;
-    const s = this._spatial(x, y, 900);
-    const out = this._out(s.pan, 0.3 + s.gain * 0.7);
-    this._tone({ type: 'sawtooth', f0: 700, f1: 160, dur: 0.6, gain: 0.18, out, filter: { type: 'bandpass', freq: 900, q: 1.5 } });
+    if (!this.bank.ready('hunter.die')) return super.hunterDie(x, y);
+    if (!this._ok('s:hdie', 0.2)) return;
+    this._play('hunter.die', { x, y, range: 950, gain: 0.7, group: 'special' });
+    this._play('body.fall', { x, y, range: 700, gain: 0.45, at: 0.35, group: 'body' });
   }
 
+  /** The Hunter's claws while it has you. */
   claw() {
-    if (!this._ok('claw', 0.08)) return;
-    this._noise({ dur: 0.07, type: 'highpass', freq: 1600, gain: 0.3, rate: 0.8 + Math.random() * 0.4 });
-    this._noise({ dur: 0.08, type: 'lowpass', freq: 500, gain: 0.35, at: 0.02 });
+    if (!this.bank.ready('gore.slash')) return super.claw();
+    if (!this._ok('s:claw', 0.08)) return;
+    this._play('gore.slash', { bus: this.sfxBus, gain: 0.42, vary: 0.12, group: 'gore' });
+    this._play('imp.flesh', { bus: this.sfxBus, gain: 0.25, rate: 1.1, group: 'flesh' });
   }
 
   struggle() {
-    if (!this._ok('struggle', 0.04)) return;
-    this._noise({ dur: 0.08, type: 'lowpass', freq: 380, gain: 0.5 });
-    this._tone({ f0: 140, f1: 80, dur: 0.07, gain: 0.25 });
+    if (!this.bank.ready('foley.cloth')) return super.struggle();
+    if (!this._ok('s:struggle', 0.04)) return;
+    this._play('foley.cloth', { bus: this.sfxBus, gain: 0.4, group: 'foley', vary: 0.1 });
+    this._play('body.punch', { bus: this.sfxBus, gain: 0.32, rate: 1.2, group: 'body' });
   }
 
+  /** A shove that knocks something out of the air. */
   deadstop() {
-    if (!this._ok('deadstop', 0.1)) return;
-    this._noise({ dur: 0.12, type: 'lowpass', freq: 520, gain: 0.95 });
-    this._tone({ f0: 160, f1: 55, dur: 0.14, gain: 0.6 });
-    this._noise({ dur: 0.05, type: 'highpass', freq: 3000, gain: 0.25 });
+    if (!this.bank.ready('body.punch')) return super.deadstop();
+    if (!this._ok('s:deadstop', 0.1)) return;
+    const o = { bus: this.sfxBus, group: 'body', force: true };
+    this._play('body.punch', { ...o, gain: 0.9 });
+    this._play('body.wet', { ...o, gain: 0.55, at: 0.01 });
+    this._play('whoosh', { ...o, gain: 0.35, rate: 0.9 });
   }
 
+  /** Something hits the ground (a pounce that missed, a body). */
   thud(x, y) {
-    if (!this._ok('thud', 0.1)) return;
-    const s = this._spatial(x, y, 800);
-    if (s.gain < 0.03) return;
-    this._noise({ dur: 0.14, type: 'lowpass', freq: 300, gain: 0.7, out: this._out(s.pan, s.gain) });
+    if (!this.bank.ready('body.fall')) return super.thud(x, y);
+    if (this._ok('s:thud', 0.1)) this._play('body.fall', { x, y, range: 800, gain: 0.55, group: 'body' });
   }
 
   tankRoar(x, y, size = 1) {
-    if (!this._ok('troar', 0.5)) return;
-    const s = this._spatial(x, y, 2600);
-    const out = this._out(s.pan * 0.7, (0.45 + s.gain * 0.55) * size);
-    const dur = 0.9 + size * 0.6;
-    this._tone({ type: 'sawtooth', f0: 110, f1: 48, dur, gain: 0.5, attack: 0.08, out, filter: { freq: 520, q: 2 } });
-    this._tone({ type: 'sawtooth', f0: 116, f1: 51, dur, gain: 0.35, attack: 0.1, out, filter: { freq: 700, q: 1 } });
-    this._noise({ dur, type: 'lowpass', freq: 600, gain: 0.45, attack: 0.1, rate: 0.5, out });
+    if (!this.bank.ready('tank.roar')) return super.tankRoar(x, y, size);
+    if (!this._ok('s:troar', 0.5)) return;
+    this._play('tank.roar', { x, y, range: 2800, gain: 0.95 * Math.min(1.2, size + 0.15), rate: rnd(0.78, 0.88), vary: 0, verb: 1.3, group: 'special', force: true });
+    if (size >= 1) {
+      this._play('rumble', { gain: 0.5, group: 'boom' });
+      this._duck(0.5, 1.2, 2);
+    }
   }
 
   tankGrunt(x, y) {
-    if (!this._ok('tgrunt', 0.3)) return;
-    const s = this._spatial(x, y, 1200);
-    this._tone({ type: 'sawtooth', f0: 95, f1: 70, dur: 0.3, gain: 0.4, out: this._out(s.pan, 0.3 + s.gain * 0.7), filter: { freq: 450 } });
+    if (!this.bank.ready('tank.grunt')) return super.tankGrunt(x, y);
+    if (this._ok('s:tgrunt', 0.3)) this._play('tank.grunt', { x, y, range: 1300, gain: 0.7, rate: 0.85, group: 'special' });
   }
 
   tankStep(x, y) {
-    if (!this._ok('tstep', 0.15)) return;
-    const s = this._spatial(x, y, 900);
-    if (s.gain < 0.02) return;
-    const out = this._out(s.pan, s.gain);
-    this._tone({ f0: 58, f1: 32, dur: 0.16, gain: 0.85, out });
-    this._noise({ dur: 0.09, type: 'lowpass', freq: 200, gain: 0.4, out });
+    if (!this.bank.ready('step.heavy')) return super.tankStep(x, y);
+    if (!this._ok('s:tstep', 0.15)) return;
+    this._play('step.heavy', { x, y, range: 1000, gain: 0.9, rate: rnd(0.58, 0.7), vary: 0, group: 'step2' });
+    this._play('body.punch', { x, y, range: 900, gain: 0.5, rate: 0.55, group: 'body' });
   }
 
   tankPunch(hit) {
-    if (!this._ok('tpunch', 0.1)) return;
-    this._noise({ dur: 0.18, type: 'bandpass', freq: 400, sweepTo: 1600, q: 1, gain: 0.3 });
-    if (hit) {
-      this._noise({ dur: 0.25, type: 'lowpass', freq: 260, gain: 1 });
-      this._tone({ f0: 85, f1: 28, dur: 0.3, gain: 0.9 });
-    }
+    if (!this.bank.ready('body.punch')) return super.tankPunch(hit);
+    if (!this._ok('s:tpunch', 0.1)) return;
+    const o = { bus: this.sfxBus, group: 'hurt', force: true };
+    this._play('whoosh', { ...o, gain: 0.55, rate: 0.6, group: 'body' });
+    if (!hit) return;
+    this._play('body.punch', { ...o, gain: 1, rate: 0.8, at: 0.03 });
+    this._play('body.wet', { ...o, gain: 0.7, at: 0.03 });
+    this._play('gore.bone', { ...o, gain: 0.35, at: 0.05, group: 'gore' });
+    this._play('rumble', { ...o, gain: 0.45, group: 'boom' });
+    this._shellshock(0.35);
   }
 
   tankDie(x, y) {
-    if (!this._ok('tdie', 1)) return;
-    const s = this._spatial(x, y, 2000);
-    const out = this._out(s.pan * 0.6, 0.6 + s.gain * 0.4);
-    this._tone({ type: 'sawtooth', f0: 90, f1: 30, dur: 2, gain: 0.5, attack: 0.05, out, filter: { freq: 400 } });
-    this._noise({ dur: 1.4, type: 'lowpass', freq: 350, gain: 0.5, out });
+    if (!this.bank.ready('tank.die')) return super.tankDie(x, y);
+    if (!this._ok('s:tdie', 1)) return;
+    this._play('tank.die', { x, y, range: 2200, gain: 1, rate: 0.85, vary: 0, verb: 1.3, group: 'special', force: true });
+    this._play('body.fall', { x, y, range: 1500, gain: 0.9, rate: 0.5, at: 1.3, group: 'body' });
+    this._play('rumble', { gain: 0.45, at: 1.3, group: 'boom' });
   }
 
   rockThrow(x, y) {
-    if (!this._ok('rthrow', 0.2)) return;
-    const s = this._spatial(x, y, 1400);
-    this._noise({ dur: 0.45, type: 'bandpass', freq: 260, sweepTo: 900, q: 1.2, gain: 0.5, out: this._out(s.pan, 0.35 + s.gain * 0.65) });
+    if (!this.bank.ready('tank.grunt')) return super.rockThrow(x, y);
+    if (!this._ok('s:rthrow', 0.2)) return;
+    this._play('tank.grunt', { x, y, range: 1500, gain: 0.7, rate: 0.8, group: 'special' });
+    this._play('whoosh', { x, y, range: 1400, gain: 0.7, rate: 0.5, at: 0.1, group: 'world' });
   }
 
   rockShatter(x, y) {
-    if (!this._ok('rshatter', 0.06)) return;
-    const s = this._spatial(x, y, 1200);
-    const out = this._out(s.pan, 0.25 + s.gain * 0.75);
-    this._noise({ dur: 0.3, type: 'lowpass', freq: 1400, gain: 0.8, rate: 0.7, out });
-    this._tone({ f0: 120, f1: 45, dur: 0.18, gain: 0.5, out });
+    if (!this.bank.ready('imp.rock')) return super.rockShatter(x, y);
+    if (!this._ok('s:rshatter', 0.06)) return;
+    const o = { x, y, range: 1300, group: 'impact' };
+    this._play('explosion.small', { ...o, gain: 0.45, rate: 1.3, group: 'boom' });
+    this._play('imp.rock', { ...o, gain: 0.7 });
+    this._play('debris', { ...o, gain: 0.5, at: 0.05 });
+    this._play('debris', { ...o, gain: 0.35, rate: 0.8, at: 0.18 });
   }
 
-  // --- ben -----------------------------------------------------------------------------
-
-  /** Somebody whistling a few notes, close by, out of sight (the same little tune every time). */
-  benWhistle(x, y) {
-    if (!this._ok('bwhistle', 2)) return;
-    const s = this._spatial(x, y, 900);
-    if (s.gain < 0.02) return;
-    const out = this._out(s.pan, 0.25 + s.gain * 0.6);
-    const tune = [[784, 0.22], [659, 0.22], [784, 0.2], [880, 0.34], [784, 0.5]];
-    let at = 0;
-    for (const [f, dur] of tune) {
-      const o = this._tone({ f0: f, dur, gain: 0.07, attack: 0.04, at, out });
-      // A breathy edge and a little vibrato, like a real whistle.
-      if (o && this.ctx.createOscillator) {
-        const lfo = this.ctx.createOscillator();
-        const lg = this.ctx.createGain();
-        lfo.frequency.value = 6;
-        lg.gain.value = f * 0.012;
-        lfo.connect(lg);
-        lg.connect(o.frequency);
-        const t0 = this.ctx.currentTime + at;
-        lfo.start(t0);
-        lfo.stop(t0 + dur + 0.05);
-      }
-      this._noise({ dur, type: 'bandpass', freq: f * 2, q: 12, gain: 0.012, attack: 0.05, at, out });
-      at += dur + 0.05;
-    }
-  }
+  // --- Ben, Pier 9 -------------------------------------------------------------------------------
 
   /** Small quick footsteps, running off. */
   benScuff(x, y) {
-    if (!this._ok('bscuff', 0.5)) return;
-    const s = this._spatial(x, y, 800);
-    const out = this._out(s.pan, 0.3 + s.gain * 0.6);
-    for (let k = 0; k < 5; k++) this._noise({ dur: 0.05, type: 'lowpass', freq: 900 - k * 80, gain: 0.3 * (1 - k * 0.16), at: k * 0.085, out });
+    if (!this.bank.ready('step.concrete.run')) return super.benScuff(x, y);
+    if (!this._ok('s:bscuff', 0.5)) return;
+    for (let k = 0; k < 5; k++) this._play('step.concrete.run', { x, y, range: 800, gain: 0.32 * (1 - k * 0.15), rate: 1.4, vary: 0.05, at: k * 0.085, group: 'step2', cap: 6 });
   }
 
-  // --- pier 9 ------------------------------------------------------------------------
-
-  /** The flare: a whoosh up, a pop, then the hiss of it burning. */
+  /** The flare: sparks, the rocket going up, the pop. (It burns as a loop in the world: soundscape.js.) */
   flare(x, y) {
-    if (!this._ok('flare', 0.5)) return;
-    const s = this._spatial(x, y, 1200);
-    const out = this._out(s.pan, 0.5 + s.gain * 0.5);
-    this._noise({ dur: 0.9, type: 'bandpass', freq: 700, sweepTo: 4200, q: 1.4, gain: 0.32, attack: 0.05, out });
-    this._tone({ type: 'triangle', f0: 380, f1: 1700, dur: 0.85, gain: 0.08, out });
-    this._noise({ dur: 0.25, type: 'lowpass', freq: 900, gain: 0.55, at: 0.9, out });
-    this._noise({ dur: 2.6, type: 'highpass', freq: 2800, q: 0.7, gain: 0.07, attack: 0.3, at: 1, out });
+    if (!this.bank.ready('flare.sparks')) return super.flare(x, y);
+    if (!this._ok('s:flare', 0.5)) return;
+    const o = { x, y, range: 1500, group: 'world' };
+    this._play('flare.sparks', { ...o, gain: 0.6 });
+    this._play('whoosh', { ...o, gain: 0.55, rate: 0.42, at: 0.05 });
+    this._play('fire.ignite', { ...o, gain: 0.6, at: 0.9, verb: 1.5 });
+    this._tone({ type: 'triangle', f0: 380, f1: 1700, dur: 0.85, gain: 0.035, out: this._out(0, 1) });
   }
 
-  /** The ferry's horn: deep and long; far = muffled, out at sea. */
+  /** The ferry's horn: deep and long, far = muffled and out at sea (synth, with the room under it). */
   ferryHorn(far) {
     if (!this._ok('horn', 1)) return;
     const g = far ? 0.16 : 0.32;
     const dur = far ? 2.4 : 2.0;
     const filter = { freq: far ? 380 : 900, q: 0.8 };
-    this._tone({ type: 'sawtooth', f0: 98, dur, gain: g, attack: 0.25, filter });
-    this._tone({ type: 'sawtooth', f0: 147, dur, gain: g * 0.6, attack: 0.25, filter });
-    this._tone({ type: 'square', f0: 49, dur, gain: g * 0.4, attack: 0.3, filter: { freq: 200 } });
+    const out = this._gain(1, this.master);
+    if (this.verbIn) out.connect(this._gain(far ? 0.9 : 0.45, this.verbIn));
+    this._tone({ type: 'sawtooth', f0: 98, dur, gain: g, attack: 0.25, filter, out });
+    this._tone({ type: 'sawtooth', f0: 147, dur, gain: g * 0.6, attack: 0.25, filter, out });
+    this._tone({ type: 'square', f0: 49, dur, gain: g * 0.4, attack: 0.3, filter: { freq: 200 }, out });
   }
 
-  // --- night terror ----------------------------------------------------------------
+  /** The ferry on the radio: a burst of static before and after the message. */
+  radio() {
+    if (!this.bank.ready('radio') || !this._ok('s:radio', 0.5)) return;
+    this._play('radio', { bus: this.uiBus, gain: 0.35, group: 'ui' });
+    this._play('radio', { bus: this.uiBus, gain: 0.22, at: rnd(0.7, 1.1), group: 'ui', cap: 3 });
+  }
 
-  /** A breathy whisper from the dark: formant-ish sweeps of filtered noise. */
+  // --- the Night Terror --------------------------------------------------------------------------
+
   terrorWhisper(x, y) {
-    if (!this._ok('twhisper', 0.8)) return;
-    const s = this._spatial(x, y, 750);
-    if (s.gain < 0.02) return;
-    const out = this._out(s.pan, s.gain * 0.9);
-    const f0 = 850 + Math.random() * 500;
-    this._noise({ dur: 0.55, type: 'bandpass', freq: f0, sweepTo: f0 * 1.9, q: 6, gain: 0.18, attack: 0.12, out });
-    this._noise({ dur: 0.42, type: 'bandpass', freq: f0 * 2.6, sweepTo: f0 * 1.5, q: 8, gain: 0.09, attack: 0.1, at: 0.24, out });
-    this._noise({ dur: 0.35, type: 'highpass', freq: 4200, q: 0.7, gain: 0.05, attack: 0.08, at: 0.45, out });
+    if (!this.bank.ready('terror.whisper')) return super.terrorWhisper(x, y);
+    if (this._ok('s:twhisper', 0.8)) this._play('terror.whisper', { x, y, range: 800, gain: 0.55, rate: rnd(1.1, 1.3), vary: 0, lp: 7000, verb: 1.6, group: 'special' });
   }
 
   /** The tell: a sharp in-breath right before it lunges. */
   terrorInhale(x, y) {
-    if (!this._ok('tinhale', 0.3)) return;
-    const s = this._spatial(x, y, 900);
-    const out = this._out(s.pan, 0.35 + s.gain * 0.65);
-    this._noise({ dur: 0.48, type: 'bandpass', freq: 480, sweepTo: 3200, q: 3, gain: 0.34, attack: 0.32, out });
-    this._noise({ dur: 0.45, type: 'highpass', freq: 3000, q: 0.8, gain: 0.08, attack: 0.3, out });
+    if (!this.bank.ready('terror.inhale')) return super.terrorInhale(x, y);
+    if (this._ok('s:tinhale', 0.3)) this._play('terror.inhale', { x, y, range: 950, gain: 0.85, group: 'special', force: true });
   }
 
-  /** Caught in the light. */
   terrorShriek(x, y, size = 1) {
-    if (!this._ok('tshriek', 0.45)) return;
-    const s = this._spatial(x, y, 1000);
-    const out = this._out(s.pan, (0.3 + s.gain * 0.7) * Math.min(1.3, size));
-    const dur = 0.42 * size;
-    this._tone({ type: 'sawtooth', f0: 2100, f1: 900, dur, gain: 0.16, attack: 0.01, out, filter: { type: 'bandpass', freq: 2400, q: 4 } });
-    this._tone({ type: 'square', f0: 2230, f1: 860, dur, gain: 0.06, attack: 0.01, out, filter: { type: 'bandpass', freq: 3100, q: 5 } });
-    this._noise({ dur: dur * 0.9, type: 'bandpass', freq: 3600, sweepTo: 1600, q: 2, gain: 0.14, out });
+    if (!this.bank.ready('terror.shriek')) return super.terrorShriek(x, y, size);
+    if (this._ok('s:tshriek', 0.45)) this._play('terror.shriek', { x, y, range: 1100, gain: 0.7 * Math.min(1.3, size), rate: 1.25, vary: 0.06, group: 'special' });
   }
 
   terrorLunge(x, y) {
-    if (!this._ok('tlunge', 0.2)) return;
-    const s = this._spatial(x, y, 900);
-    const out = this._out(s.pan, 0.4 + s.gain * 0.6);
-    this._noise({ dur: 0.3, type: 'bandpass', freq: 600, sweepTo: 2600, q: 1.2, gain: 0.28, attack: 0.02, out });
+    if (!this.bank.ready('whoosh')) return super.terrorLunge(x, y);
+    if (!this._ok('s:tlunge', 0.2)) return;
+    this._play('whoosh', { x, y, range: 900, gain: 0.6, rate: 0.7, group: 'special' });
+    this._play('z.attack', { x, y, range: 900, gain: 0.35, rate: 1.35, group: 'special' });
   }
 
   terrorStrike() {
-    if (!this._ok('tstrike', 0.2)) return;
-    this._noise({ dur: 0.16, type: 'lowpass', freq: 600, gain: 0.7 });
-    this._tone({ f0: 130, f1: 45, dur: 0.2, gain: 0.55 });
-    this._noise({ dur: 0.28, type: 'bandpass', freq: 2600, sweepTo: 900, q: 2, gain: 0.22 });
+    if (!this.bank.ready('body.punch')) return super.terrorStrike();
+    if (!this._ok('s:tstrike', 0.2)) return;
+    const o = { bus: this.sfxBus, group: 'hurt', force: true };
+    this._play('body.punch', { ...o, gain: 0.8 });
+    this._play('gore.slash', { ...o, gain: 0.5, group: 'gore' });
+    this._play('imp.flesh', { ...o, gain: 0.35, group: 'flesh' });
   }
 
   terrorDie(x, y) {
-    if (!this._ok('tdie', 0.2)) return;
-    const s = this._spatial(x, y, 1000);
-    const out = this._out(s.pan, 0.4 + s.gain * 0.6);
-    this._tone({ type: 'sawtooth', f0: 1600, f1: 140, dur: 0.9, gain: 0.14, attack: 0.02, out, filter: { type: 'bandpass', freq: 1500, q: 2 } });
-    this._noise({ dur: 0.8, type: 'bandpass', freq: 2200, sweepTo: 300, q: 1.5, gain: 0.16, out });
+    if (!this.bank.ready('terror.die')) return super.terrorDie(x, y);
+    if (this._ok('s:tdie', 0.2)) this._play('terror.die', { x, y, range: 1100, gain: 0.75, rate: 1.15, vary: 0, verb: 1.4, group: 'special' });
   }
 
-  // --- witch -------------------------------------------------------------------------
+  // --- the Witch (her crying and humming stay synthesized: audio-synth.js) ---------------------
 
-  /** A slow wobble on an oscillator's pitch (the tremble in a voice). */
-  _vibrato(o, rate, depth, at, dur) {
-    if (!o) return;
-    const c = this.ctx;
-    const lfo = c.createOscillator();
-    const lg = c.createGain();
-    lfo.frequency.value = rate;
-    lg.gain.value = depth;
-    lfo.connect(lg);
-    lg.connect(o.frequency);
-    const t0 = c.currentTime + at;
-    lfo.start(t0);
-    lfo.stop(t0 + dur + 0.1);
-  }
-
-  /** A sob: a few short breaths of voice, each a little lower, and the breath in after. */
-  witchSob(x, y) {
-    if (!this._ok('wsob', 0.5)) return;
-    const s = this._spatial(x, y, 820);
-    if (s.gain < 0.02) return;
-    const out = this._out(s.pan, s.gain * 0.85);
-    const n = 2 + ((Math.random() * 3) | 0);
-    const base = 520 + Math.random() * 120;
-    let at = 0;
-    for (let i = 0; i < n; i++) {
-      const f = base * (1 - i * 0.07) * (0.97 + Math.random() * 0.06);
-      const dur = i === n - 1 ? 0.34 + Math.random() * 0.2 : 0.12 + Math.random() * 0.07;
-      const o = this._tone({ type: 'triangle', f0: f, f1: f * 0.86, dur, gain: 0.11, attack: 0.03, at, out, filter: { type: 'bandpass', freq: 950, q: 2.2 } });
-      this._vibrato(o, 7 + Math.random() * 3, f * 0.035, at, dur);
-      this._noise({ dur: dur * 0.9, type: 'bandpass', freq: 1700, q: 1.4, gain: 0.035, attack: 0.02, at, out });
-      at += dur + 0.05 + Math.random() * 0.06;
-    }
-    this._noise({ dur: 0.3, type: 'bandpass', freq: 900, sweepTo: 2300, q: 2.5, gain: 0.03, attack: 0.18, at: at + 0.08, out });
-  }
-
-  /** One note of the tune she hums (semitones above A4): a small breathy voice, a shade flat. */
-  witchNote(x, y, semi) {
-    if (!this._ok('wnote', 0.2)) return;
-    const s = this._spatial(x, y, 760);
-    if (s.gain < 0.02) return;
-    const out = this._out(s.pan, s.gain * 0.75);
-    const f = 440 * Math.pow(2, (semi - 0.18) / 12);
-    const o = this._tone({ f0: f * 0.985, f1: f, dur: 0.56, gain: 0.085, attack: 0.09, out });
-    this._vibrato(o, 5.2, f * 0.012, 0.15, 0.5);
-    this._tone({ type: 'triangle', f0: f * 2, dur: 0.4, gain: 0.012, attack: 0.1, out });
-    this._noise({ dur: 0.5, type: 'bandpass', freq: f * 2, q: 9, gain: 0.012, attack: 0.1, out });
-  }
-
-  /** She has stopped crying and started listening: a rattle low in the throat, rising with k (0..1). */
+  /** She has stopped crying and started listening: a rattle in the throat, rising with k (0..1). */
   witchGrowl(x, y, k) {
-    if (!this._ok('wgrowl', 0.3)) return;
-    const s = this._spatial(x, y, 760);
-    if (s.gain < 0.02) return;
-    const out = this._out(s.pan, s.gain * (0.5 + 0.5 * k));
-    const f = 95 + k * 70;
-    const dur = 0.5 - 0.15 * k;
-    const o = this._tone({ type: 'sawtooth', f0: f, f1: f * 1.18, dur, gain: 0.2, attack: 0.06, out, filter: { type: 'bandpass', freq: 520 + k * 500, q: 3 } });
-    this._vibrato(o, 26 + k * 14, f * 0.22, 0, dur);
-    this._noise({ dur: dur * 0.9, type: 'bandpass', freq: 1500 + k * 900, q: 1.5, gain: 0.05 + 0.06 * k, attack: 0.05, out });
+    if (!this.bank.ready('witch.growl')) return super.witchGrowl(x, y, k);
+    if (this._ok('s:wgrowl', 0.3)) this._play('witch.growl', { x, y, range: 820, gain: 0.35 + 0.45 * k, rate: 0.9 + 0.25 * k, vary: 0.03, group: 'special' });
   }
 
-  /** She is up: a scream that climbs, breaks and comes down, and a cold drop under it. */
   witchScream(x, y, size = 1) {
-    if (!this._ok('wscream', 0.4)) return;
-    const c = this.ctx;
-    const s = this._spatial(x, y, 1500);
-    const out = this._out(s.pan * 0.7, (0.4 + s.gain * 0.6) * Math.min(1, size + 0.2));
-    const dur = 1.25 * size;
-    const t0 = c.currentTime;
-    for (const [mul, g, fq] of [[1, 0.2, 1800], [1.012, 0.12, 2500], [2.01, 0.05, 3400]]) {
-      const o = this._tone({ type: 'sawtooth', f0: 620 * mul, dur, gain: g, attack: 0.03, out, filter: { type: 'bandpass', freq: fq, q: 2.2 } });
-      o.frequency.cancelScheduledValues(t0);
-      o.frequency.setValueAtTime(620 * mul, t0);
-      o.frequency.exponentialRampToValueAtTime(1750 * mul, t0 + dur * 0.22);
-      o.frequency.setValueAtTime(1500 * mul, t0 + dur * 0.3);
-      o.frequency.exponentialRampToValueAtTime(1900 * mul, t0 + dur * 0.5);
-      o.frequency.exponentialRampToValueAtTime(780 * mul, t0 + dur);
-      this._vibrato(o, 11, 60 * mul, dur * 0.3, dur * 0.7);
-    }
-    this._noise({ dur: dur * 0.95, type: 'bandpass', freq: 2800, sweepTo: 1500, q: 1.2, gain: 0.13, attack: 0.05, out });
+    if (!this.bank.ready('witch.scream')) return super.witchScream(x, y, size);
+    if (!this._ok('s:wscream', 0.4)) return;
+    this._play('witch.scream', { x, y, range: 1600, gain: 0.9 * Math.min(1, size + 0.2), vary: 0.03, verb: 1.4, group: 'special', force: true, dur: size < 1 ? 1.2 : 0 });
     if (size >= 1) {
-      this._tone({ type: 'sawtooth', f0: 58, dur: 2.4, gain: 0.2, attack: 0.3, filter: { freq: 240 } });
-      this._tone({ type: 'sawtooth', f0: 61.5, dur: 2.4, gain: 0.2, attack: 0.3, filter: { freq: 240 } });
+      this._play('rumble', { gain: 0.5, group: 'boom' });
+      this._duck(0.6, 1, 2.5);
     }
   }
 
-  /** Her nails: a fast rip (the first one lands like a blow). */
+  /** Her nails (the first one lands like a blow). */
   witchSlash(first) {
-    if (!this._ok('wslash', 0.08)) return;
-    this._noise({ dur: 0.12, type: 'bandpass', freq: 3200, sweepTo: 900, q: 1.6, gain: 0.5 });
-    this._noise({ dur: 0.09, type: 'highpass', freq: 4200, q: 0.8, gain: 0.2, at: 0.02 });
+    if (!this.bank.ready('gore.slash')) return super.witchSlash(first);
+    if (!this._ok('s:wslash', 0.08)) return;
+    const o = { bus: this.sfxBus, group: 'hurt', force: true };
+    this._play('whoosh', { ...o, gain: 0.45, rate: 1.25, group: 'body' });
+    this._play('gore.slash', { ...o, gain: 0.65, group: 'gore' });
     if (first) {
-      this._noise({ dur: 0.18, type: 'lowpass', freq: 500, gain: 0.8 });
-      this._tone({ f0: 120, f1: 42, dur: 0.22, gain: 0.6 });
+      this._play('body.punch', { ...o, gain: 0.9 });
+      this._play('imp.flesh', { ...o, gain: 0.5, group: 'flesh' });
     }
   }
 
-  /** A wail that falls all the way down, and one last small sob. */
   witchDie(x, y) {
-    if (!this._ok('wdie', 0.2)) return;
-    const s = this._spatial(x, y, 1200);
-    const out = this._out(s.pan, 0.4 + s.gain * 0.6);
-    const o = this._tone({ type: 'sawtooth', f0: 1300, f1: 180, dur: 1.3, gain: 0.16, attack: 0.02, out, filter: { type: 'bandpass', freq: 1300, q: 2 } });
-    this._vibrato(o, 9, 40, 0, 1.3);
-    this._noise({ dur: 1.1, type: 'bandpass', freq: 2000, sweepTo: 400, q: 1.5, gain: 0.12, out });
-    this._tone({ type: 'triangle', f0: 430, f1: 330, dur: 0.4, gain: 0.07, attack: 0.05, at: 1.25, out, filter: { type: 'bandpass', freq: 900, q: 2 } });
+    if (!this.bank.ready('witch.die')) return super.witchDie(x, y);
+    if (!this._ok('s:wdie', 0.2)) return;
+    this._play('witch.die', { x, y, range: 1300, gain: 0.85, vary: 0, verb: 1.4, group: 'special', force: true });
+    this._play('body.fall', { x, y, range: 900, gain: 0.5, at: 1.1, group: 'body' });
   }
 
-  /** Your pulse: two soft thumps, not placed in the world. k 0..1 = how close it is. */
-  heartbeat(k) {
-    if (!this._ok('heart', 0.3)) return;
-    const g = 0.22 + 0.5 * k;
-    this._tone({ f0: 62, f1: 44, dur: 0.13, gain: g, attack: 0.008, filter: { freq: 160 } });
-    this._tone({ f0: 55, f1: 40, dur: 0.12, gain: g * 0.7, attack: 0.008, at: 0.17, filter: { freq: 160 } });
+  // --- the teammate --------------------------------------------------------------------------------
+
+  /** The teammate goes down: it hits the floor where it is. */
+  allyDown(x, y) {
+    if (!this.bank.ready('body.fall')) return super.allyDown(x, y);
+    if (!this._ok('s:allyDown', 0.5)) return;
+    this._play('body.fall', { x, y, range: 1600, gain: 0.75, rate: 0.9, group: 'body', force: true });
+    this._play('foley.cloth', { x, y, range: 1200, gain: 0.4, group: 'foley' });
+    this._play('gore.splat', { x, y, range: 1200, gain: 0.3, at: 0.05, group: 'gore' });
   }
 
-  /** Tank theme: a driving low ostinato + kick for as long as it lives. Silent when the game plays
-   *  music from files (fileMusic: src/music-player.js has its own Tank cue). */
-  tankMusic(on) {
-    if (!this.ctx) return;
-    if (on && this.fileMusic) return;
-    if (on) {
-      if (this.music) return;
-      const g = this.ctx.createGain();
-      g.gain.setValueAtTime(0.0001, this.ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.55, this.ctx.currentTime + 1.2);
-      g.connect(this.master);
-      this.music = { out: g, next: this.ctx.currentTime + 0.1, step: 0 };
-      this.music.timer = setInterval(() => this._musicTick(), 60);
-    } else if (this.music) {
-      const m = this.music;
-      this.music = null;
-      clearInterval(m.timer);
-      const t = this.ctx.currentTime;
-      m.out.gain.cancelScheduledValues(t);
-      m.out.gain.setValueAtTime(Math.max(0.0001, m.out.gain.value), t);
-      m.out.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
-      setTimeout(() => m.out.disconnect(), 1800);
-    }
-  }
-
-  _musicTick() {
-    const m = this.music;
-    if (!m || this.ctx.state !== 'running') return;
-    const now = this.ctx.currentTime;
-    if (m.next < now - 0.1) m.next = now + 0.05; // tab was throttled: skip, don't burst
-    const step = 60 / 150 / 2; // eighth notes at 150 bpm
-    const bass = [41.2, 41.2, 49, 41.2, 55, 41.2, 49, 36.7]; // E E G E A E G D
-    while (m.next < now + 0.25) {
-      const i = m.step % 8;
-      const at = Math.max(0, m.next - now);
-      this._tone({ type: 'sawtooth', f0: bass[i], dur: step * 0.9, gain: 0.32, attack: 0.01, at, out: m.out, filter: { freq: 240, q: 4 } });
-      if (i === 0 || i === 3 || i === 4 || i === 6) this._tone({ f0: 95, f1: 38, dur: 0.16, gain: 0.7, at, out: m.out });
-      if (i === 2 || i === 6) this._noise({ dur: 0.1, type: 'bandpass', freq: 1800, q: 0.8, gain: 0.18, at, out: m.out });
-      if (m.step % 32 === 0) this._tone({ type: 'sawtooth', f0: 82.4, dur: step * 7, gain: 0.12, attack: 0.3, at, out: m.out, filter: { freq: 900 } });
-      m.next += step;
-      m.step++;
-    }
-  }
-
-  alarmStop() {
-    if (!this.alarmNodes || !this.ctx) return;
-    try {
-      const t = this.ctx.currentTime;
-      this.alarmNodes.g.gain.cancelScheduledValues(t);
-      this.alarmNodes.g.gain.setValueAtTime(0.0001, t + 0.02);
-      this.alarmNodes.o.stop(t + 0.05);
-    } catch {
-      // already stopped
-    }
-    this.alarmNodes = null;
+  /** What is loaded and playing (for debugging in the browser console: __p0.audio.status()). */
+  status() {
+    return { ...this.bank.status(), voices: this.voices.length, beds: [...this.beds.keys()], emitters: this.emitters.size, level: this.level, verb: this.verbType };
   }
 }

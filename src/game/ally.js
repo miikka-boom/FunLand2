@@ -14,8 +14,9 @@
 import { WEAPONS } from './weapons.js';
 import { DEG, clamp, rand, randSpread, wrapAngle } from '../util.js';
 import { damageZombie } from './zombies.js';
-import { hitscan, SHOVE_REACH, SHOVE_HALF_ANGLE } from './player.js';
+import { hitscan, footfall, SHOVE_REACH, SHOVE_HALF_ANGLE } from './player.js';
 import { releasePin } from './specials.js';
+import { surfaceAt } from './soundscape.js';
 
 export const ALLY = {
   r: 12,
@@ -629,7 +630,9 @@ export function updateAlly(game, dt) {
   W.collide(a, a.r);
   W.collide(a, a.r);
   const spd = Math.hypot(a.vx, a.vy);
+  const walked = a.walk;
   a.walk += spd * dt * 0.06;
+  if (spd > 40 && footfall(walked, a.walk)) game.audio.footstep(a.x, a.y, surfaceAt(W.map, a.x, a.y), clamp(spd / S.moveSpeed, 0, 1), 'ally');
 
   // --- Shooting -----------------------------------------------------------------------
   a.firing = !healing && combat(game, a, dt);

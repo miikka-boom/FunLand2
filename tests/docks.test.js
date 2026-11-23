@@ -95,7 +95,7 @@ function stubGame(map, ferryTime = 30) {
     won: false,
     stats: { hordes: 0, time: 0 },
     director: { phase: 'build', mobT: 0, trickleT: 0, tankEngaged: false, queued: 0, queueHorde(n) { this.queued += n; return { x: 0, y: 0 }; } },
-    audio: { flare() {}, ferryHorn() {}, horde() {}, gateOpen() {} },
+    audio: { flare() {}, ferryHorn() {}, radio() {}, horde() {}, gateOpen() {} },
     effects: { light() {} },
     announce: (t) => said.push(t),
     noise() {},

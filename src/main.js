@@ -9,6 +9,7 @@ import { Renderer } from './render/renderer.js';
 import { Audio } from './audio.js';
 import { MusicPlayer } from './music-player.js';
 import { MusicDirector, readGame, cueLevel, cueFade } from './game/music-director.js';
+import { readScene } from './game/soundscape.js';
 import { SettingsPanel } from './settings-panel.js';
 import { clamp } from './util.js';
 import { ReportCard, buildReport, saveReport, recordDaily, dailyBest, todayKey, dateLabel, perfSummary, osName, fmtTime, LEVEL_NAMES } from './playtest.js';
@@ -38,6 +39,11 @@ const haptics = (ms) => {
 
 const renderer = new Renderer(canvas);
 const game = new Game(settings, audio, haptics);
+// Sounds pan by where they are on screen, and walls between you and them muffle them.
+audio.view = game.view;
+audio.occluder = (x0, y0, x1, y1) => !game.world.segmentClear(x0, y0, x1, y1);
+audio.setAmbience(settings.ambienceVolume);
+const scene = readScene(game, 'title');
 const safe = { l: 0, r: 0, t: 0, b: 0 };
 let layout = computeLayout(innerWidth, innerHeight, safe, settings);
 const input = new Input(canvas, settings, () => layout);
@@ -155,6 +161,7 @@ const panel = new SettingsPanel(panelEl, settings, {
       music.refresh();
     }
     if (key === 'musicVolume' || all) music.setVolume(settings.musicVolume);
+    if (key === 'ambienceVolume' || all) audio.setAmbience(settings.ambienceVolume);
     // Level / world switches regenerate the map (only if something really changed).
     if (game.worldSig !== worldSignature(settings)) newRun();
     if (key === 'level' || key === 'daily' || all) {
@@ -202,6 +209,7 @@ const panel = new SettingsPanel(panelEl, settings, {
 function start() {
   if (state !== 'title') return;
   audio.unlock();
+  audio.ui('start');
   if (isTouch) enterFullscreen();
   titleEl.classList.add('hidden');
   state = 'play';
@@ -237,6 +245,7 @@ function syncLevelPicker() {
 for (const b of levelButtons) {
   b.addEventListener('click', (e) => {
     e.stopPropagation();
+    audio.ui();
     if (settings.level === b.dataset.level) return;
     settings.level = b.dataset.level;
     saveSettings(settings);
@@ -261,6 +270,7 @@ function syncDaily() {
 if (dailyBtn) {
   dailyBtn.addEventListener('click', (e) => {
     e.stopPropagation();
+    audio.ui();
     settings.daily = !settings.daily;
     saveSettings(settings);
     newRun();
@@ -364,6 +374,7 @@ function frame(now) {
   audio.listener.x = game.player.x;
   audio.listener.y = game.player.y;
   if (audio.ctx) {
+    audio.update(dt, readScene(game, state, scene));
     const ms = readGame(game, state);
     const out = musicDirector.update(dt, ms);
     music.play(out.cue, cueFade(out.cue), cueLevel(out.cue));
@@ -382,5 +393,5 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // Handy for tuning sessions and automated smoke tests.
-window.__p0 = { game, settings, input, renderer, start, pause, resume, newRun, card, frames, music, musicDirector };
+window.__p0 = { game, settings, input, renderer, start, pause, resume, newRun, card, frames, music, musicDirector, audio };
 document.documentElement.classList.add('booted');

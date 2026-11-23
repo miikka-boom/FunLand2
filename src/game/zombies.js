@@ -158,6 +158,7 @@ export function updateZombies(game, dt) {
 
       if (tgtAlive && d < reach && z.windup <= 0 && z.attackCd <= 0) {
         z.windup = 0.3;
+        if (Math.random() < 0.45) game.audio.zombieAttack(z.x, z.y);
       }
       if (z.windup > 0) {
         z.windup -= dt;

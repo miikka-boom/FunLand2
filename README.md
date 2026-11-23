@@ -607,9 +607,18 @@ and no dependencies.
   dark it is where nothing is lit: 60% by default, up to 97%. **Line-of-sight
   shadows** (under Presentation, off by default) keep zombies behind
   buildings hidden until you round the corner.
-- **Feedback**: synthesized sound (no audio files), haptics on Android, blood
-  decals that stay, casings, tracers, screen shake and recoil, off-screen
-  threat arrows.
+- **Feedback**: recorded sound effects placed in the world (distance, walls in
+  the way, a reverb per level; see [docs/SFX.md](docs/SFX.md)), a dynamic score
+  ([docs/MUSIC.md](docs/MUSIC.md)), haptics on Android, blood decals that stay,
+  casings, tracers, screen shake and recoil, off-screen threat arrows.
+- **Soundscape**: guns with their mechanics (bursts that ring out, magazines,
+  pumps), bullets that crack off concrete, ring off cars and thud into the
+  infected, footsteps on whatever is underfoot (pier planks, cemetery gravel,
+  lawns), the horde as a crowd you hear coming and closing in, the specials'
+  own voices, and each level's air: wind in the streets, the hum of the
+  office floor, water at the docks, crickets in the suburbs and the cemetery,
+  fires crackling where they burn. **Ambience** in the settings panel sets how
+  loud the level's air is.
 - **Playtest kit** (the **Playtest** group in the tuning panel):
   - After each run a small card asks three quick questions: **fun** (meh /
     good / great), **difficulty** (too easy / about right / too hard) and
@@ -844,7 +853,12 @@ src/render/decor3d.js      the small things that stand up (chairs, signs, the le
 src/render/figures.js      survivors, the horde (batched), Hunter, Tank, Night Terror, the Witch
 src/render/*-render.js     what is painted flat (ground, graffiti, posters, chalk, Ben's crayon) and the big set pieces (docks: piers, cranes, the ferry; features: the canopy, fires, fireballs), hud.js
 src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
-src/audio.js               WebAudio synth SFX
+src/audio.js               the sound: recorded SFX through a mixer (distance, walls, reverb per level, voice limits, ducking), level ambience, loops in the world, the horde bed
+src/audio-synth.js         the WebAudio synth underneath: the fallback while files load, and the sounds that stay synthesized (alarms, Ben's whistle, the Witch's crying, the ferry's horn)
+src/sfx-bank.js            loads the SFX files (assets/sfx), lines them up against the decoder's delay, hands out variants
+src/game/soundscape.js     what the soundscape is this frame: surfaces under foot, impact materials, level ambience, fires/generators/flare/ferry loops, the horde (pure, tested)
+src/music-player.js, src/game/music-director.js   the dynamic score (docs/MUSIC.md)
+assets/sfx/                the sound effects (3 MB of MP3 + bank.js), built from the purchased libraries in AudioPacks/ (not in git) by tools/sfx/build_sfx.py (docs/SFX.md)
 battle/                    WOBBLE WAR card battler (separate page; code map above)
 haul/                      Long Haul metagame prototype: No Man's Land × Clash Royale (separate page; map in docs/LONG-HAUL.md)
 thrill/                    Thrill Hill metagame prototype (separate page; map in docs/THRILL-HILL.md)
@@ -853,7 +867,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, the music director, the sound effects (the bank ships every sound the engine plays, surfaces and materials, the soundscape), Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

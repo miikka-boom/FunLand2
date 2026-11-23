@@ -7,6 +7,7 @@ import { damageZombie, alertZombie } from './zombies.js';
 import { HUNTER, deadstop, struggle, damageRock } from './specials.js';
 import { hotDef, shootBoards, shoveBoards } from './loot.js';
 import { damageExplosive } from './world-events.js';
+import { surfaceAt, materialOf } from './soundscape.js';
 
 export const SHOVE_REACH = 52;
 /** How high the survivors carry their guns (the laser and tracers run at this height). */
@@ -122,7 +123,11 @@ export function updatePlayer(game, dt, input) {
   game.world.collide(p, p.r);
   game.world.collide(p, p.r);
   const spd = Math.hypot(p.vx, p.vy);
+  const walked = p.walk;
   p.walk += spd * dt * 0.06;
+  if (spd > 40 && footfall(walked, p.walk)) {
+    game.audio.footstep(p.x, p.y, surfaceAt(game.world.map, p.x, p.y), clamp(spd / S.moveSpeed, 0, 1), 'player');
+  }
 
   // --- Aim ---------------------------------------------------------------------------
   let aimActive = input.aimActive;
@@ -182,7 +187,7 @@ export function updatePlayer(game, dt, input) {
       } else {
         w.mag = w.cap;
         w.reloading = false;
-        game.audio.reloadDone();
+        game.audio.reloadDone(def.id);
       }
     }
   }
@@ -253,12 +258,20 @@ function applyAimAssist(game, p) {
 /** Adrenaline reloads faster. */
 const reloadScale = (p) => (p.adrenT > 0 ? 0.6 : 1);
 
+/**
+ * Did a foot come down between two values of the walk cycle? (figures.js draws the legs from it:
+ * a foot lands each time the cycle passes a half turn, at pi/2 + k pi.)
+ */
+export function footfall(before, after) {
+  return Math.floor(after / Math.PI + 0.5) !== Math.floor(before / Math.PI + 0.5);
+}
+
 export function startReload(game, p) {
   const w = p.weapon;
   if (w.reloading || w.mag >= w.cap) return;
   w.reloading = true;
   w.reloadT = (w.def.reloadType === 'shell' ? w.def.reload + 0.15 : w.def.reload) * reloadScale(p);
-  game.audio.reloadStart();
+  game.audio.reloadStart(w.def.id, w.reloadT);
 }
 
 export function swapWeapon(game, p) {
@@ -267,7 +280,7 @@ export function swapWeapon(game, p) {
   p.swapT = 0.35;
   p.bloom = 0;
   p.cooldown = Math.max(p.cooldown, 0);
-  game.audio.swap();
+  game.audio.swap(p.weapon.def.id);
   game.announce(p.weapon.def.name.toUpperCase(), '#cfd8dc', 0.9, 'small');
   if (p.weapon.mag === 0) startReload(game, p);
 }
@@ -283,7 +296,7 @@ function fire(game, p) {
   }
   if (w.mag <= 0) {
     startReload(game, p);
-    game.audio.dryFire();
+    game.audio.dryFire(def.id);
     return false;
   }
   p.cooldown += 1 / def.rate;
@@ -372,7 +385,10 @@ export function hitscan(game, p, mx, my, ang, def, alarms = true) {
     if (def.falloff) dmg *= clamp(1.25 - t / def.range, 0.3, 1);
     if (i > 0) dmg *= 0.8; // each body soaks a bit
     if (z.type === 'rock') damageRock(game, z, dmg, dx, dy);
-    else damageZombie(game, z, dmg, dx, dy, def.knock, def.stagger);
+    else {
+      game.audio.bulletHit(z.x, z.y, z.type === 'tank' || z.type === 'witch');
+      damageZombie(game, z, dmg, dx, dy, def.knock, def.stagger);
+    }
     if (i === n - 1 && hitList.length >= def.pierce) {
       endT = t;
       stopped = true;
@@ -389,6 +405,7 @@ export function hitscan(game, p, mx, my, ang, def, alarms = true) {
   if (!stopped && wall.obstacle) {
     // Spark off the surface, facing back toward the shooter.
     game.effects.sparks(x1 - dx * 2, y1 - dy * 2, -dx, -dy, def.pellets > 1 ? 2 : 4);
+    game.audio.impact(x1, y1, materialOf(wall.obstacle));
     if (alarms && wall.obstacle.alarm) game.director.triggerAlarm(wall.obstacle);
     if (alarms && wall.obstacle.boards) shootBoards(game, wall.obstacle, def, dx, dy, x1, y1);
     if (alarms && wall.obstacle.explosive) damageExplosive(game, wall.obstacle, def.dmg);

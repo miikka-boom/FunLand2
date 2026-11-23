@@ -31,14 +31,16 @@ export class MusicPlayer {
 
   _bus() {
     if (this.out || !this.ctx) return this.out;
-    // The music skips the SFX compressor (it would pump with every shot) and goes straight out.
+    // The music skips the SFX compressor (it would pump with every shot) and goes straight out,
+    // through the last safety limiter the effects share (audio.js), so the two can't clip together.
     // Stingers get their own bus so ducking the music under them doesn't duck them too.
+    const dest = this.audio.mixOut || this.ctx.destination;
     this.out = this.ctx.createGain();
     this.out.gain.value = this._level();
-    this.out.connect(this.ctx.destination);
+    this.out.connect(dest);
     this.fx = this.ctx.createGain();
     this.fx.gain.value = this._level(false);
-    this.fx.connect(this.ctx.destination);
+    this.fx.connect(dest);
     return this.out;
   }
 
