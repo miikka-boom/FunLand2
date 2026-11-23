@@ -15,6 +15,11 @@ build step and no dependencies.
 | Safehouse | [`safehouse/`](safehouse) | Another metagame: meta-progression for a co-op zombie mobile game |
 | Camp | [`camp/`](camp) | The first metagame prototype: a survivor camp with base building |
 
+**Trailer:** [`trailer/we-left-ben-coop-trailer.mp4`](trailer/we-left-ben-coop-trailer.mp4) (1:29)
+pitches We Left Ben in 2-player co-op, filmed frame by frame from the game itself and cut to its own
+score. How it's made, how to rebuild it, and what to change before it goes public (the music's
+license) are in [tools/trailer/README.md](tools/trailer/README.md).
+
 # Prototype 1: "WOBBLE WAR"
 
 A real-time card battler with wobbly ragdoll beans, played on a phone held
