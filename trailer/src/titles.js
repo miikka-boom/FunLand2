@@ -7,6 +7,7 @@
 //     crayon  Ben's orange crayon, written on a letter at a time (his replies)
 //     tag     a name pinned to a survivor on screen (the squad's introductions)
 //     logo    the We Left Ben logo
+//     cta     a call to action on a button (DOWNLOAD FREE NOW)
 //   fx (shots.js FX): letterbox bars, fades to black, flashes
 //   always: a vignette and a little grain
 //
@@ -143,6 +144,9 @@ export class Titles {
           break;
         case 'eyes':
           this.eyes(ctx, w, h, T, c);
+          break;
+        case 'cta':
+          this.cta(ctx, w, h, T, c);
           break;
         default:
           break;
@@ -399,6 +403,38 @@ export class Titles {
     ctx.shadowBlur = 0;
     ctx.letterSpacing = '0px';
     ctx.globalAlpha = 1;
+  }
+
+  /** A call to action on a cream button that pops in. */
+  cta(ctx, w, h, T, c) {
+    const a = envelope(T, c.at, c.dur, 0.1, c.fout === undefined ? 0.1 : c.fout);
+    if (a <= 0) return;
+    const pop = 1 + 0.2 * (1 - easeOut(clamp01((T - c.at) / 0.3)));
+    const track = 0.12;
+    const size = this.fit(ctx, [c.text], (c.size || 0.05) * this.u, DISPLAY, track, w * 0.66);
+    ctx.font = `${size}px ${DISPLAY}`;
+    ctx.letterSpacing = `${track * size}px`;
+    const tw = ctx.measureText(c.text).width;
+    const bw = tw + size * 1.8;
+    const bh = size * 1.75;
+    ctx.save();
+    ctx.translate((c.x === undefined ? 0.5 : c.x) * w, (c.y === undefined ? 0.75 : c.y) * h);
+    ctx.scale(pop, pop);
+    ctx.globalAlpha = a;
+    ctx.shadowColor = 'rgba(255,138,30,0.4)';
+    ctx.shadowBlur = size * 0.9;
+    ctx.fillStyle = c.fill || CREAM;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(-bw / 2, -bh / 2, bw, bh, bh / 2);
+    else ctx.rect(-bw / 2, -bh / 2, bw, bh);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = c.color || '#121316';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(c.text, (track * size) / 2, size * 0.05); // (the tracking trails the last letter: re-centre)
+    ctx.restore();
+    ctx.letterSpacing = '0px';
   }
 
   /** Ben's two little googly eyes (the logo's), opening in the dark: a look round, a blink, at you. */

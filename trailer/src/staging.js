@@ -155,6 +155,25 @@ export function clearShot(game, x, y, dist, prefer = 0, r = 14) {
   return { x: x + Math.cos(prefer) * dist, y: y + Math.sin(prefer) * dist };
 }
 
+/** What counts as a mural: words and drawings on the ground, walls, roofs and cars. */
+const MURALS = new Set(['graffiti', 'doodle', 'paint', 'chalkart', 'chalk', 'bentext', 'benchalk', 'beneyes', 'benarrow']);
+
+/**
+ * A map without its murals: no graffiti, painted words, chalk, Ben's crayon and drawings, posters,
+ * rooftop messages or writing on cars. Signs, headstones and the props stay. Only drawing reads any
+ * of it, so a shot plays the same with or without (call it before the shot's first frame).
+ */
+export function stripMurals(game) {
+  const map = game.world.map;
+  map.decor = map.decor.filter((d) => !MURALS.has(d.type));
+  for (const d of map.decor) if (d.type === 'raft') d.text = '';
+  map.posters = [];
+  map.roofArt = [];
+  map.benRoof = [];
+  map.ben = null; // (the game read it when the map was built; drawing it puts his tag on the ferry's deck)
+  for (const o of game.world.obstacles) if (o.scrawl) delete o.scrawl;
+}
+
 /** Put a survivor somewhere (and stop it). */
 export function put(s, x, y, facing) {
   s.x = x;

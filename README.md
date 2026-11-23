@@ -18,8 +18,8 @@ build step and no dependencies.
 **The announce trailer** for We Left Ben (2-4 player co-op) is at [`trailer/`](trailer/): 72
 seconds cut to the title theme, every frame of it the real game, filmed shot by shot. It plays live
 in the browser, and `node trailer/tools/render.mjs` renders it to a 1080p MP4 with the game's own
-sound (`--vertical` for 9:16). There is also a 30-second cut with no logo and no title
-(`--cut 30`, or `trailer/?cut=30`). How it's made, the shot list and the licence notes are in
+sound (`--vertical` for 9:16). There is also a 30-second cut with no logo, no title and no
+murals, ending on a download button (`--cut 30`, or `trailer/?cut=30`). How it's made, the shot list and the licence notes are in
 [docs/TRAILER.md](docs/TRAILER.md).
 
 # Prototype 1: "WOBBLE WAR"

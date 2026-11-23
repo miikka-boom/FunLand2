@@ -51,21 +51,24 @@ from bar 12 to bar 18, then near silence.
 | 0:53 | witch | she's up | |
 | 0:54 | revive | Odile back on her feet under fire | |
 | 0:56 | pier | Pier 9: the LIBERTY BELLE alongside, the horde down the pier | PIER 9 |
-| 0:57 | logo | the logo | 2-4 PLAYER CO-OP; COMING SOON · iOS & ANDROID |
+| 0:57 | logo | the logo | 2-4 PLAYER CO-OP; OUT NOW · DOWNLOAD FREE |
 | 1:04 | ben | black; somebody whistles | "bring your friends." "i'll count them." and his eyes |
 
 ## The 30-second cut
 
-`--cut 30` (or `trailer/?cut=30`): 30 seconds with **no logo and no title**, for a teaser or an ad
+`--cut 30` (or `trailer/?cut=30`): 30 seconds with **no logo, no title and no murals**, for an ad
 slot. It is the same shots and the same stretch of the title theme (bars 10 to 19), so it plays
-exactly like that part of the full trailer:
+exactly like that part of the full trailer, only with clean walls and streets: no graffiti, painted
+words, chalk, posters, rooftop messages, writing on cars, or Ben's crayon and drawings
+(`stripMurals()` in `staging.js`; signs, headstones and the props stay). It ends on a download
+button:
 
 | Time | On screen | Words |
 |---|---|---|
-| 0:00 | Lou shoots a car with a red light, next to RED LIGHT CARS = DINNER BELLS | PHILADELPHIA · 2020 (typed in the letterbox) |
+| 0:00 | Lou shoots a car with a red light: the alarm goes off | PHILADELPHIA · 2020 (typed in the letterbox) |
 | 0:03 | the breath: the alarm far away | THIS TIME, NOBODY GETS LEFT BEHIND. "promise?" |
 | 0:06 | the whole climax: the horde, Delco, the graveyard, the junkyard, the Tank, the Hunter save, the Witch, the revive, Pier 9 | CENTER CITY, DELCO, WISSAHICKON HILL, SOUTHWEST PHILLY, NO TWO NIGHTS THE SAME., PIER 9 |
-| 0:25 | black, a slam, somebody whistles | 2-4 PLAYER CO-OP / "bring your friends." / COMING SOON |
+| 0:25 | black, a slam, somebody whistles | 2-4 PLAYER CO-OP / "bring your friends." / a DOWNLOAD FREE NOW button |
 
 A cut is an edit of the full storyboard (`excerpt()` in `shots.js` takes a stretch of it, cards,
 mix and sound cues included) plus whatever is its own (the dateline, the end card). More cuts go in
@@ -120,8 +123,9 @@ also needs a static server for live playback (`npm start`, then `http://localhos
 
 ### Changing it
 
-- **Words:** `CARDS` in `shots.js` (kind, text, time, place). COMING SOON · iOS & ANDROID is a
-  placeholder: put the real date, platforms or call to action there (pre-register, wishlist).
+- **Words:** `CARDS` in `shots.js` (kind, text, time, place). The game is out and free: the full
+  trailer says OUT NOW · DOWNLOAD FREE under the logo, the 30-second cut ends on a DOWNLOAD FREE
+  NOW button (`cta`). Add the platforms or a store line there if you want them on screen.
 - **Music:** `MUSIC` and `MIX`. Every time in the storyboard is written in bars (`bar(k, beat)`), so a
   different track at another tempo mostly means setting `BPM` and `BAR0` and moving a few bars.
 - **Shots:** `FILM`. Use `--stills` and `--trace` to frame and time them, `scout.mjs` to find things.

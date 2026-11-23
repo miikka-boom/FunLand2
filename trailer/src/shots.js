@@ -439,7 +439,7 @@ const CARDS_FULL = [
   { kind: 'type', text: 'PIER 9', at: bar(17, 2.2), dur: 1.4, x: 0.05, y: 0.92, size: 0.03 },
   { kind: 'logo', at: bar(18) + 0.05, dur: bar(20) - bar(18) - 0.35 },
   { kind: 'kicker', text: '2–4 PLAYER CO-OP', at: bar(18, 2), dur: bar(20) - bar(18, 2) - 0.35, y: 0.79, size: 0.038, rules: true },
-  { kind: 'kicker', text: 'COMING SOON · iOS & ANDROID', at: bar(19), dur: bar(20) - bar(19) - 0.35, y: 0.87, size: 0.03, weight: 600, tracking: 0.3, color: 'rgba(243,234,215,0.8)' },
+  { kind: 'kicker', text: 'OUT NOW · DOWNLOAD FREE', at: bar(19), dur: bar(20) - bar(19) - 0.35, y: 0.87, size: 0.03, weight: 600, tracking: 0.3, color: 'rgba(243,234,215,0.8)' },
   { kind: 'crayon', text: 'bring your friends.', at: bar(20, 1), dur: 71.7 - bar(20, 1), y: 0.4, size: 0.085, cps: 10, fout: 0.04 },
   { kind: 'crayon', text: "i'll count them.", at: bar(21, 0.5), dur: 71.7 - bar(21, 0.5), y: 0.56, size: 0.085, cps: 9, fout: 0.04 },
   { kind: 'eyes', at: 69.55, dur: 71.7 - 69.55, y: 0.76, size: 0.032, blink: 1.45 },
@@ -500,9 +500,10 @@ function excerpt(cut, a, b, to = 0) {
 }
 
 /**
- * The 30-second cut: no logo and no title. A dateline, the car with the red light, the held breath
- * (THIS TIME, NOBODY GETS LEFT BEHIND.), the whole climax, then a card: 2-4 PLAYER CO-OP / bring
- * your friends. / COMING SOON. The music is the same stretch of the title theme (bars 10 to 19).
+ * The 30-second cut: no logo, no title and no murals (the walls and streets carry no words). A
+ * dateline, a car with a red light, the held breath (THIS TIME, NOBODY GETS LEFT BEHIND.), the whole
+ * climax, then a card: 2-4 PLAYER CO-OP / bring your friends. / DOWNLOAD FREE NOW. The music is the
+ * same stretch of the title theme (bars 10 to 19).
  */
 function thirty() {
   const A = bar(10);
@@ -510,12 +511,13 @@ function thirty() {
   const E = B - A; // the end card starts where the climax stops (25.6 s)
   const LEN = 30;
   const x = excerpt(FULL, A, B);
+  x.film = x.film.map((s) => ({ ...s, murals: false }));
   x.film.push({ id: 'end', at: E, dur: LEN - E, black: true });
   x.cards.unshift({ kind: 'type', text: 'PHILADELPHIA · 2020', at: 0.3, dur: 2.7, x: 0.05, y: 0.945, size: 0.028, cps: 16 });
   x.cards.push(
-    { kind: 'title', text: '2–4 PLAYER CO-OP', at: E + 0.03, dur: LEN - 0.3 - E, size: 0.12, y: 0.4, pop: true, fin: 0.06, fout: 0.05 },
-    { kind: 'crayon', text: 'bring your friends.', at: E + 0.9, dur: LEN - 0.3 - (E + 0.9), y: 0.57, size: 0.08, cps: 11, fout: 0.05 },
-    { kind: 'kicker', text: 'COMING SOON', at: E + 1.9, dur: LEN - 0.3 - (E + 1.9), y: 0.74, size: 0.034, rules: true, fout: 0.05 },
+    { kind: 'title', text: '2–4 PLAYER CO-OP', at: E + 0.03, dur: LEN - 0.3 - E, size: 0.12, y: 0.36, pop: true, fin: 0.06, fout: 0.05 },
+    { kind: 'crayon', text: 'bring your friends.', at: E + 0.9, dur: LEN - 0.3 - (E + 0.9), y: 0.53, size: 0.08, cps: 11, fout: 0.05 },
+    { kind: 'cta', text: 'DOWNLOAD FREE NOW', at: E + 1.75, dur: LEN - 0.3 - (E + 1.75), y: 0.72, size: 0.052, fout: 0.05 },
   );
   // The bars and the breath came from the full cut; the climax and the end card each open on a flash.
   x.fx.letterbox.unshift([0, 0.125]);

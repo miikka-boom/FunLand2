@@ -21,6 +21,7 @@ import { FlowField } from '../../src/world/world.js';
 import { WEAPONS } from '../../src/game/weapons.js';
 import { PLAYER_LOOK, ALLY_LOOK } from '../../src/render/figures.js';
 import { DEG, clamp, wrapAngle } from '../../src/util.js';
+import { stripMurals } from './staging.js';
 
 // --- The squad -----------------------------------------------------------------------------
 
@@ -289,6 +290,7 @@ export class Take {
 
     this.placeSquad();
     if (shot.setup) shot.setup(this.ctx);
+    if (shot.murals === false) stripMurals(game); // (after setup: shots may aim at a line of graffiti)
     this.cameraStep(0, true);
 
     // Prewarm, silent.
