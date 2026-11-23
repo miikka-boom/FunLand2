@@ -47,7 +47,7 @@ const { WITCH, startle } = await import('../src/game/witch.js');
 const { startReload, swapWeapon } = await import('../src/game/player.js');
 const { hasModel } = await import('../src/render/models.js');
 const { computeLayout } = await import('../src/layout.js');
-const { drawTutorialHud, drawTutorialBright, cardRect } = await import('../src/render/tutorial-render.js');
+const { drawTutorialHud, drawTutorialBright, cardRect, cardText } = await import('../src/render/tutorial-render.js');
 const { buildReport, reportText } = await import('../src/playtest.js');
 
 const INF = 0x3fffffff;
@@ -448,6 +448,26 @@ test('the coaching draws on a phone at every lesson (touch, mouse, pad) without 
   texts.length = 0;
   drawTutorialHud(ctx, game, touchIn('touch'), { title: true }, L);
   assert.equal(texts.length, 0);
+});
+
+test("the card's words are never cut short, down to the smallest phones (and they get a size smaller before that)", () => {
+  const ctx = mockCtx();
+  for (const [w, h] of [[640, 360], [568, 320]]) {
+    const game = make();
+    game.setViewport(w, h);
+    const L = computeLayout(w, h, { l: 0, r: 0, t: 0, b: 0 }, game.settings);
+    for (const s of STEPS) {
+      skipTo(game, s.id);
+      texts.length = 0;
+      drawTutorialHud(ctx, game, { source: 'touch', touch: { move: { active: true }, aim: { active: true, crossedFire: false }, pressed: new Map() } }, { title: false }, L);
+      const shown = texts.join(' ');
+      for (const word of stepText(s, 'touch').split(' ')) assert.ok(shown.includes(word), `${w}x${h} ${s.id}: "${word}" is missing`);
+    }
+  }
+  // More words than four lines hold: a size smaller, and all of them still there.
+  const fit = cardText(ctx, 'word '.repeat(40).trim(), 120);
+  assert.ok(fit.size < 13, `${fit.size} px`);
+  assert.equal(fit.lines.join(' ').split(' ').length, 40);
 });
 
 test('the report: how far you got, the close calls, and the seconds per lesson (where people get stuck)', () => {

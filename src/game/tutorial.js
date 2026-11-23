@@ -50,7 +50,7 @@ export const STEPS = [
     title: 'AIM',
     coach: 'aim',
     text: {
-      touch: 'Right thumb: touch the right half and drag, inside the dashed ring. Put your laser on one of them.',
+      touch: 'Right thumb: drag on the right half, inside the dashed ring. Put your laser on one of them.',
       mouse: 'Point with the mouse: the laser is your aim. Put it on one of them.',
       pad: 'Tilt the right stick a little: the laser is your aim. Put it on one of them.',
     },
@@ -192,7 +192,7 @@ export const STEPS = [
     dot: true,
     title: 'LEAVE HER BE',
     text: {
-      touch: "That crying is a Witch. Pass on the far side, keep your aim (and your light) off her, and don't shoot near her.",
+      touch: "That crying is a Witch. Walk past on the far side, aim (your light) away from her, don't shoot near her.",
     },
     skip: (t) => !t.witch(),
     target: (t) => ({ ...t.L.witchPass, ring: true, label: 'FAR SIDE' }),

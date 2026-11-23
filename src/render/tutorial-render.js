@@ -107,13 +107,26 @@ export function drawTutorialHud(ctx, game, input, ui, L) {
   if (view.coach) coach(ctx, game, input, view, L, touch);
 }
 
-/** Where the card goes: bottom centre, between the two thumbs' sticks. */
-export function cardRect(L, R, lines) {
+/** Where the card goes: bottom centre, between the two thumbs' sticks (lineH: the text's line height). */
+export function cardRect(L, R, lines, lineH = 17) {
   const x0 = L.fixedMove.x + R + 14;
   const x1 = L.fixedAim.x - R - 14;
   const w = Math.max(220, Math.min(440, x1 - x0));
-  const h = 10 + 22 + lines * 17 + 8;
+  const h = 10 + 22 + lines * lineH + 8;
   return { x: Math.round((x0 + x1) / 2 - w / 2), y: Math.round(L.h - L.safe.b - 10 - h), w, h };
+}
+
+/**
+ * The card's words, wrapped to its width: 13 px on up to four lines, or a
+ * size smaller when a small phone needs more. Never cut short.
+ */
+export function cardText(ctx, text, maxW) {
+  for (const size of [13, 12, 11]) {
+    ctx.font = `600 ${size}px ${FONT}`;
+    const lines = wrap(ctx, text, maxW);
+    if (lines.length <= 4 || size === 11) return { lines, size, lineH: size + 4 };
+  }
+  return null; // (not reached)
 }
 
 function wrap(ctx, text, maxW) {
@@ -134,11 +147,9 @@ function wrap(ctx, text, maxW) {
 function drawCard(ctx, game, view, L) {
   const pad = 12;
   const R = game.settings.stickRadius;
-  ctx.font = `600 13px ${FONT}`;
   const { w } = cardRect(L, R, 1);
-  let lines = wrap(ctx, view.text, w - pad * 2);
-  if (lines.length > 3) lines = lines.slice(0, 3);
-  const { x, y, h } = cardRect(L, R, lines.length);
+  const { lines, size, lineH } = cardText(ctx, view.text, w - pad * 2);
+  const { x, y, h } = cardRect(L, R, lines.length, lineH);
   const done = view.done;
   const pulse = 0.5 + 0.5 * Math.sin(game.time * 3);
 
@@ -182,9 +193,9 @@ function drawCard(ctx, game, view, L) {
     }
   }
 
-  ctx.font = `600 13px ${FONT}`;
+  ctx.font = `600 ${size}px ${FONT}`;
   ctx.fillStyle = done ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.88)';
-  lines.forEach((l, i) => ctx.fillText(l, x + pad, y + 10 + 22 + 9 + i * 17));
+  lines.forEach((l, i) => ctx.fillText(l, x + pad, y + 10 + 22 + lineH / 2 + 1 + i * lineH));
 }
 
 // --- The ghost thumb ---------------------------------------------------------------------

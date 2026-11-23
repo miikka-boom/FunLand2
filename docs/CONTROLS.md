@@ -160,7 +160,8 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
 - **The card** sits at the bottom, between the two sticks: what you're
   coaching is mostly ahead of you, up the screen, and the top is the HUD's.
   A title, a count where there is one ("2/3", or the gun you hold), the
-  words, and a dot per lesson. A lesson done turns it green with a ✓ for
+  words (up to four lines; a size smaller on the smallest phones, never cut
+  short), and a dot per lesson. A lesson done turns it green with a ✓ for
   0.9 s before the next one. The words follow the device you last used:
   touch ("tap ⟳"), mouse and keys ("press R") or a pad ("press X").
 - **Ghost thumbs** (touch only), on the half of the screen the gesture
