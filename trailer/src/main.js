@@ -12,7 +12,7 @@ import { Renderer } from '../../src/render/renderer.js';
 import { Scene } from '../../src/render/scene3d.js';
 import { readScene } from '../../src/game/soundscape.js';
 import { Take } from './stage.js';
-import { FILM, DURATION, SFX } from './shots.js';
+import { FILM, DURATION, SFX, CUT } from './shots.js';
 import { Titles } from './titles.js';
 import { makeSound } from './score.js';
 
@@ -22,6 +22,11 @@ const FPS = Number(params.get('fps')) || 30;
 const canvas = document.getElementById('film');
 const status = document.getElementById('status');
 const playBtn = document.getElementById('play');
+if (CUT !== 'full') {
+  // The short cut carries no logo and no title.
+  document.title = `Trailer · ${Math.round(DURATION)} s`;
+  playBtn.querySelector('img').remove();
+}
 
 // --- Viewport: 16:9, as big as fits (capture: exactly the window) -------------------------------
 
@@ -162,6 +167,7 @@ const ready = (async () => {
 // Capture: the render tool drives frames one at a time.
 window.__trailer = {
   ready,
+  cut: CUT,
   duration: DURATION,
   fps: FPS,
   shots: FILM.map((s) => ({ id: s.id, at: s.at, dur: s.dur, level: s.level || null })),

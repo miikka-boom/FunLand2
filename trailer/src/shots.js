@@ -416,12 +416,9 @@ shot({
 shot({ id: 'logo', at: bar(18), dur: bar(20) - bar(18), black: true });
 shot({ id: 'ben', at: bar(20), dur: END - bar(20), black: true });
 
-export const FILM = S;
-export const DURATION = END;
-
 // --- Words ------------------------------------------------------------------------------------------
 
-export const CARDS = [
+const CARDS_FULL = [
   { kind: 'type', text: 'PHILADELPHIA · 2020', at: 0.55, dur: 2.6, y: 0.53, align: 'center', size: 0.05, cps: 14 },
   { kind: 'title', text: 'NOBODY SLEEPS ANYMORE.', at: bar(1, 2), dur: bar(3) - bar(1, 2) - 0.15, y: 0.79, size: 0.075 },
   { kind: 'title', text: 'WE LEFT HIM BEHIND.', at: bar(4), dur: bar(5) - bar(4) - 0.1, size: 0.11, y: 0.8 },
@@ -448,7 +445,7 @@ export const CARDS = [
   { kind: 'eyes', at: 69.55, dur: 71.7 - 69.55, y: 0.76, size: 0.032, blink: 1.45 },
 ];
 
-export const FX = {
+const FX_FULL = {
   // Bars on for "the film", off when the climax hits (the film becomes the game).
   letterbox: [[0, 0.125], [bar(12) - 0.01, 0.125], [bar(12), 0]],
   black: [[bar(11) - 0.02, 0], [bar(11), 0.78], [bar(12) - 0.01, 0.86], [bar(12), 0]],
@@ -457,10 +454,10 @@ export const FX = {
 
 // --- Sound -------------------------------------------------------------------------------------------
 
-export const MUSIC = [{ cue: 'menu', at: 0, from: 0, dur: 71.75, fadeOut: 1.9, gain: 1 }];
+const MUSIC_FULL = [{ cue: 'menu', at: 0, from: 0, dur: 71.75, fadeOut: 1.9, gain: 1 }];
 
 /** The mix: music and the game's sound, ramped between these levels. */
-export const MIX = [
+const MIX_FULL = [
   { at: 0, music: 1, game: 0 },
   { at: bar(1), game: 0.0 },
   { at: bar(1) + 0.6, game: 0.55 },
@@ -477,9 +474,74 @@ export const MIX = [
 ];
 
 /** Sounds that belong to the film, not a shot. */
-export const SFX = [
+const SFX_FULL = [
   { at: bar(12) - 0.05, run: (a) => a.alarmStop() }, // (the car alarm would wail on into the climax)
   { at: bar(14) - 0.03, run: (a) => a.alarmStop() }, // (and the ice-cream truck's tune into the graveyard)
   { at: bar(18) + 0.02, run: (a) => a.explosion(a.listener.x, a.listener.y) },
   { at: bar(20, 0.4), run: (a) => a.benWhistle(a.listener.x + 120, a.listener.y - 40) },
 ];
+
+// --- Cuts ---------------------------------------------------------------------------------------------
+
+const FULL = { film: S, duration: END, cards: CARDS_FULL, fx: FX_FULL, music: MUSIC_FULL, mix: MIX_FULL, sfx: SFX_FULL };
+
+/** The part of a cut between film times a and b, moved to start at `to`. */
+function excerpt(cut, a, b, to = 0) {
+  const d = to - a;
+  const inside = (t) => t >= a - 1e-6 && t < b - 1e-6;
+  const keys = (list) => (list || []).filter(([t]) => inside(t)).map(([t, v]) => [t + d, v]);
+  return {
+    film: cut.film.filter((s) => inside(s.at)).map((s) => ({ ...s, at: s.at + d })),
+    cards: cut.cards.filter((c) => inside(c.at)).map((c) => ({ ...c, at: c.at + d, dur: Math.min(c.dur, b - c.at) })),
+    fx: { letterbox: keys(cut.fx.letterbox), black: keys(cut.fx.black), flash: (cut.fx.flash || []).filter((f) => inside(f.at)).map((f) => ({ ...f, at: f.at + d })) },
+    mix: cut.mix.filter((k) => inside(k.at)).map((k) => ({ ...k, at: k.at + d })),
+    sfx: cut.sfx.filter((k) => inside(k.at)).map((k) => ({ ...k, at: k.at + d })),
+  };
+}
+
+/**
+ * The 30-second cut: no logo and no title. A dateline, the car with the red light, the held breath
+ * (THIS TIME, NOBODY GETS LEFT BEHIND.), the whole climax, then a card: 2-4 PLAYER CO-OP / bring
+ * your friends. / COMING SOON. The music is the same stretch of the title theme (bars 10 to 19).
+ */
+function thirty() {
+  const A = bar(10);
+  const B = bar(18);
+  const E = B - A; // the end card starts where the climax stops (25.6 s)
+  const LEN = 30;
+  const x = excerpt(FULL, A, B);
+  x.film.push({ id: 'end', at: E, dur: LEN - E, black: true });
+  x.cards.unshift({ kind: 'type', text: 'PHILADELPHIA · 2020', at: 0.3, dur: 2.7, x: 0.05, y: 0.945, size: 0.028, cps: 16 });
+  x.cards.push(
+    { kind: 'title', text: '2–4 PLAYER CO-OP', at: E + 0.03, dur: LEN - 0.3 - E, size: 0.12, y: 0.4, pop: true, fin: 0.06, fout: 0.05 },
+    { kind: 'crayon', text: 'bring your friends.', at: E + 0.9, dur: LEN - 0.3 - (E + 0.9), y: 0.57, size: 0.08, cps: 11, fout: 0.05 },
+    { kind: 'kicker', text: 'COMING SOON', at: E + 1.9, dur: LEN - 0.3 - (E + 1.9), y: 0.74, size: 0.034, rules: true, fout: 0.05 },
+  );
+  // The bars and the breath came from the full cut; the climax and the end card each open on a flash.
+  x.fx.letterbox.unshift([0, 0.125]);
+  x.fx.flash.push({ at: E, dur: 0.6, k: 0.7 });
+  x.mix.unshift({ at: 0, music: 1, game: 0.75 });
+  x.mix.push({ at: E, game: 0.95 }, { at: E + 3.2, game: 0.6 });
+  x.sfx.push(
+    { at: E + 0.02, run: (a) => a.explosion(a.listener.x, a.listener.y) },
+    { at: E + 0.8, run: (a) => a.benWhistle(a.listener.x + 120, a.listener.y - 40) },
+  );
+  return { ...x, duration: LEN, music: [{ cue: 'menu', at: 0, from: A, dur: LEN, fadeIn: 0.08, fadeOut: 1.1, gain: 1 }] };
+}
+
+const CUTS = { full: () => FULL, 30: thirty };
+
+/** Which cut this page plays: ?cut=30 for the 30-second one, the full trailer otherwise. */
+export const CUT = (() => {
+  const want = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('cut') : null;
+  return want && CUTS[want] ? want : 'full';
+})();
+const C = CUTS[CUT]();
+
+export const FILM = C.film;
+export const DURATION = C.duration;
+export const CARDS = C.cards;
+export const FX = C.fx;
+export const MUSIC = C.music;
+export const MIX = C.mix;
+export const SFX = C.sfx;

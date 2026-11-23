@@ -7,9 +7,9 @@ from the titles, the letterbox and the film grain.
 
 | | |
 |---|---|
-| Watch it in the browser | `trailer/` (plays live; click to start, sound on) |
-| Render the video | `node trailer/tools/render.mjs` → `trailer/out/we-left-ben-trailer.mp4` (1920x1080, 30 fps, about 5 min) |
-| The storyboard | `trailer/src/shots.js` (shots, words, music, mix) |
+| Watch it in the browser | `trailer/` (plays live; click to start, sound on); `trailer/?cut=30` for the 30-second cut |
+| Render the video | `node trailer/tools/render.mjs` → `trailer/out/we-left-ben-trailer.mp4` (1920x1080, 30 fps, about 5 min); `--cut 30` → `trailer-30s.mp4`; `--vertical` for 9:16 |
+| The storyboard | `trailer/src/shots.js` (shots, words, music, mix, cuts) |
 
 ## The pitch, after Left 4 Dead (2008)
 
@@ -54,6 +54,23 @@ from bar 12 to bar 18, then near silence.
 | 0:57 | logo | the logo | 2-4 PLAYER CO-OP; COMING SOON · iOS & ANDROID |
 | 1:04 | ben | black; somebody whistles | "bring your friends." "i'll count them." and his eyes |
 
+## The 30-second cut
+
+`--cut 30` (or `trailer/?cut=30`): 30 seconds with **no logo and no title**, for a teaser or an ad
+slot. It is the same shots and the same stretch of the title theme (bars 10 to 19), so it plays
+exactly like that part of the full trailer:
+
+| Time | On screen | Words |
+|---|---|---|
+| 0:00 | Lou shoots a car with a red light, next to RED LIGHT CARS = DINNER BELLS | PHILADELPHIA · 2020 (typed in the letterbox) |
+| 0:03 | the breath: the alarm far away | THIS TIME, NOBODY GETS LEFT BEHIND. "promise?" |
+| 0:06 | the whole climax: the horde, Delco, the graveyard, the junkyard, the Tank, the Hunter save, the Witch, the revive, Pier 9 | CENTER CITY, DELCO, WISSAHICKON HILL, SOUTHWEST PHILLY, NO TWO NIGHTS THE SAME., PIER 9 |
+| 0:25 | black, a slam, somebody whistles | 2-4 PLAYER CO-OP / "bring your friends." / COMING SOON |
+
+A cut is an edit of the full storyboard (`excerpt()` in `shots.js` takes a stretch of it, cards,
+mix and sound cues included) plus whatever is its own (the dateline, the end card). More cuts go in
+`CUTS`.
+
 ## How it's made
 
 ```
@@ -92,6 +109,7 @@ trailer/fonts/             Bebas Neue and Gochi Hand (SIL OFL), Special Elite an
 node trailer/tools/render.mjs                      the whole trailer, with sound
 node trailer/tools/render.mjs --from 38 --to 48    a stretch (add --audio for its sound)
 node trailer/tools/render.mjs --stills 12,40.5     single frames as PNG (with where the squad is)
+node trailer/tools/render.mjs --cut 30             the 30-second cut (--vertical for 9:16)
 node trailer/tools/render.mjs --trace hunter       what happens in a shot, 10 times a second (for timing cues)
 node trailer/tools/scout.mjs city 1337 graffiti    what's where on a map
   --fps 30  --crf 18  --width 1280 --height 720 --scale 1.5 (= 1920x1080)  --out FILE

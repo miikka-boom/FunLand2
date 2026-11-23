@@ -4,6 +4,7 @@
 //   node trailer/tools/render.mjs                       the whole trailer -> trailer/out/we-left-ben-trailer.mp4
 //   node trailer/tools/render.mjs --from 38 --to 46     a stretch of it (no sound unless --audio)
 //   node trailer/tools/render.mjs --stills 5,12.5,40    single frames -> trailer/out/still-*.png
+//   node trailer/tools/render.mjs --cut 30              the 30-second cut -> trailer/out/trailer-30s.mp4
 //   options: --fps 30 --width 1280 --height 720 --scale 1.5 (1920x1080) --crf 17 --out FILE
 //            --vertical (1080x1920 cut, centred) --no-audio --jpeg-quality 0.95
 //
@@ -42,6 +43,7 @@ const SCALE = Number(opt('scale', 1.5));
 const CRF = Number(opt('crf', 17));
 const JPEG_Q = Number(opt('jpeg-quality', 0.95));
 const stills = opt('stills', null);
+const CUT = String(opt('cut', 'full'));
 
 // --- A static server for the repo ----------------------------------------------------------------
 
@@ -73,12 +75,16 @@ page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => {
   if (m.type() === 'error' || m.type() === 'warning') console.log(`[page ${m.type()}] ${m.text()}`);
 });
-await page.goto(`http://127.0.0.1:${port}/trailer/?capture=1&fps=${FPS}`);
+await page.goto(`http://127.0.0.1:${port}/trailer/?capture=1&fps=${FPS}${CUT !== 'full' ? `&cut=${encodeURIComponent(CUT)}` : ''}`);
 await page.waitForFunction(() => window.__trailer, null, { timeout: 30000 });
 const t0 = Date.now();
 await page.evaluate(() => window.__trailer.ready);
-const info = await page.evaluate(() => ({ duration: window.__trailer.duration, shots: window.__trailer.shots }));
-console.log(`trailer: ${info.duration.toFixed(2)} s, ${info.shots.length} shots; ready in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+const info = await page.evaluate(() => ({ duration: window.__trailer.duration, shots: window.__trailer.shots, cut: window.__trailer.cut }));
+if (info.cut !== CUT) {
+  console.error(`no cut called "${CUT}"`);
+  process.exit(1);
+}
+console.log(`trailer (${info.cut} cut): ${info.duration.toFixed(2)} s, ${info.shots.length} shots; ready in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 if (errors.length) console.log('page errors:', errors);
 await mkdir(OUT, { recursive: true });
 
@@ -132,7 +138,8 @@ const from = Number(opt('from', 0));
 const to = Math.min(info.duration, Number(opt('to', info.duration)));
 const full = from <= 0 && to >= info.duration - 1e-6;
 const withAudio = !has('no-audio') && (full || has('audio'));
-const out = resolve(String(opt('out', join(OUT, full ? (VERTICAL ? 'we-left-ben-trailer-vertical.mp4' : 'we-left-ben-trailer.mp4') : `part-${from}-${to}.mp4`))));
+const NAME = CUT === 'full' ? 'we-left-ben-trailer' : `trailer-${CUT}s`; // (the short cut keeps the title out of its file name too)
+const out = resolve(String(opt('out', join(OUT, full ? `${NAME}${VERTICAL ? '-vertical' : ''}.mp4` : `part-${from}-${to}.mp4`))));
 const silent = withAudio ? out.replace(/\.mp4$/, '.video.mp4') : out;
 const pxW = Math.round(WIDTH * SCALE);
 const pxH = Math.round(HEIGHT * SCALE);
