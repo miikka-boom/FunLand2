@@ -50,7 +50,8 @@ export class TouchControls {
     this.pressed = new Map(); // button id -> press time
     this.extraTaps = new Map(); // touchId -> {x, y, t0, travel} (second finger on the aim side)
     this.events = [];
-    this.lastUsed = 0;
+    this.lastUsed = 0; // any contact, a real finger or the mouse standing in for one
+    this.lastTouch = 0; // a real touch event (the mouse events a browser makes up after one are ignored)
     this.taps = []; // recent tap markers for the debug overlay
     this.enabled = true;
 
@@ -67,6 +68,7 @@ export class TouchControls {
       const pe = (type) => (e) => {
         if (e.pointerType === 'mouse') return;
         if (e.cancelable) e.preventDefault();
+        this.lastTouch = performance.now();
         if (type === 'start') target.setPointerCapture?.(e.pointerId);
         this._contact(type, e.pointerId, e.clientX, e.clientY);
       };
@@ -79,6 +81,7 @@ export class TouchControls {
 
   _touch(e, type) {
     if (e.cancelable) e.preventDefault(); // no scroll, zoom, double-tap zoom, magnifier, synthetic mouse
+    this.lastTouch = performance.now();
     for (const t of e.changedTouches) this._contact(type, t.identifier, t.clientX, t.clientY);
     this._sweep(e.touches);
   }

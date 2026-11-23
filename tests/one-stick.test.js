@@ -421,7 +421,7 @@ test('your light stays off a Witch left alone, while the gun has nothing to aim 
   assert.ok(Math.abs(wrapAngle(q.facing - Math.atan2(w2.y - q.y, w2.x - q.x))) < 0.05, 'switched off: you look where you look');
 });
 
-test('a mouse held down or a twin-stick frame still aims by hand', () => {
+test('a frame that aims by hand (a gamepad right stick) still aims by hand', () => {
   const game = make();
   intoTheOpen(game);
   const p = game.player;
@@ -432,6 +432,56 @@ test('a mouse held down or a twin-stick frame still aims by hand', () => {
   game.update(1 / 60, manual);
   assert.equal(p.autoTarget, null);
   assert.equal(p.firing, false, 'no trigger pulled');
+});
+
+test('at a desk, one stick: the mouse is a thumb (drag to move, a quick click shoves, buttons press)', async () => {
+  const { Input } = await import('../src/input/input.js');
+  globalThis.navigator ??= {};
+  const winH = {};
+  const add = window.addEventListener;
+  window.addEventListener = (t, fn) => (winH[t] ||= []).push(fn);
+  const canvasH = {};
+  const settings = { ...PORTRAIT };
+  const layout = computeLayout(390, 844, NO_SAFE, settings);
+  const input = new Input({ addEventListener: (t, fn) => (canvasH[t] = fn) }, settings, () => layout);
+  window.addEventListener = add;
+  const ev = (x, y, more = {}) => ({ button: 0, buttons: 1, clientX: x, clientY: y, pointerType: 'mouse', preventDefault() {}, ...more });
+  const down = (x, y, more) => canvasH.mousedown(ev(x, y, more));
+  const move = (x, y) => winH.pointermove.forEach((fn) => fn(ev(x, y)));
+  const up = (x, y) => winH.mouseup.forEach((fn) => fn(ev(x, y, { buttons: 0 })));
+
+  down(150, 650);
+  move(150, 580);
+  let f = input.sample();
+  assert.equal(f.source, 'touch', 'the mouse drives the touch stick');
+  assert.ok(f.move.y < -0.9, 'dragged up: run up the screen');
+  assert.equal(f.auto, true, 'and the gun still aims itself');
+  assert.equal(f.fire, false);
+  up(150, 580);
+  assert.deepEqual(input.sample().events, [], 'a drag is not a shove');
+  assert.equal(input.touch.move.active, false);
+
+  // Two quick clicks in a row: two shoves (the mouse isn't mistaken for the mouse events a touch leaves behind).
+  for (let i = 0; i < 2; i++) {
+    down(200, 400);
+    up(200, 400);
+  }
+  assert.deepEqual(input.sample().events, ['shove', 'shove']);
+
+  const sh = layout.byId.reload;
+  down(sh.x, sh.y);
+  up(sh.x, sh.y);
+  assert.deepEqual(input.sample().events, ['reload'], 'a click on a button presses it');
+
+  // Twin stick: the mouse aims and fires again.
+  await sleep(5); // the mouse used last (not the thumb it stood in for) owns the frame
+  settings.controls = 'twin';
+  down(300, 300);
+  f = input.sample();
+  assert.equal(f.source, 'mouse');
+  assert.equal(f.fire, true);
+  assert.equal(f.auto, false);
+  up(300, 300);
 });
 
 test('playtest reports say which page and controls a run was played with', () => {

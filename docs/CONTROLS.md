@@ -204,9 +204,11 @@ All of it is in [`src/game/auto-aim.js`](../src/game/auto-aim.js).
   face. With nothing to aim at, it is kept 38° off a Witch left alone within
   340 u (the beam is 32° either side), so walking past her doesn't shine it
   in her face. Gunfire near her still costs patience: lead the fight away.
-- **Mouse and pad:** hold the mouse button to aim and fire by hand (the
-  cursor aims, as on the other page); push a pad's right stick to do the
-  same. Let go and the gun aims itself again.
+- **At a desk:** the left mouse button is a thumb: drag to move, a quick
+  click shoves, a click on a button presses it (so the one-thumb feel can be
+  tried in a desktop browser). WASD moves too, Space or a right-click
+  shoves. A pad's right stick aims and fires by hand while you push it; let
+  go and the gun aims itself again.
 - **The camera** leads where you run, and only a little (30% of the
   twin-stick lead) toward what the gun is on, so the view doesn't swing from
   target to target. You stand at 45% of the screen's height, not the middle:

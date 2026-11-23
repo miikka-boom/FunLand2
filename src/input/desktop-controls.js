@@ -1,6 +1,9 @@
 // Keyboard + mouse fallback so the prototype can be iterated on at a desk.
 // WASD/arrows move, mouse aims, left button fires, right button / Space shoves,
 // R reloads, Q/E/wheel swaps weapon, Esc opens the tuning panel.
+// With one stick (settings.controls 'one') there is nothing to aim, so the
+// left button is a thumb instead: drag to move, a quick click shoves (see
+// `finger`, wired up by input.js).
 
 import { hitButton } from '../layout.js';
 
@@ -17,6 +20,9 @@ export class DesktopControls {
     this.isGhost = isGhost;
     this.keys = new Set();
     this.mouse = { x: 0, y: 0, down: false, seen: false };
+    // Set by input.js: { on() -> bool, contact(type, x, y) } feeds the touch controller.
+    this.finger = null;
+    this.fingerDown = false;
     this.events = [];
     this.lastUsed = 0;
 
@@ -59,6 +65,12 @@ export class DesktopControls {
     canvas.addEventListener('mousedown', (e) => {
       if (this.isGhost()) return;
       this._mouseAt(e);
+      if (e.button === 0 && this.finger && this.finger.on()) {
+        // One stick: the mouse is a thumb (buttons are hit-tested by the touch controller).
+        this.fingerDown = true;
+        this.finger.contact('start', e.clientX, e.clientY);
+        return;
+      }
       if (e.button === 0) {
         const L = this.getLayout();
         for (const b of L.buttons) {
@@ -73,12 +85,18 @@ export class DesktopControls {
       }
     });
     window.addEventListener('mouseup', (e) => {
-      if (e.button === 0) this.mouse.down = false;
+      if (e.button !== 0) return;
+      this.mouse.down = false;
+      this._fingerUp(e.clientX, e.clientY);
     });
     window.addEventListener('pointermove', (e) => {
       if (e.pointerType !== 'mouse') return;
       this._mouseAt(e);
       if (this.mouse.down && !(e.buttons & 1)) this.mouse.down = false; // released outside the window
+      if (this.fingerDown) {
+        if (e.buttons & 1) this.finger.contact('move', e.clientX, e.clientY);
+        else this._fingerUp(e.clientX, e.clientY);
+      }
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     let wheelAcc = 0;
@@ -104,6 +122,12 @@ export class DesktopControls {
       { passive: false },
     );
     window.addEventListener('blur', () => this.reset());
+  }
+
+  _fingerUp(x, y) {
+    if (!this.fingerDown) return;
+    this.fingerDown = false;
+    this.finger.contact('end', x, y);
   }
 
   _mouseAt(e) {
@@ -136,6 +160,7 @@ export class DesktopControls {
   reset() {
     this.keys.clear();
     this.mouse.down = false;
+    this.fingerDown = false; // (input.js resets the touch controller with it)
     this.events = [];
   }
 }

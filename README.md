@@ -831,8 +831,8 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
   goes full screen when you tap Start.
 - **Desktop:** WASD to move (screen directions, like the sticks), the mouse
   to aim, click to fire, Space to shove, R to reload, Q to swap, Esc for
-  tuning. A gamepad works too. On the portrait page the gun fires by itself;
-  hold the mouse button (or push a pad's right stick) to aim by hand.
+  tuning. A gamepad works too. On the portrait page the gun fires by itself
+  and the mouse is a thumb: drag to move, a quick click shoves.
 
 ## Code map
 

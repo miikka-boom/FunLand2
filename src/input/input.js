@@ -5,6 +5,9 @@ import { TouchControls } from './touch-controls.js';
 import { DesktopControls } from './desktop-controls.js';
 import { GamepadControls } from './gamepad-controls.js';
 
+/** The touch id the mouse uses when it stands in for a thumb. */
+export const MOUSE_FINGER = 'mouse';
+
 export class Input {
   constructor(canvas, settings, getLayout) {
     this.settings = settings;
@@ -13,8 +16,13 @@ export class Input {
     this.desktop = new DesktopControls(
       canvas,
       getLayout,
-      () => this.touch.lastUsed > 0 && performance.now() - this.touch.lastUsed < 800,
+      () => this.touch.lastTouch > 0 && performance.now() - this.touch.lastTouch < 800,
     );
+    // One stick at a desk: the left mouse button is a thumb on the touch controller.
+    this.desktop.finger = {
+      on: () => settings.controls === 'one',
+      contact: (type, x, y) => this.touch._contact(type, MOUSE_FINGER, x, y),
+    };
     this.pad = new GamepadControls();
     this.source = this.touch.supportsTouch ? 'touch' : 'mouse';
     this.frame = {
@@ -28,8 +36,8 @@ export class Input {
       fire: false,
       assist: true,
       // One stick (settings.controls 'one'): the gun picks its own target and
-      // fires (game/auto-aim.js). A mouse held down or a gamepad's right stick
-      // still aims by hand while it's in use.
+      // fires (game/auto-aim.js). A gamepad's right stick still aims by hand
+      // while it's in use (the mouse is a thumb here: drag to move).
       auto: false,
       events: [],
     };
@@ -89,9 +97,9 @@ export class Input {
 
     f.auto = false;
     if (S.controls === 'one') {
-      // The touch aim stick doesn't exist here; the mouse and a pad's right
-      // stick only take over while they're actually aiming.
-      const manual = this.source === 'mouse' ? this.desktop.mouse.down : this.source === 'gamepad' ? f.aimActive : false;
+      // The touch aim stick doesn't exist here, and the mouse is a thumb; a
+      // pad's right stick only takes over while it's actually aiming.
+      const manual = this.source === 'gamepad' && f.aimActive;
       if (!manual) {
         f.auto = true;
         f.aimActive = false;
