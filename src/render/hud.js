@@ -693,7 +693,7 @@ function drawEnd(ctx, game, L, ui) {
     if (tut.rescues) parts.push(`close calls ${tut.rescues}`);
     if (parts.length) lines.push(parts.join('   ·   '));
     // Day 1 leads to Day 2; after Day 2, the real thing.
-    if (game.won) lines.unshift(tut.day > 1 ? "you're ready for the streets" : 'next: day 2, supplies and the Witch');
+    if (game.won) lines.unshift(tut.day > 1 ? "you're ready for the streets" : 'next: day 2, the supply run');
   }
   if (game.ally) {
     const a = game.ally;

@@ -2,15 +2,15 @@
 // world/tutorial2-gen.js; src/game/tutorial.js runs these the same way as
 // Day 1's, and the coaching on screen is render/tutorial-render.js).
 //
-// What Day 1 left out, all of which is on by default on the Streets:
-// supplies off the way (a crate, then chalk arrows to another), a room with
-// its door nailed shut (break in, deal with what comes out and what the noise
-// brings, take the better stash), and the Witch (go round her quietly). Still
-// one gun, still no dying: a second wind at 0 HP, and a Witch who's been woken
-// takes one swipe and runs off.
+// What Day 1 left out, all of which is on by default on the Streets, in
+// order of what it's worth: supplies off the way (a crate, then chalk arrows
+// to another), a room with its door nailed shut (break in, deal with what
+// comes out and what the noise brings, take the better stash), and the
+// secret (a loose manhole, given away by its glint). Still one gun, still no
+// dying (a second wind at 0 HP), and no Witch: she won't be on by default.
 //
-// Short on purpose: six lessons on three short streets. Everything the player
-// reads is here, for editing.
+// Short on purpose: six lessons on three short streets, every one walked left
+// to right. Everything the player reads is here, for editing.
 
 const left = (list) => list.reduce((n, z) => n + (z.alive ? 1 : 0), 0);
 
@@ -94,43 +94,18 @@ export const DAY2_STEPS = [
   {
     id: 'gate2',
     title: "GATE'S OPEN",
-    text: { touch: 'Through the gate. Then go quietly, and listen.' },
+    text: { touch: 'Through the gate. Keep your eyes open: not everything good is on the way.' },
     target: (t) => t.gateTarget('g2'),
     update: (t, g) => g.player.y < t.L.gates.g2.y - 40,
   },
   {
-    id: 'witch',
+    id: 'secret',
     dot: true,
-    title: 'LEAVE HER BE',
-    text: { touch: "Hear her? That's a Witch. Don't wake her: keep to the far side, keep your light off her, don't shoot near her." },
-    enter: (t, g) => {
-      t.witch = g.witches.find((w) => w.alive) || null;
-    },
-    target: (t) => ({ ...t.L.farSide, ring: true, label: 'THIS WAY' }),
-    // She sits on the near side, at the top of the screen from the far one: the
-    // camera leans her way as you come up to her (not once she's up: then it's you).
-    focus: (t, g) => {
-      const w = t.witch;
-      if (!w || !w.alive || w.mode !== 'sit') return null;
-      const d = Math.hypot(w.x - g.player.x, w.y - g.player.y);
-      const k = 1 - Math.min(1, Math.max(0, (d - 380) / 260));
-      return k > 0 ? { x: w.x, y: w.y, k: 0.45 * k } : null;
-    },
-    update: (t, g) => {
-      const w = t.witch;
-      if (!w || !w.alive || w.mode === 'flee') return true; // up and gone (or never there): on you go
-      if (w.mode !== 'sit') return false; // she's up: get through it
-      return g.player.x < w.seat.x - 260; // well past her, and she never looked up
-    },
-    done: (t, g) => {
-      const w = t.witch;
-      if (w && w.alive && w.mode === 'sit' && !w.spared) {
-        w.spared = true;
-        g.stats.witchSpared++;
-        g.announce('LEFT HER IN PEACE', '#cdbfe6', 1.8, 'small');
-      }
-      t.openGate('g3');
-    },
+    title: 'THE SECRET',
+    text: { touch: 'See it glint? A loose manhole. Only a glint gives a secret away, and it holds the best stuff. Stand on it.' },
+    target: (t) => crateSpot(t, t.L.crates.secret, 'GLINT'),
+    update: (t) => t.crate(t.L.crates.secret).opened,
+    done: (t) => t.openGate('g3'),
   },
   {
     id: 'saferoom',

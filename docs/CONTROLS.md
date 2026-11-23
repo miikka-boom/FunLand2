@@ -209,13 +209,15 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
 **Tutorial 2** on the title card, next to the first. Won Day 1 and its end
 card leads here (**Play Tutorial 2**), and the next time the game opens it
 is picked, with a "next" badge, until Day 2 is done too; after Day 2 comes
-the Streets. The course (`src/world/tutorial2-gen.js`) is Day 1's streets
-turned round, start room bottom right, safe room top left, on the same plan
-and frame (it shares `tutorial-gen.js`'s helpers); the lessons are in
+the Streets. The course (`src/world/tutorial2-gen.js`) shares Day 1's
+helpers and frame, on a wider plan: every street is walked left to right,
+each ending in a connector up to the next, which carries on to the right
+(start room bottom left, safe room top right). The lessons are in
 `src/game/tutorial-day2.js`, run by the same `Tutorial` (map.tutorial.day
-picks the list). It teaches what Day 1 left out and the Streets have on by
-default. The crates, the boarded room and the Witch are the game's own
-(game/loot.js, game/witch.js), so they behave exactly as they will later.
+picks the list). It teaches scavenging, on by default on the Streets, with
+the game's own crates and boarded room (game/loot.js), so they behave
+exactly as they will later. No Witch (the plan is for her to be off by
+default).
 
 | Lesson | What you do | Done when |
 |---|---|---|
@@ -223,27 +225,17 @@ default. The crates, the boarded room and the Witch are the game's own
 | Chalk arrows | Follow the chalk to a crate round a corner in a yard | It opens (HOT ROUNDS ×60): gate 1 opens |
 | Break in | Shove the boards on a nailed door three times (or shoot them) | They break (loud) |
 | The good stuff | The three shut in come out, the noise brings three down the street; then search the crate inside | All six down and the crate open (EXTENDED MAGS): gate 2 opens |
-| Leave her be | Pass the Witch on the far side, your light off her, no shots near her | Well past her and she never got up ("LEFT HER IN PEACE"), or woken, she has run off: gate 3 opens |
+| The secret | A glint down a dead end: stand on the loose manhole | It opens (+25 MAX HP, FULL ARMOR, HOT ROUNDS ×150): gate 3 opens |
 | Safe room | Get in | The run is won |
 
 - **The card's counts:** the boards in shoves (0/3, worked out from their
   hit points, so shots count too), the fight as six.
-- **The Witch's lesson:** she sits on the near sidewalk, half way along;
-  the ring of the lesson ("THIS WAY") is past her on the far side, and the
-  straight walk there never comes into her space (170 u) or puts your beam
-  on her. No street lamp near her: her phone is the light. From the far
-  side she'd sit at the very top of a phone's screen, so the lesson leans
-  the camera her way as you come up to her (`focus` on the step,
-  `Tutorial.focus`, used by `Game.updateCamera`; up to 30% of the view) and
-  lets go once she's up. Woken, she follows the tutorial's rule: one swipe
-  (or 5 s) and she runs off. You hear her crying from the row before
-  ("SOMEONE IS CRYING"): that's on purpose.
 - **What the noise brings** comes down row 2 from the far end, round the
-  corner before gate 2 (`Tutorial.unseen`, like Day 1's pack), or up
-  through gate 1 if you're already down that end.
-- **The secret:** a loose manhole down a dead end on the far side of the
-  Witch's street, with two of Ben's little eyes on it. Not a lesson; the end
-  card says whether you found it.
+  corner before gate 2 (`Tutorial.unseen`, like Day 1's pack), so you see
+  it coming across the screen; or up through gate 1 if you're already down
+  that end.
+- **The secret** gets the edge arrow ("GLINT") but no ring on the ground:
+  the glint is what to look for. Two of Ben's little eyes are on it.
 - **Done** is remembered per day (`tutorialDone(day)`; Day 2's key is
   `funland2.p0.tutorial2.v1`). The report's line says "Tutorial 2".
 
@@ -766,9 +758,8 @@ What a map gets:
   are slowest (the report's longest line)? Who sets off the alarm, and does
   the next car survive in their first real run?
 - **Tutorial 2**: do they follow the chalk, or need the edge arrow? Do they
-  shove the boards or shoot them, and does "loud" register? On the Witch's
-  street, do they cross to the far side by themselves, or walk down the
-  middle and get the warning? Does anyone look for the glint?
+  shove the boards or shoot them, and does "loud" register? Do they spot
+  the glint by themselves, or follow the arrow to it?
 - Can you circle-kite a mob while shooting behind you without the move stick
   drifting?
 - Does the shove come out every time you tap, and never when you meant to aim?

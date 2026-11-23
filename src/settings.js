@@ -8,12 +8,11 @@ const STORAGE_KEY = 'funland2.p0.tuning.v1';
  * id (settings.level), name, a few words for the title card, and a line for
  * the panel. Roughly Philadelphia, 2020. The tutorials come first: they are
  * hand-built, the same every run, and teach one lesson at a time
- * (src/game/tutorial.js): Day 1 the controls, Day 2 what's off the way and
- * the Witch.
+ * (src/game/tutorial.js): Day 1 the controls, Day 2 what's off the way.
  */
 export const LEVELS = [
   { id: 'tutorial', name: 'Tutorial', sub: 'day 1 · learn the controls', about: 'Day 1: the controls, one lesson at a time' },
-  { id: 'tutorial2', name: 'Tutorial 2', sub: 'day 2 · supplies & the Witch', about: 'Day 2: supplies off the way, a boarded room, the Witch' },
+  { id: 'tutorial2', name: 'Tutorial 2', sub: 'day 2 · the supply run', about: 'Day 2: supplies off the way, a boarded room, a secret' },
   { id: 'city', name: 'Streets', sub: 'Center City, after dark', about: 'Center City at night' },
   { id: 'interior', name: 'Building', sub: 'an office floor', about: 'an office floor on Market St' },
   { id: 'docks', name: 'Pier 9', sub: 'docks · last ferry', about: 'the Delaware docks, ferry finale' },

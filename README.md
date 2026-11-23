@@ -304,7 +304,7 @@ and no dependencies.
     and **run for it**: a crowd comes up behind you as you make for the safe
     room.
 
-  No Witch: she's too much for a first run, and comes in Tutorial 2.
+  No Witch: she's too much for a first run.
 
   A card at the bottom of the screen, between the thumbs, says what to do (in
   words for touch, mouse and keys, or a pad: whatever you last used), with a
@@ -327,28 +327,28 @@ and no dependencies.
   the details.
 - **Tutorial 2, the level after it** (**Tutorial 2** on the title card, next
   to the first; once Day 1 is done it's picked for you, with a "next"
-  badge, and Day 1's end card leads to it). Day 2, the supply run: Day 1's
-  streets turned round (start bottom right, safe room top left), six
-  lessons, about two minutes, and what Day 1 left out, all of which is on
-  by default on the Streets:
+  badge, and Day 1's end card leads to it). Day 2, the supply run: six
+  lessons, about two minutes, and every street walked left to right (the
+  start room bottom left, each street ending in a connector up to the next,
+  which carries on to the right, the safe room top right). It teaches
+  scavenging, which Day 1 left out and the Streets have on by default, in
+  order of what it's worth:
   - **Supplies**: a crate right outside the door (stand on it: armor), then
     **chalk arrows** to a second one round a corner in a yard (hot rounds).
   - **Break in**: a room on the next street has its door nailed shut. Shove
     the boards three times (or shoot them); it's loud. What was shut in
     comes out, the noise brings three more down the street, and **the good
     stuff** inside is extended mags.
-  - **Leave her be**: the Witch, crying on the near sidewalk of the last
-    street. Keep to the far side (out of her space), keep your light off
-    her and don't shoot near her; the camera leans her way as you pass so
-    you see her. "LEFT HER IN PEACE" opens the last gate. Wake her and she
-    takes one swipe and runs off (nobody dies here either).
+  - **The secret**: on the last street a loose manhole down a dead end,
+    given away by its glint (two little eyes on it): +25 max HP, full armor,
+    hot rounds.
   - **Safe room**, and a word for tomorrow: no gates open for you, the green
-    arrow shows the way. A loose manhole down a dead end on the far side is
-    the secret, for those who look (two little eyes on it).
+    arrow shows the way.
 
-  The end card says you're ready for the streets, and **Play the Streets** is
-  next. The lessons are in [`src/game/tutorial-day2.js`](src/game/tutorial-day2.js)
-  (run by the same `tutorial.js`), the course in
+  No Witch here either. The end card says you're ready for the streets, and
+  **Play the Streets** is next. The lessons are in
+  [`src/game/tutorial-day2.js`](src/game/tutorial-day2.js) (run by the same
+  `tutorial.js`), the course in
   [`src/world/tutorial2-gen.js`](src/world/tutorial2-gen.js).
 - **A world in 3D.** Buildings have facades,
   windows and parapet roofs, warehouses have pitched roofs, cars have cabins
@@ -897,7 +897,7 @@ src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/iso.js                 the camera: orthographic projection (yaw + tilt), project / unproject, stick and mouse mapping, and the painter's order for boxes (pure, unit tested)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
-src/world/                 seeded generators for the six map types (city, building, docks; graveyard, suburbia and junkyard, which share gen-kit.js), the tutorials' hand-built courses (tutorial-gen.js: three streets, three gates, a spot for every lesson, and the helpers Day 2 shares; tutorial2-gen.js: Day 2, turned round, with its crates, chalk, nailed room, Witch and secret), Ben's traces (ben-content: every line; ben-gen: placement), world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), where the Witch sits (witch-gen.js), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
+src/world/                 seeded generators for the six map types (city, building, docks; graveyard, suburbia and junkyard, which share gen-kit.js), the tutorials' hand-built courses (tutorial-gen.js: three streets, three gates, a spot for every lesson, and the helpers Day 2 shares; tutorial2-gen.js: Day 2, every street left to right, with its crates, chalk, nailed room and secret), Ben's traces (ben-content: every line; ben-gen: placement), world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), where the Witch sits (witch-gen.js), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
 src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), the Witch (witch.js), the tutorials' lessons (tutorial.js: the runner and Day 1's steps and words, what each spawns and holds back, the gates, the second wind; tutorial-day2.js: Day 2's), Ben at run time (ben.js: his bed, the glimpse, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects (particles in 3D), game state + the view
 src/render/renderer.js     the passes: ground -> night overlay -> everything that stands (far to near) -> overhead -> bright -> HUD
 src/render/lighting.js     one list of lights: the ground overlay (night + line of sight) and the sampler that shades what stands on it
@@ -919,7 +919,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), the tutorial (the course: one short walk, gates, no slivers; the lessons in order, what they hold back, one gun and no Witch, crowds that turn up out of sight, the second wind, the coaching on a phone; a bot that plays it to the safe room; Day 2's own: the course, the crates and chalk, the boards and what the noise brings, passing the Witch or waking her, and its bot), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), the tutorial (the course: one short walk, gates, no slivers; the lessons in order, what they hold back, one gun and no Witch, crowds that turn up out of sight, the second wind, the coaching on a phone; a bot that plays it to the safe room; Day 2's own: the course, left to right all the way, the crates and chalk, the boards and what the noise brings, the secret, and its bot), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

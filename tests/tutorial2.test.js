@@ -1,8 +1,8 @@
-// Tutorial 2, Day 2: the course (one walk, gates, finds off the way, a room
-// nailed shut, the Witch with room to pass her), the lessons at run time (in
-// order, the boards, what the noise brings, leaving her be or waking her), the
-// coaching on a phone, the report, what the device remembers, and a bot that
-// plays it to the safe room through the real game loop.
+// Tutorial 2, Day 2: the course (one walk, left to right all the way, gates,
+// finds off the way, a room nailed shut, the secret; no Witch), the lessons at
+// run time (in order, the crates, the boards and what the noise brings, the
+// secret), the coaching on a phone, the report, what the device remembers, and
+// a bot that plays it to the safe room through the real game loop.
 // (node --test runs each file in its own process, so the fake DOM globals and
 // the seeded Math.random stay here.)
 import test from 'node:test';
@@ -40,14 +40,10 @@ Math.random = mulberry32(20201123); // the zombies' wandering and aim spread: th
 
 const { Game, GENERATORS } = await import('../src/game/game.js');
 const { DEFAULTS, LEVELS } = await import('../src/settings.js');
-const { generateTutorial2, DAY2_WALLS } = await import('../src/world/tutorial2-gen.js');
-const { TUT_W, TUT_H } = await import('../src/world/tutorial-gen.js');
+const { generateTutorial2, DAY2_WALLS, TUT2_W, TUT2_H } = await import('../src/world/tutorial2-gen.js');
 const { STEPS: DAY1, COURSES, TUTORIAL_LEVELS, stepText, tutorialDone, saveTutorialDone } = await import('../src/game/tutorial.js');
 const { DAY2_STEPS } = await import('../src/game/tutorial-day2.js');
 const { World, FlowField, NAV_CELL } = await import('../src/world/world.js');
-const { WITCH_SPACE } = await import('../src/world/witch-gen.js');
-const { WITCH, startle } = await import('../src/game/witch.js');
-const { flashlightOn } = await import('../src/game/terror.js');
 const { damageBoards } = await import('../src/game/loot.js');
 const { hasModel } = await import('../src/render/models.js');
 const { computeLayout } = await import('../src/layout.js');
@@ -96,7 +92,7 @@ function skipTo(game, id) {
     else if (s === 'goodstuff') {
       kill(T.group.concat(T.extra));
       search(T.L.crates.room);
-    } else if (s === 'witch') Object.assign(p, { x: T.L.farSide.x, y: T.L.farSide.y });
+    } else if (s === 'secret') search(T.L.crates.secret);
     run(game, 1 / 30);
   }
   assert.equal(T.step.id, id);
@@ -126,8 +122,8 @@ test('Day 2: a level of its own, right after Day 1 on the title card and in the 
   assert.equal(json(a), json(b), 'every player gets the same course');
   assert.equal(a.tutorial.day, 2);
   assert.ok(!a.theme, 'the streets look');
-  assert.equal(a.w, TUT_W);
-  assert.equal(a.h, TUT_H);
+  assert.equal(a.w, TUT2_W);
+  assert.equal(a.h, TUT2_H);
   assert.equal(a.w % NAV_CELL, 0);
   assert.equal(a.h % NAV_CELL, 0);
   assert.deepEqual(generateTutorial2(1).streets, a.streets, 'the plan is never moved twice');
@@ -136,7 +132,8 @@ test('Day 2: a level of its own, right after Day 1 on the title card and in the 
     assert.ok(hasModel(o.kind), `${o.kind} has a model`);
     assert.ok(o.x >= 0 && o.y >= 0 && o.x + o.w <= a.w && o.y + o.h <= a.h, `${o.kind} at ${o.x},${o.y} is on the map`);
   }
-  assert.ok(Math.abs(a.startFacing - Math.PI) < 1e-9, 'out of the door, west');
+  assert.equal(a.startFacing, 0, 'out of the door, east');
+  assert.deepEqual(a.witches, [], "no Witch: she won't be on by default");
 });
 
 test('one short walk past every lesson to the safe room, through the gates and only through them; the nailed room opens off it', () => {
@@ -163,7 +160,7 @@ test('one short walk past every lesson to the safe room, through the gates and o
     const s = map.stashes.find((q) => q.id === id);
     assert.ok(Number.isFinite(shut.f.pathDist(s.x, s.y)), 'the first two crates are on row 1');
   }
-  for (const q of [map.stashes.find((s) => s.tier === 'room'), map.stashes.find((s) => s.tier === 'secret'), map.witches[0], goal]) {
+  for (const q of [map.stashes.find((s) => s.tier === 'room'), map.stashes.find((s) => s.tier === 'secret'), goal]) {
     assert.equal(shut.f.pathDist(q.x, q.y), Infinity, 'a shut gate is shut');
   }
   // The room: one doorway, boards across it (they stop bodies and bullets, not the flow field), three inside.
@@ -228,31 +225,44 @@ test("what's off the way: a crate at the door, chalk to one round a corner, the 
   assert.ok(Math.abs(Math.atan2(s.y - eyes.y, s.x - eyes.x) - eyes.look) < 1e-9);
 });
 
-test('the Witch: one, on the near sidewalk; the far side keeps out of her space and her light; the writing tells you so', () => {
+test('left to right all the way: from the start room to the safe room the walk never turns back west', () => {
   const map = generateTutorial2(1);
-  const T = map.tutorial;
-  assert.equal(map.witches.length, 1);
-  const w = map.witches[0];
-  const world = new World({ ...map, obstacles: map.obstacles.filter((o) => !o.opens), sealed: [] });
-  assert.ok(world.isFree(w.x, w.y, WITCH.r), 'room to sit');
-  // The walk the lesson points at (from row 3's way in, along the far sidewalk) never comes into her space.
-  const g2 = T.gates.g2;
-  const from = { x: g2.x, y: g2.y - 140 };
-  for (let k = 0; k <= 40; k++) {
-    const x = from.x + ((T.farSide.x - from.x) * k) / 40;
-    const y = from.y + ((T.farSide.y - from.y) * k) / 40;
-    assert.ok(Math.hypot(x - w.x, y - w.y) > WITCH_SPACE + 18, `${Math.round(x)},${Math.round(y)} is in her space`);
+  const er = map.endRoom.interior;
+  const goal = { x: er.x + er.w / 2, y: er.y + er.h / 2 };
+  const sr = map.startRoom.interior;
+  assert.ok(sr.x + sr.w < map.w / 3 && sr.y > map.h / 2, 'the start room is bottom left');
+  assert.ok(er.x > (map.w * 2) / 3 && er.y + er.h < map.h / 3, 'the safe room is top right');
+  // Each street starts where the connector up from the last one comes in, and runs east.
+  const [S1, S2, S3, C1, C2, C3] = map.streets;
+  for (const [row, up] of [[S1, C1], [S2, C2], [S3, C3]]) assert.ok(up.x > row.x + row.w / 2, 'the way up is at the east end of the row');
+  for (const [up, row] of [[C1, S2], [C2, S3]]) assert.ok(Math.abs(up.x - 22 - row.x) < 1, 'and the next row starts there');
+  // Walk it: down the goal field from the start, with the gates open and the boards down.
+  const { world } = walker(map, true);
+  const f = new FlowField(world);
+  f.compute(goal.x, goal.y);
+  const q = { ...map.start };
+  const dir = { x: 0, y: 0 };
+  let maxX = q.x;
+  let steps = 0;
+  for (; steps < 2000 && Math.hypot(q.x - goal.x, q.y - goal.y) > 40; steps++) {
+    if (!f.dirAt(q.x, q.y, dir)) break;
+    q.x += dir.x * 8;
+    q.y += dir.y * 8;
+    maxX = Math.max(maxX, q.x);
+    assert.ok(q.x > maxX - 40, `turned back west at ${Math.round(q.x)},${Math.round(q.y)}`);
   }
-  // Her phone is the light there: no lamp close by.
-  for (const l of map.lamps) assert.ok(Math.hypot(l.x - w.x, l.y - w.y) >= 240, 'a lamp right over her');
-  // The writing: a warning on the way, nothing in her space.
+  assert.ok(Math.hypot(q.x - goal.x, q.y - goal.y) <= 40, 'got there');
+});
+
+test("the squad's writing: on open ground, readable, never running into each other, and none of it about a Witch", () => {
+  const map = generateTutorial2(1);
   const lines = map.decor.filter((d) => d.type === 'graffiti');
-  assert.ok(lines.some((d) => /CRYING/.test(d.text)) && lines.some((d) => /LIGHT OFF HER/.test(d.text)));
-  for (const d of lines) assert.ok(Math.hypot(d.x - w.x, d.y - w.y) > 150, `"${d.text}" in her space`);
-  // The words are on open ground, readable, and never run into each other.
+  assert.equal(lines.length, DAY2_WALLS.length);
+  assert.ok(lines.some((d) => /CHALK/.test(d.text)) && lines.some((d) => /NAILED/.test(d.text)) && lines.some((d) => /GLINT/.test(d.text)), 'a word for each lesson');
+  assert.ok(!map.decor.some((d) => /CRYING|HER\b|WITCH/i.test(d.text || '')), 'no warnings about someone who is not there');
   const buildings = map.obstacles.filter((o) => o.kind === 'building');
   const all = map.decor.filter((d) => d.text && (d.type === 'graffiti' || d.type === 'spray' || d.type === 'bentext'));
-  assert.equal(lines.length, DAY2_WALLS.length);
+  assert.ok(all.some((d) => d.type === 'bentext'), 'Ben, in his crayon');
   const box = (d) => {
     const size = d.size || 18 * (d.s || 1);
     const hw = (d.text.length * size * 0.6) / 2;
@@ -267,8 +277,8 @@ test('the Witch: one, on the near sidewalk; the far side keeps out of her space 
 
 // --- At run time ---------------------------------------------------------------------------
 
-test('a run: Day 2 lessons, three shut in with the good stuff, the Witch sitting, no teammate, and the director stands back', () => {
-  const game = make({ ally: true, specials: true, nightTerror: true, wanderers: 10, hordeSize: 10, witch: false });
+test('a run: Day 2 lessons, three shut in with the good stuff, no Witch, no teammate, and the director stands back', () => {
+  const game = make({ ally: true, specials: true, nightTerror: true, wanderers: 10, hordeSize: 10, witch: true });
   const T = game.tutorial;
   assert.ok(T);
   assert.equal(T.day, 2);
@@ -279,8 +289,7 @@ test('a run: Day 2 lessons, three shut in with the good stuff, the Witch sitting
   assert.ok(game.director.scripted);
   assert.equal(T.sleepers.length, 3);
   assert.ok(T.sleepers.every((z) => z.state === 'idle'));
-  assert.equal(game.witches.length, 1, 'she is the lesson, whatever the panel says');
-  assert.equal(game.witches[0].mode, 'sit');
+  assert.equal(game.witches.length, 0, 'no Witch, whatever the panel says');
   assert.equal(game.zombies.filter((z) => z.type === 'common').length, 3, 'no wanderers');
   assert.equal(game.dailyKey, null);
   assert.deepEqual(game.locks, { reload: false, swap: true }, 'one gun');
@@ -392,64 +401,30 @@ test('breaking in: three shoves (counted on the card), the three inside wake, an
   assert.notEqual(T.gates.g2.state, 'shut');
 });
 
-test('leave her be: along the far side she never looks up ("LEFT HER IN PEACE"), and the last gate opens', () => {
+test('the secret: a glint down a dead end (the arrow says GLINT, no ring), the best stuff, and the last gate opens', () => {
   const game = make();
   const T = game.tutorial;
   const p = game.player;
-  skipTo(game, 'witch');
-  const w = game.witches[0];
-  assert.equal(T.witch, w);
-  // Walk from row 3's way in along the far side, as the lesson's ring has you, facing the way you go.
-  const G = T.L.gates.g2;
-  Object.assign(p, { x: G.x, y: G.y - 140 });
-  const to = T.L.farSide;
-  let seenHer = false;
-  game.setViewport(640, 360); // the smallest common phone: she has to fit under the HUD
-  for (let i = 0; i < 60 * 12 && T.step.id === 'witch' && T.pause <= 0; i++) {
-    if (Math.abs(p.x - w.x) < 60) {
-      const s = game.worldToScreen(w.x, w.y);
-      if (s.y > 70 && s.y < 360 - 90 && s.x > 0 && s.x < 640) seenHer = true;
-    }
-    const dx = to.x - p.x;
-    const dy = to.y - p.y;
-    const d = Math.hypot(dx, dy) || 1;
-    const s = game.view.dirToScreen(dx / d, dy / d);
-    const m = Math.hypot(s.x, s.y) || 1;
-    game.update(1 / 60, { ...idle(), move: { x: s.x / m, y: s.y / m } });
-    assert.ok(flashlightOn(game, w.x, w.y) === 0 || Math.hypot(w.x - p.x, w.y - p.y) > WITCH.lightRange, 'your light stays off her');
-  }
-  assert.ok(T.pause > 0 || T.step.id === 'saferoom', 'past her');
-  assert.ok(seenHer, 'the camera leaned her way: she was on screen, clear of the HUD at the top');
-  assert.equal(w.mode, 'sit');
-  assert.ok(w.anger < 0.05, `she never looked up (${w.anger.toFixed(2)})`);
-  assert.equal(game.stats.witchSpared, 1);
-  assert.ok(game.messages.some((m) => m.text === 'LEFT HER IN PEACE'));
+  skipTo(game, 'secret');
+  const c = T.crate(T.L.crates.secret);
+  assert.equal(c.tier, 'secret');
+  assert.equal(c.look, 'manhole');
+  const a = T.arrow();
+  assert.ok(a && a.label === 'GLINT' && !a.ring, 'pointed at, not ringed: the glint is the thing to look for');
+  assert.ok(!pointInRect(c.x, c.y, game.world.map.streets[2]), 'off the street, down its dead end');
+  const hp = p.maxHp;
+  Object.assign(p, { x: c.x, y: c.y, vx: 0, vy: 0 });
+  run(game, 0.9);
+  assert.equal(c.opened, false, 'a secret takes a little longer to open');
+  run(game, 0.6);
+  assert.equal(c.opened, true);
+  assert.equal(game.stats.secrets, 1);
+  assert.equal(p.maxHp, hp + 25, '+25 max HP');
+  assert.ok(p.armor >= 100 && p.hot >= 150, 'full armor, hot rounds');
+  assert.ok(game.messages.some((m) => m.text === 'SECRET STASH!'));
   run(game, 1.5);
   assert.notEqual(T.gates.g3.state, 'shut');
-});
-
-test("wake her and she's up with a scream, takes one swipe and runs off: nobody dies, and on you go", () => {
-  const game = make();
-  const T = game.tutorial;
-  const p = game.player;
-  skipTo(game, 'witch');
-  const w = game.witches[0];
-  Object.assign(p, { x: w.x + 60, y: w.y + 120 });
-  startle(game, w, p);
-  for (let i = 0; i < 60 * 10 && w.mode !== 'flee'; i++) {
-    p.vx = 0;
-    p.vy = 0;
-    game.update(1 / 60, idle());
-  }
-  assert.equal(w.mode, 'flee');
-  assert.ok(game.stats.witchHits <= 1, 'one swipe at most');
-  assert.equal(p.alive, true);
-  assert.equal(game.lost, false);
-  run(game, 1);
-  assert.ok(T.step.id === 'saferoom' || T.pause > 0, 'the lesson moves on');
-  run(game, 1.5);
-  assert.notEqual(T.gates.g3.state, 'shut');
-  assert.equal(game.stats.witchSpared, 0);
+  assert.equal(T.step.id, 'saferoom');
 });
 
 test('the words fit on the card (touch, mouse, pad), and the coaching draws at every Day 2 lesson without a bad number', () => {
@@ -488,20 +463,20 @@ test('the words fit on the card (touch, mouse, pad), and the coaching draws at e
   }
 });
 
-test('the report: a "Tutorial 2" line with the lessons, and the finds and the Witch on the end card', () => {
+test('the report: a "Tutorial 2" line with the lessons', () => {
   const game = make();
-  skipTo(game, 'witch');
+  skipTo(game, 'secret');
   const r = buildReport(game);
   assert.equal(r.level, 'tutorial2');
   assert.equal(r.tutorial.day, 2);
   assert.equal(r.tutorial.of, LESSONS2);
-  assert.equal(r.tutorial.step, 'witch');
-  assert.match(reportText(r), /Tutorial 2: \d+\/\d+ lessons, reached "witch"/);
+  assert.equal(r.tutorial.step, 'secret');
+  assert.match(reportText(r), /Tutorial 2: \d+\/\d+ lessons, reached "secret"/);
 });
 
 // --- A bot plays it ------------------------------------------------------------------------
 
-test('a bot gets through Day 2 to the safe room through the real game loop: finds, breaks in, fights, and leaves her in peace', () => {
+test('a bot gets through Day 2 to the safe room through the real game loop: finds, breaks in, fights, finds the secret', () => {
   store.clear();
   const game = make();
   const T = game.tutorial;
@@ -581,7 +556,7 @@ test('a bot gets through Day 2 to the safe room through the real game loop: find
       }
     } else if (s === 'goodstuff') {
       if (!fight(T.group.concat(T.extra)) && t) f.move = walkTo(t.x, t.y, 6);
-    } else if (t) f.move = walkTo(t.x, t.y, 6); // the crates, past her on the far side, the safe room
+    } else if (t) f.move = walkTo(t.x, t.y, 6); // the crates, the secret, the safe room
     game.update(1 / 60, f);
   }
   run(game, 1);
@@ -596,6 +571,5 @@ test('a bot gets through Day 2 to the safe room through the real game loop: find
   assert.equal(game.stats.rooms, 1);
   assert.equal(game.stats.boards, 1);
   assert.ok(game.stats.kills >= 6, `${game.stats.kills} kills`);
-  assert.equal(game.stats.witchSpared, 1, 'left her in peace');
-  assert.equal(game.stats.witchStartled, 0);
+  assert.equal(game.stats.secrets, 1, 'and the secret');
 });

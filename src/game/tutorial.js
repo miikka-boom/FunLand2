@@ -14,7 +14,7 @@
 // minutes for a first-timer. Everything the player reads is in STEPS, at the
 // top, for editing.
 //
-// Tutorial 2 (Day 2: supplies, a boarded room, the Witch) runs on the same
+// Tutorial 2 (Day 2: supplies, a boarded room, the secret) runs on the same
 // runner with its own lessons (tutorial-day2.js) and map (map.tutorial.day).
 
 import { startFlee } from './witch.js';
@@ -255,7 +255,6 @@ export class Tutorial {
     // Day 2: whoever is nailed in with the good stuff (spawned with the map's boarded room).
     this.sleepers = this.L.room ? game.zombies.filter((z) => z.alive && pointInRect(z.x, z.y, this.L.room, 4)) : [];
     this.need = 0;
-    this.witch = null;
     this.next();
   }
 
@@ -530,13 +529,6 @@ export class Tutorial {
   }
 
   // --- For the HUD and the report ------------------------------------------------------------
-
-  /** Something the lesson wants in view, for the camera to lean toward: { x, y, k } or null. */
-  focus() {
-    if (this.over) return null;
-    const s = this.step;
-    return s.focus ? s.focus(this, this.game) : null;
-  }
 
   /** Where the edge arrow points now (null: nowhere in particular). */
   arrow() {

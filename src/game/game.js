@@ -27,7 +27,7 @@ import { initWorldEvents, updateWorldEvents, spawnNest, openBreach, takeAmmo } f
 import { addLore } from '../world/lore-gen.js';
 import { addBen } from '../world/ben-gen.js';
 import { loadBenMemory, initBen, updateBen } from './ben.js';
-import { DEG, clamp, dampFactor, pointInRect, rand } from '../util.js';
+import { DEG, dampFactor, pointInRect, rand } from '../util.js';
 import { todayKey, dailySeed } from '../playtest.js';
 import { IsoView, ISO_YAW, ISO_PITCH } from '../iso.js';
 
@@ -89,7 +89,7 @@ export class Game {
     const base = map.obstacles.slice();
     this.benMemory = loadBenMemory();
     if (map.tutorial) {
-      // Hand-built: it brings its own stashes, writing and Witch (Day 2 only: not on a first run).
+      // Hand-built: it brings its own stashes and writing (and no Witch: she won't be on by default).
       if (!S.ben) map.decor = map.decor.filter((d) => d.type !== 'bentext' && d.type !== 'beneyes');
     } else {
       // The holdout gate, the two routes and the landmarks are built for the streets and the building
@@ -437,14 +437,6 @@ export class Game {
     } else {
       const sp = Math.hypot(p.vx, p.vy);
       if (sp > 1) lead(p.vx / sp, p.vy / sp, S.lookAhead * viewWorld * 0.45 * Math.min(1, sp / S.moveSpeed));
-    }
-    // A tutorial lesson can ask for something to be in view (Day 2: the Witch, as
-    // you pass her on the far side): the camera leans part of the way toward it.
-    const f = this.tutorial && this.tutorial.focus();
-    if (f) {
-      const max = viewWorld * 0.3;
-      lx += clamp((f.x - p.x) * f.k, -max, max);
-      ly += clamp((f.y - p.y) * f.k, -max, max);
     }
     const kl = dampFactor(3.2, dt);
     c.lookX += (lx - c.lookX) * kl;
