@@ -6,6 +6,7 @@ import { TAU, clamp } from '../util.js';
 import { ALLY } from '../game/ally.js';
 import { ARMOR_MAX, ADRENALINE_TIME } from '../game/loot.js';
 import { witchOutcome } from '../game/witch.js';
+import { drawTutorialHud } from './tutorial-render.js';
 
 let vignette = null;
 let vignetteKey = '';
@@ -56,6 +57,7 @@ export function drawHud(ctx, game, input, ui, renderer) {
   drawHoldoutBar(ctx, game, L);
   drawFerryBar(ctx, game, L);
   if (p.pinnedBy && p.alive) drawPinned(ctx, game, L);
+  if (game.tutorial) drawTutorialHud(ctx, game, input, ui, L); // the lesson card and the ghost thumbs
   drawMessages(ctx, game, L);
   if (game.won || game.lost) drawEnd(ctx, game, L, ui);
   if (S.showDebug) drawDebug(ctx, game, input, ui, L);
@@ -458,6 +460,15 @@ function edgePoint(L, sx, sy, ang, inset) {
   return { x: sx + ca * t, y: sy + sa * t };
 }
 
+/** An edge marker on the right edge slides above or below the reload / shove buttons rather than sit on them. */
+function offButtons(L, e) {
+  const { reload, shove } = L.byId;
+  const top = Math.min(reload.y - reload.r, shove.hidden ? Infinity : shove.y - shove.r) - 18;
+  const bottom = reload.y + reload.r + 18;
+  if (e.x > L.w - L.safe.r - 80 && e.y > top && e.y < bottom) e.y = e.y - top < bottom - e.y ? top : bottom;
+  return e;
+}
+
 function chevron(ctx, x, y, ang, size) {
   const ca = Math.cos(ang);
   const sa = Math.sin(ang);
@@ -539,27 +550,31 @@ function drawThreats(ctx, game, L) {
 }
 
 function drawObjective(ctx, game, L) {
-  const er = game.world.map.endRoom.interior;
-  const gx = er.x + er.w / 2;
-  const gy = er.y + er.h / 2;
-  const gs = game.worldToScreen(gx, gy);
   const p = game.player;
+  // The tutorial points at the lesson's spot (or nowhere, while a fight is on); everywhere else, the safe room.
+  const T = game.tutorial;
+  const goal = T ? T.arrow() : null;
+  if (T && !goal) return;
+  const er = game.world.map.endRoom.interior;
+  const gx = goal ? goal.x : er.x + er.w / 2;
+  const gy = goal ? goal.y : er.y + er.h / 2;
+  const gs = game.worldToScreen(gx, gy);
   const ps = game.worldToScreen(p.x, p.y);
   if (gs.x > 30 && gs.x < L.w - 30 && gs.y > 60 && gs.y < L.h - 30) return;
   const ang = Math.atan2(gs.y - ps.y, gs.x - ps.x);
-  const e = edgePoint(L, ps.x, ps.y, ang, 40);
+  const e = offButtons(L, edgePoint(L, ps.x, ps.y, ang, 40));
   const pulse = 0.65 + Math.sin(game.time * 3) * 0.2;
   ctx.fillStyle = `rgba(110,255,150,${pulse})`;
   chevron(ctx, e.x, e.y, ang, 11);
-  const path = Number.isFinite(game.goalDist) ? game.goalDist : Math.hypot(gx - p.x, gy - p.y);
+  const path = !goal && Number.isFinite(game.goalDist) ? game.goalDist : Math.hypot(gx - p.x, gy - p.y);
   const meters = Math.round(path / 24);
   ctx.font = `700 10px ${FONT}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = `rgba(150,255,180,${pulse})`;
   const F = game.events && game.events.finale;
-  const label = F ? (F.state === 'docked' ? 'GANGWAY' : 'PIER 9') : 'SAFE';
-  ctx.fillText(`${label} ${meters}m`, e.x - Math.cos(ang) * (F ? 30 : 26), e.y - Math.sin(ang) * 20);
+  const label = goal ? goal.label || 'GO' : F ? (F.state === 'docked' ? 'GANGWAY' : 'PIER 9') : 'SAFE';
+  ctx.fillText(`${label} ${meters}m`, e.x - Math.cos(ang) * (F || goal ? 30 : 26), e.y - Math.sin(ang) * 20);
 }
 
 // --- Text ----------------------------------------------------------------------------------
@@ -613,7 +628,8 @@ function drawEnd(ctx, game, L, ui) {
       bottom = card.top - 8;
     }
   }
-  const title = game.won ? (game.level === 'docks' ? 'YOU MADE THE LAST FERRY' : 'SAFE ROOM REACHED') : 'YOU DIED';
+  const tut = game.tutorial;
+  const title = game.won ? (tut ? 'TUTORIAL COMPLETE' : game.level === 'docks' ? 'YOU MADE THE LAST FERRY' : 'SAFE ROOM REACHED') : 'YOU DIED';
   let tf = 34;
   ctx.font = `900 ${tf}px ${FONT}`;
   while (tf > 18 && ctx.measureText(title).width > maxW) ctx.font = `900 ${(tf -= 2)}px ${FONT}`;
@@ -670,6 +686,13 @@ function drawEnd(ctx, game, L, ui) {
   }
   const witch = witchLine(game);
   if (witch) lines.push(witch);
+  if (tut) {
+    const parts = [];
+    if (tut.alarmed) parts.push('you set off the alarm (now you know)');
+    if (tut.rescues) parts.push(`close calls ${tut.rescues}`);
+    if (parts.length) lines.push(parts.join('   ·   '));
+    if (game.won) lines.unshift("you're ready for the streets");
+  }
   if (game.ally) {
     const a = game.ally;
     const state = !a.alive ? 'died' : a.down ? 'down' : game.won ? 'made it' : 'alive';
@@ -688,7 +711,7 @@ function drawEnd(ctx, game, L, ui) {
   if (game.endT > 1.4 && !card) {
     ctx.font = `700 15px ${FONT}`;
     ctx.fillStyle = `rgba(255,255,255,${0.6 + Math.sin(game.time * 4) * 0.3})`;
-    ctx.fillText('tap to play again', cx, y0 + lines.length * lh + 18);
+    ctx.fillText(tut && game.won ? 'tap to play the Streets' : 'tap to play again', cx, y0 + lines.length * lh + 18);
   }
   ctx.globalAlpha = 1;
 }

@@ -125,6 +125,75 @@ The knob turns orange while firing, and the fire ring brightens.
   fires instead of shoving. Tap near the base, or use the button or a second
   finger.
 
+## The tutorial: teaching the thumbs
+
+**Tutorial** on the title card (first in the list, and in the panel's
+**Level**). The first time the game opens on a touch device (no finished run
+on it, never been through the tutorial) it is picked for you, with a "start
+here" badge; it isn't saved, so picking another map is all it takes to skip
+it. Once you reach its safe room the device remembers, and the next run is
+the Streets.
+
+It's a hand-built course (`src/world/tutorial-gen.js`), the same every time:
+three streets joined by short connectors, each shut by a gate in a wall that
+runs east-west, so the camera, looking north, sees the bars face on. The
+lessons are in `src/game/tutorial.js` (every word the player reads is in
+`STEPS`, at the top), and the coaching is drawn by
+`src/render/tutorial-render.js`.
+
+| Lesson | What you do | Done when |
+|---|---|---|
+| Move | Slide the left thumb, walk to the ring | You're in it |
+| Aim | Right thumb inside the dashed ring, laser on a target behind the fence | 0.45 s of laser on one (or you've already hit one) |
+| Fire | Push past the ring | The three in the pen are down: gate 1 opens |
+| Shove | The SMG is empty; tap the right side (or SHOVE) | 3 shoves that land |
+| Reload | Tap ⟳ | It's reloading |
+| Finish them | Fire | Both down |
+| Swap | Tap the gun panel until it's the pump shotgun | You hold it |
+| A pack | Five from an alley | Down |
+| Search | Stand on the crate the chalk points at | Opened (armor + hot rounds): gate 2 opens |
+| Leave her be | Walk past the Witch on the far side, light off her | Past her, and she never got up (or she's gone) |
+| Don't shoot the car | Four come round the alarm car | Down, and any alarm over |
+| Hold the line | Ten at once | Down: gate 3 opens |
+| Safe room | Get in | The run is won |
+
+- **The card** sits at the bottom, between the two sticks: what you're
+  coaching is mostly ahead of you, up the screen, and the top is the HUD's.
+  A title, a count where there is one ("2/3", or the gun you hold), the
+  words, and a dot per lesson. A lesson done turns it green with a ✓ for
+  0.9 s before the next one. The words follow the device you last used:
+  touch ("tap ⟳"), mouse and keys ("press R") or a pad ("press X").
+- **Ghost thumbs** (touch only), on the half of the screen the gesture
+  belongs to, at the resting stick positions: a thumb that lands and slides
+  toward where you're going (move, "LEFT THUMB: SLIDE"); one that stays
+  inside the dashed ring and sweeps (aim); one that pushes past it while the
+  ring lights orange (fire, "PAST THE RING: FIRE"); quick taps with ripples
+  (shove, "QUICK TAP: SHOVE"). It fades while your own thumb is on that
+  stick, so it never covers the real one. Buttons to press (⟳, the gun
+  panel, SHOVE) pulse amber, with a tapping thumb and "TAP".
+- **In the world:** a dashed green ring where to walk, brackets on the
+  targets in the pen (orange on the one your laser is on), red / amber /
+  green beacons on the gates, and the green edge arrow pointing at the
+  lesson's spot instead of the safe room (none while there's a fight on).
+- **What it holds back:** reloading and swapping are locked while you learn
+  to shove (the SMG stays empty: you have to shove), reloading unlocks for
+  the reload lesson, swapping for the swap lesson. Pressing a locked button
+  clicks.
+- **Forgiving on purpose:** nobody dies. At 0 HP you get a second wind
+  (55% HP, everything within 180 u thrown back and staggered, "CLOSE ONE!");
+  the report counts them. A startled Witch swipes once (or chases you for
+  5 s) and runs off ("THAT'S WHY YOU LEAVE HER BE"). An alarm brings two
+  small waves (5, then 3) and goes quiet after 9 s instead of a panic event.
+  The director spawns nothing of its own (no wanderers, mobs, Hunters, Tank
+  or Night Terror, whatever the panel says), and there's no teammate.
+- **Tuning:** the numbers are at the top of `tutorial.js` (`AIM_HOLD`,
+  `PAUSE`, `GATE_OPEN`, `RESCUE_HP`, `RESCUE_PUSH`); how many come in each
+  fight is in its step. **Witch** off in the panel skips her lesson.
+- **The report** (Playtest) has a `tutorial` part: the lesson you reached,
+  how many of them, the close calls, whether the alarm went off, and the
+  seconds per lesson. The readable line names the three longest: that's
+  where people get stuck.
+
 ## Special infected: stress tests for the controls
 
 The Hunter and the Tank are off by default (**Hunter + Tank** under
@@ -635,6 +704,13 @@ What a map gets:
 
 ## Playtest checklist
 
+- **Tutorial** (hand someone a phone and say nothing): do they read the
+  card, or copy the ghost thumb? Does the dashed ring make sense after the
+  aim lesson, or only after fire? Do they tap the right side to shove, or go
+  for the SHOVE button? Does anyone hold the shove tap too long and aim
+  instead? Which lessons are slowest (the report's longest line)? Who sets off
+  the alarm, and does the next car survive in their first real run? Does
+  anybody walk up to the Witch anyway?
 - Can you circle-kite a mob while shooting behind you without the move stick
   drifting?
 - Does the shove come out every time you tap, and never when you meant to aim?

@@ -31,6 +31,9 @@ const { buildReport } = await import('../src/playtest.js');
 const { pointInRect } = await import('../src/util.js');
 
 const INF = 0x3fffffff;
+// The map passes that seat her and write about her (and the maps they run on). The tutorial is
+// hand-built and runs none of them: its Witch and its writing are tested in tutorial.test.js.
+const PROCEDURAL = Object.entries(GENERATORS).filter(([level]) => level !== 'tutorial');
 const SHOTGUN = WEAPONS.find((w) => w.id === 'shotgun');
 const SMG = WEAPONS.find((w) => w.id === 'smg');
 const audio = new Proxy({ listener: { x: 0, y: 0 } }, { get: (o, k) => (k in o ? o[k] : () => {}) });
@@ -118,7 +121,7 @@ function walkAround(map, w) {
   return { world, direct: open.pathDist(map.start.x, map.start.y), around: f.pathDist(map.start.x, map.start.y), toGoal: open.pathDist(w.x, w.y) };
 }
 
-for (const [level, gen] of Object.entries(GENERATORS)) {
+for (const [level, gen] of PROCEDURAL) {
   test(`${level}: the Witch has a seat on (nearly) every map: seeded, near the way, with room, and you can always walk round her`, () => {
     let placed = 0;
     let inWay = 0;
@@ -178,7 +181,7 @@ test('the writing knows about her: a warning on the way, nothing written or camp
   const lines = new Set(WITCH_GRAFFITI.flatMap((g) => [g.text, g.pair].filter(Boolean)));
   let warned = 0;
   let maps = 0;
-  for (const [level, gen] of Object.entries(GENERATORS)) {
+  for (const [level, gen] of PROCEDURAL) {
     for (const seed of [1337, 3, 7922]) {
       const map = gen(seed);
       addScavenging(map, seed);

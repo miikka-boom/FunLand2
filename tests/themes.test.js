@@ -256,12 +256,15 @@ test('writing on the ground never runs into other writing (every map type)', () 
   for (const [level, gen] of Object.entries(GENERATORS)) {
     for (const seed of [1337, 3, 7922, 23760, 79193, 95031]) {
       const map = gen(seed);
-      addScavenging(map, seed);
-      addLore(map, seed);
-      addBen(map, seed, { level });
+      // The tutorial is hand-built: it is checked as the game builds it (its own writing, no passes on top).
+      if (!map.tutorial) {
+        addScavenging(map, seed);
+        addLore(map, seed);
+        addBen(map, seed, { level });
+      }
       // The safe rooms' walls are laid out by hand (and tested with the lore): leave them out.
       const T = map.decor.filter((d) => d.text && ['graffiti', 'paint', 'epitaph', 'chalkart'].includes(d.type) && !pointInRect(d.x, d.y, map.startRoom.outer, 10) && !pointInRect(d.x, d.y, map.endRoom.outer, 10));
-      assert.ok(T.length >= 20, `${level} ${seed}: ${T.length} lines to read`);
+      assert.ok(T.length >= (map.tutorial ? 7 : 20), `${level} ${seed}: ${T.length} lines to read`);
       for (let i = 0; i < T.length; i++) {
         for (let j = i + 1; j < T.length; j++) {
           // A reply written right under its line is meant to sit that close.

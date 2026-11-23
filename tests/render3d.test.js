@@ -124,7 +124,7 @@ const CAMERAS = {
 const LOOKS = ['truck', 'tall', 'ware', 'pipe', 'indoor', 'house', 'garage', 'shed', 'mall', 'school', 'trailer', 'workshop', 'chapel', 'steeple', 'bus', 'icecream', 'hearse', 'hulk', 'tow', 'cube', 'dead', 'willow', 'war', 'pillar', 'fresh', 'boarded', 'twin', 'vert', 'fire', 'alarm'];
 const lookOf = (o) => o.kind + LOOKS.filter((k) => o[k]).map((k) => '/' + k).join('') + (o.style ? '/' + o.style : '');
 // How many different looks a map has at the very least.
-const MIN_LOOKS = { city: 12, interior: 12, docks: 9, graveyard: 22, suburbia: 20, junkyard: 18 };
+const MIN_LOOKS = { tutorial: 8, city: 12, interior: 12, docks: 9, graveyard: 22, suburbia: 20, junkyard: 18 };
 
 for (const camera of Object.keys(CAMERAS)) {
   for (const level of LEVEL_IDS) {

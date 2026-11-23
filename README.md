@@ -284,6 +284,43 @@ and no dependencies.
 
 ## What's in it
 
+- **A tutorial for the thumbs** (**Tutorial** on the title card, first in the
+  list; the first time the game opens on a phone or tablet it is picked for
+  you, with a "start here" badge). Day 1, the squad's practice run: three
+  streets of Center City joined by gates, a lesson in each stretch, about
+  three minutes. One thing at a time, by doing it:
+  - **Move** (walk to a ring), **aim** (laser on one of three drowsers shut
+    behind a fence), **fire** (past the dashed ring), then through the first
+    gate.
+  - **Shove**: the SMG clicks empty and two come out of a doorway; reloading
+    and swapping are held back until you've shoved three times. Then
+    **reload** (⟳), finish them, **swap** to the pump shotgun (the gun
+    panel) and meet a pack of five with it.
+  - **Search** a supply crate (chalk arrows lead to it: armor and hot
+    rounds), through the second gate, and **leave the Witch be** (she's
+    crying in an alcove; a ring shows the far side of the street to walk on).
+  - **Don't shoot the car** with the blinking red light while four come round
+    it (shoot it and the alarm brings two small waves), **hold the line**
+    against ten, and the last gate opens on the safe room.
+
+  A card at the bottom of the screen, between the thumbs, says what to do (in
+  words for touch, mouse and keys, or a pad: whatever you last used), with a
+  dot per lesson. For touch, a ghost thumb does the gesture on the half of the
+  screen it belongs to (slide on the left; aim inside the ring, push past it,
+  or a quick tap on the right) and steps aside while your own thumb is on that
+  stick; the button to press (⟳, the gun panel, SHOVE) pulses. A ring on the
+  ground and the green edge arrow show where to go; brackets mark the
+  targets; beacons on the gates go from red to green. Nobody dies here: at 0
+  HP you get a second wind (what's on you is thrown back: "CLOSE ONE!"), a
+  startled Witch swipes once and runs off, the director sends nothing of its
+  own (no wanderers, mobs or specials, whatever the panel says) and there is
+  no teammate. The end card says you're ready, and **Play the Streets** is
+  next. Done is remembered on the device; the playtest report says how far
+  you got, the close calls and the seconds each lesson took. The lessons
+  and their words are in [`src/game/tutorial.js`](src/game/tutorial.js),
+  the course in [`src/world/tutorial-gen.js`](src/world/tutorial-gen.js);
+  [docs/CONTROLS.md](docs/CONTROLS.md#the-tutorial-teaching-the-thumbs) has
+  the details.
 - **A world in 3D.** Buildings have facades,
   windows and parapet roofs, warehouses have pitched roofs, cars have cabins
   and wheels, the office floor is furnished down to the monitors, containers
@@ -355,7 +392,7 @@ and no dependencies.
   out (45 s). Stand next to it without shooting for 3 s to revive it. It never
   shoots through you, never sets off alarms and never wakes the Witch. The
   **Teammate** section also sets its gun and accuracy.
-- **Six map types**, picked on the title card or in the tuning panel:
+- **Six map types** (and the tutorial), picked on the title card or in the tuning panel:
   - **Streets:** a run across Center City after dark, from a safe room
     (bottom left) to the green safe room across town.
   - **Building:** one dark floor of an office/hospital-style building on
@@ -831,8 +868,8 @@ src/settings-panel.js      tuning panel UI
 src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
 src/iso.js                 the camera: orthographic projection (yaw + tilt), project / unproject, stick and mouse mapping, and the painter's order for boxes (pure, unit tested)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
-src/world/                 seeded generators for the six map types (city, building, docks; graveyard, suburbia and junkyard, which share gen-kit.js), Ben's traces (ben-content: every line; ben-gen: placement), world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), where the Witch sits (witch-gen.js), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
-src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), the Witch (witch.js), Ben at run time (ben.js: his bed, the glimpse, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects (particles in 3D), game state + the view
+src/world/                 seeded generators for the six map types (city, building, docks; graveyard, suburbia and junkyard, which share gen-kit.js), the tutorial's hand-built course (tutorial-gen.js: three streets, three gates, a spot for every lesson), Ben's traces (ben-content: every line; ben-gen: placement), world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), where the Witch sits (witch-gen.js), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
+src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), the Witch (witch.js), the tutorial's lessons (tutorial.js: every step and its words, what each spawns and holds back, the gates, the second wind), Ben at run time (ben.js: his bed, the glimpse, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects (particles in 3D), game state + the view
 src/render/renderer.js     the passes: ground -> night overlay -> everything that stands (far to near) -> overhead -> bright -> HUD
 src/render/lighting.js     one list of lights: the ground overlay (night + line of sight) and the sampler that shades what stands on it
 src/render/prims.js        3D shapes on the 2D canvas: boxes, cylinders, prisms, balls, limbs; colour tones
@@ -842,7 +879,7 @@ src/render/theme-models.js the newer maps' models, added to the table in models.
 src/render/theme-render.js the newer maps' ground (lawns and lots, grave plots and paths, the yard) and what lies on it
 src/render/decor3d.js      the small things that stand up (chairs, signs, the lemonade stand, Ben's fort and rabbit, boats)
 src/render/figures.js      survivors, the horde (batched), Hunter, Tank, Night Terror, the Witch
-src/render/*-render.js     what is painted flat (ground, graffiti, posters, chalk, Ben's crayon) and the big set pieces (docks: piers, cranes, the ferry; features: the canopy, fires, fireballs), hud.js
+src/render/*-render.js     what is painted flat (ground, graffiti, posters, chalk, Ben's crayon) and the big set pieces (docks: piers, cranes, the ferry; features: the canopy, fires, fireballs), the tutorial's coaching (tutorial-render.js: the lesson card, ghost thumbs, rings and gate beacons), hud.js
 src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
@@ -853,7 +890,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), the tutorial (the course: one walk, gates, no slivers; the lessons in order, what they hold back, the second wind, the coaching on a phone; a bot that plays it to the safe room), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

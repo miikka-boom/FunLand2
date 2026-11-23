@@ -33,6 +33,7 @@ import { drawLoreDecor, drawPosters, roofText, drawLoreBright } from './lore-ren
 import { drawDocksGround, drawDocksDecor, drawCranes, drawFerry, drawDocksBright } from './docks-render.js';
 import { drawBenDecor, drawBenBright, drawBenLoose, benText, drawFort } from './ben-render.js';
 import { THEMES, drawThemeDecor } from './theme-render.js';
+import { drawTutorialBright } from './tutorial-render.js';
 import './theme-models.js'; // registers the graveyard / suburbia / junkyard models
 
 const GROUND = {
@@ -268,6 +269,7 @@ export class Renderer {
     this.drawBright(ctx, game, vr);
     drawLootBright(R, game, vr);
     drawFeaturesBright(R, game, vr);
+    drawTutorialBright(R, game, vr);
     drawDocksBright(R, game, vr);
     drawLoreBright(R, game, vr);
     R.ground(0);
@@ -1157,7 +1159,7 @@ export class Renderer {
     if (map.glows) {
       R.ground(0);
       for (const g2 of map.glows) {
-        if (!pointInRect(g2.x, g2.y, vr, 40)) continue;
+        if (!g2.tint || !pointInRect(g2.x, g2.y, vr, 40)) continue; // no tint: light only
         ctx.fillStyle = g2.tint;
         ctx.beginPath();
         circle(ctx, g2.x, g2.y, 22);

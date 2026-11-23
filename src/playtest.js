@@ -133,6 +133,8 @@ export function buildReport(game, { ratings = {}, perf = null, daily = null, dev
       ben: S.ben ? { bed: !!st.benNest, glimpse: !!st.benGlimpse } : null,
     },
     ally: game.ally ? { alive: game.ally.alive, kills: st.allyKills, saves: st.allySaves, revives: st.revives } : null,
+    // The tutorial: how far you got, the close calls, and seconds per lesson (where people get stuck).
+    tutorial: game.tutorial ? game.tutorial.report() : null,
     ratings,
     settings: diffFromDefaults(S),
     device,
@@ -164,6 +166,11 @@ export function reportText(r) {
     bits.push(`the witch: ${how}${r.specials.witchHits ? `, hit you ${r.specials.witchHits}×` : ''}`);
   }
   if (bits.length) lines.push(bits.join(' · '));
+  if (r.tutorial) {
+    const T = r.tutorial;
+    const slow = Object.entries(T.times).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} ${v}s`);
+    lines.push(`Tutorial: ${T.lessons}/${T.of} lessons, reached "${T.step}"${T.rescues ? ` · ${T.rescues} close call${T.rescues > 1 ? 's' : ''}` : ''}${T.alarm ? ' · set off the alarm' : ''}${slow.length ? ` · longest: ${slow.join(', ')}` : ''}`);
+  }
   if (r.device) {
     const fps = r.fps ? ` · ${r.fps.avg} fps avg, ${r.fps.low} low` : '';
     lines.push(`Device: ${r.device.os || ''} ${r.device.w}×${r.device.h} @${r.device.dpr}x ${r.device.touch ? 'touch' : 'mouse'}${fps}`.replace('  ', ' '));
@@ -304,9 +311,11 @@ export class ReportCard {
     document.body.append(this.root);
   }
 
-  show(report, tag = '') {
+  /** again: the label on the play-again button (after the tutorial it's the Streets next). */
+  show(report, tag = '', again = 'Play again') {
     this.report = report;
     this.tag.textContent = tag;
+    this.againBtn.textContent = again;
     for (const q of RATINGS) for (const b of this.chips[q.key]) b.classList.toggle('picked', report.ratings[q.key] === b.dataset.value);
     this.shareBtn.style.display = navigator.share ? '' : 'none';
     this.copyBtn.textContent = 'Copy report';

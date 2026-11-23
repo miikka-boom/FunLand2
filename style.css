@@ -222,6 +222,54 @@ html.is-ios .ios-only {
   box-shadow: 0 0 0 1px var(--accent) inset;
 }
 
+/* The tutorial: its own row above the six maps, in the safe room's green. */
+.tutorial-row {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 8px;
+}
+
+.level.tutorial {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 16px;
+  border-color: rgba(125, 255, 161, 0.32);
+}
+
+.level.tutorial b {
+  display: inline;
+  color: #c9ffd9;
+}
+
+.level.tutorial span {
+  display: inline;
+}
+
+.level.tutorial .badge {
+  display: none;
+  align-self: center;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0b1a10;
+  background: var(--good);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+.level.tutorial.suggest .badge {
+  display: inline-block;
+}
+
+.level.tutorial.active {
+  border-color: var(--good);
+  background: rgba(125, 255, 161, 0.13);
+  box-shadow: 0 0 0 1px var(--good) inset;
+}
+
 .pickers {
   display: flex;
   flex-direction: column;
@@ -743,7 +791,8 @@ html.is-ios .ios-only {
     font-size: 12px;
     letter-spacing: 0.04em;
   }
-  .level span {
+  .level span,
+  .level.tutorial span {
     display: none;
   }
   /* Level buttons and the daily chip share one row. */
@@ -755,7 +804,8 @@ html.is-ios .ios-only {
     margin-bottom: 8px;
   }
   .pickers .levels,
-  .pickers .daily-row {
+  .pickers .daily-row,
+  .pickers .tutorial-row {
     margin: 0;
   }
   .report-card {

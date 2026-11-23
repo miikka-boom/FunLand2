@@ -204,7 +204,8 @@ export function startle(game, w, who) {
   game.stats.witchStartled++;
 }
 
-function startFlee(game, w, quiet = false) {
+/** She has had enough: off into the dark (quiet: no call-out, not counted as fled). */
+export function startFlee(game, w, quiet = false) {
   w.mode = 'flee';
   w.modeT = 9;
   w.windup = 0;

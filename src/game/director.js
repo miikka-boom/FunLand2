@@ -3,6 +3,9 @@
 // and turns alarm cars into panic events. Starts when you leave the safe room.
 // Specials: a Hunter now and then (one at a time), and one Tank per run at a
 // random point along the route (mobs pause while it's alive, like L4D).
+// On a scripted map (the tutorial) it stands back: no wanderers, mobs or
+// specials of its own; the script spawns what each lesson needs, and an
+// alarm brings the script's small waves instead of a panic event.
 
 import { rand, randInt, pointInRect } from '../util.js';
 import { Zombie, alertZombie } from './zombies.js';
@@ -45,6 +48,7 @@ export class Director {
     this.terror = null; // the Night Terror (one at a time, nights only)
     this.terrorT = rand(30, 48);
     this._c = { x: 0, y: 0 };
+    this.scripted = !!(game.world && game.world.map.tutorial);
   }
 
   get cap() {
@@ -68,6 +72,7 @@ export class Director {
 
   /** Initial wanderers spread over the whole route, none near the start. */
   populate() {
+    if (this.scripted) return;
     const g = this.game;
     const density = ((g.world.w * g.world.h) / (4200 * 2800)) * (g.world.map.wanderDensity || 1);
     const n = Math.min(this.cap - 50, Math.round(70 * density * g.settings.wanderers));
@@ -117,7 +122,7 @@ export class Director {
       if (p.alive && !pointInRect(p.x, p.y, g.world.map.startRoom.interior)) this.phase = 'build';
       return;
     }
-    if (g.won) return;
+    if (g.won || this.scripted) return;
 
     if (g.settings.specials) this.updateSpecials(dt);
     if (g.settings.nightTerror) this.updateTerror(dt);
@@ -258,6 +263,12 @@ export class Director {
     let idleNear = 0;
     let near = 0;
     const cap = this.cap;
+    if (this.scripted) {
+      // Nothing comes or goes on its own here; just keep count of what's on you (the music reads it).
+      for (const z of g.zombies) if (z.alive && z.state === 'chase' && Math.hypot(z.x - p.x, z.y - p.y) < 450) near++;
+      this.threatNear = near;
+      return;
+    }
     const crowded = g.zombies.length > cap - 40;
     for (const z of g.zombies) {
       if (!z.alive) continue;
@@ -398,10 +409,12 @@ export class Director {
     a.t += dt;
     const waves = [0.9, 7.5, 13.5];
     while (a.wave < waves.length && a.t >= waves[a.wave]) {
-      this.spawnMob(1.1, a.wave === 0 ? 'PANIC EVENT — HOLD ON!' : null);
+      if (this.scripted) {
+        if (this.game.tutorial) this.game.tutorial.alarmWave(a.wave);
+      } else this.spawnMob(1.1, a.wave === 0 ? 'PANIC EVENT — HOLD ON!' : null);
       a.wave++;
     }
-    if (a.t > 15) {
+    if (a.t > (this.scripted ? 9 : 15)) {
       a.car.alarmOn = false;
       a.car.alarmDone = true;
       this.game.audio.alarmStop();

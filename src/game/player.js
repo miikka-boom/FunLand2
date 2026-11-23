@@ -256,12 +256,17 @@ const reloadScale = (p) => (p.adrenT > 0 ? 0.6 : 1);
 export function startReload(game, p) {
   const w = p.weapon;
   if (w.reloading || w.mag >= w.cap) return;
+  if (game.locks && game.locks.reload) return; // the tutorial holds it back while you learn to shove
   w.reloading = true;
   w.reloadT = (w.def.reloadType === 'shell' ? w.def.reload + 0.15 : w.def.reload) * reloadScale(p);
   game.audio.reloadStart();
 }
 
 export function swapWeapon(game, p) {
+  if (game.locks && game.locks.swap) {
+    game.audio.dryFire(); // not yet (the tutorial)
+    return;
+  }
   p.weapon.reloading = false;
   p.wi = (p.wi + 1) % p.weapons.length;
   p.swapT = 0.35;
@@ -465,6 +470,7 @@ export function shove(game) {
   });
   hits += shoveBoards(game, p, ang, SHOVE_REACH, SHOVE_HALF_ANGLE);
   game.stats.shoves++;
+  if (hits > 0) game.stats.shoveHits = (game.stats.shoveHits || 0) + 1;
   game.effects.shoveArc(p.x, p.y, ang, SHOVE_REACH + p.r);
   game.audio.shove(hits > 0);
   game.addTrauma(hits ? 0.16 : 0.05);

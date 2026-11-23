@@ -6,6 +6,8 @@ import { generateDocks } from '../world/docks-gen.js';
 import { generateGraveyard } from '../world/graveyard-gen.js';
 import { generateSuburbia } from '../world/suburbia-gen.js';
 import { generateJunkyard } from '../world/junkyard-gen.js';
+import { generateTutorial } from '../world/tutorial-gen.js';
+import { Tutorial } from './tutorial.js';
 import { finaleOpen } from './finale.js';
 import { addScavenging } from '../world/scavenge-gen.js';
 import { addWorldFeatures } from '../world/features-gen.js';
@@ -36,8 +38,9 @@ const ISO_ZOOM = 0.42;
 const CAMERA_LIFT = 18;
 const kickTmp = { x: 0, y: 0 };
 
-/** The map generators, by level id (settings.js: LEVELS). */
+/** The map generators, by level id (settings.js: LEVELS). The tutorial's is hand-built (the same every run). */
 export const GENERATORS = {
+  tutorial: generateTutorial,
   city: generateCity,
   interior: generateBuilding,
   docks: generateDocks,
@@ -62,8 +65,8 @@ export class Game {
     this.audio.alarmStop();
     this.audio.tankMusic(false);
     this.level = this.settings.level;
-    // The daily map: today's date picks the seed, the same on every device.
-    this.dailyKey = this.settings.daily ? todayKey() : null;
+    // The daily map: today's date picks the seed, the same on every device (the tutorial is always the same).
+    this.dailyKey = this.settings.daily && this.level !== 'tutorial' ? todayKey() : null;
     if (this.dailyKey) seed = dailySeed(this.dailyKey);
     this.seed = seed;
     this.runSerial = (this.runSerial || 0) + 1;
@@ -82,15 +85,21 @@ export class Game {
     const S = this.settings;
     this.worldSig = worldSignature(S);
     const base = map.obstacles.slice();
-    // The holdout gate, the two routes and the landmarks are built for the streets and the building
-    // (Pier 9 has its own finale; the graveyard, suburbia and the junkyard don't have them yet).
-    const featured = !map.theme || map.theme === 'interior';
-    if (featured && (S.holdout || S.routes || S.landmarks)) addWorldFeatures(map, map.seed, { holdout: S.holdout, routes: S.routes, landmarks: S.landmarks });
-    if (S.stashes || S.boardedRooms || S.secret) addScavenging(map, map.seed, { stashes: S.stashes, rooms: S.boardedRooms, secret: S.secret });
-    if (S.witch) addWitch(map, map.seed); // where she sits (the writing on the walls knows)
-    if (S.lore) addLore(map, map.seed); // graffiti, posters, dens: visual only
     this.benMemory = loadBenMemory();
-    if (S.ben) addBen(map, map.seed, { memory: this.benMemory, level: this.level }); // signs of Ben: visual only
+    if (map.tutorial) {
+      // Hand-built: it brings its own stash, writing and Witch (left out when she's switched off).
+      if (!S.witch) map.witches = [];
+      if (!S.ben) map.decor = map.decor.filter((d) => d.type !== 'bentext');
+    } else {
+      // The holdout gate, the two routes and the landmarks are built for the streets and the building
+      // (Pier 9 has its own finale; the graveyard, suburbia and the junkyard don't have them yet).
+      const featured = !map.theme || map.theme === 'interior';
+      if (featured && (S.holdout || S.routes || S.landmarks)) addWorldFeatures(map, map.seed, { holdout: S.holdout, routes: S.routes, landmarks: S.landmarks });
+      if (S.stashes || S.boardedRooms || S.secret) addScavenging(map, map.seed, { stashes: S.stashes, rooms: S.boardedRooms, secret: S.secret });
+      if (S.witch) addWitch(map, map.seed); // where she sits (the writing on the walls knows)
+      if (S.lore) addLore(map, map.seed); // graffiti, posters, dens: visual only
+      if (S.ben) addBen(map, map.seed, { memory: this.benMemory, level: this.level }); // signs of Ben: visual only
+    }
     if (map.obstacles.length !== base.length || map.obstacles.some((o, i) => o !== base[i])) world = new World(map);
     this.world = world;
     // Static field toward the goal: route progress (places the Tank) and the
@@ -102,6 +111,10 @@ export class Game {
     this.goalDist = this.routeLen;
     this.progress = 0;
     this.player = new Player(map.start.x, map.start.y);
+    if (map.startFacing !== undefined) {
+      const p = this.player;
+      p.facing = p.aimAngle = p.fireAngle = map.startFacing;
+    }
     this.zombies = [];
     this.witches = []; // every Witch of this run, alive or not (her phone outlasts her)
     this.rocks = [];
@@ -126,7 +139,7 @@ export class Game {
     this.hurtFlash = 0;
     this.messages = [];
     this.stats = {
-      kills: 0, shots: 0, hits: 0, shoves: 0, damage: 0, hordes: 0, time: 0,
+      kills: 0, shots: 0, hits: 0, shoves: 0, shoveHits: 0, damage: 0, hordes: 0, time: 0,
       hunters: 0, skeets: 0, deadstops: 0, pins: 0, breakFrees: 0, tanks: 0, rocksShot: 0,
       allyKills: 0, allySaves: 0, allyDowns: 0, revives: 0,
       stashes: 0, rooms: 0, secrets: 0, boards: 0,
@@ -144,10 +157,13 @@ export class Game {
     for (const spot of map.witches || []) spawnWitch(this, spot);
     this.world.flow.compute(this.player.x, this.player.y);
     this.ally = null;
+    this.locks = null; // what the tutorial holds back (reload, swap)
+    this.tutorial = null;
     this.syncAlly();
     this.director.populate();
     spawnSleepers(this);
     spawnNest(this);
+    if (map.tutorial) this.tutorial = new Tutorial(this);
   }
 
   /** The breach boards came down: the short way is open. */
@@ -157,7 +173,8 @@ export class Game {
 
   /** Spawn or remove the AI teammate to match the setting (a dead one stays dead until the next run). */
   syncAlly() {
-    if (!this.settings.ally) {
+    // The tutorial is yours alone: a teammate would take the shots each lesson is for.
+    if (!this.settings.ally || this.world.map.tutorial) {
       this.ally = null;
       return;
     }
@@ -243,6 +260,7 @@ export class Game {
     this.haptic(35);
     this.director.addIntensity(dmg / 32);
     if (p.hp <= 0) {
+      if (this.tutorial && this.tutorial.rescue()) return; // nobody dies in the tutorial
       p.hp = 0;
       p.alive = false;
       this.lost = true;
@@ -344,6 +362,7 @@ export class Game {
     updateLoot(this, dt);
     updateWorldEvents(this, dt);
     updateBen(this, dt);
+    if (this.tutorial) this.tutorial.update(dt);
 
     // Pickups.
     for (const k of this.pickups) {

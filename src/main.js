@@ -1,7 +1,8 @@
 // Boot, resize/safe-area handling, screens and the frame loop.
 
-import { loadSettings, saveSettings, worldSignature } from './settings.js';
+import { loadSettings, saveSettings, worldSignature, DEFAULTS } from './settings.js';
 import { seatWitchNear } from './game/witch.js';
+import { tutorialDone } from './game/tutorial.js';
 import { computeLayout } from './layout.js';
 import { Input } from './input/input.js';
 import { Game } from './game/game.js';
@@ -11,9 +12,15 @@ import { MusicPlayer } from './music-player.js';
 import { MusicDirector, readGame, cueLevel, cueFade } from './game/music-director.js';
 import { SettingsPanel } from './settings-panel.js';
 import { clamp } from './util.js';
-import { ReportCard, buildReport, saveReport, recordDaily, dailyBest, todayKey, dateLabel, perfSummary, osName, fmtTime, LEVEL_NAMES } from './playtest.js';
+import { ReportCard, buildReport, saveReport, recordDaily, dailyBest, todayKey, dateLabel, perfSummary, osName, fmtTime, loadHistory, LEVEL_NAMES } from './playtest.js';
 
 const settings = loadSettings();
+const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+// First time here on a phone or tablet (never finished a run, never been
+// through the tutorial): the title card comes up with the tutorial picked.
+// Not saved, so picking another map is all it takes to skip it.
+const suggestTutorial = isTouch && settings.level === DEFAULTS.level && !tutorialDone() && loadHistory().length === 0;
+if (suggestTutorial) settings.level = 'tutorial';
 const canvas = document.getElementById('game');
 const titleEl = document.getElementById('title');
 const startBtn = document.getElementById('start');
@@ -99,7 +106,6 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', onRe
 
 // --- Fullscreen (Android/desktop; iOS uses Add to Home Screen) -----------------------
 
-const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 function enterFullscreen() {
   const el = document.documentElement;
   if (document.fullscreenElement || !el.requestFullscreen) return;
@@ -114,6 +120,12 @@ function enterFullscreen() {
 
 /** Every restart goes through here: closes the rating card, resets the fps sample. */
 function newRun(seed = settings.seed) {
+  // Through the tutorial: the next run is the real thing.
+  if (game.tutorial && game.won && settings.level === 'tutorial') {
+    settings.level = 'city';
+    saveSettings(settings);
+    syncLevelPicker();
+  }
   card.hide();
   ui.reportRect = null;
   game.newRun(seed);
@@ -140,9 +152,9 @@ function onRunEnd() {
   saveReport(report);
   syncDaily();
   if (!settings.playtestPrompt) return;
-  let tag = `${LEVEL_NAMES[game.level] || game.level} · seed ${game.seed}`;
+  let tag = game.tutorial ? 'Tutorial' : `${LEVEL_NAMES[game.level] || game.level} · seed ${game.seed}`;
   if (game.dailyKey) tag = `Daily ${dateLabel(game.dailyKey)}${best && best.time !== null ? ` · best ${fmtTime(best.time)}` : ''}`;
-  card.show(report, tag);
+  card.show(report, tag, game.tutorial && game.won ? 'Play the Streets' : 'Play again');
   ui.reportRect = card.rect();
 }
 
@@ -232,7 +244,11 @@ startBtn.addEventListener('click', start);
 // Title-card level picker (doesn't start the game; the background shows the choice).
 const levelButtons = [...document.querySelectorAll('[data-level]')];
 function syncLevelPicker() {
-  for (const b of levelButtons) b.classList.toggle('active', b.dataset.level === settings.level);
+  for (const b of levelButtons) {
+    b.classList.toggle('active', b.dataset.level === settings.level);
+    // "start here" on the tutorial, for as long as it's the one picked for a newcomer.
+    b.classList.toggle('suggest', suggestTutorial && b.dataset.level === 'tutorial' && settings.level === 'tutorial');
+  }
 }
 for (const b of levelButtons) {
   b.addEventListener('click', (e) => {
@@ -374,7 +390,8 @@ function frame(now) {
       music.preload(musicDirector.preload(ms));
     }
   }
-  ui.hintAlpha = state === 'title' ? 1 : clamp(1 - (game.stats.time - 10) / 8, 0, 1);
+  // The stick labels fade once you've got going (the tutorial has its own coaching instead).
+  ui.hintAlpha = state === 'title' ? 1 : game.tutorial ? 0 : clamp(1 - (game.stats.time - 10) / 8, 0, 1);
   ui.forceSticks = state === 'title' && isTouch;
   ui.title = state === 'title';
   renderer.render(game, input, ui);
