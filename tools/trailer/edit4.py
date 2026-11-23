@@ -18,22 +18,21 @@ LOGO = os.path.join(HERE, '..', '..', 'assets', 'we-left-ben.webp')
 
 # (kind, source shot, first source frame, frame count)
 TIMELINE = [
-    ('shot', 't4_open', 0, 120),      # 0.000  two of them step out of the first safe room
-    ('shot', 't4_dark', 12, 120),     # 4.000  two lights across the cemetery rows
-    ('shot', 't4_witch', 15, 132),    # 8.000  the Witch
-    ('card', 'most', 0, 24),          # 12.400 MOST DON'T.
-    ('shot', 't4_horde', 6, 138),     # 13.200 HERE THEY COME! ... the pumps go up at 14.833 (frame 445)
-    ('shot', 't4_escape', 10, 246),   # 17.800 the last escape: running, shooting back
-    ('card', 'end', 0, 120),          # 26.000
+    ('shot', 't5_walk', 8, 150),      # 0.000  the two of them walk a dark street, nearly silent
+    ('shot', 't4_dark', 12, 114),     # 5.000  two lights across the cemetery rows
+    ('shot', 't4_witch', 15, 123),    # 8.800  the Witch
+    ('card', 'most', 0, 24),          # 12.900 MOST DON'T.
+    ('shot', 't4_horde', 6, 138),     # 13.700 HERE THEY COME! ... the pumps go up at 15.333 (frame 460)
+    ('shot', 't5_escape', 10, 315),   # 18.300 the last escape: running, shooting back
+    ('card', 'black', 0, 36),         # 28.800 cut to black
 ]
 assert sum(seg[3] for seg in TIMELINE) == 900
 
 # Title lines: (text, start s, end s, style, y)
 TITLES = [
-    ('PHILADELPHIA, 2020.', 0.5, 3.6, 'caption', 1000),
-    ('PEOPLE STOPPED SLEEPING.', 4.35, 7.75, 'title', 150),
-    ('SOME WANT TO BE LEFT ALONE.', 8.45, 12.25, 'title', 952),
-    ('BRING A FRIEND.', 21.7, 25.7, 'title', 150),
+    ('PEOPLE STOPPED SLEEPING.', 5.35, 8.6, 'title', 150),
+    ('SOME WANT TO BE LEFT ALONE.', 9.25, 12.75, 'title', 952),
+    ('BRING A FRIEND.', 23.6, 28.55, 'title', 150),
 ]
 STYLES = {
     'title': dict(font='Inter-ExtraBold.otf', size=64, track=6, fill=(244, 241, 236)),
@@ -139,7 +138,11 @@ for kind, src, first, count in TIMELINE:
         t = n / FPS
         if n % EVERY == 0:
             if kind == 'card':
-                frame = most_card(j / FPS) if src == 'most' else end_card(j / FPS)
+                if src == 'most':
+                    frame = most_card(j / FPS)
+                else:
+                    frame = Image.new('RGBA', (W, H), (0, 0, 0, 255))
+                    place(frame, fine, W / 2, 1012, smooth((j / FPS - 0.15) / 0.4))
             else:
                 frame = Image.open(os.path.join(HERE, 'frames', src, f'f{first + j:04d}.jpg')).convert('RGBA')
                 if frame.size != (W, H):
@@ -148,8 +151,8 @@ for kind, src, first, count in TIMELINE:
                 a = ramp(t, t0, t1)
                 if a > 0:
                     place(frame, layers[text], W / 2, y, a, dy=8 * (1 - smooth((t - t0) / 0.5)))
-            if n < 9:  # fade up from black
-                frame = Image.blend(Image.new('RGBA', (W, H), (0, 0, 0, 255)), frame, n / 9)
+            if n < 24:  # a slow fade up from black
+                frame = Image.blend(Image.new('RGBA', (W, H), (0, 0, 0, 255)), frame, n / 24)
             frame.convert('RGB').save(os.path.join(OUT, f'f{n:04d}.jpg'), quality=95)
         n += 1
 print('frames', n)

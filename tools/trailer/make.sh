@@ -7,7 +7,7 @@ case "${1:-}" in
   1) export SHOTS=./shots.js; shots="open dark witch horde pier"; prefix=""; build=./build.sh ;;
   2) export SHOTS=./shots2.js; shots="duo_open duo_lights duo_terror duo_hunter duo_revive duo_hold duo_ferry"; prefix=""; build=./build2.sh ;;
   3) export SHOTS=./shots3.js CRAYON_FONT=1; shots="wall lou prints glimpse reach bed squad"; prefix="ben_"; build=./build3.sh ;;
-  4) export SHOTS=./shots4.js; shots="t4_open t4_dark t4_witch t4_horde t4_escape"; prefix=""; build=./build4.sh ;;
+  4) export SHOTS=./shots4.js; shots="t5_walk t4_dark t4_witch t4_horde t5_escape"; prefix=""; build=./build4.sh ;;
   *) echo "usage: $0 1|2|3|4"; exit 1 ;;
 esac
 # Trailer 3 draws Ben's crayon in Comic Neue (OFL), standing in for the Chalkboard SE / Comic Sans a phone has.
