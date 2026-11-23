@@ -87,8 +87,7 @@ export class Game {
     const base = map.obstacles.slice();
     this.benMemory = loadBenMemory();
     if (map.tutorial) {
-      // Hand-built: it brings its own stash, writing and Witch (left out when she's switched off).
-      if (!S.witch) map.witches = [];
+      // Hand-built: it brings its own stash and writing (and no Witch: not on a first run).
       if (!S.ben) map.decor = map.decor.filter((d) => d.type !== 'bentext');
     } else {
       // The holdout gate, the two routes and the landmarks are built for the streets and the building

@@ -7,10 +7,10 @@
 //
 //   north
 //   ┌───────────────────────────────────────────────────────────────┐
-//   │ ███████ alcove ██████████ alley █[SAFE ROOM]┊C3 ███████████████ │
-//   │ █  S3 → the Witch → → → → alarm car → → horde ─┴─ G3 ███████████ │
+//   │ ███████ yard ████████████ alley █[SAFE ROOM]┊C3 ███████████████ │
+//   │ █  S3 → → → → → → → → → → alarm car → → horde ─┴─ G3 ███████████ │
 //   │ █ G2 ████████████ pack alley ████ door ██ alley ████████████████ │
-//   │ █  S2 ← ← stash nook ← ← ← ← ← ← ← ← ← ← ← ← ← ← ─┬─ ███████████ │
+//   │ █  S2 ← ← stash nook ← ← ← both thumbs ← ← ← shove ─┬─ ███████████ │
 //   │ ████████ nook ███████ [PEN] ████████████████████ G1 ███████████ │
 //   │ [START] → S1 → move ring → pen → → → → → → → → → ─┘ ███████████ │
 //   │ ███████████████████████████████████████████████████████████████ │
@@ -47,7 +47,7 @@ const END_ROOM = { x: 1378, y: 96 };
 
 // Holes in the buildings: alleys, nooks, the pen (rects you can walk in). Edges
 // line up where they can, so the buildings between them come out deep.
-const ALCOVE = { x: 624, y: 210, w: 224, h: 152 }; // where the Witch sits, off row 3
+const ALCOVE = { x: 624, y: 210, w: 224, h: 152 }; // a little yard off row 3 (bins, nobody in it)
 const NORTH_ALLEY = { x: 1200, y: 210, w: 96, h: 152 }; // row 3, north side
 const SOUTH_ALLEY = { x: 1472, y: 630, w: 96, h: 90 }; // row 3, south side
 const PACK_ALLEY = { x: 960, y: 720, w: 96, h: 154 }; // row 2, north side
@@ -185,8 +185,9 @@ export const TUTORIAL_WALLS = [
   { x: 1500, y: 1088, text: 'SHOVE FIRST. ASK NEVER.', size: 14, color: '#e8e8e0' },
   { x: 1130, y: 1088, text: 'THEY COME IN PACKS. — MAGS', size: 12, color: '#9fd8ff' },
   { x: 608, y: 1110, text: 'GOOD STUFF', size: 13, color: '#e8e8e0' },
-  // Row 3: a warning on the way to her, the tip by the car, the way out.
-  { x: 420, y: 588, text: 'SHE\'S CRYING. LET HER.', size: 14, color: '#cdbfe6' },
+  // Row 3: the squad's oldest argument, the tip by the car, the way out.
+  { x: 440, y: 580, text: 'WHO TOOK THE LAST CAN OF PEACHES', size: 13, color: '#e8e8e0' },
+  { x: 470, y: 600, text: 'NOT ME — TEO', size: 11, color: '#9fd8ff' },
   { x: 1230, y: 590, text: 'RED LIGHT CARS = DINNER BELLS', size: 12, color: '#ffb37a' },
   { x: 1560, y: 414, text: 'HOLD THE LINE', size: 15, color: '#e8e8e0' },
   // The safe room (medkits in the top corners, its name across the middle).
@@ -200,7 +201,7 @@ export const TUTORIAL_BEN = { x: 1494, y: 262, text: 'my turn tomorrow.' };
 /**
  * Move everything on the map by (dx, dy): from the plan into the frame. Each
  * object moves once (the gate bars, the car and the fence are obstacles that
- * map.tutorial points at too; the Witch's seat is in map.witches).
+ * map.tutorial points at too).
  */
 function shiftMap(map, dx, dy) {
   const done = new Set();
@@ -226,7 +227,7 @@ function shiftMap(map, dx, dy) {
   mv(map.start);
   for (const room of [map.startRoom, map.endRoom]) for (const k of ['interior', 'door', 'outer']) mv(room[k]);
   const T = map.tutorial;
-  for (const k of ['moveRing', 'pen', 'shoveSpawn', 'packSpawn', 'witch', 'witchPass', 'alcove']) mv(T[k]);
+  for (const k of ['moveRing', 'pen', 'shoveSpawn', 'packSpawn']) mv(T[k]);
   for (const k of ['penZombies', 'alarmSpawns', 'panicSpawns', 'hordeSpawns']) for (const q of T[k]) mv(q);
   for (const g of Object.values(T.gates)) mv(g);
 }
@@ -269,10 +270,14 @@ export function generateTutorial(seed = 1) {
   obstacles.push(ob('crate', PEN.x + 14, PEN.y + 10, 34, 34));
   obstacles.push(ob('crate', PEN.x + PEN.w - 48, PEN.y + 10, 34, 34));
   obstacles.push(ob('crate', PEN.x + 110, PEN.y + 8, 130, 22, { pipe: true }));
+  // Six of them: plenty of practice before anything can reach you.
   const penZombies = [
-    { x: PEN.x + 100, y: PEN.y + 96 },
-    { x: PEN.x + 190, y: PEN.y + 70 },
-    { x: PEN.x + 270, y: PEN.y + 110 },
+    { x: PEN.x + 60, y: PEN.y + 84 },
+    { x: PEN.x + 150, y: PEN.y + 68 },
+    { x: PEN.x + 245, y: PEN.y + 80 },
+    { x: PEN.x + 300, y: PEN.y + 126 },
+    { x: PEN.x + 110, y: PEN.y + 128 },
+    { x: PEN.x + 205, y: PEN.y + 132 },
   ];
 
   // --- The gates ---------------------------------------------------------------------------------
@@ -281,7 +286,10 @@ export function generateTutorial(seed = 1) {
   const g3 = gateLine(C3.x - SW, C3.x + C3.w + SW, 296);
   for (const g of [g1, g2, g3]) obstacles.push(...g.walls, g.bars);
 
-  // --- Row 3: the alarm car, parked across the north lane just past the alley it hides --------------
+  // --- Row 3: a yard with its bins; the alarm car, parked across the north lane just past the alley it hides
+  obstacles.push(ob('dumpster', ALCOVE.x + 18, ALCOVE.y + 10, 62, 34, { color: '#2f4f3a' }));
+  obstacles.push(ob('crate', ALCOVE.x + ALCOVE.w - 52, ALCOVE.y + 12, 34, 34));
+  decor.push({ type: 'trash', x: ALCOVE.x + 112, y: ALCOVE.y + 40, s: 1.2 });
   const car = ob('car', 1214, 446, 86, 44, { color: '#b8b8b2', alarm: true, vertical: false, front: 1 });
   obstacles.push(car);
   // Two more cars for company (no alarm: one in each row, nowhere near a lesson).
@@ -301,14 +309,12 @@ export function generateTutorial(seed = 1) {
   pickups.push({ kind: 'medkit', x: 1380, y: 618 });
 
   // --- Light: lamps along the streets (alternating sides), a glow at every gate ------------------------
-  const darkAt = [ALCOVE]; // the Witch has her phone; nobody hangs a lamp over her
   const inMouth = (l) => [C1, C2, C3].some((c) => l.x > c.x - 30 && l.x < c.x + c.w + 30 && l.y > c.y - 30 && l.y < c.y + c.h + 30);
   for (const s of [S1, S2, S3]) {
     let side = 0;
     for (let x = s.x + 120; x < s.x + s.w - 60; x += 240) {
       side ^= 1;
       const l = { x, y: side ? s.y - 8 : s.y + s.h + 8 };
-      if (darkAt.some((d) => l.x > d.x - 140 && l.x < d.x + d.w + 140 && l.y < d.y + d.h + 60)) continue;
       if (inMouth(l)) continue;
       lamps.push(l);
     }
@@ -346,8 +352,6 @@ export function generateTutorial(seed = 1) {
   });
   for (const lot of LOTS) blocks.push({ x: lot.x, y: lot.y, w: lot.w, h: lot.h, inner: { x: lot.x, y: lot.y, w: lot.w, h: lot.h }, type: lot.type });
 
-  const witch = { x: ALCOVE.x + ALCOVE.w / 2, y: ALCOVE.y + 86, face: 1.15 };
-
   const map = {
     seed,
     w: TUT_W,
@@ -369,7 +373,7 @@ export function generateTutorial(seed = 1) {
     endRoom,
     stashes: [stash],
     sealed: [],
-    witches: [witch],
+    witches: [], // no Witch in the first tutorial: she comes later
     posters: [],
     dens: [],
     darknessBoost: -0.12, // dusk on day 1: a little lighter than the nights to come
@@ -383,9 +387,6 @@ export function generateTutorial(seed = 1) {
       shoveSpawn: { x: SHOVE_DOOR.x + SHOVE_DOOR.w / 2, y: SHOVE_DOOR.y + 30 },
       packSpawn: { x: PACK_ALLEY.x + PACK_ALLEY.w / 2, y: PACK_ALLEY.y + 40 },
       stash: stash.id,
-      witch,
-      witchPass: { x: 1060, y: 520, r: 46 },
-      alcove: { ...ALCOVE },
       car,
       alarmSpawns: [
         { x: NORTH_ALLEY.x + NORTH_ALLEY.w / 2, y: NORTH_ALLEY.y + 36 },

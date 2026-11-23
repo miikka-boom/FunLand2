@@ -32,7 +32,7 @@ const { pointInRect } = await import('../src/util.js');
 
 const INF = 0x3fffffff;
 // The map passes that seat her and write about her (and the maps they run on). The tutorial is
-// hand-built and runs none of them: its Witch and its writing are tested in tutorial.test.js.
+// hand-built, runs none of them and has no Witch (tutorial.test.js checks it stays that way).
 const PROCEDURAL = Object.entries(GENERATORS).filter(([level]) => level !== 'tutorial');
 const SHOTGUN = WEAPONS.find((w) => w.id === 'shotgun');
 const SMG = WEAPONS.find((w) => w.id === 'smg');

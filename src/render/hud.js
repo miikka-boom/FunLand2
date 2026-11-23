@@ -412,7 +412,8 @@ function drawWeapon(ctx, game, L, ui) {
   ctx.fillText(w.def.name.toUpperCase(), b.x + 10, b.y + 13);
   ctx.textAlign = 'right';
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.fillText(`${p.wi + 1}/${p.weapons.length} ⇄`, b.x + b.w - 8, b.y + 13);
+  // Which gun of how many, and that a tap swaps (not where swapping is off: the tutorial has one gun).
+  if (!(game.locks && game.locks.swap)) ctx.fillText(`${p.wi + 1}/${p.weapons.length} ⇄`, b.x + b.w - 8, b.y + 13);
   ctx.textAlign = 'left';
   ctx.font = `800 19px ${FONT}`;
   ctx.fillStyle = w.mag === 0 ? '#ffb25a' : '#fff';

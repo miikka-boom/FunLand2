@@ -43,7 +43,7 @@ const { DEFAULTS, LEVELS } = await import('../src/settings.js');
 const { generateTutorial, TUT_W, TUT_H, TUTORIAL_WALLS } = await import('../src/world/tutorial-gen.js');
 const { STEPS, LESSONS, stepText, tutorialDone, saveTutorialDone } = await import('../src/game/tutorial.js');
 const { World, FlowField, NAV_CELL } = await import('../src/world/world.js');
-const { WITCH, startle } = await import('../src/game/witch.js');
+const { startle, seatWitchNear } = await import('../src/game/witch.js');
 const { startReload, swapWeapon } = await import('../src/game/player.js');
 const { hasModel } = await import('../src/render/models.js');
 const { computeLayout } = await import('../src/layout.js');
@@ -84,10 +84,8 @@ function skipTo(game, id) {
       Object.assign(p, { x: G.x, y: G.y - 80 });
     } else if (s === 'shove') game.stats.shoveHits += 3;
     else if (s === 'reload') game.update(1 / 60, idle(['reload']));
-    else if (s === 'finish' || s === 'pack' || s === 'alarm' || s === 'horde') kill(T.group.concat(T.extra));
-    else if (s === 'swap') game.player.wi = 2;
+    else if (s === 'finish' || s === 'kite' || s === 'alarm' || s === 'horde') kill(T.group.concat(T.extra));
     else if (s === 'search') T.stash().opened = true;
-    else if (s === 'witch') Object.assign(p, { x: T.L.witchPass.x, y: T.L.witchPass.y });
     run(game, 1 / 30);
   }
   assert.equal(T.step.id, id);
@@ -133,7 +131,7 @@ test('one walk: from the start room past every lesson to the safe room, through 
   const open = walker(map, true);
   const d = open.f.pathDist(goal.x, goal.y);
   assert.ok(Number.isFinite(d) && d > 4500 && d < 7000, `the walk is ${Math.round(d)} u (about half a minute at a run)`);
-  const spots = { moveRing: T.moveRing, shove: T.shoveSpawn, pack: T.packSpawn, stash: map.stashes[0], witchPass: T.witchPass, ...Object.fromEntries(T.alarmSpawns.concat(T.hordeSpawns).map((q, i) => [`spawn${i}`, q])) };
+  const spots = { moveRing: T.moveRing, shove: T.shoveSpawn, pack: T.packSpawn, stash: map.stashes[0], ...Object.fromEntries(T.alarmSpawns.concat(T.hordeSpawns).map((q, i) => [`spawn${i}`, q])) };
   for (const [name, q] of Object.entries(spots)) assert.ok(Number.isFinite(open.f.pathDist(q.x, q.y)), `${name} can be walked to`);
   // Everything a body can stand on is part of the walk, except the pen (that's the point of it).
   let pocket = 0;
@@ -147,7 +145,7 @@ test('one walk: from the start room past every lesson to the safe room, through 
   // With the gates shut you get no further than the first one.
   const shut = walker(map, false);
   assert.ok(Number.isFinite(shut.f.pathDist(T.moveRing.x, T.moveRing.y)));
-  for (const q of [T.shoveSpawn, map.stashes[0], T.witchPass, goal]) assert.equal(shut.f.pathDist(q.x, q.y), Infinity, 'a shut gate is shut');
+  for (const q of [T.shoveSpawn, map.stashes[0], T.alarmSpawns[0], goal]) assert.equal(shut.f.pathDist(q.x, q.y), Infinity, 'a shut gate is shut');
   // Gates are bars in a wall that runs east-west (the camera sees them face on), each with a wall either side.
   for (const G of Object.values(T.gates)) {
     assert.ok(G.bars.w > G.bars.h * 5 && G.bars.navOpen && G.bars.opens && !G.bars.shot);
@@ -178,11 +176,13 @@ test('buildings: no slivers, nothing standing on the walk, and the town goes on 
   assert.ok(minY > 470 / 2 + 20, `${Math.round(minY)} u from the top or bottom`);
 });
 
-test('the pen: three of them behind a fence they can neither cross nor reach through, in your line of fire from the ring', () => {
+test('the pen: six of them behind a fence they can neither cross nor reach through, in your line of fire from the ring', () => {
   const map = generateTutorial(1);
   const T = map.tutorial;
-  assert.equal(T.penZombies.length, 3);
+  assert.equal(T.penZombies.length, 6);
+  assert.match(stepText(STEPS.find((q) => q.id === 'fire'), 'touch'), /all six/, 'the card counts them right');
   for (const q of T.penZombies) assert.ok(pointInRect(q.x, q.y, T.pen));
+  for (let i = 0; i < 6; i++) for (let j = i + 1; j < 6; j++) assert.ok(Math.hypot(T.penZombies[i].x - T.penZombies[j].x, T.penZombies[i].y - T.penZombies[j].y) > 40, 'room to stand');
   const fence = T.fence;
   assert.ok(fence.kind === 'fence' && fence.move && !fence.shot && !fence.sight, 'you see and shoot through it');
   // A zombie pressed on the inside and you on the outside are further apart than its reach (r + r + 8).
@@ -199,24 +199,22 @@ test('the pen: three of them behind a fence they can neither cross nor reach thr
   assert.ok(Math.hypot(T.moveRing.x - (T.pen.x + T.pen.w / 2), T.moveRing.y - fence.y) < 260, 'the ring is right in front of it');
 });
 
-test('the Witch: in an alcove off row 3, the far side of the street outside her space, a warning on the way, nothing in her space', () => {
+test('what a first run leaves out: no Witch (and nobody writes about her), one gun, one thing not to shoot', () => {
   const map = generateTutorial(1);
-  const T = map.tutorial;
-  const w = map.witches[0];
-  assert.equal(T.witch, w);
-  assert.ok(pointInRect(w.x, w.y, T.alcove));
-  assert.ok(Math.hypot(T.witchPass.x - w.x, T.witchPass.y - w.y) > WITCH.far + 120, 'the ring you walk to is well clear of her');
-  // Walking the street's south lane past her, you're outside her space.
-  const s3 = map.streets[2];
-  assert.ok(s3.y + s3.h - 40 - w.y > WITCH.far + 60);
-  // Her warning: 240 to 640 u before her, on the way.
-  const warn = map.decor.find((d) => d.text === "SHE'S CRYING. LET HER.");
-  const air = Math.hypot(warn.x - w.x, warn.y - w.y);
-  assert.ok(air >= 240 && air <= 640, `${Math.round(air)} u`);
-  for (const d of map.decor) if (d.text) assert.ok(Math.hypot(d.x - w.x, d.y - w.y) > 150, `"${d.text}" in her space`);
-  const car = T.car;
-  assert.ok(car.alarm && Math.hypot(car.x + car.w / 2 - w.x, car.y + car.h / 2 - w.y) > 175, 'the alarm car is not next to her');
+  assert.deepEqual(map.witches, []);
+  assert.ok(!map.decor.some((d) => /CRYING|HER\b|WITCH/i.test(d.text || '')), 'no warnings about someone who is not there');
   assert.equal(map.obstacles.filter((o) => o.alarm).length, 1, 'one thing not to shoot');
+  assert.ok(!STEPS.some((q) => /swap|witch/i.test(q.id + q.title + stepText(q, 'touch'))), 'no lesson about guns to swap or a Witch');
+  // In the run, whatever the panel says: no Witch, and the gun panel never swaps.
+  const game = make({ witch: true });
+  assert.equal(game.witches.length, 0);
+  const p = game.player;
+  for (const s of STEPS) {
+    skipTo(game, s.id);
+    game.update(1 / 60, idle(['swap']));
+    assert.equal(p.wi, 0, `${s.id}: still the SMG`);
+    assert.equal(game.locks.swap, true);
+  }
 });
 
 test("the squad's writing: on open ground, readable, and no line runs into another", () => {
@@ -246,16 +244,16 @@ test('a run: the lessons in order, the pen filled, the gates shut, no teammate, 
   assert.equal(T.step.id, 'move');
   assert.equal(game.ally, null, 'the tutorial is yours alone');
   assert.ok(game.director.scripted);
-  assert.equal(T.pen.length, 3);
+  assert.equal(T.pen.length, 6);
   assert.ok(T.pen.every((z) => z.state === 'idle'));
-  assert.equal(game.zombies.filter((z) => z.type === 'common').length, 3, 'no wanderers');
+  assert.equal(game.zombies.filter((z) => z.type === 'common').length, 6, 'no wanderers');
   for (const G of Object.values(T.gates)) assert.ok(game.world.moveBlockers.includes(G.bars), 'shut');
   assert.equal(game.dailyKey, null);
   assert.equal(game.player.facing, 0, 'looking out of the door, down the first street');
   // Out of the start room, a minute of nothing: no mob, no Hunter, no Tank, no Night Terror.
   Object.assign(game.player, { x: T.L.moveRing.x - 200, y: T.L.moveRing.y });
   run(game, 60);
-  assert.equal(game.zombies.filter((z) => z.type !== 'witch').length, 3);
+  assert.equal(game.zombies.length, 6);
   assert.equal(game.stats.hordes, 0);
   assert.equal(T.step.id, 'move');
 });
@@ -285,7 +283,7 @@ test('every lesson can be done (by hand), in order, and the safe room ends it: d
   for (const G of Object.values(T.gates)) assert.equal(G.state, 'open');
 });
 
-test('what a lesson holds back: no reload or swap while you learn to shove; then reload; then swap', () => {
+test('what a lesson holds back: no reload while you learn to shove, then the reload lesson', () => {
   const game = make();
   const p = game.player;
   skipTo(game, 'shove');
@@ -294,16 +292,11 @@ test('what a lesson holds back: no reload or swap while you learn to shove; then
   assert.equal(p.weapon.mag, 0, 'click: empty');
   startReload(game, p);
   assert.equal(p.weapon.reloading, false, 'no reloading yet');
-  swapWeapon(game, p);
-  assert.equal(p.wi, 0, 'no swapping yet');
   skipTo(game, 'reload');
-  swapWeapon(game, p);
-  assert.equal(p.wi, 0, 'still no swapping');
   game.update(1 / 60, idle(['reload']));
   assert.equal(p.weapon.reloading, true);
-  skipTo(game, 'swap');
   swapWeapon(game, p);
-  assert.equal(p.wi, 1);
+  assert.equal(p.wi, 0, 'and never a swap');
 });
 
 test('the shove lesson counts shoves that land, and the zombies come to you', () => {
@@ -329,7 +322,7 @@ test('the shove lesson counts shoves that land, and the zombies come to you', ()
 
 test('nobody dies in the tutorial: 0 HP is a second wind that throws back what is on you', () => {
   const game = make();
-  skipTo(game, 'pack');
+  skipTo(game, 'kite');
   run(game, 2);
   const T = game.tutorial;
   const p = game.player;
@@ -362,13 +355,13 @@ test('an alarm here is two small waves (not a panic event), and the lesson waits
   assert.ok(buildReport(game).tutorial.alarm);
 });
 
-test('the Witch, startled in the tutorial: one swipe and she runs off (the lesson is that she gets up at all)', () => {
+test('a Witch seated from the tuning panel can\'t end the tutorial either: one swipe and she runs off', () => {
   const game = make();
-  skipTo(game, 'witch');
+  skipTo(game, 'alarm');
   const T = game.tutorial;
-  const w = game.witches[0];
   const p = game.player;
-  Object.assign(p, { x: w.x, y: w.y + 40 });
+  const w = seatWitchNear(game);
+  assert.ok(w);
   startle(game, w, p);
   for (let i = 0; i < 60 * 8 && w.mode !== 'flee'; i++) {
     p.vx = 0;
@@ -378,25 +371,10 @@ test('the Witch, startled in the tutorial: one swipe and she runs off (the lesso
   assert.equal(w.mode, 'flee');
   assert.ok(game.stats.witchHits <= 1);
   assert.equal(p.alive, true);
-  assert.ok(game.messages.some((m) => m.text === "THAT'S WHY YOU LEAVE HER BE"));
+  assert.equal(game.lost, false);
   run(game, 12);
   assert.equal(w.alive, false, 'gone');
-  assert.ok(T.step.id !== 'witch', 'and the lesson moves on');
-});
-
-test('left alone, she is left in peace; switched off, the lesson is skipped', () => {
-  const game = make();
-  skipTo(game, 'witch');
-  const T = game.tutorial;
-  Object.assign(game.player, { x: T.L.witchPass.x, y: T.L.witchPass.y });
-  run(game, 0.2);
-  assert.equal(game.stats.witchSpared, 1);
-  const off = make({ witch: false });
-  assert.equal(off.witches.length, 0);
-  skipTo(off, 'gate2');
-  Object.assign(off.player, { x: T.L.gates.g2.x, y: T.L.gates.g2.y - 80 });
-  run(off, 1.5);
-  assert.equal(off.tutorial.step.id, 'alarm', 'straight on to the car');
+  assert.equal(T.over, false);
 });
 
 test('the words: every lesson has them for touch, the mouse and pads fall back sensibly, and they fit on the card', () => {
@@ -409,7 +387,7 @@ test('the words: every lesson has them for touch, the mouse and pads fall back s
     assert.ok(s.title && s.title === s.title.toUpperCase());
   }
   // The touch words talk about thumbs and taps; the mouse words never do.
-  for (const id of ['move', 'aim', 'fire', 'shove', 'reload', 'swap']) {
+  for (const id of ['move', 'aim', 'fire', 'shove', 'reload', 'kite']) {
     const s = STEPS.find((q) => q.id === id);
     assert.ok(/thumb|tap|push|ring/i.test(stepText(s, 'touch')), id);
     assert.ok(!/thumb|tap /i.test(stepText(s, 'mouse')), id);
@@ -443,7 +421,7 @@ test('the coaching draws on a phone at every lesson (touch, mouse, pad) without 
       if (src === 'touch') for (const t of texts) seen.add(t);
     }
   }
-  for (const label of ['LEFT THUMB: SLIDE', 'RIGHT THUMB: AIM', 'PAST THE RING: FIRE', 'QUICK TAP: SHOVE', 'TAP']) assert.ok(seen.has(label), `a ghost thumb says ${label}`);
+  for (const label of ['LEFT THUMB: SLIDE', 'RIGHT THUMB: AIM', 'PAST THE RING: FIRE', 'QUICK TAP: SHOVE', 'TAP', 'LEFT THUMB: BACK OFF', 'RIGHT THUMB: FIRE']) assert.ok(seen.has(label), `a ghost thumb says ${label}`);
   // Title screen: nothing drawn.
   texts.length = 0;
   drawTutorialHud(ctx, game, touchIn('touch'), { title: true }, L);
@@ -472,14 +450,14 @@ test("the card's words are never cut short, down to the smallest phones (and the
 
 test('the report: how far you got, the close calls, and the seconds per lesson (where people get stuck)', () => {
   const game = make();
-  skipTo(game, 'swap');
+  skipTo(game, 'kite');
   const r = buildReport(game);
   assert.equal(r.level, 'tutorial');
-  assert.equal(r.tutorial.step, 'swap');
+  assert.equal(r.tutorial.step, 'kite');
   assert.equal(r.tutorial.of, LESSONS);
   assert.ok(r.tutorial.lessons >= 4);
   assert.ok('move' in r.tutorial.times && 'shove' in r.tutorial.times);
-  assert.match(reportText(r), /Tutorial: \d+\/\d+ lessons, reached "swap"/);
+  assert.match(reportText(r), /Tutorial: \d+\/\d+ lessons, reached "kite"/);
   // Off the tutorial, no such line.
   const city = new Game({ ...DEFAULTS, playtestPrompt: false, wanderers: 0 }, audio, () => {});
   assert.equal(buildReport(city).tutorial, null);
@@ -572,7 +550,7 @@ test('a bot gets through every lesson to the safe room through the real game loo
     else if (s === 'gate1' || s === 'gate2') {
       const t = T.arrow();
       f.move = walkTo(t.x, t.y - 60);
-    } else if (s === 'search' || s === 'witch' || s === 'saferoom') {
+    } else if (s === 'search' || s === 'saferoom') {
       const t = T.arrow();
       if (t) f.move = walkTo(t.x, t.y);
     } else if (s === 'shove') {
@@ -581,9 +559,9 @@ test('a bot gets through every lesson to the safe room through the real game loo
         f.events.push('shove');
         evT = 0.45;
       }
-    } else if (s === 'reload' || s === 'swap') {
+    } else if (s === 'reload') {
       if (evT <= 0) {
-        f.events.push(s);
+        f.events.push('reload');
         evT = 0.5;
       }
     } else fight(T.group.concat(T.extra));
@@ -596,6 +574,6 @@ test('a bot gets through every lesson to the safe room through the real game loo
   assert.equal(T.lessonsDone, LESSONS);
   assert.ok(game.stats.time < 150, `${game.stats.time.toFixed(0)} s for a bot`);
   assert.equal(tutorialDone(), true);
-  assert.equal(game.stats.witchSpared, 1);
-  assert.ok(game.stats.shoveHits >= 3 && game.stats.kills >= 24);
+  assert.equal(p.weapon.def.id, 'smg', 'one gun, all the way');
+  assert.ok(game.stats.shoveHits >= 3 && game.stats.kills >= 27);
 });

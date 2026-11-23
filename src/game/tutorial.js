@@ -4,9 +4,12 @@
 //   - the gesture to show (a ghost thumb on the half of the screen it uses,
 //     or a pulse round the button), and where to go (ring + edge arrow),
 //   - the zombies it needs, spawned on cue and counted until they're down,
-//   - what it holds back until then (no reload while you learn to shove,
-//     no swapping while you reload), and the gate it opens when you're done.
-// Nobody dies in the tutorial: at 0 HP you get a second wind instead.
+//   - what it holds back until then (no reload while you learn to shove),
+//     and the gate it opens when you're done.
+// One gun all the way through (the final game has no weapon changing, so the
+// tutorial doesn't teach it: the gun panel stays shut). No Witch either: she
+// is too much for a first run. Nobody dies in the tutorial: at 0 HP you get a
+// second wind instead.
 // Everything the player reads is in STEPS, at the top, for editing.
 
 import { startFlee } from './witch.js';
@@ -27,7 +30,7 @@ const ease = (f) => f * f * (3 - 2 * f);
 /**
  * The lessons. text: what the card says, per input (pad falls back to mouse);
  * coach: the gesture drawn for touch ('move' | 'aim' | 'fire' | 'tap' |
- * 'reload' | 'swap'); dot: it is one of the lessons counted along the top of
+ * 'reload' | 'kite': both thumbs at once); dot: it is one of the lessons counted along the top of
  * the card. The functions get the Tutorial and the Game.
  */
 export const STEPS = [
@@ -70,9 +73,9 @@ export const STEPS = [
     title: 'FIRE',
     coach: 'fire',
     text: {
-      touch: 'Push past the dashed ring to shoot. Drop all three.',
-      mouse: 'Click to shoot. Drop all three.',
-      pad: 'Push the right stick all the way (or pull RT) to shoot. Drop all three.',
+      touch: 'Push past the dashed ring to shoot. Drop all six.',
+      mouse: 'Click to shoot. Drop all six.',
+      pad: 'Push the right stick all the way (or pull RT) to shoot. Drop all six.',
     },
     target: (t) => t.penTarget(),
     count: (t) => `${t.pen.length - left(t.pen)}/${t.pen.length}`,
@@ -97,12 +100,10 @@ export const STEPS = [
       pad: 'Click. Empty! RB to knock them back.',
     },
     enter: (t, g) => {
-      // Back to the SMG, and it's dry: no reloading or swapping until you've shoved.
-      const p = g.player;
-      p.weapon.reloading = false;
-      p.wi = 0;
-      p.weapon.mag = 0;
-      p.weapon.reloading = false;
+      // The gun is dry, and no reloading until you've shoved.
+      const w = g.player.weapon;
+      w.mag = 0;
+      w.reloading = false;
       t.lock(true, true);
       g.audio.dryFire();
       t.group = [];
@@ -138,27 +139,14 @@ export const STEPS = [
     update: (t) => t.spawned(t.group) && t.cleared(t.group),
   },
   {
-    id: 'swap',
+    id: 'kite',
     dot: true,
-    title: 'SWAP GUNS',
-    coach: 'swap',
+    title: 'BOTH THUMBS',
+    coach: 'kite',
     text: {
-      touch: 'Tap the gun panel (top right) until you hold the PUMP SHOTGUN.',
-      mouse: 'Q or the mouse wheel swaps guns. Get the PUMP SHOTGUN.',
-      pad: 'Y swaps guns. Get the PUMP SHOTGUN.',
-    },
-    enter: (t) => t.lock(false, false),
-    count: (t, g) => g.player.weapon.def.name.toUpperCase(),
-    update: (t, g) => g.player.weapon.def.id === 'shotgun',
-  },
-  {
-    id: 'pack',
-    dot: true,
-    title: 'A PACK!',
-    coach: 'fire',
-    text: {
-      touch: 'The shotgun hits everything in front of you. Let them bunch up, then fire.',
-      mouse: 'The shotgun hits everything in front of you. Let them bunch up, then click.',
+      touch: 'Five of them. Walk back with your left thumb while you shoot with your right.',
+      mouse: 'Five of them. Walk back (W A S D) while you shoot (click).',
+      pad: 'Five of them. Back off with the left stick while you shoot with the right.',
     },
     enter: (t, g) => {
       t.group = [];
@@ -183,31 +171,9 @@ export const STEPS = [
   {
     id: 'gate2',
     title: "GATE'S OPEN",
-    text: { touch: 'Through the gate. Quietly, now: listen.' },
+    text: { touch: 'Through the gate. One street to go.' },
     target: (t) => t.gateTarget('g2'),
     update: (t, g) => g.player.y < t.L.gates.g2.y - 40,
-  },
-  {
-    id: 'witch',
-    dot: true,
-    title: 'LEAVE HER BE',
-    text: {
-      touch: "That crying is a Witch. Walk past on the far side, aim (your light) away from her, don't shoot near her.",
-    },
-    skip: (t) => !t.witch(),
-    target: (t) => ({ ...t.L.witchPass, ring: true, label: 'FAR SIDE' }),
-    update: (t, g) => {
-      const w = t.witch();
-      if (!w || !w.alive) return true; // she ran off (or worse)
-      const past = g.player.x > w.seat.x + 300 || near(g.player, t.L.witchPass, t.L.witchPass.r);
-      if (w.mode !== 'sit' || !past) return false;
-      if (!w.spared) {
-        w.spared = true;
-        g.stats.witchSpared++;
-        g.announce('LEFT HER IN PEACE', '#cdbfe6', 1.8, 'small');
-      }
-      return true;
-    },
   },
   {
     id: 'alarm',
@@ -285,7 +251,7 @@ export class Tutorial {
     this.alarmed = false;
     this.finished = false; // reached the safe room (remembered on the device)
     this.times = {};
-    game.locks = { reload: false, swap: false };
+    game.locks = { reload: false, swap: true }; // one gun, all the way through
     // The gates, shut.
     this.gates = {};
     for (const [id, G] of Object.entries(this.L.gates)) this.gates[id] = { ...G, state: 'shut', f: 0 };
@@ -319,7 +285,7 @@ export class Tutorial {
       if (this.i >= STEPS.length) {
         this.over = true;
         this.i = STEPS.length - 1;
-        this.lock(false, false);
+        this.lock(false, true);
         return;
       }
       const s = STEPS[this.i];
@@ -487,13 +453,10 @@ export class Tutorial {
     return this.game.loot.stashes.find((s) => s.id === this.L.stash) || null;
   }
 
-  witch() {
-    return this.game.witches[0] || null;
-  }
-
   /**
-   * She is up: one swipe (or a few seconds of chasing you) and she runs off.
-   * In a real run she wouldn't stop; the lesson is that she gets up at all.
+   * No Witch sits in the tutorial, but the tuning panel can still seat one.
+   * Up, she takes one swipe (or chases you for a few seconds) and runs off:
+   * nothing ends the tutorial.
    */
   watchWitch(dt) {
     const g = this.game;

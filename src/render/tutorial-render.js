@@ -5,7 +5,8 @@
 //     need to see is mostly ahead of you, up the screen, so the card stays out
 //     of its way), and for touch a ghost thumb doing the gesture on the half of
 //     the screen it belongs to (move on the left; aim, fire and tap on the
-//     right), or a pulse round the button to press.
+//     right; both at once to walk back while you shoot), or a pulse round
+//     the button to press.
 // The ghost stands aside while your own thumb is on that stick.
 
 import { FONT, rrect, circle } from './draw-utils.js';
@@ -265,6 +266,33 @@ function screenDir(game, q, dflt) {
 /** Ease a 0..1 phase in and out. */
 const ease = (f) => f * f * (3 - 2 * f);
 
+/** The left ghost: a thumb lands on the stick and slides toward `dir` (a unit vector on screen). */
+function moveGhost(ctx, g, dir, R, alpha, text, t, S) {
+  const ph = (t / 1.7) % 1;
+  const reach = ph < 0.2 ? 0 : ph < 0.6 ? ease((ph - 0.2) / 0.4) : 1;
+  const fade = ph < 0.08 ? ph / 0.08 : ph > 0.85 ? (1 - ph) / 0.15 : 1;
+  ring(ctx, g.x, g.y, R, alpha * fade, false, false, S);
+  thumb(ctx, g.x + dir.x * R * 0.8 * reach, g.y + dir.y * R * 0.8 * reach, -1, alpha * fade, ph < 0.2 ? ph / 0.2 : 1);
+  label(ctx, text, g.x, g.y + R + 22, alpha);
+}
+
+/** The right ghost toward `dir`: aiming (out to just inside the dashed ring, sweeping) or firing (past it, the ring lit). */
+function aimGhost(ctx, g, dir, R, alpha, fire, text, t, S) {
+  const ph = (t / (fire ? 1.5 : 2.2)) % 1;
+  const fade = ph < 0.08 ? ph / 0.08 : ph > 0.85 ? (1 - ph) / 0.15 : 1;
+  let ang = Math.atan2(dir.y, dir.x);
+  let r;
+  if (fire) r = R * 0.9 * (ph < 0.3 ? ease(ph / 0.3) : 1);
+  else {
+    r = R * Math.max(S.fireThreshold - 0.1, 0.2) * (ph < 0.25 ? ease(ph / 0.25) : 1);
+    if (ph > 0.25) ang += Math.sin((ph - 0.25) * TAU * 1.2) * 0.35;
+  }
+  const past = fire && r > R * S.fireThreshold;
+  ring(ctx, g.x, g.y, R, alpha * fade, true, past, S);
+  thumb(ctx, g.x + Math.cos(ang) * r, g.y + Math.sin(ang) * r, 1, alpha * fade, 1);
+  label(ctx, text, g.x, g.y + R + 22, alpha, past ? ORANGE : '255,255,255');
+}
+
 function coach(ctx, game, input, view, L, touch) {
   const T = game.tutorial;
   const S = game.settings;
@@ -273,61 +301,43 @@ function coach(ctx, game, input, view, L, touch) {
   const t = game.time;
   const kind = view.coach;
   // The buttons pulse for everybody (they can be clicked too); the thumbs are for touch.
-  if (kind === 'reload' || kind === 'swap' || (kind === 'tap' && S.shoveButton && touch)) {
-    const b = L.byId[kind === 'tap' ? 'shove' : kind];
+  if (kind === 'reload' || (kind === 'tap' && S.shoveButton && touch)) {
+    const b = L.byId[kind === 'tap' ? 'shove' : 'reload'];
     if (b && !b.hidden) {
       const k = 0.5 + 0.5 * Math.sin(t * 6);
       ctx.strokeStyle = `rgba(${AMBER},${0.45 + 0.45 * k})`;
       ctx.lineWidth = 3;
       ctx.beginPath();
-      if (b.shape === 'circle') circle(ctx, b.x, b.y, b.r + 5 + 4 * k);
-      else rrect(ctx, b.x - 4 - 3 * k, b.y - 4 - 3 * k, b.w + 8 + 6 * k, b.h + 8 + 6 * k, 11);
+      circle(ctx, b.x, b.y, b.r + 5 + 4 * k);
       ctx.stroke();
-      if (touch && kind !== 'tap') {
-        const cx = b.shape === 'circle' ? b.x : b.x + b.w / 2;
-        const cy = b.shape === 'circle' ? b.y : b.y + b.h / 2;
+      if (touch && kind === 'reload') {
         const ph = (t * 1.1) % 1;
         const down = ph > 0.3 && ph < 0.55 ? 1 : 0;
-        thumb(ctx, cx + 4, cy + 6 + (1 - down) * 8, 1, 0.9, down);
-        label(ctx, 'TAP', cx, (b.shape === 'circle' ? b.y + b.r : b.y + b.h) + 22, 0.9, AMBER);
+        thumb(ctx, b.x + 4, b.y + 6 + (1 - down) * 8, 1, 0.9, down);
+        label(ctx, 'TAP', b.x, b.y + b.r + 22, 0.9, AMBER);
       }
     }
   }
   if (!touch) return;
+  // Each ghost fades while your own thumb is on that stick.
+  const moveA = tp.move.active ? 0.15 : 1;
+  const aimA = tp.aim.active ? 0.15 : 1;
 
   if (kind === 'move') {
-    // Fades while your own thumb is on the stick.
-    const a = tp.move.active ? 0.15 : 1;
-    const g = L.fixedMove;
-    const dir = screenDir(game, T.arrow(), { x: 1, y: 0 });
-    const ph = (t / 1.7) % 1;
-    const reach = ph < 0.2 ? 0 : ph < 0.6 ? ease((ph - 0.2) / 0.4) : 1;
-    const fade = ph < 0.08 ? ph / 0.08 : ph > 0.85 ? (1 - ph) / 0.15 : 1;
-    ring(ctx, g.x, g.y, R, a * fade, false, false, S);
-    thumb(ctx, g.x + dir.x * R * 0.8 * reach, g.y + dir.y * R * 0.8 * reach, -1, a * fade, ph < 0.2 ? ph / 0.2 : 1);
-    label(ctx, 'LEFT THUMB: SLIDE', g.x, g.y + R + 22, a);
+    moveGhost(ctx, L.fixedMove, screenDir(game, T.arrow(), { x: 1, y: 0 }), R, moveA, 'LEFT THUMB: SLIDE', t, S);
     return;
   }
   if (kind === 'aim' || kind === 'fire') {
-    const a = tp.aim.active ? 0.15 : 1;
-    const g = L.fixedAim;
     const z = T.step.id === 'aim' || T.step.id === 'fire' ? T.pen.find((q) => q.alive) : nearestOn(game, T.group);
-    const dir = screenDir(game, z, { x: 0.6, y: -0.8 });
-    const ph = (t / (kind === 'fire' ? 1.5 : 2.2)) % 1;
-    const fade = ph < 0.08 ? ph / 0.08 : ph > 0.85 ? (1 - ph) / 0.15 : 1;
-    let r;
-    let ang = Math.atan2(dir.y, dir.x);
-    if (kind === 'aim') {
-      // Out to just inside the dashed ring, then sweep a little: aiming, not firing.
-      r = R * Math.max(S.fireThreshold - 0.1, 0.2) * (ph < 0.25 ? ease(ph / 0.25) : 1);
-      if (ph > 0.25) ang += Math.sin((ph - 0.25) * TAU * 1.2) * 0.35;
-    } else {
-      r = R * 0.9 * (ph < 0.3 ? ease(ph / 0.3) : 1);
-    }
-    const past = kind === 'fire' && r > R * S.fireThreshold;
-    ring(ctx, g.x, g.y, R, a * fade, true, past, S);
-    thumb(ctx, g.x + Math.cos(ang) * r, g.y + Math.sin(ang) * r, 1, a * fade, 1);
-    label(ctx, kind === 'aim' ? 'RIGHT THUMB: AIM' : 'PAST THE RING: FIRE', g.x, g.y + R + 22, a, past ? ORANGE : '255,255,255');
+    const fire = kind === 'fire';
+    aimGhost(ctx, L.fixedAim, screenDir(game, z, { x: 0.6, y: -0.8 }), R, aimA, fire, fire ? 'PAST THE RING: FIRE' : 'RIGHT THUMB: AIM', t, S);
+    return;
+  }
+  if (kind === 'kite') {
+    // Both thumbs at once: the left one walks you away from them while the right one shoots at them.
+    const toward = screenDir(game, nearestOn(game, T.group) || T.L.packSpawn, { x: -1, y: 0 });
+    moveGhost(ctx, L.fixedMove, { x: -toward.x, y: -toward.y }, R, moveA, 'LEFT THUMB: BACK OFF', t, S);
+    aimGhost(ctx, L.fixedAim, toward, R, aimA, true, 'RIGHT THUMB: FIRE', t, S);
     return;
   }
   if (kind === 'tap') {

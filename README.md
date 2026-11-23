@@ -288,33 +288,37 @@ and no dependencies.
   list; the first time the game opens on a phone or tablet it is picked for
   you, with a "start here" badge). Day 1, the squad's practice run: three
   streets of Center City joined by gates, a lesson in each stretch, about
-  three minutes. One thing at a time, by doing it:
-  - **Move** (walk to a ring), **aim** (laser on one of three drowsers shut
+  three minutes. One thing at a time, by doing it, with one gun all the way
+  (the final game won't have weapon changing, so the tutorial doesn't teach
+  it: the gun panel doesn't swap here):
+  - **Move** (walk to a ring), **aim** (laser on one of six drowsers shut
     behind a fence), **fire** (past the dashed ring), then through the first
     gate.
   - **Shove**: the SMG clicks empty and two come out of a doorway; reloading
-    and swapping are held back until you've shoved three times. Then
-    **reload** (⟳), finish them, **swap** to the pump shotgun (the gun
-    panel) and meet a pack of five with it.
+    is held back until you've shoved three times. Then **reload** (⟳),
+    finish them, and **both thumbs**: a pack of five, and you walk back with
+    the left thumb while you shoot with the right.
   - **Search** a supply crate (chalk arrows lead to it: armor and hot
-    rounds), through the second gate, and **leave the Witch be** (she's
-    crying in an alcove; a ring shows the far side of the street to walk on).
+    rounds), then through the second gate.
   - **Don't shoot the car** with the blinking red light while four come round
     it (shoot it and the alarm brings two small waves), **hold the line**
     against ten, and the last gate opens on the safe room.
+
+  No Witch: she's too much for a first run, and comes later.
 
   A card at the bottom of the screen, between the thumbs, says what to do (in
   words for touch, mouse and keys, or a pad: whatever you last used), with a
   dot per lesson. For touch, a ghost thumb does the gesture on the half of the
   screen it belongs to (slide on the left; aim inside the ring, push past it,
-  or a quick tap on the right) and steps aside while your own thumb is on that
-  stick; the button to press (⟳, the gun panel, SHOVE) pulses. A ring on the
+  or a quick tap on the right; both at once to back off while you shoot) and
+  steps aside while your own thumb is on that stick; the button to press (⟳,
+  SHOVE) pulses. A ring on the
   ground and the green edge arrow show where to go; brackets mark the
   targets; beacons on the gates go from red to green. Nobody dies here: at 0
-  HP you get a second wind (what's on you is thrown back: "CLOSE ONE!"), a
-  startled Witch swipes once and runs off, the director sends nothing of its
-  own (no wanderers, mobs or specials, whatever the panel says) and there is
-  no teammate. The end card says you're ready, and **Play the Streets** is
+  HP you get a second wind (what's on you is thrown back: "CLOSE ONE!"), the
+  director sends nothing of its own (no wanderers, mobs or specials, whatever
+  the panel says; a Witch seated from the panel swipes once and runs off) and
+  there is no teammate. The end card says you're ready, and **Play the Streets** is
   next. Done is remembered on the device; the playtest report says how far
   you got, the close calls and the seconds each lesson took. The lessons
   and their words are in [`src/game/tutorial.js`](src/game/tutorial.js),
@@ -890,7 +894,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), the tutorial (the course: one walk, gates, no slivers; the lessons in order, what they hold back, the second wind, the coaching on a phone; a bot that plays it to the safe room), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), the tutorial (the course: one walk, gates, no slivers; the lessons in order, what they hold back, one gun and no Witch, the second wind, the coaching on a phone; a bot that plays it to the safe room), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.
