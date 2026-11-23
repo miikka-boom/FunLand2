@@ -1,6 +1,6 @@
 # The We Left Ben trailer
 
-A 1:46 music-video trailer for prototype 0: two survivors (you and the AI teammate) running and
+A 1:46 music-video trailer for prototype 0 (and a 30-second spot cut down from it): two survivors (you and the AI teammate) running and
 fighting their way from Center City to the last ferry at Pier 9, cut to an angry, epic 140 BPM track.
 Every frame is the game itself, running and filmed frame by frame. The scenes are staged with the
 game's own systems (bigger crowds, a Tank or a mob on cue, god mode), and the titles, grade and
@@ -11,7 +11,7 @@ flashes are added in the edit.
 | `tools/trailer/rig.mjs` | The camera rig: runs the game in headless Chromium on a fake clock and films it |
 | `tools/trailer/shots.mjs` | The shot list: 22 staged scenes across five maps (`npm run trailer:shots`) |
 | `tools/trailer/beats.py` | Beat and energy analysis of the soundtrack, in plain numpy |
-| `tools/trailer/edit.py` | The edit: cuts, titles, grade, flashes, shake, the sound mix (`npm run trailer:edit`) |
+| `tools/trailer/edit.py` | The edit: cuts, titles, grade, flashes, shake, the sound mix (`npm run trailer:edit`, `npm run trailer:spot`) |
 | `tools/trailer/soundtrack.mp3` | The music (106 s, 139.75 BPM) |
 | `tools/trailer/soundtrack.json` | How the music was generated: model, sections, seed |
 
@@ -23,6 +23,7 @@ The render (about 66 MB) is not in git. `trailer-shots/` (the filmed frames, abo
 ```
 npm run trailer:shots   # films every shot into trailer-shots/ (about 4 minutes; Chromium + Playwright)
 npm run trailer:edit    # cuts trailer.mp4 (about 6 minutes; Python 3 with numpy and Pillow, ffmpeg)
+npm run trailer:spot    # cuts trailer-30s.mp4, the 30-second spot (about 2 minutes)
 ```
 
 `node tools/trailer/shots.mjs --preview --out DIR pier_flare orbit` films some shots at a third
@@ -66,6 +67,18 @@ are the beats where the low end hits hardest). The edit follows its sections:
 | 1:06 | The breakdown | The teammate goes down. "NOT AGAIN." Up again on the hit at 1:09.9 |
 | 1:13 | The climax | Pier 9: "FLARE UP!", the waves down the pier, the LIBERTY BELLE comes alongside. "HOLD THE LINE." "NOBODY GETS LEFT BEHIND." "ALL ABOARD!" |
 | 1:40 | The last hit | The logo. "HE KEEPS LEAVING SIGNS." Then, in orange: "ben was here" |
+
+### The 30-second spot
+
+`--cut 30` (`npm run trailer:spot`) is its own edit list in `edit.py`, on a cut-down of the same
+music. Four pieces of the soundtrack, joined on downbeats: the build's first boom (17.92–21.94 s),
+the bar before the drop and six bars of the drop (37.38–49.38 s), the climax's first four bars
+(73.38–80.24 s), and its last two bars with the final hit and the ring-out (97.38–104.51 s). At
+each join the next piece comes in 10 ms early with a 10 ms equal-power crossfade, so the downbeat
+lands whole, and a hit (the Tank's roar, the climax's flash, a shotgun) sits on top of it.
+Picture: "HERE THEY COME!", the graveyard run, the Tank, the gas station on the drop, the Tank
+fight, the orbit, the Witch, "TWO AGAINST" / "EVERYTHING.", "FLARE UP!", the ferry, "NOBODY GETS
+LEFT BEHIND.", "ALL ABOARD!", the logo. Exactly 30.0 s, about −14 LUFS.
 
 Sound: the music at −2.5 dB, a few of the game's own recorded effects on the hits (a horde's
 screams, the Tank's roar slowed down, the explosion, the Witch's scream, punches, the flare,

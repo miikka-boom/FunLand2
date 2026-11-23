@@ -1,7 +1,9 @@
 """Cut the We Left Ben trailer: footage from shots.mjs, cut to the soundtrack's bars.
 
-    python3 tools/trailer/edit.py [--shots trailer-shots] [--music tools/trailer/soundtrack.mp3]
-                                  [--out trailer.mp4] [--from S --to S] [--stills DIR]      (npm run trailer:edit)
+    python3 tools/trailer/edit.py [--cut full|30] [--shots trailer-shots] [--music tools/trailer/soundtrack.mp3]
+                                  [--out trailer.mp4] [--from S --to S] [--stills DIR]
+    npm run trailer:edit    the full trailer (1:46)
+    npm run trailer:spot    the 30-second spot (--cut 30): the same music, cut down on its downbeats
 
 Every frame is composed here: the shot's frame (with a slow push-in and shake), the grade, flashes,
 a little RGB split on the big hits, the letterbox, the titles and the logo. The sound is the music
@@ -41,7 +43,7 @@ CLIMAX = 73.38
 END = 100.82  # the last hit
 LENGTH = 106.0
 
-# --- The edit ---------------------------------------------------------------------------------
+# --- The full trailer -------------------------------------------------------------------------
 # (start, end, shot or None for black, in-point in the shot's film seconds, rate, options)
 CLIPS = [
     (0.00, 0.21, None, 0, 1, {}),
@@ -164,12 +166,91 @@ SFX = [
 ]
 
 
+FULL = {"clips": CLIPS, "titles": TITLES, "logo": LOGO, "flashes": FLASHES, "shakes": SHAKES, "splits": SPLITS,
+        "sfx": SFX, "length": LENGTH, "music": [(0.0, 0.0, LENGTH)]}
+
+# --- The 30-second spot ------------------------------------------------------------------------
+# The music, cut down on its downbeats: (where it starts in the spot, from, to in the soundtrack).
+# The build's first boom, the bar before the drop and six bars of the drop, the climax's first
+# four bars, and its last two bars with the final hit and the ring-out.
+S30_MUSIC = [(0.0, 17.92, 21.943), (4.023, 37.384, 49.377), (16.016, 73.375, 80.237), (22.878, 97.384, 104.506)]
+D30 = 5.730  # the drop
+C30 = 16.016  # the climax
+E30 = 26.315  # the last hit
+B30 = 0.14  # the first boom
+S30_CLIPS = [
+    (0.00, B30, None, 0, 1, {}),
+    (B30, 2.316, "horde_reveal", 0.18, 1, {}),
+    (2.316, 4.023, "run_graveyard", 1.2, 1, {}),
+    (4.023, 5.30, "tank_reveal", 0.5, 1, {"push": 0.06}),
+    (5.30, D30, None, 0, 1, {}),
+    (D30, 7.449, "gas_station", 2.08, 1, {}),
+    (7.449, 9.169, "tank_fight", 0.4, 1, {}),
+    (9.169, 10.869, "orbit", 0.2, 1, {}),
+    (10.869, 12.589, "witch", 1.85, 1, {}),
+    (12.589, 14.299, "horde_reveal", 3.4, 1, {"dim": 0.55}),
+    (14.299, C30, "overhead", 2.0, 1, {"dim": 0.6}),
+    (C30, 17.731, "pier_flare", 1.36, 1, {}),
+    (17.731, 19.451, "pier_hold", 3.1, 1, {}),
+    (19.451, 21.171, "pier_ferry_wide", 4.5, 1, {"dim": 0.5}),
+    (21.171, 22.878, "pier_aboard", 1.60, 1, {}),
+    (22.878, 22.878 + BEAT, "run_graveyard", 7.6, 1, {}),
+    (22.878 + BEAT, 22.878 + 2 * BEAT, "alarm_car", 7.2, 1, {}),
+    (22.878 + 2 * BEAT, 22.878 + 3 * BEAT, "orbit", 8.4, 1, {}),
+    (22.878 + 3 * BEAT, 24.597, "pier_hold", 14.2, 1, {}),
+    (24.597, E30, "pier_aboard", 2.75, 1, {"push": 0.05}),
+    (E30, 30.0, None, 0, 1, {}),
+]
+SPOT30 = {
+    "clips": S30_CLIPS,
+    "titles": [
+        (12.64, 14.26, "TWO AGAINST", "slam", 0.5),
+        (14.34, 15.98, "EVERYTHING.", "slamred", 0.5),
+        (19.50, 21.13, "NOBODY GETS LEFT BEHIND.", "slam", 0.5),
+        (27.05, 29.70, "HE KEEPS LEAVING SIGNS.", "tag", 0.80),
+    ],
+    "logo": (E30, 29.70),
+    "flashes": [
+        (B30, 0.85, 0.30, (255, 255, 255)),
+        (D30, 1.0, 0.45, (255, 255, 255)),
+        (C30, 1.0, 0.55, (255, 120, 90)),
+        (E30, 0.9, 0.22, (255, 255, 255)),
+    ] + [(c[0], 0.22, 0.12, (255, 255, 255)) for c in S30_CLIPS if D30 < c[0] < C30 or C30 < c[0] < E30],
+    "shakes": [(B30, 22, 0.5), (D30, 34, 0.7), (7.95, 14, 0.3), (11.02, 18, 0.4), (C30, 30, 0.7), (E30, 20, 0.6)],
+    "splits": [(B30, 10, 0.25), (D30, 16, 0.35), (14.299, 8, 0.25), (C30, 14, 0.35), (E30, 10, 0.3)],
+    "sfx": [
+        (0.06, "z.scream", -7, 1.0, 0),
+        (0.28, "z.scream", -9, 0.92, 2),
+        (B30, "rumble", -4, 1.0, 0),
+        (4.05, "tank.roar", -3, 0.78, 0),
+        (D30, "explosion", -2, 1.0, 1),
+        (D30 + 0.35, "debris", -8, 1.0, 0),
+        (7.95, "body.punch", -6, 1.0, 1),
+        (11.02, "witch.scream", -4, 1.0, 0),
+        (C30, "flare.sparks", -4, 1.0, 0),
+        (C30, "fire.whoomp", -4, 1.0, 0),
+        (22.878, "shotgun.shot", -8, 1.0, 0),
+        (E30, "thunder", -3, 1.0, 0),
+    ],
+    "length": 30.0,
+    "music": S30_MUSIC,
+}
+CUTS = {"full": FULL, "30": SPOT30}
+CUT = FULL
+
+
+def use_cut(name):
+    global CUT
+    CUT = CUTS[name]
+    return CUT
+
+
 # --- Sources ----------------------------------------------------------------------------------
 def clip_at(t):
-    for c in CLIPS:
+    for c in CUT["clips"]:
         if c[0] <= t < c[1]:
             return c
-    return CLIPS[-1]
+    return CUT["clips"][-1]
 
 
 @lru_cache(maxsize=None)
@@ -205,8 +286,9 @@ GRAIN = None
 GRAIN_AMT = float(os.environ.get("TRAILER_GRAIN", "0"))  # film grain is pretty, and triples the file size
 
 
-def init_worker():
+def init_worker(cut="full"):
     global LUT, VIGNETTE, GRAIN
+    use_cut(cut)
     LUT = make_lut()
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
     d = ((xx - W / 2) / (W / 2)) ** 2 + ((yy - H / 2) / (H / 2)) ** 2
@@ -225,7 +307,7 @@ def envelope(t, t0, decay):
 
 def shake_offset(t):
     x = y = 0.0
-    for t0, amp, decay in SHAKES:
+    for t0, amp, decay in CUT["shakes"]:
         e = envelope(t, t0, decay)
         if e > 0.01:
             k = (t - t0) * 40
@@ -303,7 +385,7 @@ def paste_center(frame, img, cx, cy, scale, alpha):
 
 
 def draw_titles(frame, t):
-    for t0, t1, text, style, yf in TITLES:
+    for t0, t1, text, style, yf in CUT["titles"]:
         if not (t0 - 0.05 <= t <= t1 + 0.05):
             continue
         img = title_image(text, style)
@@ -319,9 +401,10 @@ def draw_titles(frame, t):
             a = min(1, u / 0.35) * min(1, left / 0.4)
             s = 1.04 - 0.04 * (1 - math.exp(-u / 0.6)) + 0.012 * u
         paste_center(frame, img, W / 2, H * yf, s, max(0, a))
-    if LOGO[0] <= t <= LOGO[1]:
-        u = t - LOGO[0]
-        a = min(1, u / 0.08) * min(1, (LOGO[1] - t) / 0.45)
+    logo = CUT["logo"]
+    if logo[0] <= t <= logo[1]:
+        u = t - logo[0]
+        a = min(1, u / 0.08) * min(1, (logo[1] - t) / 0.45)
         s = 1 + 0.1 * math.exp(-u / 0.1) + 0.012 * u  # lands with the hit, then creeps
         paste_center(frame, logo_image(), W / 2, H * 0.46, s, max(0, a))
 
@@ -356,11 +439,11 @@ def render(args):
         if GRAIN_AMT > 0:
             g = GRAIN[k % len(GRAIN)] * GRAIN_AMT
             arr += np.repeat(np.repeat(g, 2, axis=0), 2, axis=1)[..., None]
-    for t0, strength, decay, col in FLASHES:
+    for t0, strength, decay, col in CUT["flashes"]:
         e = envelope(t, t0, decay) * strength
         if e > 0.01:
             arr = arr * (1 - 0.35 * e) + np.array(col, np.float32) * e * 0.65
-    for t0, px, decay in SPLITS:
+    for t0, px, decay in CUT["splits"]:
         e = envelope(t, t0, decay)
         s = int(round(px * e))
         if s > 0:
@@ -402,16 +485,42 @@ def sound(sprites, sounds, cache, sid, variant):
     return data[i0:i0 + int(dur * SR)]
 
 
+def music_bed(music, segments, length, lead=0.010, xf=0.010):
+    """The soundtrack laid out by segments (start in the cut, from, to). At each join the next
+    segment starts `lead` early and fades in over `xf` while the last one fades out, so the join's
+    downbeat itself lands whole."""
+    n = int(round(length * SR))
+    out = np.zeros((n, 2), np.float32)
+    last = len(segments) - 1
+    for i, (o, ts, te) in enumerate(segments):
+        pre = lead if i > 0 else 0.0
+        post = (xf - lead) if i < last else 0.0  # overlap past this segment's end, into the next one's fade
+        a = int(round((ts - pre) * SR))
+        b = int(round((te + post) * SR)) if i < last else int(round((ts + length - o) * SR))
+        x = music[max(0, a):b].copy()
+        if i > 0:
+            k = int(round(xf * SR))
+            x[:k] *= np.sin(np.linspace(0, np.pi / 2, k))[:, None]
+        if i < last:
+            k = int(round(xf * SR))
+            x[-k:] *= np.cos(np.linspace(0, np.pi / 2, k))[:, None]
+        p = int(round((o - pre) * SR))
+        m = min(len(x), n - p)
+        out[p:p + m] += x[:m]
+    return out
+
+
 def mix(music_path, out_wav, t_from, t_to):
     music = decode(music_path) * 10 ** (-2.5 / 20)
+    bed = music_bed(music, CUT["music"], CUT["length"])
     n = int((t_to - t_from) * SR)
     out = np.zeros((n, 2), np.float32)
     m0 = int(t_from * SR)
-    seg = music[m0:m0 + n]
+    seg = bed[m0:m0 + n]
     out[: len(seg)] += seg
     sprites, sounds = load_bank()
     cache = {}
-    for t, sid, gdb, rate, var in SFX:
+    for t, sid, gdb, rate, var in CUT["sfx"]:
         if not (t_from - 3 <= t < t_to):
             continue
         x = sound(sprites, sounds, cache, sid, var)
@@ -434,21 +543,27 @@ def mix(music_path, out_wav, t_from, t_to):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--cut", choices=sorted(CUTS), default="full", help="full: the trailer (1:46); 30: the 30-second spot")
     ap.add_argument("--shots", default="trailer-shots", help="the frames filmed by shots.mjs")
     ap.add_argument("--music", default=os.path.join(ROOT, "tools", "trailer", "soundtrack.mp3"))
-    ap.add_argument("--out", default="trailer.mp4")
+    ap.add_argument("--out", help="default: trailer.mp4 (full) or trailer-30s.mp4")
     ap.add_argument("--from", dest="t_from", type=float, default=0)
-    ap.add_argument("--to", dest="t_to", type=float, default=LENGTH)
+    ap.add_argument("--to", dest="t_to", type=float, help="default: the end of the cut")
     ap.add_argument("--stills", help="write a JPEG every half second here instead of a video")
     ap.add_argument("--video-only", action="store_true", help="no sound: for rendering in parts")
     ap.add_argument("--audio-only", action="store_true", help="just the sound (AAC in .m4a)")
     ap.add_argument("--crf", default="20")
     ap.add_argument("--jobs", type=int, default=4)
     a = ap.parse_args()
+    use_cut(a.cut)
+    if a.t_to is None:
+        a.t_to = CUT["length"]
+    if a.out is None:
+        a.out = "trailer.mp4" if a.cut == "full" else f"trailer-{a.cut}s.mp4"
     k0, k1 = int(round(a.t_from * FPS)), int(round(a.t_to * FPS))
     if a.stills:
         os.makedirs(a.stills, exist_ok=True)
-        init_worker()
+        init_worker(a.cut)
         for k in range(k0, k1, FPS // 2):
             Image.frombytes("RGB", (W, H), render((a.shots, k))).save(os.path.join(a.stills, f"{k / FPS:07.2f}.jpg"), quality=85)
         return
@@ -468,7 +583,7 @@ def main():
         cmd += ["-f", "f32le", "-ar", str(SR), "-ac", "2", "-i", wav, *limiter, "-shortest"]
     cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", a.crf, "-pix_fmt", "yuv420p", "-movflags", "+faststart", a.out]
     enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-    with Pool(a.jobs, initializer=init_worker) as pool:
+    with Pool(a.jobs, initializer=init_worker, initargs=(a.cut,)) as pool:
         for i, buf in enumerate(pool.imap(render, [(a.shots, k) for k in range(k0, k1)], chunksize=6)):
             enc.stdin.write(buf)
             if i % 300 == 0:

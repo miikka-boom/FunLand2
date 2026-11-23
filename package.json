@@ -16,6 +16,7 @@
     "haul:balance": "node haul/tools/balance-sim.mjs",
     "battle:balance": "node battle/tools/balance-arena.mjs",
     "trailer:shots": "node tools/trailer/shots.mjs --out trailer-shots",
-    "trailer:edit": "python3 tools/trailer/edit.py --shots trailer-shots --out trailer.mp4"
+    "trailer:edit": "python3 tools/trailer/edit.py --shots trailer-shots --out trailer.mp4",
+    "trailer:spot": "python3 tools/trailer/edit.py --cut 30 --shots trailer-shots --out trailer-30s.mp4"
   }
 }
