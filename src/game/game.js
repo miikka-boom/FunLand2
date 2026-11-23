@@ -279,6 +279,7 @@ export class Game {
     const pitch = top ? Math.PI / 2 : aligned ? forLevel(S, 'cameraAlignedTilt', L) * DEG : tilt === 35 ? ISO_PITCH : tilt * DEG;
     v.setAngles(top || aligned ? 0 : ISO_YAW, pitch);
     const { w, h } = this.viewport;
+    v.anchorY = Number.isFinite(S.viewAnchor) ? S.viewAnchor : 0.5;
     this.viewSize = forLevel(S, 'viewSize', L);
     v.setViewport(w, h, (Math.min(w, h) / this.viewSize) * (1 + ISO_ZOOM * (1 - v.sp)));
     const c = this.camera;
@@ -412,11 +413,22 @@ export class Game {
       lx = ax * k;
       ly = ay * k;
     };
-    if (p.aimActive || p.aimHoldT > 0) {
-      lead(Math.cos(p.fireAngle), Math.sin(p.fireAngle), S.lookAhead * viewWorld * (p.firing ? 1 : 0.7));
-    } else {
-      const sp = Math.hypot(p.vx, p.vy);
+    const sp = Math.hypot(p.vx, p.vy);
+    if (input && input.auto) {
+      // One stick: lead where you're going, and only a little toward what the
+      // gun is on, so the view doesn't swing from target to target.
       if (sp > 1) lead(p.vx / sp, p.vy / sp, S.lookAhead * viewWorld * 0.45 * Math.min(1, sp / S.moveSpeed));
+      if (p.aimActive) {
+        const mx = lx;
+        const my = ly;
+        lead(Math.cos(p.fireAngle), Math.sin(p.fireAngle), S.lookAhead * viewWorld * 0.3);
+        lx += mx;
+        ly += my;
+      }
+    } else if (p.aimActive || p.aimHoldT > 0) {
+      lead(Math.cos(p.fireAngle), Math.sin(p.fireAngle), S.lookAhead * viewWorld * (p.firing ? 1 : 0.7));
+    } else if (sp > 1) {
+      lead(p.vx / sp, p.vy / sp, S.lookAhead * viewWorld * 0.45 * Math.min(1, sp / S.moveSpeed));
     }
     const kl = dampFactor(3.2, dt);
     c.lookX += (lx - c.lookX) * kl;

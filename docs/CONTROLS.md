@@ -1,7 +1,11 @@
-# Twin-stick touch controls (Prototype 0)
+# Touch controls (Prototype 0): twin stick, and one stick held upright
 
 This is the control scheme for the horde game (We Left Ben), with the default
-values and the reasons behind them. The world is 3D;
+values and the reasons behind them. The game comes two ways: the twin-stick
+version played sideways ([`index.html`](../index.html), most of this page),
+and the [one-thumb version held upright](#one-stick-portrait)
+([`portrait/`](../portrait/)), where one stick moves you and the gun aims
+and fires by itself. The world is 3D;
 [what the camera means for the sticks](#sticks-and-the-camera) is below.
 Every number here can be changed live in the in-game tuning panel (sliders
 button, top right). To lock in a different feel, tune it on a phone, press
@@ -124,6 +128,102 @@ The knob turns orange while firing, and the fire ring brightens.
 - In **fixed** aim mode a tap far from the base is a full deflection, so it
   fires instead of shoving. Tap near the base, or use the button or a second
   finger.
+
+## One stick (portrait)
+
+The one-thumb version, [`portrait/`](../portrait/): the same game, made for a
+phone held upright and played with one thumb. Its page says
+`data-mode="portrait"`, which gives it its own defaults and its own save
+(`funland2.p0.portrait.v1`), so tuning one version never moves the other.
+**Controls** in the tuning panel switches either page between one stick and
+twin stick.
+
+```
+ ┌──────────────────────────────┐
+ │ [HP 100 ▬▬▬] [SMG 37/50 ⇄][≡]│
+ │        0:42 · 31 kills       │
+ │                              │
+ │                              │
+ │              ☺ ┄┄┄┄> ☠       │  the gun swings to its target
+ │                              │  and fires by itself
+ │                              │
+ │                         (⟳)  │
+ │      ◯   the stick starts    │
+ │    thumb  wherever you touch │
+ │                       (SHOVE)│
+ └──────────────────────────────┘
+```
+
+- **Your thumb only moves you.** Touch anywhere that isn't a button: the
+  stick appears under your thumb (dynamic, like the twin-stick move stick:
+  past the rim it follows) and you run the way it points on the screen.
+- **A quick tap anywhere shoves** (the same tap rule as the aim side:
+  ≤ 220 ms, ≤ 14 px of travel). So does a second finger tapping while the
+  first one runs, the big **SHOVE** button in the bottom right corner (where
+  a right thumb rests; it can be hidden), Space, or a right-click. While a
+  touch could still be a tap it already moves you: that is a few pixels
+  inside the dead zone, so there is no wait before running. Mashing to break
+  a Hunter's pin is the same taps.
+- **⟳** above SHOVE reloads; the gun panel at the top swaps (two-handed
+  moves, rarely needed: see auto-reload below).
+- **On a narrow screen the top bar takes two rows:** health and the gun on
+  the first, the clock and kills under it, then the Tank's bar and the
+  holdout / ferry bars. Off-screen arrows stay below all that.
+
+### The gun that aims itself
+
+All of it is in [`src/game/auto-aim.js`](../src/game/auto-aim.js).
+
+- **What it shoots:** whatever is coming for you. Commons that have noticed
+  you, Hunters, the Tank and its rocks, a Night Terror while it's lit, a
+  Witch once she's up. **A wanderer that hasn't noticed you is left alone**
+  unless it's within 170 u: gunfire would only bring the rest, so you can
+  still sneak past. A Witch left crying is never a target, and neither is an
+  unlit Night Terror (you can't see it either).
+- **Only what you can see:** a clear line of fire, on screen or within 40 u
+  of its edge, and within 85% of the gun's range (SMG 476 u, rifle 646 u,
+  pump 289 u, hunting rifle 935 u).
+- **In what order:** threats first, the way the AI teammate picks: a rock in
+  the air, a Hunter riding the teammate, crouching or leaping, a Witch coming
+  for you, a Night Terror breathing in or lunging, anything within 110 u of
+  you; then the nearest. It keeps its target unless another is clearly
+  better (no flicker in a crowd), and looks again every 0.08 s.
+- **It swings, then fires:** the gun turns at 720°/s (a half turn in a
+  quarter of a second) and pulls the trigger once it is inside the target's
+  width plus 2°. The laser and the ring on the target show what it's on.
+  You face the gun while it has a target and for 0.45 s after; otherwise you
+  face where you run.
+- **Trigger discipline:** a shot whose line would carry on into an alarm car
+  or fire alarm, a gas pump or cylinder, or boards (a miss, or a rifle round
+  through its target) is held, and the next target is tried. Within 90 u of
+  you it shoots anyway: being eaten is worse than an alarm. Boards come down
+  to shoves on this page.
+- **Auto-reload:** after 1.2 s with nothing in reach, a magazine below 60%
+  is topped up. The pump loads shell by shell and a shot still interrupts it.
+- **Your light and the Witch:** at night your flashlight points where you
+  face. With nothing to aim at, it is kept 38° off a Witch left alone within
+  340 u (the beam is 32° either side), so walking past her doesn't shine it
+  in her face. Gunfire near her still costs patience: lead the fight away.
+- **Mouse and pad:** hold the mouse button to aim and fire by hand (the
+  cursor aims, as on the other page); push a pad's right stick to do the
+  same. Let go and the gun aims itself again.
+- **The camera** leads where you run, and only a little (30% of the
+  twin-stick lead) toward what the gun is on, so the view doesn't swing from
+  target to target. You stand at 45% of the screen's height, not the middle:
+  your thumb covers the bottom.
+
+| Setting | Default | Why |
+|---|---|---|
+| Controls | **One stick** (portrait page), Twin stick (landscape page) | |
+| One stick: fire | **Always** | *Only when you stand still* is the other classic: stop to shoot, run to dodge. Here the horde is as fast as you, so running and gunning is the baseline. |
+| Reach | 85% of the gun's range | Long shots miss more (spread) and draw the horde from further off. |
+| Shoot unaware wanderers within | 170 u | The teammate's rule. 0: never wake anything up; 600: shoot everything you can see. |
+| Gun swing speed | 720°/s | Fast enough to turn round in a quarter of a second, slow enough to see it swing. |
+| Hold fire on alarms, pumps, boards | on | You can't aim away from a car alarm when the gun aims itself. |
+| Reload when nothing is near | on | One thumb can't reach ⟳ in a fight. |
+| Keep the light off the Witch | on | Without it, walking toward her (the way you face) would wake her. |
+| View size (every map type) | **560 u** across the width | The world across the short side of the screen, which is now the width: 470 u (the landscape value) would show only 235 u either side of you. |
+| Where you stand | **45%** from the top (landscape page: 50%) | |
 
 ## Special infected: stress tests for the controls
 
@@ -613,7 +713,10 @@ What a map gets:
 7. Safe-area insets (notches, home indicator) are read from CSS `env()` and
    respected by the HUD and the fixed stick positions.
 
-`tests/touch-controls.test.js` pins these rules down: `npm test`.
+`tests/touch-controls.test.js` pins these rules down, and
+`tests/one-stick.test.js` the one-stick ones (the portrait layout on six
+phone sizes, tap to shove, and every rule of the gun that aims itself):
+`npm test`.
 
 ## Fallbacks
 
@@ -645,6 +748,11 @@ What a map gets:
   45%.
 - Dynamic vs floating vs fixed: which one do you stop noticing?
 - Is the look-ahead comfortable, or does the camera swing too much?
+- **One stick, held upright:** do you miss aiming, or stop noticing it? Does
+  the gun ever shoot something you'd have left alone, or hold fire when you
+  needed it (watch for alarm cars)? Is a tap-shove there every time you want
+  it, with the thumb you run with? Is the 560 u view wide enough to see what
+  comes from the sides? Compare *Always* with *Only when you stand still*.
 - Can you deadstop a Hunter with a tap when you mean to? Does the 0.18 s
   window feel fair, too generous or too tight?
 - Does mashing to break a pin feel fair at 5 taps, or panicky?

@@ -7,6 +7,7 @@ import { damageZombie, alertZombie } from './zombies.js';
 import { HUNTER, deadstop, struggle, damageRock } from './specials.js';
 import { hotDef, shootBoards, shoveBoards } from './loot.js';
 import { damageExplosive } from './world-events.js';
+import { AUTO, updateAutoAim, avertFromWitch } from './auto-aim.js';
 
 export const SHOVE_REACH = 52;
 /** How high the survivors carry their guns (the laser and tracers run at this height). */
@@ -47,6 +48,9 @@ export class Player {
     this.firing = false;
     this.walk = 0;
     this.assist = null; // current aim-assist target
+    this.autoTarget = null; // one stick: what the gun is on (auto-aim.js)
+    this.autoPickT = 0;
+    this.autoIdleT = 0;
     this.pinnedBy = null; // Hunter riding you
     this.struggle = 0;
     this.lastStruggle = -10;
@@ -126,8 +130,21 @@ export function updatePlayer(game, dt, input) {
 
   // --- Aim ---------------------------------------------------------------------------
   let aimActive = input.aimActive;
+  let autoFire = false;
   let targetAngle = p.aimAngle;
-  if (input.aimScreen) {
+  if (input.auto) {
+    // One stick: the gun finds its own target (auto-aim.js).
+    autoFire = updateAutoAim(game, p, dt, input);
+    aimActive = !!p.autoTarget;
+    if (aimActive) p.aimHoldT = AUTO.holdFacing;
+    else {
+      if (p.aimActive) p.aimAngle = p.fireAngle;
+      p.aimHoldT -= dt;
+    }
+    p.aimActive = aimActive;
+    p.aimRaw = aimActive ? 1 : 0;
+    p.assist = p.autoTarget;
+  } else if (input.aimScreen) {
     // Mouse: aim at the spot under the cursor, at gun height (the laser runs through the cursor).
     const w = game.view.unproject(input.aimScreen.x, input.aimScreen.y, GUN_Z, aimTmp);
     const ax = w.x - p.x;
@@ -140,21 +157,24 @@ export function updatePlayer(game, dt, input) {
     targetAngle = Math.atan2(w.y, w.x);
   }
 
-  if (aimActive) {
-    if (!p.aimActive) p.aimAngle = targetAngle; // new contact (even inside the hold window): snap, no lag
-    else if (input.source === 'touch') p.aimAngle = smoothAngle(p.aimAngle, targetAngle, dt, aimTau(S.aimSmoothing, input.aimRaw));
-    else p.aimAngle = targetAngle;
-    p.aimHoldT = S.aimHold;
-  } else {
-    if (p.aimActive) p.aimAngle = p.fireAngle; // release: hold the assisted angle, no jump
-    p.aimHoldT -= dt;
-  }
-  p.aimActive = aimActive;
-  p.aimRaw = input.aimRaw;
+  if (!input.auto) {
+    p.autoTarget = null;
+    if (aimActive) {
+      if (!p.aimActive) p.aimAngle = targetAngle; // new contact (even inside the hold window): snap, no lag
+      else if (input.source === 'touch') p.aimAngle = smoothAngle(p.aimAngle, targetAngle, dt, aimTau(S.aimSmoothing, input.aimRaw));
+      else p.aimAngle = targetAngle;
+      p.aimHoldT = S.aimHold;
+    } else {
+      if (p.aimActive) p.aimAngle = p.fireAngle; // release: hold the assisted angle, no jump
+      p.aimHoldT -= dt;
+    }
+    p.aimActive = aimActive;
+    p.aimRaw = input.aimRaw;
 
-  p.fireAngle = p.aimAngle;
-  p.assist = null;
-  if (aimActive && input.assist && S.aimAssist > 0) applyAimAssist(game, p);
+    p.fireAngle = p.aimAngle;
+    p.assist = null;
+    if (aimActive && input.assist && S.aimAssist > 0) applyAimAssist(game, p);
+  }
 
   // Facing: aim while aiming (and briefly after), otherwise turn toward travel.
   if (aimActive || p.aimHoldT > 0) {
@@ -165,6 +185,7 @@ export function updatePlayer(game, dt, input) {
     p.aimAngle = p.facing;
     p.fireAngle = p.facing;
   }
+  if (input.auto && !aimActive && S.avertWitch) avertFromWitch(game, p);
 
   // --- Weapon -----------------------------------------------------------------------
   const w = p.weapon;
@@ -187,7 +208,11 @@ export function updatePlayer(game, dt, input) {
     }
   }
 
-  p.firing = input.fire && (aimActive || input.source === 'gamepad');
+  p.firing = input.auto ? autoFire : input.fire && (aimActive || input.source === 'gamepad');
+  // One stick: with nothing in reach for a moment, top the magazine up.
+  if (input.auto && S.autoReload && !p.autoTarget && p.autoIdleT > AUTO.reloadIdle && !w.reloading && p.swapT <= 0 && w.mag < w.cap * AUTO.reloadBelow) {
+    startReload(game, p);
+  }
   if (p.firing) {
     p.cooldown -= dt;
     let guard = 0;

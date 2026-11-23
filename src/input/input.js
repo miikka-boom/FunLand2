@@ -27,6 +27,10 @@ export class Input {
       aimScreen: null, // mouse only: screen point to aim at (resolved by the game)
       fire: false,
       assist: true,
+      // One stick (settings.controls 'one'): the gun picks its own target and
+      // fires (game/auto-aim.js). A mouse held down or a gamepad's right stick
+      // still aims by hand while it's in use.
+      auto: false,
       events: [],
     };
   }
@@ -81,6 +85,20 @@ export class Input {
       f.aimRaw = 1;
       f.fire = this.desktop.mouse.down;
       f.assist = false;
+    }
+
+    f.auto = false;
+    if (S.controls === 'one') {
+      // The touch aim stick doesn't exist here; the mouse and a pad's right
+      // stick only take over while they're actually aiming.
+      const manual = this.source === 'mouse' ? this.desktop.mouse.down : this.source === 'gamepad' ? f.aimActive : false;
+      if (!manual) {
+        f.auto = true;
+        f.aimActive = false;
+        f.aimScreen = null;
+        f.aimRaw = 0;
+        f.fire = false;
+      }
     }
     return f;
   }

@@ -48,7 +48,7 @@ export function drawHud(ctx, game, input, ui, renderer) {
 
   if (input.source === 'touch' || ui.forceSticks) {
     drawStick(ctx, input.touch.move, 'move', S, L, input.touch, ui);
-    drawStick(ctx, input.touch.aim, 'aim', S, L, input.touch, ui);
+    if (!L.one) drawStick(ctx, input.touch.aim, 'aim', S, L, input.touch, ui);
   }
   if (S.showTouches) drawTouchDebug(ctx, input.touch, L);
 
@@ -97,8 +97,14 @@ function drawStick(ctx, st, kind, S, L, touch, ui) {
       ctx.font = `600 12px ${FONT}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText(isAim ? 'AIM  ·  past ring = FIRE' : 'MOVE', g.x, g.y + R + 8);
-      if (isAim && S.tapShove) ctx.fillText('tap = SHOVE', g.x, g.y + R + 24);
+      if (L.one) {
+        // One stick: the thumb only moves; say what the gun and a tap do.
+        ctx.fillText('MOVE  ·  touch anywhere', g.x, g.y + R + 8);
+        ctx.fillText(S.tapShove ? 'tap = SHOVE  ·  the gun fires itself' : 'the gun fires itself', g.x, g.y + R + 24);
+      } else {
+        ctx.fillText(isAim ? 'AIM  ·  past ring = FIRE' : 'MOVE', g.x, g.y + R + 8);
+        if (isAim && S.tapShove) ctx.fillText('tap = SHOVE', g.x, g.y + R + 24);
+      }
     }
     return;
   }
@@ -204,7 +210,7 @@ function drawButtons(ctx, game, L, touch) {
       ctx.stroke();
     }
     ctx.fillStyle = p.shoveCd > 0 ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.9)';
-    ctx.font = `700 11px ${FONT}`;
+    ctx.font = `700 ${s.r >= 32 ? 13 : 11}px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('SHOVE', s.x, s.y + 1);
@@ -436,8 +442,7 @@ function drawStats(ctx, game, L) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  const midX = (L.hp.x + L.hp.w + L.byId.swap.x) / 2;
-  ctx.fillText(`${mm}:${ss}   ·   ${game.stats.kills} kills${game.dailyKey ? '   ·   daily' : ''}`, midX, L.safe.t + 14);
+  ctx.fillText(`${mm}:${ss}   ·   ${game.stats.kills} kills${game.dailyKey ? '   ·   daily' : ''}`, L.stats.x, L.stats.y);
 }
 
 // --- Edge indicators ---------------------------------------------------------------------
@@ -447,7 +452,7 @@ function edgePoint(L, sx, sy, ang, inset) {
   const sa = Math.sin(ang);
   const x0 = L.safe.l + inset;
   const x1 = L.w - L.safe.r - inset;
-  const y0 = L.safe.t + inset + 50;
+  const y0 = L.safe.t + inset + L.topInset;
   const y1 = L.h - L.safe.b - inset;
   let t = Infinity;
   if (ca > 1e-6) t = Math.min(t, (x1 - sx) / ca);
@@ -545,7 +550,7 @@ function drawObjective(ctx, game, L) {
   const gs = game.worldToScreen(gx, gy);
   const p = game.player;
   const ps = game.worldToScreen(p.x, p.y);
-  if (gs.x > 30 && gs.x < L.w - 30 && gs.y > 60 && gs.y < L.h - 30) return;
+  if (gs.x > 30 && gs.x < L.w - 30 && gs.y > L.safe.t + L.topInset + 10 && gs.y < L.h - 30) return;
   const ang = Math.atan2(gs.y - ps.y, gs.x - ps.x);
   const e = edgePoint(L, ps.x, ps.y, ang, 40);
   const pulse = 0.65 + Math.sin(game.time * 3) * 0.2;
@@ -711,9 +716,9 @@ function drawBossBar(ctx, game, L) {
   const d = game.director;
   if (!d.tankAlive) return;
   const t = d.tank;
-  const w = Math.min(280, L.w * 0.34);
+  const w = L.bar.w;
   const x = L.w / 2 - w / 2;
-  const y = L.safe.t + 34;
+  const y = L.bar.y;
   ctx.fillStyle = 'rgba(8,10,14,0.6)';
   ctx.fillRect(x - 4, y - 4, w + 8, 18);
   ctx.fillStyle = 'rgba(255,255,255,0.12)';
@@ -731,9 +736,9 @@ function drawBossBar(ctx, game, L) {
 function drawHoldoutBar(ctx, game, L) {
   const H = game.events && game.events.holdout;
   if (!H || H.state !== 'running' || game.won || game.lost) return;
-  const w = Math.min(280, L.w * 0.34);
+  const w = L.bar.w;
   const x = L.w / 2 - w / 2;
-  const y = L.safe.t + 34 + (game.director.tankAlive ? 24 : 0);
+  const y = L.bar.y + (game.director.tankAlive ? 24 : 0);
   ctx.fillStyle = 'rgba(8,10,14,0.6)';
   ctx.fillRect(x - 4, y - 4, w + 8, 18);
   ctx.fillStyle = 'rgba(255,255,255,0.12)';
@@ -751,9 +756,9 @@ function drawHoldoutBar(ctx, game, L) {
 function drawFerryBar(ctx, game, L) {
   const F = game.events && game.events.finale;
   if (!F || F.state === 'idle' || game.won || game.lost) return;
-  const w = Math.min(280, L.w * 0.34);
+  const w = L.bar.w;
   const x = L.w / 2 - w / 2;
-  const y = L.safe.t + 34 + (game.director.tankAlive ? 24 : 0);
+  const y = L.bar.y + (game.director.tankAlive ? 24 : 0);
   const docked = F.state === 'docked';
   ctx.fillStyle = 'rgba(8,10,14,0.6)';
   ctx.fillRect(x - 4, y - 4, w + 8, 18);
@@ -807,14 +812,16 @@ function drawPinned(ctx, game, L) {
 }
 
 function drawTouchDebug(ctx, touch, L) {
-  ctx.setLineDash([6, 8]);
-  ctx.strokeStyle = 'rgba(120,200,255,0.35)';
   ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(L.splitX, 0);
-  ctx.lineTo(L.splitX, L.h);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  if (!L.one) {
+    ctx.setLineDash([6, 8]);
+    ctx.strokeStyle = 'rgba(120,200,255,0.35)';
+    ctx.beginPath();
+    ctx.moveTo(L.splitX, 0);
+    ctx.lineTo(L.splitX, L.h);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
   ctx.strokeStyle = 'rgba(120,200,255,0.4)';
   for (const b of L.buttons) {
     if (b.hidden) continue;
@@ -853,7 +860,7 @@ function drawDebug(ctx, game, input, ui, L) {
   const lines = [
     `${ui.fps.toFixed(0)} fps  ${ui.frameMs.toFixed(1)}ms  ·  zombies ${game.zombies.length}/${game.director.cap} (${chasing} hunting)  ·  particles ${game.effects.particles.length}`,
     `director ${d.phase}  intensity ${d.intensity.toFixed(2)}  next mob ${Math.max(0, d.mobT).toFixed(0)}s  near ${d.threatNear}  ·  hunter in ${Math.max(0, d.specialT).toFixed(0)}s  tank at ${Math.round(d.tankAt * 100)}% (route ${Math.round(game.progress * 100)}%)`,
-    `input ${f.source}  move ${f.move.x.toFixed(2)},${f.move.y.toFixed(2)} (raw ${t.move.out.raw.toFixed(2)})  aim raw ${f.aimRaw.toFixed(2)}  fire ${f.fire ? 'Y' : '-'}  assist ${game.player.assist ? 'lock' : '-'}`,
+    `input ${f.source}  move ${f.move.x.toFixed(2)},${f.move.y.toFixed(2)} (raw ${t.move.out.raw.toFixed(2)})  aim raw ${f.aimRaw.toFixed(2)}  fire ${f.fire ? 'Y' : '-'}  ${f.auto ? `auto ${game.player.autoTarget ? game.player.autoTarget.type : '-'}${game.player.firing ? ' FIRE' : ''}` : `assist ${game.player.assist ? 'lock' : '-'}`}`,
   ];
   ctx.font = `600 11px ui-monospace, Menlo, monospace`;
   ctx.textAlign = 'left';

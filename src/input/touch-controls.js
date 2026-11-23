@@ -1,6 +1,6 @@
-// Twin virtual sticks for touch screens.
+// Virtual sticks for touch screens: twin sticks, or one (settings.controls).
 //
-//  - Left part of the screen owns the MOVE stick, right part the AIM stick.
+//  - Twin: left part of the screen owns the MOVE stick, right part the AIM stick.
 //    Ownership is decided where a finger lands; after that the finger can roam
 //    anywhere (crossing the middle never drops the stick).
 //  - Modes per stick: dynamic (base spawns under the thumb and is dragged
@@ -8,6 +8,9 @@
 //    fixed (base is pinned; deflection is measured from it).
 //  - AIM stick: inner ring = aim only (laser), past the fire ring = fire.
 //    A quick tap on the aim side (no fire) = SHOVE.
+//  - One: every touch that misses a button drives the MOVE stick (the gun
+//    aims itself). A quick tap anywhere = SHOVE, and so does a second finger
+//    tapping while the first one moves you.
 //  - Buttons react on touch-down (no waiting for release).
 //  - Every touch event re-validates live touches, so a lost touchend can never
 //    leave a stick stuck "held".
@@ -123,11 +126,13 @@ export class TouchControls {
         return;
       }
     }
-    const isLeft = x < L.splitX;
+    const one = this.settings.controls === 'one';
+    const isLeft = one || x < L.splitX;
     const stick = isLeft ? this.move : this.aim;
     if (stick.active) {
-      // Second finger on the aim side while already aiming: allow a tap-shove.
-      if (!isLeft) this.extraTaps.set(id, { x, y, t0: now, travel: 0 });
+      // A second finger on the aim side while already aiming (one stick:
+      // anywhere, while moving): allow a tap-shove.
+      if (!isLeft || one) this.extraTaps.set(id, { x, y, t0: now, travel: 0 });
       return;
     }
     const mode = isLeft ? this.settings.moveMode : this.settings.aimMode;
@@ -181,7 +186,14 @@ export class TouchControls {
       return;
     }
     if (this.move.touchId === id) {
-      this.move.release();
+      const s = this.move;
+      // One stick: a quick tap anywhere is the shove. (The stick still moved
+      // you while it could have been a tap: that's a few px inside the dead
+      // zone, never a lag before running.)
+      if (!cancelled && S.controls === 'one' && S.tapShove && isTap(now - s.t0, s.travel, false, S.tapMaxMs, S.tapMaxPx)) {
+        this._tap(x, y, now);
+      }
+      s.release();
       return;
     }
     const tap = this.extraTaps.get(id);

@@ -22,6 +22,7 @@ export class IsoView {
     this.w = 1; // viewport, CSS px
     this.h = 1;
     this.scale = 1; // CSS px per world unit (along the screen's x axis)
+    this.anchorY = 0.5; // where the looked-at point sits on screen, from the top
     this.ox = 0;
     this.oy = 0;
     this.yaw = NaN;
@@ -67,10 +68,10 @@ export class IsoView {
     this.bz = -s * this.cp; // screen y per world z
   }
 
-  /** Put the ground point (x, y) at the middle of the screen (shake is in world-sized screen units). */
+  /** Put the ground point (x, y) at the middle of the screen, or anchorY of the way down (shake is in world-sized screen units). */
   lookAt(x, y, shakeX = 0, shakeY = 0, lift = 0) {
     this.ox = this.w / 2 - (this.ax * x + this.ay * y) - shakeX * this.scale;
-    this.oy = this.h / 2 - (this.bx * x + this.by * y + this.bz * lift) - shakeY * this.scale;
+    this.oy = this.h * this.anchorY - (this.bx * x + this.by * y + this.bz * lift) - shakeY * this.scale;
   }
 
   px(x, y) {

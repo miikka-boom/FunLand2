@@ -1,7 +1,15 @@
 // Live tuning values. Everything the feel depends on lives here so it can be
 // tweaked on-device from the tuning panel (gear button) and copied out as JSON.
 
-const STORAGE_KEY = 'funland2.p0.tuning.v1';
+/**
+ * Which page is running: the landscape twin-stick game (index.html) or the
+ * portrait one-thumb version (portrait/, whose <html> says data-mode="portrait").
+ * Each page has its own defaults and its own save, so tuning one never moves
+ * the other.
+ */
+export const MODE = globalThis.document?.documentElement?.dataset?.mode === 'portrait' ? 'portrait' : 'landscape';
+const STORAGE_KEYS = { landscape: 'funland2.p0.tuning.v1', portrait: 'funland2.p0.portrait.v1' };
+const STORAGE_KEY = STORAGE_KEYS[MODE];
 
 /**
  * The map types, in the order the title card and the panel list them:
@@ -45,7 +53,7 @@ function cameraDefaults() {
   return out;
 }
 
-export const DEFAULTS = Object.freeze({
+const BASE_DEFAULTS = {
   level: 'city', // one of LEVELS
   ferryTime: 60, // Pier 9: seconds from the flare until the ferry docks
 
@@ -59,6 +67,18 @@ export const DEFAULTS = Object.freeze({
   landmarks: false, // crashed helicopter, army checkpoint, a gas station that blows up
   lore: true, // graffiti, posters, rooftop messages, survivor dens and notes (visual only)
   ben: true, // signs of Ben, the one the squad left behind (visual + a few sounds)
+
+  // --- Controls -----------------------------------------------------------
+  controls: 'twin', // 'twin': move + aim sticks | 'one': one stick moves you, the gun aims and fires by itself
+
+  // --- One stick: the gun aims and fires by itself (controls: 'one') -----
+  autoFire: 'always', // 'always' (run and gun) | 'still' (only while you stand still: stop to shoot)
+  autoReach: 0.85, // how far it reaches for a target, as a fraction of the gun's range
+  autoIdle: 170, // u: a wanderer that hasn't noticed you is left alone further off than this (gunfire draws the rest)
+  autoTurn: 720, // deg/s the gun swings from one target to the next
+  autoSafety: true, // holds a shot whose line would end on an alarm, a gas pump or boards (not with something on you)
+  autoReload: true, // tops the magazine up when nothing is in reach
+  avertWitch: true, // keeps your flashlight off a Witch left alone (only while the gun has nothing to aim at)
 
   // --- Sticks -------------------------------------------------------------
   moveMode: 'dynamic', // 'dynamic' (base follows thumb) | 'floating' | 'fixed'
@@ -86,6 +106,7 @@ export const DEFAULTS = Object.freeze({
 
   // --- Camera (view, angles and zoom are per map type: see cameraDefaults below) ---
   lookAhead: 0.2, // fraction of view size the camera leads toward the aim
+  viewAnchor: 0.5, // where you stand on screen, from the top (0.5 = the middle)
   cameraStiffness: 8,
   screenShake: 1.0,
 
@@ -137,14 +158,31 @@ export const DEFAULTS = Object.freeze({
 
   // --- Camera: view, angles and zoom, one set per map type ------------------
   ...cameraDefaults(),
-});
+};
+
+/**
+ * The portrait page: one stick, and a wider view, because the screen is
+ * narrow across (viewSize is the world across the short side, here the
+ * width). You stand a little above the middle: your thumb covers the bottom
+ * of the screen.
+ */
+export const PORTRAIT_VIEW_SIZE = 560;
+function portraitOverrides() {
+  const out = { controls: 'one', viewAnchor: 0.45 };
+  for (const id of LEVEL_IDS) out[levelKey('viewSize', id)] = PORTRAIT_VIEW_SIZE;
+  return out;
+}
+
+/** The defaults of either page. */
+export const defaultsFor = (mode) => Object.freeze({ ...BASE_DEFAULTS, ...(mode === 'portrait' ? portraitOverrides() : {}) });
+export const DEFAULTS = defaultsFor(MODE);
 
 const pct = (v) => `${Math.round(v * 100)}%`;
 const secs = (v) => `${v.toFixed(2)}s`;
 const deg = (v) => `${Math.round(v)}°`;
 const mult = (v) => `×${v.toFixed(2)}`;
 const multBig = (v) => (v >= 10 ? `×${v.toFixed(0)}` : v >= 2 ? `×${v.toFixed(1)}` : `×${v.toFixed(2)}`);
-const MODE_OPTIONS = [
+const STICK_MODES = [
   ['dynamic', 'Dynamic – follows thumb'],
   ['floating', 'Floating – spawns at touch'],
   ['fixed', 'Fixed position'],
@@ -180,12 +218,42 @@ export const SCHEMA = [
     ],
   },
   {
+    group: 'Controls',
+    note: 'One stick: the stick moves you, the gun picks a target and fires by itself, a quick tap anywhere shoves. Twin stick: the left stick moves, the right one aims and fires.',
+    items: [
+      {
+        key: 'controls',
+        label: 'Controls',
+        type: 'select',
+        options: [
+          ['one', 'One stick – the gun aims itself'],
+          ['twin', 'Twin stick – move + aim'],
+        ],
+      },
+      {
+        key: 'autoFire',
+        label: 'One stick: fire',
+        type: 'select',
+        options: [
+          ['always', 'Always – run and gun'],
+          ['still', 'Only when you stand still'],
+        ],
+      },
+      { key: 'autoReach', label: 'One stick: reach (of the gun\'s range)', type: 'range', min: 0.4, max: 1, step: 0.05, fmt: pct },
+      { key: 'autoIdle', label: 'One stick: shoot unaware wanderers within', type: 'range', min: 0, max: 600, step: 10, fmt: (v) => `${v}u` },
+      { key: 'autoTurn', label: 'One stick: gun swing speed', type: 'range', min: 180, max: 1800, step: 30, fmt: (v) => `${v}°/s` },
+      { key: 'autoSafety', label: 'One stick: hold fire on alarms, pumps, boards', type: 'toggle' },
+      { key: 'autoReload', label: 'One stick: reload when nothing is near', type: 'toggle' },
+      { key: 'avertWitch', label: 'One stick: keep the light off the Witch', type: 'toggle' },
+    ],
+  },
+  {
     group: 'Sticks',
     items: [
-      { key: 'moveMode', label: 'Move stick', type: 'select', options: MODE_OPTIONS },
-      { key: 'aimMode', label: 'Aim stick', type: 'select', options: MODE_OPTIONS },
+      { key: 'moveMode', label: 'Move stick', type: 'select', options: STICK_MODES },
+      { key: 'aimMode', label: 'Aim stick (twin stick)', type: 'select', options: STICK_MODES },
       { key: 'stickRadius', label: 'Stick radius', type: 'range', min: 36, max: 110, step: 1, fmt: (v) => `${v}px` },
-      { key: 'zoneSplit', label: 'Move / aim split', type: 'range', min: 0.3, max: 0.7, step: 0.01, fmt: pct },
+      { key: 'zoneSplit', label: 'Move / aim split (twin stick)', type: 'range', min: 0.3, max: 0.7, step: 0.01, fmt: pct },
       { key: 'moveDeadzone', label: 'Move dead zone', type: 'range', min: 0, max: 0.4, step: 0.01, fmt: pct },
       { key: 'moveSaturation', label: 'Full speed at', type: 'range', min: 0.4, max: 1, step: 0.01, fmt: pct },
       { key: 'moveCurve', label: 'Move response curve', type: 'range', min: 0.5, max: 3, step: 0.05, fmt: (v) => `^${v.toFixed(2)}` },
@@ -239,6 +307,7 @@ export const SCHEMA = [
     group: 'Camera feel (every map)',
     items: [
       { key: 'lookAhead', label: 'Look-ahead', type: 'range', min: 0, max: 0.4, step: 0.01, fmt: pct },
+      { key: 'viewAnchor', label: 'Where you stand (from the top)', type: 'range', min: 0.3, max: 0.7, step: 0.01, fmt: pct },
       { key: 'cameraStiffness', label: 'Camera stiffness', type: 'range', min: 2, max: 25, step: 0.5, fmt: (v) => v.toFixed(1) },
       { key: 'screenShake', label: 'Screen shake', type: 'range', min: 0, max: 2, step: 0.05, fmt: mult },
     ],
@@ -360,6 +429,7 @@ export const PRESETS = [
 
 function pickControlDefaults() {
   const keys = [
+    'controls', 'autoFire', 'autoReach', 'autoIdle', 'autoTurn',
     'moveMode', 'aimMode', 'stickRadius', 'zoneSplit', 'moveDeadzone', 'moveSaturation', 'moveCurve',
     'aimDeadzone', 'fireThreshold', 'aimSmoothing', 'aimHold', 'aimAssist', 'aimAssistCone',
   ];

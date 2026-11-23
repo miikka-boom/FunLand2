@@ -6,6 +6,7 @@ build step and no dependencies.
 | Prototype | Folder | What it's testing |
 |---|---|---|
 | 0: HORDE | [`/`](index.html) | Twin-stick touch controls for zombie horde survival, in 3D |
+| 0, one thumb | [`portrait/`](portrait/) | The same game held upright: one stick moves you, the gun aims and fires by itself, a tap shoves |
 | 1: WOBBLE WAR | [`battle/`](battle/) | A real-time card battler with funny, satisfying 2D physics units and a fair free-to-play meta game |
 | Long Haul | [`haul/`](haul) | A simple metagame that crosses The Walking Dead: No Man's Land with Clash Royale: three go out, everyone still standing carries a crate home (stars = picks from nine crates), survivors are cards, radios call new people on a timer, and the road leads to Pier 9 |
 | Thrill Hill | [`thrill/`](thrill) | A Clash-Royale-inspired metagame: two static chests, a theme-park base, randomly generated survivors, a squad of three, three-crown raids |
@@ -281,6 +282,17 @@ Center City after dark, an office floor on Market Street, the docks.
 
 Play it on a phone in landscape. It runs as a static site with no build step
 and no dependencies.
+
+**One thumb, held upright:** [`portrait/`](portrait/) is the same game (the
+same maps, horde, specials and code) made for a phone held in portrait and
+played with one thumb. The stick appears wherever you touch and moves you;
+the gun picks its own target and fires (what's coming for you, threats
+first; never a Witch left crying, and never a shot whose line runs on into an
+alarm car); a quick tap anywhere, or the big SHOVE button in the bottom right
+corner, shoves. It has its own defaults (a wider view, you a little above the
+middle of the screen) and its own save, and the tuning panel can switch
+either page between one stick and twin stick. The rules and the numbers are
+in [`docs/CONTROLS.md`](docs/CONTROLS.md#one-stick-portrait).
 
 ## What's in it
 
@@ -806,7 +818,7 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
 
 - **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` (HORDE) once
   this is on the default branch (the Pages workflow only deploys from there).
-  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/haul/`
+  The one-thumb portrait version is at `/portrait/`. WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/haul/`
   (Long Haul), `/thrill/` (Thrill Hill), `/outpost/` (Last Stop), `/hope/`
   (Hope Street), `/evac/` (Road to Evac), `/safehouse/` (the Safehouse) and
   `/camp/` (the v1 camp).
@@ -819,19 +831,22 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
   goes full screen when you tap Start.
 - **Desktop:** WASD to move (screen directions, like the sticks), the mouse
   to aim, click to fire, Space to shove, R to reload, Q to swap, Esc for
-  tuning. A gamepad works too.
+  tuning. A gamepad works too. On the portrait page the gun fires by itself;
+  hold the mouse button (or push a pad's right stick) to aim by hand.
 
 ## Code map
 
 ```
 index.html, style.css      page shell, title card, tuning panel styles
+portrait/                  the one-thumb page: the same src/, held upright (data-mode="portrait": its own defaults and save)
 src/main.js                boot, resize/safe areas, pause, frame loop
 src/settings.js            every tunable value + panel schema + presets
 src/settings-panel.js      tuning panel UI
-src/layout.js              HUD/button/stick positions (shared by drawing + hit tests)
+src/layout.js              HUD/button/stick positions (shared by drawing + hit tests): twin stick, one stick, narrow screens
 src/iso.js                 the camera: orthographic projection (yaw + tilt), project / unproject, stick and mouse mapping, and the painter's order for boxes (pure, unit tested)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
 src/world/                 seeded generators for the six map types (city, building, docks; graveyard, suburbia and junkyard, which share gen-kit.js), Ben's traces (ben-content: every line; ben-gen: placement), world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), where the Witch sits (witch-gen.js), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
+src/game/auto-aim.js       one stick: the gun picks its own target and fires (what it shoots, what it leaves alone, when it holds fire)
 src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), the Witch (witch.js), Ben at run time (ben.js: his bed, the glimpse, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects (particles in 3D), game state + the view
 src/render/renderer.js     the passes: ground -> night overlay -> everything that stands (far to near) -> overhead -> bright -> HUD
 src/render/lighting.js     one list of lights: the ground overlay (night + line of sight) and the sampler that shades what stands on it
@@ -853,7 +868,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the one-thumb version (portrait layout, tap to shove, the auto-aim's rules), the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

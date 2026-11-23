@@ -4,7 +4,7 @@
 // Pure helpers (report building, text, daily seed, storage) are exported for
 // tests; ReportCard is the DOM card shown over the end screen.
 
-import { diffFromDefaults, LEVEL_NAMES } from './settings.js';
+import { diffFromDefaults, LEVEL_NAMES, MODE } from './settings.js';
 import { witchOutcome } from './game/witch.js';
 
 const HISTORY_KEY = 'funland2.p0.reports.v1';
@@ -102,6 +102,8 @@ export function buildReport(game, { ratings = {}, perf = null, daily = null, dev
     level: game.level,
     seed: game.seed,
     daily,
+    page: MODE, // 'landscape' (the twin-stick page) or 'portrait' (the one-thumb page)
+    controls: S.controls === 'one' ? 'one' : 'twin',
     outcome: game.won ? 'won' : game.lost ? 'died' : 'quit',
     time: +st.time.toFixed(1),
     progress: +(game.won ? 1 : game.progress).toFixed(2),
@@ -146,7 +148,8 @@ const RATING_WORDS = Object.fromEntries(RATINGS.map((r) => [r.key, Object.fromEn
 export function reportText(r) {
   const lines = [];
   const when = r.when.slice(0, 16).replace('T', ' ');
-  lines.push(`We Left Ben playtest · ${LEVEL_NAMES[r.level] || r.level} · seed ${r.seed}${r.daily ? ` (daily ${r.daily})` : ''} · ${when}`);
+  const scheme = r.controls === 'one' ? ` · one stick${r.page === 'portrait' ? ', portrait' : ''}` : r.page === 'portrait' ? ' · portrait' : '';
+  lines.push(`We Left Ben playtest · ${LEVEL_NAMES[r.level] || r.level} · seed ${r.seed}${r.daily ? ` (daily ${r.daily})` : ''}${scheme} · ${when}`);
   const how = r.outcome === 'won' ? (r.level === 'docks' ? 'Made the ferry' : 'Won') : r.outcome === 'died' ? `Died at ${Math.round(r.progress * 100)}%` : 'Quit';
   lines.push(`${how} in ${fmtTime(r.time)} · ${r.kills} kills · ${Math.round(r.accuracy * 100)}% accuracy · ${r.damageTaken} damage taken · ${r.hordes} hordes`);
   const rated = RATINGS.filter((q) => r.ratings[q.key]).map((q) => `${q.label.toLowerCase()} ${RATING_WORDS[q.key][r.ratings[q.key]].toLowerCase()}`);

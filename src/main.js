@@ -1,6 +1,6 @@
 // Boot, resize/safe-area handling, screens and the frame loop.
 
-import { loadSettings, saveSettings, worldSignature } from './settings.js';
+import { loadSettings, saveSettings, worldSignature, MODE } from './settings.js';
 import { seatWitchNear } from './game/witch.js';
 import { computeLayout } from './layout.js';
 import { Input } from './input/input.js';
@@ -23,7 +23,8 @@ const probe = document.getElementById('safe-probe');
 const audio = new Audio();
 audio.setVolume(settings.volume);
 // Music from files (assets/music); the synth Tank theme in audio.js steps aside for it.
-const music = new MusicPlayer(audio);
+// (Found from this file, so the portrait page in its own folder plays it too.)
+const music = new MusicPlayer(audio, new URL('../assets/music/', import.meta.url).href);
 music.setVolume(settings.musicVolume);
 audio.fileMusic = true;
 const musicDirector = new MusicDirector();
@@ -105,7 +106,7 @@ function enterFullscreen() {
   if (document.fullscreenElement || !el.requestFullscreen) return;
   el.requestFullscreen({ navigationUI: 'hide' })
     .then(() => {
-      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+      if (screen.orientation && screen.orientation.lock) screen.orientation.lock(MODE === 'portrait' ? 'portrait' : 'landscape').catch(() => {});
     })
     .catch(() => {});
 }
@@ -382,5 +383,5 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // Handy for tuning sessions and automated smoke tests.
-window.__p0 = { game, settings, input, renderer, start, pause, resume, newRun, card, frames, music, musicDirector };
+window.__p0 = { mode: MODE, game, settings, input, renderer, start, pause, resume, newRun, card, frames, music, musicDirector };
 document.documentElement.classList.add('booted');
