@@ -6,9 +6,13 @@ import { TAU, clamp } from '../util.js';
 import { ALLY } from '../game/ally.js';
 import { ARMOR_MAX, ADRENALINE_TIME } from '../game/loot.js';
 import { witchOutcome } from '../game/witch.js';
+import { drawTutorialHud, lessonSummary } from './tutorial-hud.js';
 
 let vignette = null;
 let vignetteKey = '';
+// Edge arrows keep below this (a lesson's coach panel covers the top middle).
+let topClear = 0;
+let coachBottom = 0;
 
 export function drawHud(ctx, game, input, ui, renderer) {
   const S = game.settings;
@@ -35,15 +39,16 @@ export function drawHud(ctx, game, input, ui, renderer) {
     ctx.globalAlpha = 1;
   }
 
+  topClear = game.tutorial && !ui.title && !game.won ? coachBottom + 14 : 0;
   if (S.threatIndicators && p.alive && !ui.title) drawThreats(ctx, game, L);
-  if (!game.won && !game.lost && !ui.title) drawObjective(ctx, game, L);
+  ui.objectiveAt = !game.won && !game.lost && !ui.title ? drawObjective(ctx, game, L) : null;
 
   drawHealth(ctx, game, L);
   if (game.ally) drawAllyPanel(ctx, game, L);
   if (game.ally && game.ally.alive && !ui.title) drawAllyMarker(ctx, game, L);
   drawWeapon(ctx, game, L, ui);
   if (!ui.title) drawBuffs(ctx, game, L);
-  drawStats(ctx, game, L);
+  if (!game.tutorial) drawStats(ctx, game, L); // a lesson's coach sits there
   drawButtons(ctx, game, L, input.touch);
 
   if (input.source === 'touch' || ui.forceSticks) {
@@ -56,7 +61,9 @@ export function drawHud(ctx, game, input, ui, renderer) {
   drawHoldoutBar(ctx, game, L);
   drawFerryBar(ctx, game, L);
   if (p.pinnedBy && p.alive) drawPinned(ctx, game, L);
-  drawMessages(ctx, game, L);
+  // A lesson: the coach, the ghost thumbs, the labels (messages go below the coach).
+  coachBottom = drawTutorialHud(ctx, game, input, ui, L);
+  drawMessages(ctx, game, L, coachBottom);
   if (game.won || game.lost) drawEnd(ctx, game, L, ui);
   if (S.showDebug) drawDebug(ctx, game, input, ui, L);
 }
@@ -92,7 +99,7 @@ function drawStick(ctx, st, kind, S, L, touch, ui) {
     ctx.beginPath();
     circle(ctx, g.x, g.y, R * 0.42);
     ctx.fill();
-    if (ui.hintAlpha > 0.02) {
+    if (ui.hintAlpha > 0.02 && !ui.tutorial) {
       ctx.fillStyle = `rgba(255,255,255,${0.75 * ui.hintAlpha})`;
       ctx.font = `600 12px ${FONT}`;
       ctx.textAlign = 'center';
@@ -447,7 +454,7 @@ function edgePoint(L, sx, sy, ang, inset) {
   const sa = Math.sin(ang);
   const x0 = L.safe.l + inset;
   const x1 = L.w - L.safe.r - inset;
-  const y0 = L.safe.t + inset + 50;
+  const y0 = Math.max(L.safe.t + inset + 50, topClear + inset * 0.5);
   const y1 = L.h - L.safe.b - inset;
   let t = Infinity;
   if (ca > 1e-6) t = Math.min(t, (x1 - sx) / ca);
@@ -538,35 +545,46 @@ function drawThreats(ctx, game, L) {
   }
 }
 
+/** The arrow at the screen edge toward the goal (a lesson's: toward its next place). Returns where it is drawn, or null. */
 function drawObjective(ctx, game, L) {
+  // A lesson points the arrow at its own next place (or hides it); 'goal' is the safe room.
+  const T = game.tutorial;
+  const aim = T ? T.arrow() : 'goal';
+  if (!aim) return null;
   const er = game.world.map.endRoom.interior;
-  const gx = er.x + er.w / 2;
-  const gy = er.y + er.h / 2;
+  const goal = aim === 'goal';
+  const gx = goal ? er.x + er.w / 2 : aim.x;
+  const gy = goal ? er.y + er.h / 2 : aim.y;
   const gs = game.worldToScreen(gx, gy);
   const p = game.player;
   const ps = game.worldToScreen(p.x, p.y);
-  if (gs.x > 30 && gs.x < L.w - 30 && gs.y > 60 && gs.y < L.h - 30) return;
+  if (gs.x > 30 && gs.x < L.w - 30 && gs.y > 60 && gs.y < L.h - 30) return null;
   const ang = Math.atan2(gs.y - ps.y, gs.x - ps.x);
   const e = edgePoint(L, ps.x, ps.y, ang, 40);
   const pulse = 0.65 + Math.sin(game.time * 3) * 0.2;
-  ctx.fillStyle = `rgba(110,255,150,${pulse})`;
-  chevron(ctx, e.x, e.y, ang, 11);
-  const path = Number.isFinite(game.goalDist) ? game.goalDist : Math.hypot(gx - p.x, gy - p.y);
+  ctx.fillStyle = goal ? `rgba(110,255,150,${pulse})` : `rgba(255,207,90,${pulse + 0.1})`;
+  chevron(ctx, e.x, e.y, ang, goal ? 11 : 13);
+  const path = goal && Number.isFinite(game.goalDist) ? game.goalDist : Math.hypot(gx - p.x, gy - p.y);
   const meters = Math.round(path / 24);
   ctx.font = `700 10px ${FONT}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = `rgba(150,255,180,${pulse})`;
+  ctx.fillStyle = goal ? `rgba(150,255,180,${pulse})` : `rgba(255,225,150,${pulse + 0.1})`;
   const F = game.events && game.events.finale;
-  const label = F ? (F.state === 'docked' ? 'GANGWAY' : 'PIER 9') : 'SAFE';
-  ctx.fillText(`${label} ${meters}m`, e.x - Math.cos(ang) * (F ? 30 : 26), e.y - Math.sin(ang) * 20);
+  const label = !goal ? aim.label : F ? (F.state === 'docked' ? 'GANGWAY' : 'PIER 9') : 'SAFE';
+  ctx.fillText(`${label} ${meters}m`, e.x - Math.cos(ang) * (F || !goal ? 32 : 26), e.y - Math.sin(ang) * 20);
+  return e;
 }
 
 // --- Text ----------------------------------------------------------------------------------
 
-function drawMessages(ctx, game, L) {
-  let yBig = L.h * 0.26;
-  let ySmall = L.h * 0.38;
+function drawMessages(ctx, game, L, below = 0) {
+  // Under a lesson's coach panel when it reaches down that far.
+  let yBig = Math.max(L.h * 0.26, below + 26);
+  // Small lines go under all the big ones showing.
+  let nBig = 0;
+  for (const m of game.messages) if (m.dur <= 100 && m.size !== 'small') nBig++;
+  let ySmall = Math.max(L.h * 0.38, yBig + 8 + Math.max(1, nBig) * 36);
   for (const m of game.messages) {
     if (m.dur > 100) continue; // end-screen titles are drawn by drawEnd
     const fin = Math.min(1, m.t / 0.12);
@@ -613,7 +631,8 @@ function drawEnd(ctx, game, L, ui) {
       bottom = card.top - 8;
     }
   }
-  const title = game.won ? (game.level === 'docks' ? 'YOU MADE THE LAST FERRY' : 'SAFE ROOM REACHED') : 'YOU DIED';
+  const lesson = game.tutorial && game.won ? lessonSummary(game) : null;
+  const title = lesson ? lesson.title : game.won ? (game.level === 'docks' ? 'YOU MADE THE LAST FERRY' : 'SAFE ROOM REACHED') : 'YOU DIED';
   let tf = 34;
   ctx.font = `900 ${tf}px ${FONT}`;
   while (tf > 18 && ctx.measureText(title).width > maxW) ctx.font = `900 ${(tf -= 2)}px ${FONT}`;
@@ -625,10 +644,22 @@ function drawEnd(ctx, game, L, ui) {
   const ss = Math.floor(st.time % 60).toString().padStart(2, '0');
   ctx.font = `600 14px ${FONT}`;
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  const lines = [
-    `time ${mm}:${ss}   ·   kills ${st.kills}   ·   accuracy ${acc}%`,
-    `shoves ${st.shoves}   ·   damage taken ${Math.round(st.damage)}   ·   hordes ${st.hordes}`,
-  ];
+  const lines = lesson
+    ? [lesson.info.name.toUpperCase(), `time ${mm}:${ss}   ·   kills ${st.kills}${st.shoves ? `   ·   shoves ${st.shoves}` : ''}`]
+    : [
+      `time ${mm}:${ss}   ·   kills ${st.kills}   ·   accuracy ${acc}%`,
+      `shoves ${st.shoves}   ·   damage taken ${Math.round(st.damage)}   ·   hordes ${st.hordes}`,
+    ];
+  if (lesson) {
+    // The lesson card (DOM) has the rest: what you learned and where to go next.
+    let fs = 14;
+    ctx.font = `600 ${fs}px ${FONT}`;
+    while (fs > 10 && Math.max(...lines.map((l) => ctx.measureText(l).width)) > maxW) ctx.font = `600 ${--fs}px ${FONT}`;
+    const lh = Math.round(fs * 1.6);
+    lines.forEach((l, i) => ctx.fillText(l, cx, cy + tf * 0.5 + 12 + lh * 0.5 + i * lh));
+    ctx.globalAlpha = 1;
+    return;
+  }
   if (st.hunters || st.pins || st.deadstops || st.tanks || game.director.tankSpawned) {
     lines.push(
       `hunters ${st.hunters} (skeets ${st.skeets}, deadstops ${st.deadstops}, pinned ${st.pins})   ·   tank ${st.tanks ? 'down' : game.director.tankSpawned ? 'survived' : '-'}`,

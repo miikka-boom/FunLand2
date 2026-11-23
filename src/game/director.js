@@ -55,6 +55,11 @@ export class Director {
     return !!(this.tank && this.tank.alive);
   }
 
+  /** A tutorial lesson: its script sends every zombie; the Director only keeps the beat (and the alarm). */
+  get scripted() {
+    return !!this.game.tutorial;
+  }
+
   /** The Tank is on you (not left behind somewhere): pause mobs and Hunters. */
   get tankEngaged() {
     if (!this.tankAlive) return false;
@@ -69,6 +74,7 @@ export class Director {
   /** Initial wanderers spread over the whole route, none near the start. */
   populate() {
     const g = this.game;
+    if (this.scripted) return;
     const density = ((g.world.w * g.world.h) / (4200 * 2800)) * (g.world.map.wanderDensity || 1);
     const n = Math.min(this.cap - 50, Math.round(70 * density * g.settings.wanderers));
     const { start, startRoom, endRoom } = g.world.map;
@@ -117,7 +123,7 @@ export class Director {
       if (p.alive && !pointInRect(p.x, p.y, g.world.map.startRoom.interior)) this.phase = 'build';
       return;
     }
-    if (g.won) return;
+    if (g.won || this.scripted) return;
 
     if (g.settings.specials) this.updateSpecials(dt);
     if (g.settings.nightTerror) this.updateTerror(dt);
@@ -255,6 +261,7 @@ export class Director {
     const g = this.game;
     const p = g.player;
     const S = g.settings;
+    const scripted = this.scripted; // a lesson's zombies are all its own: none is culled, none added
     let idleNear = 0;
     let near = 0;
     const cap = this.cap;
@@ -265,13 +272,13 @@ export class Director {
       const inView = g.onScreen(z.x, z.y, 160);
       if (z.state === 'idle') {
         // Far wanderers stay (they populate the route) unless hordes need room.
-        if (crowded && d > 2600 && !inView) {
+        if (!scripted && crowded && d > 2600 && !inView) {
           z.alive = false;
           continue;
         }
         if (d < 1600) idleNear++;
       } else {
-        if (d > 2800 && !inView && z.type !== 'tank') {
+        if (!scripted && d > 2800 && !inView && z.type !== 'tank') {
           z.alive = false;
           continue;
         }
@@ -279,6 +286,7 @@ export class Director {
       }
     }
     this.threatNear = near;
+    if (scripted) return;
     const target = Math.round(22 * S.wanderers);
     if (idleNear < target && g.zombies.length < cap - 30) {
       const spot = this.findSpawn(700, 1700);
@@ -398,7 +406,8 @@ export class Director {
     a.t += dt;
     const waves = [0.9, 7.5, 13.5];
     while (a.wave < waves.length && a.t >= waves[a.wave]) {
-      this.spawnMob(1.1, a.wave === 0 ? 'PANIC EVENT — HOLD ON!' : null);
+      if (this.scripted) this.game.tutorial.alarmWave(a.wave); // a lesson: three small waves
+      else this.spawnMob(1.1, a.wave === 0 ? 'PANIC EVENT — HOLD ON!' : null);
       a.wave++;
     }
     if (a.t > 15) {

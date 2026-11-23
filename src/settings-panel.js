@@ -74,6 +74,7 @@ export class SettingsPanel {
     mk('Spawn Night Terror', () => this.actions.onSpawnTerror());
     mk('Spawn Witch', () => this.actions.onSpawnWitch());
     mk('Restart run', () => this.actions.onRestart());
+    mk('Main menu', () => this.actions.onMenu());
     mk('New map', () => this.actions.onNewMap());
     this.fsBtn = mk('Fullscreen', () => this.actions.onFullscreen());
     card.appendChild(actions);
@@ -132,7 +133,12 @@ export class SettingsPanel {
           this._syncReports();
           this._flash('Reports cleared');
         });
-        row.append(this.reportsBtn, clear);
+        const forget = el('button', 'btn chip', 'Replay tutorial as new');
+        forget.addEventListener('click', () => {
+          this.actions.onForgetTutorial();
+          this._flash('Tutorial progress cleared: the title starts lesson 1 again');
+        });
+        row.append(this.reportsBtn, clear, forget);
         sec.appendChild(row);
         sec.appendChild(el('p', 'panel-note', 'After each run a small card asks how it felt (fun, difficulty, controls). Reports stay on this device until you copy or share them.'));
       }

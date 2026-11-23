@@ -33,6 +33,7 @@ import { drawLoreDecor, drawPosters, roofText, drawLoreBright } from './lore-ren
 import { drawDocksGround, drawDocksDecor, drawCranes, drawFerry, drawDocksBright } from './docks-render.js';
 import { drawBenDecor, drawBenBright, drawBenLoose, benText, drawFort } from './ben-render.js';
 import { THEMES, drawThemeDecor } from './theme-render.js';
+import { drawTutorialWorld } from './tutorial-hud.js';
 import './theme-models.js'; // registers the graveyard / suburbia / junkyard models
 
 const GROUND = {
@@ -272,6 +273,7 @@ export class Renderer {
     drawLoreBright(R, game, vr);
     R.ground(0);
     this.drawBuffAura(ctx, game);
+    if (!ui.title) drawTutorialWorld(ctx, game); // a lesson's ring on the ground (it glows through the night)
     R.reset();
     drawBenBright(R, game, vr);
 

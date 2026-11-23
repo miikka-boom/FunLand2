@@ -335,6 +335,13 @@ export class Audio {
     this._noise({ dur: 0.05, type: 'highpass', freq: 3200, gain: 0.18 });
   }
 
+  /** A tutorial step done: a bright little two-note "got it". */
+  tutorialStep() {
+    if (!this._ok('tutStep', 0.25)) return;
+    this._tone({ type: 'triangle', f0: 784, dur: 0.12, gain: 0.16 });
+    this._tone({ type: 'triangle', f0: 1175, dur: 0.22, gain: 0.16, at: 0.09 });
+  }
+
   win() {
     if (!this._ok('win')) return;
     [523, 659, 784, 1046].forEach((f, i) => this._tone({ type: 'triangle', f0: f, dur: 0.35, gain: 0.22, at: i * 0.11 }));

@@ -47,7 +47,9 @@ export function drawChalk(ctx, d) {
   }
   const sx = bx - ca * 12;
   const sy = by - sa * 12;
-  if (d.sym === 'room') {
+  if (d.sym === 'way') {
+    // Just the arrow: this way (the tutorial's path round the Witch).
+  } else if (d.sym === 'room') {
     for (const k of [0.785, -0.785]) {
       ctx.moveTo(sx - Math.cos(d.a + k) * 6, sy - Math.sin(d.a + k) * 6);
       ctx.lineTo(sx + Math.cos(d.a + k) * 6, sy + Math.sin(d.a + k) * 6);

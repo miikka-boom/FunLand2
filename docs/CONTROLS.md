@@ -456,6 +456,72 @@ the open ground is connected (tested with a body's width, not a point).
   in the middle has the crusher, the crane and the floodlights. Wrecks left
   in the lanes never close one. Few lamps work.
 
+## Tutorial: three lessons for first-time players
+
+A first-time player finds **Tutorial · lesson 1** picked on the title card
+(the four how-to boxes give way to one line about the lesson) and the big
+button says **Start lesson 1**. Each lesson is a short, hand-built stretch of
+Center City (`src/world/tutorial-gen.js`); the script is
+`src/game/tutorial.js`, what it draws `src/render/tutorial-hud.js`.
+
+| Lesson | Steps | What it teaches |
+|---|---|---|
+| 1 · Move & shoot | walk to a ring · three more rings · aim at the pen · fire · walk + shoot · safe room | The left thumb walks (the stick appears under it), the right thumb aims (the laser), past the dashed ring it fires, both at once, the safe room ends a run |
+| 2 · Shove & reload | shove (slow motion) · shoot it · two at once · reload · swap · to the shotgun · a crowd · patch up (if hurt) · safe room | A quick tap on the right side shoves; shove, then shoot; the ⟳ button; tapping the gun panel swaps; the shotgun in a crowd; medkits |
+| 3 · First run | the green arrow · supplies · the alarm car · the Witch · a horde · safe room | A real run in small: the arrow to the safe room, chalk arrows to a stash (stand on it), never hit a car with a blinking red light, leave a crying Witch alone, hold off a horde |
+
+How a lesson talks to you, on a phone held sideways:
+
+- **The coach** sits at the top, in the gap between the health and gun
+  panels (under them on very small screens): the step's name, a counter
+  ("2/3"), progress dots and one or two lines of what to do. The words are
+  written for touch first; keys and pads get their own (`text.pc`,
+  `text.pad`).
+- **The ghost thumb** acts the step out where your thumbs rest: sliding to
+  walk (toward the ring), sliding a little to aim (inside the dashed ring),
+  pushing past it to fire, a quick tap to shove, a tap on the ⟳ button or the
+  gun panel (which pulse). It fades while you do it and comes back when you
+  stop.
+- **Where to go:** a ring on the ground (the next ones faint), a label over
+  it, and the edge arrow pointing at it in yellow (green when it's the safe
+  room). Labels mark what the step is about: the zombie to aim at, the alarm
+  car, the Witch.
+- **Left and right, not up:** the coach covers the top of the screen, so
+  what a step is about comes from the side (the pen is ahead along the
+  street, the Witch beside it, the horde down the street). Edge arrows and
+  labels keep clear of the coach.
+- **Done:** a word of praise and a chime as each step ticks off; at the end
+  a card lists what you learned and offers the next lesson (after the last,
+  a real run on the map picked on the title).
+
+What keeps it easy and fair:
+
+- **You can't die in a lesson:** health stops at 15 (`HP_FLOOR`), with a
+  "LOW HEALTH: BACK OFF AND SHOVE" warning when it gets low.
+- **Only the lesson's zombies:** no wanderers, mobs, specials, stashes,
+  writing or Ben but its own (the Director only keeps the beat and the
+  alarm); no AI teammate (it would shoot what you're meant to shove).
+- **Slow motion for the first shove:** as the first zombie of lesson 2
+  reaches you, time slows to about a fifth (the screen's edges go cold) and
+  the coach says "NOW!" until you shove it. Shoot it instead and another is
+  sent, a little closer.
+- **The safe room's door** has a gate across it until the last step, so you
+  can't finish a lesson by running past it.
+- **Mistakes go on:** hit the alarm car and three small waves come, then the
+  lesson carries on ("SURVIVED. NOW YOU KNOW."); wake the Witch and she's up
+  (at 40% of a real one's health) until you put her down. A zombie of a step
+  that gets lost far off and out of sight is let go after a while, so "get
+  them all" always ends.
+- **Progress is kept on this device** (`funland2.p0.tutorial.v1`): finished
+  lessons get a tick on the title card, and the next one is offered until
+  all three are done. Picking a map instead stops the title from offering
+  them; picking a lesson again brings that back. **Replay tutorial as new**
+  (tuning panel, Playtest) forgets it all, and the panel's **Main menu**
+  leaves a lesson.
+
+`tests/tutorial.test.js` plays every lesson start to finish with scripted
+thumbs (and lesson 3 also hitting the alarm car, and waking the Witch).
+
 ## Playtest kit
 
 The **Playtest** group in the panel.
@@ -684,6 +750,12 @@ What a map gets:
   eyes look at things, and follow them? Does anyone find his bed without
   being told, or read the map and go for the X? Did anyone notice the lamp?
   Ask "who is Ben?" after a session and write the answers down.
+- **Tutorial:** hand a phone to someone who has never played. Do they read
+  the coach, or copy the ghost thumb? How long does each lesson take them?
+  Does anyone fire when they meant to aim (lesson 1), or slide when they
+  meant to tap (lesson 2's slow motion)? Do they find the ⟳ button and the
+  gun panel without the pulse? Does anyone hit the alarm car, or walk up to
+  the Witch? Afterwards, can they say what the dashed ring is for?
 - **Rating card:** do people answer it, or skip straight to Play again? Copy
   the reports after a session and compare.
 - **AI teammate:** does it get in your way, or stand in doorways you need?

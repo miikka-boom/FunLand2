@@ -448,6 +448,7 @@ export function shove(game) {
   p.aimHoldT = Math.max(p.aimHoldT, 0.35);
 
   let hits = flyer ? 1 : 0;
+  const shoved = game.tutorial ? [] : null; // a lesson wants to know who
   game.zhash.query(p.x, p.y, SHOVE_REACH + 40, (z) => {
     if (!z.alive || z.noCollide) return;
     const dx = z.x - p.x;
@@ -457,6 +458,7 @@ export function shove(game) {
     const diff = Math.abs(wrapAngle(Math.atan2(dy, dx) - ang));
     if (diff > SHOVE_HALF_ANGLE && d > p.r + z.r + 4) return;
     hits++;
+    if (shoved) shoved.push(z);
     if (z.type === 'tank') return; // you can't shove a Tank
     z.windup = 0;
     z.attackCd = Math.max(z.attackCd, 0.5);
@@ -464,6 +466,7 @@ export function shove(game) {
     alertZombie(game, z, 0);
   });
   hits += shoveBoards(game, p, ang, SHOVE_REACH, SHOVE_HALF_ANGLE);
+  if (shoved) game.tutorial.onShove(shoved);
   game.stats.shoves++;
   game.effects.shoveArc(p.x, p.y, ang, SHOVE_REACH + p.r);
   game.audio.shove(hits > 0);

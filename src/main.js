@@ -12,6 +12,8 @@ import { MusicDirector, readGame, cueLevel, cueFade } from './game/music-directo
 import { SettingsPanel } from './settings-panel.js';
 import { clamp } from './util.js';
 import { ReportCard, buildReport, saveReport, recordDaily, dailyBest, todayKey, dateLabel, perfSummary, osName, fmtTime, LEVEL_NAMES } from './playtest.js';
+import { lessonsDone, markLessonDone, nextLesson, forgetLessons, tutorialSkipped, setTutorialSkipped, LESSONS } from './game/tutorial.js';
+import { LessonCard } from './tutorial-ui.js';
 
 const settings = loadSettings();
 const canvas = document.getElementById('game');
@@ -37,7 +39,10 @@ const haptics = (ms) => {
 };
 
 const renderer = new Renderer(canvas);
-const game = new Game(settings, audio, haptics);
+// First time here, or part way through the tutorial: the title card offers the next lesson
+// (unless a map was picked over it).
+let lessonPick = tutorialSkipped() ? 0 : nextLesson();
+const game = new Game(settings, audio, haptics, lessonPick);
 const safe = { l: 0, r: 0, t: 0, b: 0 };
 let layout = computeLayout(innerWidth, innerHeight, safe, settings);
 const input = new Input(canvas, settings, () => layout);
@@ -83,6 +88,7 @@ function relayout() {
   if (card && card.isOpen) ui.reportRect = card.rect();
 }
 let card = null;
+let lessonCard = null;
 relayout();
 let resizeTimer = 0;
 const onResize = () => {
@@ -112,9 +118,10 @@ function enterFullscreen() {
 
 // --- Screens -------------------------------------------------------------------------------
 
-/** Every restart goes through here: closes the rating card, resets the fps sample. */
+/** Every restart goes through here: closes the rating / lesson card, resets the fps sample. */
 function newRun(seed = settings.seed) {
   card.hide();
+  if (lessonCard) lessonCard.hide();
   ui.reportRect = null;
   game.newRun(seed);
   frames.reset();
@@ -128,9 +135,52 @@ card = new ReportCard({
   },
 });
 
+/** Play tutorial lesson n (0: a normal run of the level picked), now or on the title's background. */
+function pickLesson(n) {
+  lessonPick = n;
+  game.setLesson(n);
+  newRun();
+  input.reset();
+  syncLevelPicker();
+}
+
+lessonCard = new LessonCard({
+  onNext: (n) => pickLesson(n),
+  onReplay: () => {
+    newRun();
+    input.reset();
+  },
+  onMenu: () => toTitle(),
+  onPlay: () => pickLesson(0),
+});
+
+/** Back to the title card (a lesson's Menu button, the panel's Main menu). */
+function toTitle() {
+  if (panel.isOpen) panel.close();
+  input.touch.enabled = true;
+  // The next lesson not done yet is picked for you; after the last, the map you had picked.
+  lessonPick = tutorialSkipped() ? 0 : nextLesson();
+  game.setLesson(lessonPick);
+  newRun();
+  state = 'title';
+  titleEl.classList.remove('hidden');
+  input.reset();
+  syncLevelPicker();
+}
+
 /** A run just ended: save its report (and today's best), then ask how it felt. */
 let reportedRun = 0;
 function onRunEnd() {
+  if (game.tutorial) {
+    // A lesson: tick it off on this device and say what's next (no rating card, no report).
+    if (game.won) markLessonDone(game.lesson);
+    syncLevelPicker();
+    if (game.won) {
+      lessonCard.show(game.lesson, settings.level);
+      ui.reportRect = lessonCard.rect();
+    }
+    return;
+  }
   const best = game.dailyKey ? recordDaily(game.level, game.won, game.stats.time, game.progress, game.dailyKey) : null;
   const report = buildReport(game, {
     perf: perfSummary(frames.list()),
@@ -155,6 +205,12 @@ const panel = new SettingsPanel(panelEl, settings, {
       music.refresh();
     }
     if (key === 'musicVolume' || all) music.setVolume(settings.musicVolume);
+    // Picking a map in the panel leaves a lesson for a run of that map.
+    if ((key === 'level' || key === 'daily') && game.lesson) {
+      lessonPick = 0;
+      game.setLesson(0);
+      newRun();
+    }
     // Level / world switches regenerate the map (only if something really changed).
     if (game.worldSig !== worldSignature(settings)) newRun();
     if (key === 'level' || key === 'daily' || all) {
@@ -197,6 +253,11 @@ const panel = new SettingsPanel(panelEl, settings, {
     resume();
   },
   onFullscreen: () => enterFullscreen(),
+  onMenu: () => toTitle(),
+  onForgetTutorial: () => {
+    forgetLessons();
+    syncLevelPicker();
+  },
 });
 
 function start() {
@@ -229,19 +290,49 @@ function resume() {
 
 startBtn.addEventListener('click', start);
 
-// Title-card level picker (doesn't start the game; the background shows the choice).
+// Title-card picker (doesn't start the game; the background shows the choice): a
+// tutorial lesson or a map. A first-time player finds lesson 1 picked.
 const levelButtons = [...document.querySelectorAll('[data-level]')];
+const howtoEl = titleEl.querySelector('.howto');
+const blurbEl = document.getElementById('lesson-blurb');
+const lessonButtons = [...document.querySelectorAll('[data-lesson]')];
 function syncLevelPicker() {
-  for (const b of levelButtons) b.classList.toggle('active', b.dataset.level === settings.level);
+  const done = lessonsDone();
+  for (const b of levelButtons) b.classList.toggle('active', !lessonPick && b.dataset.level === settings.level);
+  for (const b of lessonButtons) {
+    const n = +b.dataset.lesson;
+    b.classList.toggle('active', lessonPick === n);
+    b.classList.toggle('done', done.includes(n));
+    b.setAttribute('aria-checked', lessonPick === n ? 'true' : 'false');
+  }
+  if (startBtn) startBtn.textContent = lessonPick ? `Start lesson ${lessonPick}` : 'Tap to start';
+  const first = lessonPick === 1 && !done.length;
+  titleEl.classList.toggle('first-time', first);
+  // A lesson teaches the controls itself: one line about it instead of the four boxes.
+  if (howtoEl) howtoEl.classList.toggle('hidden', !!lessonPick);
+  if (blurbEl) {
+    blurbEl.classList.toggle('hidden', !lessonPick);
+    const info = LESSONS[lessonPick - 1];
+    if (info) blurbEl.textContent = `${first ? 'New here? Three short lessons teach you the controls. ' : ''}Lesson ${lessonPick} of ${LESSONS.length}: ${info.about}`;
+  }
 }
 for (const b of levelButtons) {
   b.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (settings.level === b.dataset.level) return;
+    if (settings.level === b.dataset.level && !lessonPick) return;
     settings.level = b.dataset.level;
     saveSettings(settings);
-    newRun();
-    syncLevelPicker();
+    if (nextLesson()) setTutorialSkipped(true); // a map over the lessons: don't push them on every visit
+    pickLesson(0);
+  });
+}
+for (const b of lessonButtons) {
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const n = +b.dataset.lesson;
+    if (lessonPick === n) return;
+    setTutorialSkipped(false);
+    pickLesson(n);
   });
 }
 syncLevelPicker();
@@ -250,7 +341,7 @@ syncLevelPicker();
 const dailyBtn = document.getElementById('daily');
 function syncDaily() {
   if (!dailyBtn) return;
-  const on = !!settings.daily;
+  const on = !!settings.daily && !lessonPick;
   dailyBtn.classList.toggle('active', on);
   dailyBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
   const best = on ? dailyBest(settings.level) : null;
@@ -263,7 +354,10 @@ if (dailyBtn) {
     e.stopPropagation();
     settings.daily = !settings.daily;
     saveSettings(settings);
-    newRun();
+    if (lessonPick) {
+      setTutorialSkipped(true);
+      pickLesson(0);
+    } else newRun();
   });
 }
 syncDaily();
@@ -295,10 +389,17 @@ window.addEventListener('keydown', kickAudio);
 // taps beside it don't skip it (its Play again button does); keys and pads still restart.
 let restartQueued = false;
 const maybeRestart = (force = false) => {
+  // A finished lesson: its card decides what's next (keys and pads press its big button).
+  if (lessonCard.isOpen) {
+    if (force && state === 'play') lessonCard.primary();
+    else lessonCard.nudge();
+    return;
+  }
   if (card.isOpen && !force) {
     card.nudge(); // point at Play again instead
     return;
   }
+  if (game.tutorial && game.won) return; // the lesson card is on its way
   if (state === 'play' && (game.won || game.lost) && game.endT > 1.4) restartQueued = true;
 };
 canvas.addEventListener('touchstart', () => maybeRestart(), { passive: true });
@@ -374,7 +475,9 @@ function frame(now) {
       music.preload(musicDirector.preload(ms));
     }
   }
-  ui.hintAlpha = state === 'title' ? 1 : clamp(1 - (game.stats.time - 10) / 8, 0, 1);
+  // Lesson 1 keeps the resting places of both thumbs showing; the lessons have their own words for them.
+  ui.hintAlpha = state === 'title' || game.lesson === 1 ? 1 : clamp(1 - (game.stats.time - 10) / 8, 0, 1);
+  ui.tutorial = !!game.tutorial;
   ui.forceSticks = state === 'title' && isTouch;
   ui.title = state === 'title';
   renderer.render(game, input, ui);
@@ -382,5 +485,5 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // Handy for tuning sessions and automated smoke tests.
-window.__p0 = { game, settings, input, renderer, start, pause, resume, newRun, card, frames, music, musicDirector };
+window.__p0 = { game, settings, input, renderer, start, pause, resume, newRun, card, frames, music, musicDirector, lessonCard, pickLesson, toTitle };
 document.documentElement.classList.add('booted');

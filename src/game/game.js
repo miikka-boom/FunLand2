@@ -24,6 +24,8 @@ import { initWorldEvents, updateWorldEvents, spawnNest, openBreach, takeAmmo } f
 import { addLore } from '../world/lore-gen.js';
 import { addBen } from '../world/ben-gen.js';
 import { loadBenMemory, initBen, updateBen } from './ben.js';
+import { generateTutorial } from '../world/tutorial-gen.js';
+import { Tutorial, HP_FLOOR } from './tutorial.js';
 import { DEG, dampFactor, pointInRect, rand } from '../util.js';
 import { todayKey, dailySeed } from '../playtest.js';
 import { IsoView, ISO_YAW, ISO_PITCH } from '../iso.js';
@@ -47,8 +49,10 @@ export const GENERATORS = {
 };
 
 export class Game {
-  constructor(settings, audio, haptics) {
+  /** lesson: start straight into tutorial lesson n (see setLesson). */
+  constructor(settings, audio, haptics, lesson = 0) {
     this.settings = settings;
+    this.lessonPick = lesson | 0;
     this.audio = audio;
     this._haptics = haptics;
     // The camera: CSS px viewport, world->CSS scale and the 3D projection.
@@ -58,40 +62,56 @@ export class Game {
     this.newRun();
   }
 
+  /** The next run is tutorial lesson n (1..3), or a normal run of settings.level (0). */
+  setLesson(n) {
+    this.lessonPick = n | 0;
+  }
+
   newRun(seed = this.settings.seed) {
     this.audio.alarmStop();
     this.audio.tankMusic(false);
-    this.level = this.settings.level;
+    // A tutorial lesson is its own hand-made map on the streets (their camera, their music).
+    this.lesson = this.lessonPick || 0;
+    this.level = this.lesson ? 'city' : this.settings.level;
     // The daily map: today's date picks the seed, the same on every device.
-    this.dailyKey = this.settings.daily ? todayKey() : null;
+    this.dailyKey = this.settings.daily && !this.lesson ? todayKey() : null;
     if (this.dailyKey) seed = dailySeed(this.dailyKey);
-    this.seed = seed;
+    this.seed = this.lesson ? 0 : seed;
     this.runSerial = (this.runSerial || 0) + 1;
-    const gen = GENERATORS[this.level] || generateCity;
-    let map = gen(seed);
-    let world = new World(map);
-    // Paranoia: if the goal were ever unreachable, step the seed.
-    for (let k = 1; k < 6; k++) {
-      world.flow.compute(map.start.x, map.start.y);
-      const er = map.endRoom.interior;
-      if (Number.isFinite(world.flow.pathDist(er.x + er.w / 2, er.y + er.h / 2))) break;
-      map = gen(seed + k);
-      world = new World(map);
-    }
-    // World features, then scavenging (both change the map, so rebuild the world).
+    this.tutorial = null;
     const S = this.settings;
     this.worldSig = worldSignature(S);
-    const base = map.obstacles.slice();
-    // The holdout gate, the two routes and the landmarks are built for the streets and the building
-    // (Pier 9 has its own finale; the graveyard, suburbia and the junkyard don't have them yet).
-    const featured = !map.theme || map.theme === 'interior';
-    if (featured && (S.holdout || S.routes || S.landmarks)) addWorldFeatures(map, map.seed, { holdout: S.holdout, routes: S.routes, landmarks: S.landmarks });
-    if (S.stashes || S.boardedRooms || S.secret) addScavenging(map, map.seed, { stashes: S.stashes, rooms: S.boardedRooms, secret: S.secret });
-    if (S.witch) addWitch(map, map.seed); // where she sits (the writing on the walls knows)
-    if (S.lore) addLore(map, map.seed); // graffiti, posters, dens: visual only
     this.benMemory = loadBenMemory();
-    if (S.ben) addBen(map, map.seed, { memory: this.benMemory, level: this.level }); // signs of Ben: visual only
-    if (map.obstacles.length !== base.length || map.obstacles.some((o, i) => o !== base[i])) world = new World(map);
+    let map;
+    let world;
+    if (this.lesson) {
+      // Nothing random is added to a lesson: no stashes, writing, Ben or Witch but its own.
+      map = generateTutorial(this.lesson);
+      world = new World(map);
+    } else {
+      const gen = GENERATORS[this.level] || generateCity;
+      map = gen(seed);
+      world = new World(map);
+      // Paranoia: if the goal were ever unreachable, step the seed.
+      for (let k = 1; k < 6; k++) {
+        world.flow.compute(map.start.x, map.start.y);
+        const er = map.endRoom.interior;
+        if (Number.isFinite(world.flow.pathDist(er.x + er.w / 2, er.y + er.h / 2))) break;
+        map = gen(seed + k);
+        world = new World(map);
+      }
+      // World features, then scavenging (both change the map, so rebuild the world).
+      const base = map.obstacles.slice();
+      // The holdout gate, the two routes and the landmarks are built for the streets and the building
+      // (Pier 9 has its own finale; the graveyard, suburbia and the junkyard don't have them yet).
+      const featured = !map.theme || map.theme === 'interior';
+      if (featured && (S.holdout || S.routes || S.landmarks)) addWorldFeatures(map, map.seed, { holdout: S.holdout, routes: S.routes, landmarks: S.landmarks });
+      if (S.stashes || S.boardedRooms || S.secret) addScavenging(map, map.seed, { stashes: S.stashes, rooms: S.boardedRooms, secret: S.secret });
+      if (S.witch) addWitch(map, map.seed); // where she sits (the writing on the walls knows)
+      if (S.lore) addLore(map, map.seed); // graffiti, posters, dens: visual only
+      if (S.ben) addBen(map, map.seed, { memory: this.benMemory, level: this.level }); // signs of Ben: visual only
+      if (map.obstacles.length !== base.length || map.obstacles.some((o, i) => o !== base[i])) world = new World(map);
+    }
     this.world = world;
     // Static field toward the goal: route progress (places the Tank) and the
     // walking distance shown on the safe-room arrow.
@@ -144,6 +164,8 @@ export class Game {
     for (const spot of map.witches || []) spawnWitch(this, spot);
     this.world.flow.compute(this.player.x, this.player.y);
     this.ally = null;
+    // The lesson's script (it sends every zombie; the Director stands back while it runs).
+    if (this.lesson) this.tutorial = new Tutorial(this, this.lesson);
     this.syncAlly();
     this.director.populate();
     spawnSleepers(this);
@@ -157,7 +179,8 @@ export class Game {
 
   /** Spawn or remove the AI teammate to match the setting (a dead one stays dead until the next run). */
   syncAlly() {
-    if (!this.settings.ally) {
+    // Lessons are solo: a teammate would shoot what you're meant to shove.
+    if (!this.settings.ally || this.tutorial) {
       this.ally = null;
       return;
     }
@@ -218,6 +241,8 @@ export class Game {
       soaked = Math.min(p.armor, dmg);
       p.armor -= soaked;
       p.hp -= dmg - soaked;
+      // A lesson can hurt you, not kill you.
+      if (this.tutorial && p.hp < HP_FLOOR) p.hp = HP_FLOOR;
     }
     this.stats.damage += dmg;
     const slow = opts.slow === undefined ? 0.35 : opts.slow;
@@ -305,6 +330,9 @@ export class Game {
   update(dt, input) {
     const S = this.settings;
     const p = this.player;
+    // A lesson can slow time down (the first shove): everything runs slower, input doesn't.
+    const T = this.tutorial;
+    if (T) dt *= T.timeScale;
     this.time += dt;
 
     for (const ev of input.events) {
@@ -378,15 +406,16 @@ export class Game {
     this.effects.update(dt);
     this.hurtFlash = Math.max(0, this.hurtFlash - dt * 1.6);
 
-    // Win: reach the end safe room (Pier 9: the gangway, once the ferry is alongside).
+    // Win: reach the end safe room (Pier 9: the gangway, once the ferry is alongside; a lesson: once it's the last step).
     const er = this.world.map.endRoom.interior;
-    if (!this.won && !this.lost && p.alive && pointInRect(p.x, p.y, er) && finaleOpen(this.events && this.events.finale)) {
+    if (!this.won && !this.lost && p.alive && pointInRect(p.x, p.y, er) && finaleOpen(this.events && this.events.finale) && (!T || T.canFinish)) {
       if (p.pinnedBy) releasePin(this);
       this.won = true;
       this.endT = 0;
       this.audio.win();
-      this.announce(this.level === 'docks' ? 'ABOARD!' : 'SAFE ROOM', '#7dffa1', 999);
+      this.announce(T ? 'LESSON COMPLETE' : this.level === 'docks' ? 'ABOARD!' : 'SAFE ROOM', '#7dffa1', 999);
     }
+    if (T) T.update(dt, input);
     if (this.won || this.lost) this.endT += dt;
 
     for (const m of this.messages) m.t += dt;

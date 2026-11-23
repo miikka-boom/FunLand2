@@ -339,6 +339,27 @@ and no dependencies.
   with the streets along the screen; north-east in the isometric view, which
   is how the Building comes). The full
   spec and the reasoning are in [docs/CONTROLS.md](docs/CONTROLS.md).
+- **A tutorial for first-time players** (made for the phone): three short
+  lessons on hand-built streets, picked for you on the title card until
+  they're done (picking a map skips them; the panel's **Replay tutorial as
+  new** brings them back). A coach panel at the top says what to do, a ghost
+  thumb acts it out where your thumbs rest, and a ring on the ground (with
+  the edge arrow) shows where to go; each step ticks off with a chime.
+  1. **Move & shoot:** walk through three rings, aim at three zombies
+     penned behind sandbags (bullets fly over them), fire, then walk and
+     shoot at once as five more come up the street.
+  2. **Shove & reload:** the first zombie down a narrow alley comes at you
+     in slow motion until you tap to shove it; then two at once, the reload
+     button, swapping to the shotgun, and a crowd down the alley.
+  3. **First run:** a real run in small: follow the green arrow, search a
+     stash (armor and hot rounds), two zombies by an alarm car (hit it and
+     you hold out against three small waves), sneak past a crying Witch (wake
+     her and she's easier to put down than a real one), a horde, the safe
+     room.
+  You can be hurt in a lesson but not killed (health stops at 15), the
+  safe room's door opens on the last step, and a card at the end ticks off
+  what you learned and offers the next lesson (after the last one, a real
+  run). Spec: [docs/CONTROLS.md](docs/CONTROLS.md#tutorial-three-lessons-for-first-time-players).
 - **Live feel tuning**: the sliders button (top right) pauses the game and
   opens every feel parameter: stick modes and size, dead zones, fire ring, aim
   assist, smoothing, camera, speed, horde size and so on. There are presets
@@ -844,6 +865,10 @@ src/render/decor3d.js      the small things that stand up (chairs, signs, the le
 src/render/figures.js      survivors, the horde (batched), Hunter, Tank, Night Terror, the Witch
 src/render/*-render.js     what is painted flat (ground, graffiti, posters, chalk, Ben's crayon) and the big set pieces (docks: piers, cranes, the ferry; features: the canopy, fires, fireballs), hud.js
 src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
+src/world/tutorial-gen.js  the three tutorial lessons' maps, built by hand (padded with city blocks so the camera never sees past the edge)
+src/game/tutorial.js       the tutorial at run time: the lessons' steps (words per input, gesture, where to go, when it's done), progress on this device
+src/render/tutorial-hud.js what a lesson draws: the coach panel, the ghost thumbs, rings on the ground, labels on what matters, slow motion
+src/tutorial-ui.js         the lesson-complete card (what you learned, next lesson / replay / menu)
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
 haul/                      Long Haul metagame prototype: No Man's Land × Clash Royale (separate page; map in docs/LONG-HAUL.md)
@@ -853,7 +878,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, the tutorial (its maps, every lesson played start to finish by scripted thumbs, its HUD on a mock canvas), scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

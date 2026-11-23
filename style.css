@@ -228,6 +228,117 @@ html.is-ios .ios-only {
   align-items: center;
 }
 
+/* --- Tutorial lessons (title card) ----------------------------------------- */
+
+.lesson-blurb {
+  margin: 2px auto 12px;
+  max-width: 520px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #e9edf1;
+}
+
+.lessons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.lessons-tag {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 2px;
+}
+
+.lesson {
+  appearance: none;
+  font: inherit;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(255, 207, 90, 0.06);
+  border: 1px solid rgba(255, 207, 90, 0.28);
+  border-radius: 999px;
+  padding: 5px 13px 5px 5px;
+  min-height: 36px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.lesson i {
+  font-style: normal;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255, 207, 90, 0.18);
+  color: #ffcf5a;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.lesson b {
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.lesson.done i {
+  background: rgba(125, 255, 161, 0.2);
+  color: transparent;
+  position: relative;
+}
+
+/* A finished lesson: its number turns into a tick. */
+.lesson.done i::after {
+  content: "✓";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--good);
+  font-size: 13px;
+}
+
+.lesson.active {
+  border-color: #ffcf5a;
+  background: rgba(255, 207, 90, 0.16);
+  box-shadow: 0 0 0 1px #ffcf5a inset;
+}
+
+.lesson.active i {
+  background: #ffcf5a;
+  color: #1a1204;
+}
+
+.lesson.active.done i {
+  color: transparent;
+}
+
+.lesson.active.done i::after {
+  color: #1a1204;
+}
+
+/* First time here: lesson 1 is the way in, so the button says so and glows a little. */
+.first-time #start {
+  box-shadow: 0 0 0 0 rgba(255, 107, 74, 0.6);
+  animation: start-glow 1.8s ease-out infinite;
+}
+
+@keyframes start-glow {
+  0% { box-shadow: 0 0 0 0 rgba(255, 107, 74, 0.55); }
+  70%, 100% { box-shadow: 0 0 0 14px rgba(255, 107, 74, 0); }
+}
+
 .daily-row {
   display: flex;
   justify-content: center;
@@ -652,6 +763,59 @@ html.is-ios .ios-only {
   color: var(--muted);
 }
 
+/* --- Lesson complete card (over a finished lesson) ------------------------------ */
+
+.lesson-learned {
+  list-style: none;
+  margin: 8px 0 6px;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.lesson-learned li {
+  position: relative;
+  padding-left: 26px;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: #fff;
+  opacity: 0;
+  animation: learned-in 0.35s ease-out forwards;
+}
+
+.lesson-learned li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 900;
+  background: rgba(125, 255, 161, 0.2);
+  color: var(--good);
+}
+
+@keyframes learned-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.lesson-next {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.lesson-card .report-head b {
+  color: var(--good);
+}
+
 /* Narrow (portrait) screens: the card sits at the bottom, the summary above it. */
 @media (max-width: 640px) {
   .report {
@@ -757,6 +921,23 @@ html.is-ios .ios-only {
   .pickers .levels,
   .pickers .daily-row {
     margin: 0;
+  }
+  /* The lessons keep a row of their own, above the maps. */
+  .pickers .lessons {
+    flex-basis: 100%;
+    margin: 0;
+    gap: 6px;
+  }
+  .lesson {
+    min-height: 32px;
+    padding: 3px 11px 3px 4px;
+  }
+  .lesson i {
+    width: 22px;
+    height: 22px;
+  }
+  .lesson b {
+    font-size: 12px;
   }
   .report-card {
     padding: 9px 12px;
