@@ -10,7 +10,14 @@
 // Most shots use the game's isometric 3D camera (the "Streets along the
 // screen" switch off) and a darker night than the default, for the trailer.
 
-import { shot } from './stage.js';
+import { shot as register } from './stage.js';
+
+// Every shot is kept here too, so a shot can be filmed again with a few things changed (clear()).
+const DEFS = {};
+function shot(def) {
+  DEFS[def.name] = def;
+  register(def);
+}
 
 const ISO = (tilt = 40) => ({ cameraAligned: false, cameraTilt: tilt });
 const TOP = (tilt = 70) => ({ cameraAligned: true, cameraAlignedTilt: tilt });
@@ -763,3 +770,35 @@ shot({
     }
   },
 });
+
+// --- The 20-second spot (spot20.py): the same moments, filmed for clarity ------------------------
+// Lighter nights, the camera closer, bigger name tags: what's happening, and who's who, reads on a phone.
+
+// The HUD a shot gets when it doesn't say: only the announcements.
+const PLAIN_HUD = { threats: false, objective: false, panels: false, marker: false, buttons: false, sticks: false, bars: false, pinned: false, messages: true, end: false };
+
+function clear(name, { darkness, zoom = 1, tags = 15 } = {}) {
+  const d = DEFS[name];
+  shot({
+    ...d,
+    name: `${name}_clear`,
+    settings: { ...(d.settings || {}), darkness },
+    // Just the big call-outs (HERE THEY COME!, TANK!, ALL ABOARD!): with the camera this close the
+    // small ones land on the name tags.
+    hud: { ...(d.hud || PLAIN_HUD), small: false },
+    setup(S, T) {
+      d.setup(S, T);
+      const z0 = S.cam.zoom || 470;
+      S.cam.zoom = typeof z0 === 'function' ? (t) => z0(t) * zoom : z0 * zoom;
+      S.tags.size = tags;
+    },
+  });
+}
+
+clear('horde_big', { darkness: 0.5, zoom: 0.84 });
+clear('hunter_save', { darkness: 0.5, zoom: 0.84 });
+clear('revive', { darkness: 0.5, zoom: 0.86 });
+clear('tank', { darkness: 0.5, zoom: 0.82 });
+clear('gas_station', { darkness: 0.5, zoom: 0.86 });
+clear('ferry', { darkness: 0.55, zoom: 0.84 });
+clear('terror_scare', { darkness: 0.62, zoom: 0.94 });

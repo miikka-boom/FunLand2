@@ -71,6 +71,36 @@ python3 tools/trailer/spot30.py --frames 3.5,9.2        # full-size stills
 The grain is what makes the file big (35 MB at CRF 23). The 2.35:1 picture is cropped from the
 16:9 footage, and `crop` in its edit list moves the crop window per shot.
 
+## The 20-second spot
+
+[`trailer/we-left-ben-coop-spot20.mp4`](../../trailer/we-left-ben-coop-spot20.mp4): 0:20, 1920×1080,
+30 fps, −14 LUFS, 10.5 MB. It's the 30-second spot's idea, cut down and made clearer:
+
+- **Brighter and closer.** The moments are filmed again (`clear()` in `shots.js`) with lighter
+  nights, the camera closer, and bigger YOU/SAM tags. The game's small call-outs are left out
+  because, at that distance, they land on the tags. The 30-second spot had a median brightness of
+  about 15/255; this one's gameplay sits at 42–65.
+- **Full frame and sharp:** no letterbox, no grain, a gentle grade.
+- **One beat per shot:** the horde, Sam pulling a Hunter off you, you picking Sam up, the Tank, the
+  gas station, both of you making the ferry. Then the tagline, and the Night Terror.
+- **Names in the tags' colours:** STARRING **YOU** (blue), AND **YOUR BEST FRIEND** (green).
+
+| Time | Picture | Card |
+|---|---|---|
+| 0:00 | The music drops: a wall of infected, HERE THEY COME! | |
+| 0:03 | | STARRING YOU |
+| 0:04 | A Hunter pins you; Sam sprints back and shoves it off | |
+| 0:07 | | AND YOUR BEST FRIEND |
+| 0:08 | You pick Sam up · the Tank · the gas station goes up | |
+| 0:13 | The ferry: ALL ABOARD!, both of you up the gangway | |
+| 0:16 | (the music stops dead) | NOBODY GETS LEFT BEHIND. · 2-PLAYER CO-OP |
+| 0:18 | The graveyard, you turn round, the Night Terror | |
+
+```
+node tools/trailer/capture.cjs horde_big_clear hunter_save_clear revive_clear tank_clear gas_station_clear ferry_clear terror_scare_clear
+python3 tools/trailer/spot20.py              # -> tools/trailer/out/we-left-ben-coop-spot20.mp4
+```
+
 ## How it's made
 
 Everything in the picture is the game, filmed frame by frame; everything you hear is the game's.
