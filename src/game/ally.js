@@ -10,6 +10,8 @@
 //  - At 0 HP it goes DOWN instead of dying: it keeps shooting from the floor
 //    while it bleeds out. Stand next to it (without shooting) to revive it.
 // Zombies go for whichever survivor is nearer (see updateZombies).
+// There can be more than one (game.allies: a squad of up to four survivors): each follows its
+// own spot around you (spotBack / spotSide) and won't shoot through you or the others.
 
 import { WEAPONS } from './weapons.js';
 import { DEG, clamp, rand, randSpread, wrapAngle } from '../util.js';
@@ -53,6 +55,9 @@ export class Ally {
     this.facing = -Math.PI / 2;
     this.aimAngle = this.facing;
     this.side = Math.random() < 0.5 ? -1 : 1;
+    this.spotBack = ALLY.spotBack; // where it follows: this far behind you...
+    this.spotSide = ALLY.spotSide; // ...and this far to one side (0: right behind you)
+    this.look = null; // how it's drawn (render/figures.js ALLY_LOOK unless given)
     this.spotX = x;
     this.spotY = y;
     this.spotT = 0;
@@ -136,8 +141,7 @@ function warpNearPlayer(game, a) {
 
 // --- Damage / down / revive ---------------------------------------------------------
 
-export function hurtAlly(game, dmg, src, opts = {}) {
-  const a = game.ally;
+export function hurtAlly(game, dmg, src, opts = {}, a = game.ally) {
   if (!a || !a.alive || game.won) return;
   a.hurtT = 0.25;
   if (src) {
@@ -234,6 +238,7 @@ function fire(game, a) {
   const mx = a.x + ca * (a.r + 12);
   const my = a.y + sa * (a.r + 12);
   game.killCredit = 'ally';
+  game.creditAlly = a;
   for (let i = 0; i < def.pellets; i++) {
     let ang;
     if (def.pellets > 1) {
@@ -243,6 +248,7 @@ function fire(game, a) {
     hitscan(game, a, mx, my, ang, def, false);
   }
   game.killCredit = null;
+  game.creditAlly = null;
   a.bloom = Math.min(def.bloomMax, a.bloom + def.bloom);
   a.recoil = Math.min(1, a.recoil + def.kick / 10);
   game.effects.muzzle(mx, my, a.aimAngle, def.pellets > 1 ? 1.2 : 0.8);
@@ -330,6 +336,21 @@ function playerInLine(game, a, maxD) {
   return Math.abs(fx * sa - fy * ca) < p.r + 8;
 }
 
+/** Another teammate on its feet on the line of fire within maxD. */
+function allyInLine(game, a, maxD) {
+  const ca = Math.cos(a.aimAngle);
+  const sa = Math.sin(a.aimAngle);
+  for (const o of game.allies) {
+    if (o === a || !o.alive || o.down) continue;
+    const fx = o.x - a.x;
+    const fy = o.y - a.y;
+    const along = fx * ca + fy * sa;
+    if (along < 0 || along > maxD) continue;
+    if (Math.abs(fx * sa - fy * ca) < o.r + 8) return true;
+  }
+  return false;
+}
+
 /** Aim at the current target and fire when lined up. Returns true if firing. */
 function combat(game, a, dt, rangeMul = 1) {
   const S = game.settings;
@@ -364,6 +385,7 @@ function combat(game, a, dt, rangeMul = 1) {
   // Never through you (except at a Hunter riding you: that's what it's for).
   const pin = game.player.pinnedBy;
   if (t !== pin && playerInLine(game, a, td)) return false;
+  if (allyInLine(game, a, td)) return false;
   return true;
 }
 
@@ -377,6 +399,7 @@ function shoveAt(game, a, ang) {
   a.aimAngle = ang;
   let hits = 0;
   game.killCredit = 'ally';
+  game.creditAlly = a;
   game.zhash.query(a.x, a.y, SHOVE_REACH + 40, (z) => {
     if (!z.alive || z.noCollide || z.passive) return;
     const dx = z.x - a.x;
@@ -391,6 +414,7 @@ function shoveAt(game, a, ang) {
     damageZombie(game, z, 8, dx / d, dy / d, 340, rand(0.75, 0.95), false);
   });
   game.killCredit = null;
+  game.creditAlly = null;
   game.effects.shoveArc(a.x, a.y, ang, SHOVE_REACH + a.r);
   if (hits) game.audio.thud(a.x, a.y);
 }
@@ -467,8 +491,7 @@ function threatWithin(game, a, radius) {
 
 // --- Per frame -----------------------------------------------------------------------------
 
-export function updateAlly(game, dt) {
-  const a = game.ally;
+export function updateAlly(game, dt, a = game.ally) {
   if (!a || !a.alive) return;
   const p = game.player;
   const S = game.settings;
@@ -548,8 +571,8 @@ export function updateAlly(game, dt) {
       // Lead your movement a little so it keeps pace instead of trailing.
       const lx = p.x + p.vx * 0.35;
       const ly = p.y + p.vy * 0.35;
-      let sx = lx - hx * ALLY.spotBack - hy * ALLY.spotSide * a.side;
-      let sy = ly - hy * ALLY.spotBack + hx * ALLY.spotSide * a.side;
+      let sx = lx - hx * a.spotBack - hy * a.spotSide * a.side;
+      let sy = ly - hy * a.spotBack + hx * a.spotSide * a.side;
       if (!W.isFree(sx, sy, a.r + 2) || !W.segmentClear(p.x, p.y, sx, sy, W.moveBlockers)) {
         a.side = -a.side; // try the other side next time; tuck in right behind you now
         sx = p.x - hx * 40;

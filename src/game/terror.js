@@ -86,8 +86,8 @@ export function lightAt(game, x, y) {
     const c = flashlightOn(game, x, y);
     if (c > 0) add(c, c);
   }
-  const a = game.ally;
-  if (a && a.alive && !a.down) {
+  for (const a of game.allies) {
+    if (!a.alive || a.down) continue;
     const dx = x - a.x;
     const dy = y - a.y;
     const c = beam(a.facing, dx, dy, Math.hypot(dx, dy), 0.42, 380) * 0.85;

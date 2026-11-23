@@ -436,14 +436,14 @@ function tankPunch(game, t) {
     }
     game.hurtPlayer(TANK.punchDamage * S.zombieDamage, t, { knock: TANK.punchKnock, knockT: 0.45, slow: 0.6 });
   }
-  // The teammate gets the same haymaker if it's in the swing.
-  const al = game.ally;
-  if (al && al.alive && !al.down) {
+  // A teammate gets the same haymaker if it's in the swing.
+  for (const al of game.allies) {
+    if (!al.alive || al.down) continue;
     const ax = al.x - t.x;
     const ay = al.y - t.y;
     const ad = Math.hypot(ax, ay) || 1;
     if (ad < t.r + al.r + TANK.punchReach + 6 && Math.abs(wrapAngle(Math.atan2(ay, ax) - t.face)) < 1.3) {
-      game.hurtAlly(TANK.punchDamage * S.zombieDamage, t, { knock: TANK.punchKnock * 0.8 });
+      game.hurtAlly(TANK.punchDamage * S.zombieDamage, t, { knock: TANK.punchKnock * 0.8 }, al);
     }
   }
   // Commons caught in the swing go flying.
@@ -617,17 +617,20 @@ export function updateRocks(game, dt) {
       shatterRock(game, r, cx, cy);
       continue;
     }
-    const al = game.ally;
-    if (al && al.alive && !al.down) {
+    let struck = false;
+    for (const al of game.allies) {
+      if (!al.alive || al.down) continue;
       const aa = clamp((al.x - r.x) * dx + (al.y - r.y) * dy, 0, step);
       const ax = r.x + dx * aa;
       const ay = r.y + dy * aa;
       if (Math.hypot(al.x - ax, al.y - ay) < r.r + al.r && (!wall.obstacle || aa < wall.t)) {
-        game.hurtAlly(TANK.rockDamage * S.zombieDamage, { x: ax - dx * 10, y: ay - dy * 10 }, { knock: 300 });
+        game.hurtAlly(TANK.rockDamage * S.zombieDamage, { x: ax - dx * 10, y: ay - dy * 10 }, { knock: 300 }, al);
         shatterRock(game, r, ax, ay);
-        continue;
+        struck = true;
+        break;
       }
     }
+    if (struck) continue;
     if (wall.obstacle) {
       shatterRock(game, r, r.x + dx * wall.t, r.y + dy * wall.t);
       continue;

@@ -140,10 +140,11 @@ export class Game {
     initLoot(this, map);
     initWorldEvents(this, map);
     initBen(this, map, this.benMemory);
-    this.killCredit = null; // 'ally' while the teammate's bullets/shoves land
+    this.killCredit = null; // 'ally' while a teammate's bullets/shoves land...
+    this.creditAlly = null; // ...and which teammate's
     for (const spot of map.witches || []) spawnWitch(this, spot);
     this.world.flow.compute(this.player.x, this.player.y);
-    this.ally = null;
+    this.allies = [];
     this.syncAlly();
     this.director.populate();
     spawnSleepers(this);
@@ -153,6 +154,20 @@ export class Game {
   /** The breach boards came down: the short way is open. */
   onBreach(o) {
     openBreach(this, o);
+  }
+
+  /**
+   * The AI teammates (game.allies). The tuning panel's teammate is the first one (game.ally);
+   * more can join with addAlly() for a squad of up to four survivors (the trailer does). Zombies,
+   * lights, blasts and the specials treat every one of them as a survivor; with a single teammate
+   * everything plays exactly as it did with one.
+   */
+  get ally() {
+    return (this.allies && this.allies[0]) || null;
+  }
+
+  set ally(a) {
+    this.allies = a ? [a] : [];
   }
 
   /** Spawn or remove the AI teammate to match the setting (a dead one stays dead until the next run). */
@@ -165,15 +180,23 @@ export class Game {
       if (this.ally.weapon.def.id !== this.settings.allyWeapon) this.ally.setWeapon(this.settings.allyWeapon);
       return;
     }
-    const p = this.player;
-    const spot = allySpotNear(this, p.x, p.y, p.facing) || { x: p.x, y: p.y };
-    this.ally = new Ally(spot.x, spot.y, this.settings.allyWeapon);
-    this.ally.facing = p.facing;
-    this.ally.aimAngle = p.facing;
+    this.addAlly(this.settings.allyWeapon);
   }
 
-  hurtAlly(dmg, src, opts) {
-    hurtAlly(this, dmg, src, opts);
+  /** One more AI teammate, at `at` or a free spot near you. Returns it. */
+  addAlly(weaponId = this.settings.allyWeapon, at = null) {
+    const p = this.player;
+    const spot = at || allySpotNear(this, p.x, p.y, p.facing) || { x: p.x, y: p.y };
+    const a = new Ally(spot.x, spot.y, weaponId);
+    a.facing = p.facing;
+    a.aimAngle = p.facing;
+    this.allies.push(a);
+    return a;
+  }
+
+  /** A teammate takes a hit (the first one unless `a` says which). */
+  hurtAlly(dmg, src, opts, a) {
+    hurtAlly(this, dmg, src, opts, a);
   }
 
   // --- Services used by entities -------------------------------------------
@@ -316,7 +339,7 @@ export class Game {
 
     if (!this.won && !this.lost) this.stats.time += dt;
     updatePlayer(this, dt, input);
-    updateAlly(this, dt);
+    for (const a of this.allies) updateAlly(this, dt, a);
 
     this.flowT -= dt;
     if (this.flowT <= 0) {

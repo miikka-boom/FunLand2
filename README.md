@@ -15,6 +15,12 @@ build step and no dependencies.
 | Safehouse | [`safehouse/`](safehouse) | Another metagame: meta-progression for a co-op zombie mobile game |
 | Camp | [`camp/`](camp) | The first metagame prototype: a survivor camp with base building |
 
+**The announce trailer** for We Left Ben (2-4 player co-op) is at [`trailer/`](trailer/): 72
+seconds cut to the title theme, every frame of it the real game, filmed shot by shot. It plays live
+in the browser, and `node trailer/tools/render.mjs` renders it to a 1080p MP4 with the game's own
+sound. How it's made, the shot list and the licence notes are in
+[docs/TRAILER.md](docs/TRAILER.md).
+
 # Prototype 1: "WOBBLE WAR"
 
 A real-time card battler with wobbly ragdoll beans, played on a phone held
@@ -355,6 +361,11 @@ and no dependencies.
   out (45 s). Stand next to it without shooting for 3 s to revive it. It never
   shoots through you, never sets off alarms and never wakes the Witch. The
   **Teammate** section also sets its gun and accuracy.
+  - **Squads:** the engine takes more than one teammate (`game.allies`;
+    `game.addAlly()` brings more, `game.ally` is the first). Zombies go for
+    the nearest survivor, everyone carries a light and keeps out of the
+    others' way and line of fire. The panel still offers one; the trailer
+    films a squad of four.
 - **Six map types**, picked on the title card or in the tuning panel:
   - **Streets:** a run across Center City after dark, from a safe room
     (bottom left) to the green safe room across town.
@@ -815,7 +826,7 @@ what was cut from the design doc are in [docs/SAFEHOUSE.md](docs/SAFEHOUSE.md).
 
 - **GitHub Pages:** `https://miikka-boom.github.io/FunLand2/` (HORDE) once
   this is on the default branch (the Pages workflow only deploys from there).
-  WOBBLE WAR is at `/battle/`, and the metagame prototypes are at `/haul/`
+  The trailer is at `/trailer/`, WOBBLE WAR at `/battle/`, and the metagame prototypes are at `/haul/`
   (Long Haul), `/thrill/` (Thrill Hill), `/outpost/` (Last Stop), `/hope/`
   (Hope Street), `/evac/` (Road to Evac), `/safehouse/` (the Safehouse) and
   `/camp/` (the v1 camp).
@@ -867,10 +878,14 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, the music director, the sound effects (the bank ships every sound the engine plays, surfaces and materials, the soundscape), Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), squads (several AI teammates: targeting, spacing, lights, line of fire), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, the music director, the sound effects (the bank ships every sound the engine plays, surfaces and materials, the soundscape), Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.
+
+The trailer has its own map in [docs/TRAILER.md](docs/TRAILER.md#how-its-made)
+(`trailer/`: the shots, the stage that films the game, the titles, the sound
+and the render tool).
 
 ## Tests
 

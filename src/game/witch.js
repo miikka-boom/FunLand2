@@ -123,9 +123,10 @@ export class Witch {
   /** Something loud right next to her (a shot): she flinches. */
   hear(game, x, y, radius) {
     if (this.mode !== 'sit' || !this.alive) return;
-    // The teammate's gun doesn't count: you can't tell it where to stand.
-    const a = game.ally;
-    if (a && a.alive && Math.hypot(x - a.x, y - a.y) < 2 && Math.hypot(x - game.player.x, y - game.player.y) > 2) return;
+    // A teammate's gun doesn't count: you can't tell it where to stand.
+    if (Math.hypot(x - game.player.x, y - game.player.y) > 2) {
+      for (const a of game.allies) if (a.alive && Math.hypot(x - a.x, y - a.y) < 2) return;
+    }
     const d = Math.hypot(x - this.x, y - this.y);
     if (d >= WITCH.shotRange) return;
     const loud = clamp(radius / 520, 0.5, 1.8);
@@ -136,8 +137,9 @@ export class Witch {
 
   onHit(game, dmg, stagger, dx = 0, dy = 0) {
     if (this.mode === 'sit') {
-      const byAlly = game.killCredit === 'ally' && game.ally && game.ally.alive && !game.ally.down;
-      const who = byAlly ? game.ally : game.player;
+      const al = game.creditAlly || game.ally;
+      const byAlly = game.killCredit === 'ally' && al && al.alive && !al.down;
+      const who = byAlly ? al : game.player;
       // Caught sitting, from arm's length: this hit, and whatever lands with it, counts many times over.
       if (Math.hypot(who.x - this.x, who.y - this.y) <= WITCH.crownRange) {
         this.crownT = game.time + WITCH.crownWindow;
@@ -190,8 +192,7 @@ function dropPhone(w) {
 export function startle(game, w, who) {
   if (w.mode !== 'sit') return;
   const p = game.player;
-  const a = game.ally;
-  w.target = who === a && a && a.alive && !a.down ? a : p;
+  w.target = who && who !== p && game.allies.includes(who) && who.alive && !who.down ? who : p;
   w.mode = 'rise';
   w.modeT = WITCH.rise;
   w.passive = false;
@@ -321,9 +322,8 @@ export function updateWitch(game, w, dt) {
   }
 
   w.look += (1 - w.look) * Math.min(1, dt * 10);
-  const a = game.ally;
   let t = w.target;
-  if (t && t !== p && !(a && a.alive && !a.down)) t = null; // the teammate is down: she has what she came for
+  if (t && t !== p && !(t.alive && !t.down)) t = null; // the teammate is down: she has what she came for
   let wantX = 0;
   let wantY = 0;
   let steer = 9;

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>We Left Ben · Announce Trailer</title>
+  <link rel="icon" href="../icon.svg" type="image/svg+xml">
+  <style>
+    /* The trailer's type (fonts/: OFL and Apache 2.0, licences next to the files). The game's own
+       graffiti and crayon names are mapped onto the same files, so the walls read the same on
+       every machine that plays or films it. */
+    @font-face { font-family: 'Trailer Display'; src: url(fonts/BebasNeue-Regular.ttf) format('truetype'); font-display: block; }
+    @font-face { font-family: 'Trailer Type'; src: url(fonts/SpecialElite-Regular.ttf) format('truetype'); font-display: block; }
+    @font-face { font-family: 'Trailer Crayon'; src: url(fonts/GochiHand-Regular.ttf) format('truetype'); font-display: block; }
+    @font-face { font-family: 'Trailer Marker'; src: url(fonts/PermanentMarker-Regular.ttf) format('truetype'); font-display: block; }
+    @font-face { font-family: 'Chalkboard SE'; src: url(fonts/GochiHand-Regular.ttf) format('truetype'); }
+    @font-face { font-family: 'Comic Sans MS'; src: url(fonts/GochiHand-Regular.ttf) format('truetype'); }
+    @font-face { font-family: 'Marker Felt'; src: url(fonts/PermanentMarker-Regular.ttf) format('truetype'); }
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+    body { display: flex; align-items: center; justify-content: center; font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #f3ead7; }
+    canvas { display: block; background: #000; }
+    #play {
+      position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+      background: radial-gradient(ellipse at center, rgba(20, 22, 28, 0.6), rgba(0, 0, 0, 0.92)); border: 0; color: inherit; cursor: pointer; font: inherit;
+    }
+    #play img { width: min(56vw, 520px); height: auto; filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.7)); }
+    #play b { font-family: 'Trailer Display', Inter, sans-serif; font-weight: 400; font-size: clamp(22px, 3.4vw, 40px); letter-spacing: 0.18em; }
+    #play span { font-size: 13px; letter-spacing: 0.08em; opacity: 0.6; }
+    #play.hidden { display: none; }
+    #status { position: fixed; left: 12px; bottom: 10px; font: 12px/1.4 ui-monospace, monospace; opacity: 0.55; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <canvas id="film" aria-label="Trailer"></canvas>
+  <button id="play" type="button" class="hidden">
+    <img src="../assets/we-left-ben.webp" width="917" height="577" alt="We Left Ben">
+    <b>▶ PLAY THE TRAILER</b>
+    <span>sound on · R restarts · Space pauses</span>
+  </button>
+  <div id="status" aria-live="polite"></div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

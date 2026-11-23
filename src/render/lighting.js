@@ -106,9 +106,9 @@ export class Lighting {
       this.cone(p.x, p.y, f, 0.4, 470, 0.6);
       this.cone(p.x, p.y, f, 0.24, 500, 0.55);
     }
-    // The teammate carries a light too (dimmer); down, just a glow.
-    const a = game.ally;
-    if (a && a.alive && pointInRect(a.x, a.y, vr, 520)) {
+    // Every teammate carries a light too (dimmer); down, just a glow.
+    for (const a of game.allies) {
+      if (!a.alive || !pointInRect(a.x, a.y, vr, 520)) continue;
       this.radial(a.x, a.y, a.down ? 70 : 85, 0.75);
       if (!a.down) {
         this.cone(a.x, a.y, a.facing, 0.42, 380, 0.55);

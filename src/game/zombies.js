@@ -66,30 +66,50 @@ export function alertZombie(game, z, delay = 0, chain = true) {
 
 const tmpDir = { x: 0, y: 0 };
 
-// Zombies closer to the AI teammate than to you (and this close) go for it.
+// Zombies closer to an AI teammate than to you (and this close) go for it.
 const ALLY_AGGRO = 220;
+const liveAllies = []; // this frame's teammates still alive (down or up)
+
+/** game.allies that are alive, in a scratch array. */
+function aliveAllies(game) {
+  liveAllies.length = 0;
+  for (const a of game.allies) if (a.alive) liveAllies.push(a);
+  return liveAllies;
+}
 
 export function updateZombies(game, dt) {
   const { player: p, world, settings: S, zombies } = game;
   const hash = game.zhash;
   hash.clear();
   for (const z of zombies) if (z.alive) hash.insert(z);
-  const ally = game.ally && game.ally.alive ? game.ally : null;
+  const allies = aliveAllies(game);
 
   for (const z of zombies) {
     if (!z.alive || z.type !== 'common') continue;
     z.hitFlash -= dt;
     z.attackCd -= dt;
     z.anim += dt;
-    // Target: you, or the teammate when it's the nearer survivor close by.
+    // Target: you, or the nearest teammate when it's the nearer survivor close by.
     let tgt = p;
     let dx = p.x - z.x;
     let dy = p.y - z.y;
     let d = Math.sqrt(dx * dx + dy * dy) || 1e-6;
-    if (ally) {
-      const ax = ally.x - z.x;
-      const ay = ally.y - z.y;
-      const ad = Math.sqrt(ax * ax + ay * ay) || 1e-6;
+    if (allies.length) {
+      let ally = null;
+      let ax = 0;
+      let ay = 0;
+      let ad = Infinity;
+      for (const o of allies) {
+        const ox = o.x - z.x;
+        const oy = o.y - z.y;
+        const od = Math.sqrt(ox * ox + oy * oy) || 1e-6;
+        if (od < ad) {
+          ally = o;
+          ax = ox;
+          ay = oy;
+          ad = od;
+        }
+      }
       if (ad < ALLY_AGGRO && (ad < d || !p.alive)) {
         tgt = ally;
         dx = ax;
@@ -166,7 +186,7 @@ export function updateZombies(game, dt) {
           z.attackCd = rand(0.8, 1.2);
           if (tgtAlive && d < reach + 8) {
             if (tgt === p) game.hurtPlayer(HIT_DAMAGE * S.zombieDamage, z);
-            else game.hurtAlly(HIT_DAMAGE * S.zombieDamage, z);
+            else game.hurtAlly(HIT_DAMAGE * S.zombieDamage, z, undefined, tgt);
           }
         }
       }
@@ -289,13 +309,13 @@ export function resolveCrowd(game, dt) {
   // bodies keep their momentum.
   if (dt > 0) {
     const inv = 1 / dt;
-    const al = game.ally && game.ally.alive ? game.ally : null;
+    const allies = aliveAllies(game);
     for (const z of zombies) {
       if (!z.alive || z.type !== 'common' || z.stagger > 0) continue;
       let ddx = z.x - p.x;
       let ddy = z.y - p.y;
       let d2 = ddx * ddx + ddy * ddy;
-      if (al) {
+      for (const al of allies) {
         ddx = z.x - al.x;
         ddy = z.y - al.y;
         d2 = Math.min(d2, ddx * ddx + ddy * ddy);
@@ -319,10 +339,10 @@ export function resolveCrowd(game, dt) {
   // Bodies vs survivors: commons yield most but a crowd still shoves you;
   // a Tank shoulders you aside. (Not while a Hunter has you pinned.)
   if (p.alive && !p.pinnedBy) pressSurvivor(hash, p);
-  const ally = game.ally && game.ally.alive ? game.ally : null;
-  if (ally) {
+  const allies = aliveAllies(game);
+  for (const ally of allies) {
     pressSurvivor(hash, ally);
-    // You and the teammate don't overlap (it gives way).
+    // You and a teammate don't overlap (it gives way).
     const dx = ally.x - p.x;
     const dy = ally.y - p.y;
     const min = ally.r + p.r;
@@ -336,8 +356,26 @@ export function resolveCrowd(game, dt) {
       p.x -= (dx / d) * pen * mine;
       p.y -= (dy / d) * pen * mine;
     }
-    world.collide(ally, ally.r);
   }
+  // Nor do two teammates (they share the give).
+  for (let i = 0; i < allies.length; i++) {
+    for (let j = i + 1; j < allies.length; j++) {
+      const a = allies[i];
+      const b = allies[j];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const min = a.r + b.r;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= min * min || d2 < 1e-6) continue;
+      const d = Math.sqrt(d2);
+      const pen = (min - d) / 2;
+      a.x -= (dx / d) * pen;
+      a.y -= (dy / d) * pen;
+      b.x += (dx / d) * pen;
+      b.y += (dy / d) * pen;
+    }
+  }
+  for (const ally of allies) world.collide(ally, ally.r);
 
   // Re-resolve walls after the pushes.
   for (const z of zombies) if (z.alive && !z.noCollide) world.collide(z, z.r);

@@ -9,6 +9,7 @@ function stub(extra = {}) {
     time: 0,
     player: { x: 0, y: 0, alive: true, facing: 0 },
     ally: null,
+    allies: [],
     world: { map: { lamps: [], fires: [], glows: [] }, segmentClear: () => true },
     events: { burns: [], finale: null },
     effects: { lights: [] },

@@ -68,8 +68,9 @@ export function updateWorldEvents(game, dt) {
     if (b.hurtT <= 0) {
       b.hurtT = 0.25;
       if (p.alive && Math.hypot(p.x - b.x, p.y - b.y) < r) game.hurtPlayer(BURN_DPS.player * 0.25, null, { slow: 0 });
-      const a = game.ally;
-      if (a && a.alive && !a.down && Math.hypot(a.x - b.x, a.y - b.y) < r) game.hurtAlly(BURN_DPS.player * 0.25, null, { knock: 0 });
+      for (const a of game.allies) {
+        if (a.alive && !a.down && Math.hypot(a.x - b.x, a.y - b.y) < r) game.hurtAlly(BURN_DPS.player * 0.25, null, { knock: 0 }, a);
+      }
     }
   }
   E.burns = E.burns.filter((b) => b.t > 0);
@@ -223,10 +224,10 @@ export function explode(game, x, y, R) {
     const k = 1 - pd / (R * 0.85);
     game.hurtPlayer(Math.round(10 + 50 * k), { x, y }, { knock: 260 + 420 * k, knockT: 0.25 + 0.3 * k, slow: 0.4 });
   }
-  const a = game.ally;
-  if (a && a.alive) {
+  for (const a of game.allies) {
+    if (!a.alive) continue;
     const ad = Math.hypot(a.x - x, a.y - y);
-    if (ad < R * 0.85) game.hurtAlly(Math.round(10 + 50 * (1 - ad / (R * 0.85))), { x, y }, { knock: 300 });
+    if (ad < R * 0.85) game.hurtAlly(Math.round(10 + 50 * (1 - ad / (R * 0.85))), { x, y }, { knock: 300 }, a);
   }
   for (const o of game.boards || []) {
     if (o.broken) continue;

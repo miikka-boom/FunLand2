@@ -277,7 +277,7 @@ export class Renderer {
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.globalAlpha = 1;
-    drawHud(ctx, game, input, ui, this);
+    if (ui.hud !== false) drawHud(ctx, game, input, ui, this); // (the trailer films without it)
   }
 
   // --- Ground -------------------------------------------------------------------
@@ -631,14 +631,14 @@ export class Renderer {
     const p = game.player;
     ctx.lineWidth = 1.5;
     if (p.alive && !p.pinnedBy) {
-      ctx.strokeStyle = p.hurtT > 0 ? 'rgba(255,90,80,0.8)' : PLAYER_LOOK.ring;
+      ctx.strokeStyle = p.hurtT > 0 ? 'rgba(255,90,80,0.8)' : (p.look || PLAYER_LOOK).ring;
       ctx.beginPath();
       circle(ctx, p.x, p.y, p.r + 5);
       ctx.stroke();
     }
-    const a = game.ally;
-    if (a && a.alive && !a.down && a._vis > 0.4) {
-      ctx.strokeStyle = a.hurtT > 0 ? 'rgba(255,90,80,0.8)' : ALLY_LOOK.ring;
+    for (const a of game.allies) {
+      if (!a.alive || a.down || !(a._vis > 0.4)) continue;
+      ctx.strokeStyle = a.hurtT > 0 ? 'rgba(255,90,80,0.8)' : (a.look || ALLY_LOOK).ring;
       ctx.beginPath();
       circle(ctx, a.x, a.y, a.r + 5);
       ctx.stroke();
@@ -752,8 +752,11 @@ export class Renderer {
     // Survivors.
     this._mover(T_PLAYER, p, p.x, p.y, p.r, Math.max(0.3, L.sample(p.x, p.y)));
     sh.push(p.x, p.y, p.r);
-    const a = game.ally;
-    if (a && v.onScreen(a.x, a.y, 50, 60)) {
+    for (const a of game.allies) {
+      if (!v.onScreen(a.x, a.y, 50, 60)) {
+        a._vis = 0;
+        continue;
+      }
       const seen = this._seen(a, a.x, a.y, dt);
       const b = L.sample(a.x, a.y) * (hid + (1 - hid) * seen);
       if (b >= 0.032) {
@@ -761,7 +764,7 @@ export class Renderer {
         if (seen > 0.3) sh.push(a.x, a.y, a.r);
         if (a.alive && seen > 0.6 && scene.hider(v, a.x, a.y, 24, true)) xray.push(a);
       }
-    } else if (a) a._vis = 0;
+    }
 
     // Things to pick up, crates to search, rocks in the air.
     for (const k of game.pickups) {
@@ -852,7 +855,7 @@ export class Renderer {
           this.drawPlayer(R, game, it.b);
           break;
         case T_ALLY:
-          this.drawAlly(R, game, it.b);
+          this.drawAlly(R, game, it.b, o);
           break;
         case T_PICKUP:
           this.drawPickup(R, o, it.b);
@@ -875,24 +878,25 @@ export class Renderer {
 
   drawPlayer(R, game, b) {
     const p = game.player;
+    const look = p.look || PLAYER_LOOK; // (the trailer dresses each survivor of its squad)
     if (p.pinnedBy && p.alive) {
-      drawLying(R, p, PLAYER_LOOK.body, PLAYER_LOOK.skin, PLAYER_LOOK.legs, b);
+      drawLying(R, p, look.body, look.skin, look.legs, b);
       if (p.pinnedBy.alive) drawHunter(R, p.pinnedBy, Math.max(b, 0.5));
       return;
     }
     if (!p.alive && game.endT > 0.8) {
-      drawLying(R, p, '#2d6f7a', '#9c7d66', '#232a36', b * 0.8);
+      drawLying(R, p, look.dead || '#2d6f7a', '#9c7d66', '#232a36', b * 0.8);
       return;
     }
-    drawSurvivor(R, p, PLAYER_LOOK, b);
+    drawSurvivor(R, p, look, b);
   }
 
-  /** The AI teammate: same build, olive jacket, green ring; lying when down. */
-  drawAlly(R, game, b) {
-    const a = game.ally;
-    if (!a.alive) drawLying(R, a, '#3d4422', '#8f6f58', '#2a2820', b * 0.8);
-    else if (a.down) drawLying(R, a, ALLY_LOOK.body, ALLY_LOOK.skin, ALLY_LOOK.legs, b);
-    else drawSurvivor(R, a, ALLY_LOOK, b);
+  /** An AI teammate: same build, its own look (olive jacket, green ring by default); lying when down. */
+  drawAlly(R, game, b, a = game.ally) {
+    const look = a.look || ALLY_LOOK;
+    if (!a.alive) drawLying(R, a, look.dead || '#3d4422', '#8f6f58', '#2a2820', b * 0.8);
+    else if (a.down) drawLying(R, a, look.body, look.skin, look.legs, b);
+    else drawSurvivor(R, a, look, b);
   }
 
   /** Medkits and ammo cans: small boxes hovering a little off the ground. */
@@ -1228,10 +1232,12 @@ export class Renderer {
     }
   }
 
-  /** The teammate down: a pulsing ring you can find in the dark, and the revive progress. */
+  /** A teammate down: a pulsing ring you can find in the dark, and the revive progress. */
   drawAllyTells(ctx, game, vr) {
-    const a = game.ally;
-    if (!a || !a.alive || !a.down || !pointInRect(a.x, a.y, vr, 40)) return;
+    for (const a of game.allies) if (a.alive && a.down && pointInRect(a.x, a.y, vr, 40)) this.drawDownTell(ctx, game, a);
+  }
+
+  drawDownTell(ctx, game, a) {
     const t = game.time;
     const R = this.R;
     R.ground(0);
