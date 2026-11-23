@@ -323,4 +323,141 @@ module.exports = {
       if (i % 30 === 0) return { px: Math.round(p.x), behind: Math.round(bd), ally: Math.round(Math.hypot(a.x - p.x, a.y - p.y)) };
     },
   },
+
+  // The hook: closer on the gas station as the horde floods the forecourt and the pumps go up.
+  t6_boom: {
+    settings: { level: 'city', landmarks: true, ally: true, allyWeapon: 'rifle', godMode: true, ...CLEAN },
+    frames: 110,
+    setup: async (g) => {
+      const H = window.__h;
+      const e = g.events.explosives.find((x) => x.id === 'station');
+      if (!e) return { err: 'no gas station' };
+      const spot = H.spotNear(g, e.x, e.y, Math.PI / 2, [440, 480, 400, 520], 40);
+      if (!spot) return { err: 'no spot by the station' };
+      H.teleport(g, spot.x, spot.y, spot.a + Math.PI);
+      g.ally.x = spot.x + 46; g.ally.y = spot.y + 22;
+      H.clearAround(g, spot.x, spot.y, 1100);
+      const back = spot.a + Math.PI;
+      const pts = [];
+      for (let k = 0; k < 72; k++) {
+        const d = 120 + (k % 8) * 34 + Math.floor(k / 8) * 22;
+        const off = ((((k * 53) % 100) - 50) / 100) * 1.15;
+        pts.push([e.x + Math.cos(back + off) * d, e.y + Math.sin(back + off) * d]);
+      }
+      const { Zombie } = await import('/src/game/zombies.js');
+      const { detonate } = await import('/src/game/world-events.js');
+      for (const part of e.parts) part.hp = 1e12;
+      for (const [x, y] of pts) if (g.world.isFree(x, y, 11)) g.zombies.push(new Zombie(x, y, true));
+      window.__S = { e, detonate, boomAt: -1, spot };
+      return { station: [Math.round(e.x), Math.round(e.y)], spot: [Math.round(spot.x), Math.round(spot.y)] };
+    },
+    direct: (i, g, pad) => {
+      const H = window.__h, S = window.__S, p = g.player, e = S.e;
+      let atPumps = 0;
+      for (const z of g.zombies) if (z.alive && z.type === 'common' && Math.hypot(z.x - e.x, z.y - e.y) < 200) atPumps++;
+      const { z: near, d: nd } = H.nearest(g, p.x, p.y);
+      if (!e.done && S.boomAt < 0 && i > 20 && (atPumps >= 20 || i > 60)) S.boomAt = i;
+      if (!e.done && S.boomAt >= 0 && i - S.boomAt >= 6) S.detonate(g, e);
+      if (near && nd < 640) H.stick(pad, 'aim', H.angTo(p, near.x, near.y), 1);
+      else H.stick(pad, 'aim', H.angTo(p, e.x, e.y), 0.4);
+      H.stick(pad, 'move', null, 0);
+      window.__cam = { x: p.x * 0.22 + e.x * 0.78, y: p.y * 0.22 + e.y * 0.78 + 10, zoom: 470 };
+      if (i % 10 === 0) return { atPumps, boom: e.done };
+    },
+  },
+
+  // Back to back: a horde from each end of the street, the camera pushing in as they close.
+  t6_hold: {
+    settings: { level: 'city', ally: true, allyWeapon: 'rifle', godMode: true, ...CLEAN },
+    frames: 160,
+    setup: async (g) => {
+      const H = window.__h;
+      const s = await H.findSpot(g, { lit: true, laneX: 720, pick: 4 });
+      if (!s) return { err: 'no lane' };
+      H.teleport(g, s.x - 24, s.y, Math.PI);
+      g.ally.x = s.x + 24; g.ally.y = s.y + 4;
+      H.clearAround(g, s.x, s.y, 1300);
+      const { Zombie } = await import('/src/game/zombies.js');
+      for (const side of [-1, 1]) {
+        for (let k = 0; k < 30; k++) {
+          const d = 430 + (k % 8) * 36 + Math.floor(k / 8) * 32;  // the fronts start at the frame's edges
+          const off = ((k * 41) % 11 - 5) * 14;
+          const x = s.x + side * d, y = s.y + off;
+          if (g.world.isFree(x, y, 11)) g.zombies.push(new Zombie(x, y, true));
+        }
+      }
+      window.__S = { s };
+      window.__noHurt = true;
+      return { spot: [Math.round(s.x), Math.round(s.y)] };
+    },
+    direct: (i, g, pad) => {
+      const H = window.__h, S = window.__S, p = g.player, a = g.ally;
+      a.hp = 100;
+      H.stick(pad, 'move', null, 0);
+      let best = null, bd = 1e9;
+      for (const z of g.zombies) {
+        if (!z.alive || z.type !== 'common' || z.x > p.x + 10) continue;
+        const d = Math.hypot(z.x - p.x, z.y - p.y);
+        if (d < bd) { bd = d; best = z; }
+      }
+      if (best) H.stick(pad, 'aim', H.angTo(p, best.x, best.y), bd < 520 ? 1 : 0.4);
+      else H.stick(pad, 'aim', Math.PI, 0.4);
+      const k = H.ease(i / 150);
+      window.__cam = { x: S.s.x, y: S.s.y - 10, zoom: 560 - 140 * k, still: true };
+      if (i % 10 === 0) {
+        let r = 1e9;
+        for (const z of g.zombies) if (z.alive && z.x > p.x + 10) r = Math.min(r, Math.hypot(z.x - p.x, z.y - p.y));
+        return { left: Math.round(bd), right: Math.round(r) };
+      }
+    },
+  },
+
+  // The escape, close: the two of them filling the frame, the horde right behind.
+  t6_escape: {
+    settings: { level: 'city', ally: true, allyWeapon: 'rifle', godMode: true, ...CLEAN },
+    frames: 170,
+    setup: async (g) => {
+      const H = window.__h;
+      const s = await H.findSpot(g, { laneX: 1000, pick: 2, r: 70 });
+      if (!s) return { err: 'no long street' };
+      const start = { x: s.x - 600, y: s.y };
+      H.teleport(g, start.x, start.y, Math.PI);
+      g.ally.x = start.x - 10; g.ally.y = start.y + 44;
+      H.clearAround(g, s.x, s.y, 1900);
+      const { Zombie } = await import('/src/game/zombies.js');
+      let n = 0;
+      for (let k = 0; k < 170; k++) {
+        const d = 90 + (k % 10) * 28 + Math.floor(k / 10) * 22;
+        const off = ((((k * 41) % 23) - 11) / 11) * 90;
+        const x = start.x - d, y = start.y + off;
+        if (g.world.isFree(x, y, 11)) { g.zombies.push(new Zombie(x, y, true)); n++; }
+      }
+      window.__S = { s, start };
+      return { street: [Math.round(s.x), Math.round(s.y)], horde: n };
+    },
+    direct: (i, g, pad) => {
+      const H = window.__h, p = g.player, a = g.ally;
+      a.hp = 100;
+      a.x += (p.x - 12 - a.x) * 0.12;
+      a.y += (p.y + 46 - a.y) * 0.12;
+      // Keep the horde close: whoever falls back catches up a little.
+      for (const z of g.zombies) {
+        if (!z.alive || z.type !== 'common' || z.x > p.x) continue;
+        const gap = p.x - z.x;
+        if (gap > 230) z.x += 2.4;
+        else if (gap > 150) z.x += 0.9;
+      }
+      H.stick(pad, 'move', 0, 1);
+      let best = null, bd = 1e9;
+      for (const z of g.zombies) {
+        if (!z.alive || z.type !== 'common' || z.x > p.x + 20) continue;
+        const d = Math.hypot(z.x - p.x, z.y - p.y);
+        if (d < bd) { bd = d; best = z; }
+      }
+      if (best) H.stick(pad, 'aim', H.angTo(p, best.x, best.y), bd < 480 ? 1 : 0.4);
+      else H.stick(pad, 'aim', Math.PI, 0.4);
+      window.__cam = { x: p.x - 105, y: p.y + 14, zoom: 340 - 30 * H.ease(i / 169) };
+      if (i % 20 === 0) return { behind: Math.round(bd), ally: Math.round(Math.hypot(a.x - p.x, a.y - p.y)) };
+    },
+  },
 };

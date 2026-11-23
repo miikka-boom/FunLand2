@@ -1,6 +1,6 @@
-"""Cut the captured shots into the 30 s trailer (900 frames at 30 fps) with titles and the end card.
+"""Cut the captured shots into the 20 s trailer (600 frames at 30 fps) with titles and the small print.
 
-python3 -I edit.py <outDir> [every]   (every > 1 renders only every Nth frame, for a quick look)
+python3 -I edit4.py <outDir> [every]   (every > 1 renders only every Nth frame, for a quick look)
 """
 import math
 import os
@@ -18,21 +18,21 @@ LOGO = os.path.join(HERE, '..', '..', 'assets', 'we-left-ben.webp')
 
 # (kind, source shot, first source frame, frame count)
 TIMELINE = [
-    ('shot', 't5_walk', 8, 150),      # 0.000  the two of them walk a dark street, nearly silent
-    ('shot', 't4_dark', 12, 114),     # 5.000  two lights across the cemetery rows
-    ('shot', 't4_witch', 15, 123),    # 8.800  the Witch
-    ('card', 'most', 0, 24),          # 12.900 MOST DON'T.
-    ('shot', 't4_horde', 6, 138),     # 13.700 HERE THEY COME! ... the pumps go up at 15.333 (frame 460)
-    ('shot', 't5_escape', 10, 315),   # 18.300 the last escape: running, shooting back
-    ('card', 'black', 0, 36),         # 28.800 cut to black
+    ('shot', 't6_boom', 20, 60),      # 0.000  the hook: the horde floods the forecourt, the pumps go up (0.567)
+    ('shot', 't5_walk', 35, 135),     # 2.000  cut to quiet: the two of them walk a dark street
+    ('shot', 't4_witch', 30, 99),     # 6.500  the Witch
+    ('card', 'most', 0, 21),          # 9.800  MOST DON'T.
+    ('shot', 't6_hold', 0, 122),      # 10.500 back to back, a horde from each end
+    ('shot', 't6_escape', 15, 144),   # 14.567 the escape, close (on the chase cue's drop)
+    ('card', 'black', 0, 19),         # 19.367 cut to black (on the beat the music stops before)
 ]
-assert sum(seg[3] for seg in TIMELINE) == 900
+assert sum(seg[3] for seg in TIMELINE) == 600
 
 # Title lines: (text, start s, end s, style, y)
 TITLES = [
-    ('PEOPLE STOPPED SLEEPING.', 5.35, 8.6, 'title', 150),
-    ('SOME WANT TO BE LEFT ALONE.', 9.25, 12.75, 'title', 952),
-    ('BRING A FRIEND.', 23.6, 28.55, 'title', 150),
+    ('PEOPLE STOPPED SLEEPING.', 4.6, 6.4, 'title', 560),
+    ('SOME WANT TO BE LEFT ALONE.', 6.85, 9.65, 'title', 952),
+    ('BRING A FRIEND.', 15.9, 19.15, 'title', 150),
 ]
 STYLES = {
     'title': dict(font='Inter-ExtraBold.otf', size=64, track=6, fill=(244, 241, 236)),
@@ -98,7 +98,7 @@ logo = Image.open(LOGO).convert('RGBA')
 LOGO_W = 780
 logo = logo.resize((LOGO_W, round(logo.height * LOGO_W / logo.width)), Image.LANCZOS)
 BEN = 'ben was here.'
-fine = text_layer('PROTOTYPE FOOTAGE  ·  PARTNER PLAYED BY THE AI TEAMMATE', 'fine', shadow=False)
+fine = text_layer('PROTOTYPE FOOTAGE  ·  PARTNER PLAYED BY THE AI TEAMMATE', 'fine', shadow=True)
 ben_steps = [text_layer(BEN[:k], 'ben', shadow=False) if k else None for k in range(len(BEN) + 1)]
 
 
@@ -142,7 +142,6 @@ for kind, src, first, count in TIMELINE:
                     frame = most_card(j / FPS)
                 else:
                     frame = Image.new('RGBA', (W, H), (0, 0, 0, 255))
-                    place(frame, fine, W / 2, 1012, smooth((j / FPS - 0.15) / 0.4))
             else:
                 frame = Image.open(os.path.join(HERE, 'frames', src, f'f{first + j:04d}.jpg')).convert('RGBA')
                 if frame.size != (W, H):
@@ -151,8 +150,10 @@ for kind, src, first, count in TIMELINE:
                 a = ramp(t, t0, t1)
                 if a > 0:
                     place(frame, layers[text], W / 2, y, a, dy=8 * (1 - smooth((t - t0) / 0.5)))
-            if n < 24:  # a slow fade up from black
-                frame = Image.blend(Image.new('RGBA', (W, H), (0, 0, 0, 255)), frame, n / 24)
+            if src == 't5_walk' and j < 12:  # after the hook: up from black, into the quiet
+                frame = Image.blend(Image.new('RGBA', (W, H), (0, 0, 0, 255)), frame, j / 12)
+            if t >= 17.2:  # the small print, over the end of the escape and the black
+                place(frame, fine, W / 2, 1030, smooth((t - 17.2) / 0.4))
             frame.convert('RGB').save(os.path.join(OUT, f'f{n:04d}.jpg'), quality=95)
         n += 1
 print('frames', n)

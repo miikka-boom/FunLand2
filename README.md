@@ -15,7 +15,7 @@ build step and no dependencies.
 | Safehouse | [`safehouse/`](safehouse) | Another metagame: meta-progression for a co-op zombie mobile game |
 | Camp | [`camp/`](camp) | The first metagame prototype: a survivor camp with base building |
 
-**Trailers:** four 30-second trailers for We Left Ben, cut from real gameplay, are in
+**Trailers:** four trailers for We Left Ben (three of 30 seconds, one of 20), cut from real gameplay, are in
 [`trailers/`](trailers); [`tools/trailer/`](tools/trailer) re-shoots them from the game.
 
 # Prototype 1: "WOBBLE WAR"
@@ -856,7 +856,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-trailers/                  four 30-second trailers cut from real gameplay (what each sells, and what to know before sharing: trailers/README.md)
+trailers/                  four trailers cut from real gameplay (what each sells, and what to know before sharing: trailers/README.md)
 tools/trailer/             the trailer kit: the game in headless Chromium on a virtual clock, a scripted gamepad, a directed camera; ffmpeg for the cut (tools/trailer/README.md)
 tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
 ```

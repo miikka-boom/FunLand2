@@ -1,5 +1,6 @@
-"""Trailer 4's sound: a nearly silent street (wind, two people's footsteps, a groan off in the dark),
-then the game's score placed to the cut, a blast with the music ducked under it, and a hard stop.
+"""Trailer 4's sound (20 s): a 2 s hook (the horde cue and the pumps going up, the music ducked under the
+blast, all of it cut dead), a nearly silent street (wind, two people's footsteps, a groan off in the dark),
+then the game's score placed to the cut and a hard stop.
 
 python3 -I mix4.py <out.wav>
 """
@@ -11,7 +12,7 @@ import sys
 import numpy as np
 
 SR = 48000
-DUR = 30.0
+DUR = 20.0
 MUSIC = os.environ.get('MUSIC_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'assets', 'music')) + os.sep
 OUT = sys.argv[1]
 rng = np.random.default_rng(11)
@@ -106,20 +107,29 @@ def groan():
     return g / np.max(np.abs(g))
 
 
-fade = np.ones(int(5.3 * SR))
-fade[-int(0.5 * SR):] = np.linspace(1, 0, int(0.5 * SR))
-put(wind(5.3) * fade[:, None], 0.0, -27.0)
-for k in range(9):
-    put(step() * (0.8 + 0.2 * rng.random()), 0.25 + k * 0.6, -22.0, pan=-0.25)
-    put(step() * (0.8 + 0.2 * rng.random()), 0.53 + k * 0.58, -23.0, pan=0.25)
-put(groan(), 2.6, -12.0, pan=0.45)
+# 2.0 - 6.5: the street, nearly silent (wind, the two of them walking, a groan up ahead).
+street = np.zeros_like(mix)
+fade = np.ones(int(4.6 * SR))
+fade[:int(0.25 * SR)] = np.linspace(0, 1, int(0.25 * SR))
+fade[-int(0.3 * SR):] = np.linspace(1, 0, int(0.3 * SR))
+w = wind(4.6) * fade[:, None] * db(-27.0)
+street[int(2.0 * SR):int(2.0 * SR) + len(w)] += w
+mix_ref = mix
+mix = street
+for k in range(7):
+    put(step() * (0.8 + 0.2 * rng.random()), 2.2 + k * 0.6, -22.0, pan=-0.25)
+    put(step() * (0.8 + 0.2 * rng.random()), 2.48 + k * 0.58, -23.0, pan=0.25)
+put(groan(), 3.8, -12.0, pan=0.3)
+street = mix
+mix = mix_ref
 
-# --- 5.0 onwards: the score ----------------------------------------------------------------
-put(fades(load('menu.mp3', 4.0, 7.9), fin=0.8, fout=0.05), 5.0, +3.0)
-put(fades(load('sting_terror.mp3', 0.0, 2.6), fout=1.2), 12.9, -1.0)
-put(fades(load('horde_b.mp3', 0.0, 4.85), fin=0.01, fout=0.25), 13.7, 0.0)
-put(fades(load('finale_escape.mp3', 10.0, 10.5), fin=0.25, fout=0.04), 18.3, +0.5)
-
+# 6.5 - 9.8: the title theme under the Witch (its swell arrives just before MOST DON'T.).
+put(fades(load('menu.mp3', 8.4, 3.3), fin=0.4, fout=0.05), 6.5, +3.0)
+put(fades(load('sting_terror.mp3', 0.0, 2.6), fout=1.2), 9.8, -1.0)
+# 10.5 - 19.35: the fight and the escape, one cue. It comes in on a beat (src 0.879), its pre-drop lull falls
+# on the last of the hold, its drop (src 4.946) on the cut to the escape (frame 437), and it stops dead
+# just before the downbeat that the cut to black (frame 581) lands on.
+put(fades(load('horde_chase.mp3', 0.879, 8.85), fin=0.01, fout=0.02), 10.5, 0.0)
 
 def blast(seed):
     r = np.random.default_rng(seed)
@@ -136,8 +146,13 @@ def blast(seed):
     return x / np.max(np.abs(x))
 
 
-# The pumps go up on output frame 460: duck the music (-14 dB, held, back over 0.8 s), then the blast.
-TB = 460 / 30
+# 0 - 2.0, the hook: the horde cue, the pumps going up on its frame 17 (music ducked under the blast),
+# and all of it cut dead at 2.0 for the quiet street.
+hook = np.zeros_like(mix)
+mix_ref = mix
+mix = hook
+put(fades(load('horde_b.mp3', 0.0, 2.05), fin=0.005), 0.0, 0.0)
+TB = 17 / 30
 t = np.arange(len(mix)) / SR
 env = np.ones(len(mix))
 d = db(-14.0)
@@ -147,9 +162,12 @@ k = (t[back] - (TB + 0.28)) / 0.82
 env[back] = d + (1 - d) * (k * k * (3 - 2 * k))
 mix *= env[:, None]
 put(np.stack([blast(7), blast(8)], axis=1), TB, +6.0)
+gate = np.clip((2.0 - t) / 0.03, 0, 1)
+hook = mix * gate[:, None]
+mix = mix_ref + hook + street
 
 mix = mix * (db(-1.0) / float(np.max(np.abs(mix))))
-for a, b in [(0.0, 5.0), (5.0, 12.9), (12.9, 13.7), (13.7, 18.3), (18.3, 28.8), (28.8, 30.0)]:
+for a, b in [(0.0, 2.0), (2.0, 6.5), (6.5, 9.8), (9.8, 10.5), (10.5, 14.567), (14.567, 19.35), (19.35, 20.0)]:
     seg = mix[int(a * SR):int(b * SR)]
     print(f'{a:5.2f}-{b:5.2f} s  rms {20 * math.log10(float(np.sqrt(np.mean(seg ** 2))) + 1e-9):6.1f} dBFS')
 subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'f32le', '-ar', str(SR), '-ac', '2', '-i', '-', '-c:a', 'pcm_s24le', OUT],

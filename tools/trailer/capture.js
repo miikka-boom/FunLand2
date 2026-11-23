@@ -28,6 +28,8 @@ function patchHud(src) {
     ['  if (S.showTouches) drawTouchDebug(ctx, input.touch, L);',
       '  if (S.showTouches) drawTouchDebug(ctx, input.touch, L);\n  }'],
     ['  if (game.won || game.lost) drawEnd(ctx, game, L, ui);', '  if ((game.won || game.lost) && !window.__cleanHud) drawEnd(ctx, game, L, ui);'],
+    // window.__noHurt: no red damage vignette (god mode still takes hits, and each one flashes the screen).
+    ['  let va = game.hurtFlash * 0.55;', '  let va = window.__noHurt ? -9 : game.hurtFlash * 0.55;'],
     ['  drawBossBar(ctx, game, L);\n  drawHoldoutBar(ctx, game, L);\n  drawFerryBar(ctx, game, L);',
       '  if (!window.__cleanHud) {\n  drawBossBar(ctx, game, L);\n  drawHoldoutBar(ctx, game, L);\n  drawFerryBar(ctx, game, L);\n  }'],
   ];

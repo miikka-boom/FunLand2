@@ -1,6 +1,6 @@
 # Trailers
 
-Four 30-second trailers (1080p, 30 fps), cut from real footage of the browser build of
+Four trailers (1080p, 30 fps; three of 30 seconds and one of 20), cut from real footage of the browser build of
 *We Left Ben*, shot frame by frame with [`tools/trailer`](../tools/trailer).
 
 | File | What it sells |
@@ -8,7 +8,7 @@ Four 30-second trailers (1080p, 30 fps), cut from real footage of the browser bu
 | `we-left-ben-trailer.mp4` | The first one: the safe room, the dark, the Witch, the horde and the gas station, the Pier 9 ferry |
 | `we-left-ben-coop-trailer.mp4` | Two-player co-op: watch their back, pull them out, pick them up, hold the line |
 | `where-is-ben-trailer.mp4` | The mystery, under the name "Where is Ben?": his writing, the glimpse, his bed |
-| `we-left-ben-escape-trailer.mp4` | The first one's beats with no writing in the world and no logo: it opens on the two of them walking a dark street in near silence and ends on an escape, running from the horde with your friend, shooting back |
+| `we-left-ben-escape-trailer.mp4` | 20 seconds in the first one's style, with no writing in the world and no logo: a 2-second hook (the gas station going up under the horde), a hard cut to the two of them walking a dark street in near silence, the Witch, a fight back to back between two hordes, and a close-up escape with the horde at their heels |
 
 Before showing them outside the team:
 
