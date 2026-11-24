@@ -43,25 +43,20 @@ const ease = (f) => f * f * (3 - 2 * f);
  */
 export const STEPS = [
   {
-    // Before anything: how to hold the phone (a picture of it on its side,
-    // a hand at each end, the thumbs on the sticks). Touch only, and not a
-    // lesson of its own: done once both thumbs have been on the glass, or
-    // you're already walking off.
+    // Before anything, on a phone or tablet: a screen of its own, black, with
+    // a big picture of how to hold it (on its side, a hand at each end, the
+    // thumbs on the sticks) and one line, until you tap anywhere; then it
+    // fades into the game (render/tutorial-render.js: drawTutorialIntro).
+    // Not a lesson of its own, and with a mouse or a pad it never shows.
     id: 'hold',
-    title: 'HOLD IT LIKE THIS',
-    coach: 'hold',
+    title: 'HOLD YOUR PHONE LIKE THIS',
+    intro: true,
     text: { touch: 'Both hands, a thumb on each side.' },
     skip: (t, g) => !!g.input && g.input.source !== 'touch',
-    enter: (t, g) => {
-      t.thumbsSeen = { left: false, right: false };
-      t.from = { x: g.player.x, y: g.player.y };
-    },
     update: (t, g) => {
-      const th = (g.input && g.input.thumbs) || {};
-      if (th.left) t.thumbsSeen.left = true;
-      if (th.right) t.thumbsSeen.right = true;
-      if (t.thumbsSeen.left && t.thumbsSeen.right) return true;
-      return Math.hypot(g.player.x - t.from.x, g.player.y - t.from.y) > 160;
+      const f = g.input;
+      if (!f) return false;
+      return !!((f.thumbs && (f.thumbs.left || f.thumbs.right)) || (f.events && f.events.length));
     },
   },
   {
@@ -278,8 +273,6 @@ export class Tutorial {
     // Day 2: whoever is nailed in with the good stuff (spawned with the map's boarded room).
     this.sleepers = this.L.room ? game.zombies.filter((z) => z.alive && pointInRect(z.x, z.y, this.L.room, 4)) : [];
     this.need = 0;
-    this.thumbsSeen = { left: false, right: false };
-    this.from = null;
     this.next();
   }
 
@@ -554,6 +547,12 @@ export class Tutorial {
   }
 
   // --- For the HUD and the report ------------------------------------------------------------
+
+  /** The first screen (how to hold the phone): 1 while it's up, fading to 0 after the tap; 0 otherwise. */
+  intro() {
+    if (this.over || !this.step.intro) return 0;
+    return this.pause > 0 ? clamp(this.pause / PAUSE, 0, 1) : 1;
+  }
 
   /** Where the edge arrow points now (null: nowhere in particular). */
   arrow() {

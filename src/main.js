@@ -352,6 +352,9 @@ function frame(now) {
   }
 
   const f = input.sample();
+  // Tutorial 1's first screen (how to hold the phone): a tap anywhere only ends it
+  // (no pausing, reloading or shoving through the black).
+  if (state === 'play' && game.tutorial && game.tutorial.intro() >= 1 && f.events.length) f.events = ['tap'];
   const padPress = input.source === 'gamepad' && f.events.length > 0;
   if (state === 'title') {
     if (padPress) start(); // sound unlocks on the next tap/click (pads aren't a user gesture)

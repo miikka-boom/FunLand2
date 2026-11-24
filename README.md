@@ -291,11 +291,12 @@ and no dependencies.
   minutes (kept short on purpose). One thing at a time, by doing it, with one
   gun all the way (the final game won't have weapon changing, so the tutorial
   doesn't teach it: the gun panel doesn't swap here):
-  - First, on a phone or tablet: **how to hold it**. A picture of a phone
-    on its side, a hand at each end and the thumbs on the two sticks, and
-    marks where your own thumbs go (green once they're there). Done once both
-    thumbs have been on the glass (or you've walked off); with a mouse or a
-    pad it never shows, and it isn't one of the lessons.
+  - First, on a phone or tablet, a screen of its own: **how to hold it**.
+    Black, a big picture of a phone on its side with a hand at each end and
+    the thumbs on the two sticks, and one line, "HOLD YOUR PHONE LIKE THIS";
+    nothing else (no HUD, sticks, buttons or card) until you tap anywhere,
+    then it fades into the game. With a mouse or a pad it never shows, and it
+    isn't one of the lessons.
   - **Move** (walk to a ring), **aim** (laser on one of six drowsers shut
     behind a fence), **fire** (past the dashed ring), then through the first
     gate.

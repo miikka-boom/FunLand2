@@ -47,7 +47,8 @@ const { startle, seatWitchNear } = await import('../src/game/witch.js');
 const { startReload, swapWeapon } = await import('../src/game/player.js');
 const { hasModel } = await import('../src/render/models.js');
 const { computeLayout } = await import('../src/layout.js');
-const { drawTutorialHud, drawTutorialBright, cardRect, cardText, holdRect } = await import('../src/render/tutorial-render.js');
+const { drawTutorialHud, drawTutorialBright, cardRect, cardText, introLayout } = await import('../src/render/tutorial-render.js');
+const { drawHud } = await import('../src/render/hud.js');
 const { buildReport, reportText } = await import('../src/playtest.js');
 
 const INF = 0x3fffffff;
@@ -505,63 +506,54 @@ test('the words: every lesson has them for touch, the mouse and pads fall back s
   }
 });
 
-test('first, how to hold the phone (touch only): done once both thumbs have been on the glass, or once you walk off', () => {
-  const touch = (left, right) => ({ ...idle(), source: 'touch', thumbs: { left, right } });
-  // Both thumbs (one after the other is enough).
+test('first, on a phone: a black screen with a big picture of how to hold it and one line, nothing else, until you tap', () => {
+  const touch = (left, right, events = []) => ({ ...idle(events), source: 'touch', thumbs: { left, right } });
   let game = make();
   let T = game.tutorial;
   assert.equal(T.step.id, 'hold');
   assert.equal(T.step.dot, undefined, 'not a lesson of its own');
-  run(game, 2, touch(false, false));
+  assert.equal(T.intro(), 1);
+  run(game, 3, touch(false, false));
   assert.equal(T.step.id, 'hold', 'it waits for you');
-  assert.equal(T.view('touch').coach, 'hold');
-  run(game, 0.3, touch(true, false));
-  assert.equal(T.step.id, 'hold', 'one thumb is not both');
-  run(game, 0.1, touch(true, true));
-  assert.ok(T.pause > 0, 'both: done');
+  assert.equal(T.intro(), 1, 'black all the while');
+  // On screen: the black, the picture and the one line; nothing else at all (no HUD, sticks, buttons or card).
+  for (const [w, h] of [[568, 320], [640, 360], [844, 390], [1024, 768]]) {
+    game.setViewport(w, h);
+    const L = computeLayout(w, h, { l: 0, r: 0, t: 0, b: 0 }, game.settings);
+    const ctx = mockCtx();
+    texts.length = 0;
+    bad = null;
+    const input = { source: 'touch', touch: { move: { active: false }, aim: { active: false, crossedFire: false }, pressed: new Map() } };
+    drawHud(ctx, game, input, { layout: L, title: false, forceSticks: true }, null);
+    assert.equal(bad, null, `${w}x${h}: ${bad}`);
+    assert.deepEqual(texts, ['HOLD YOUR PHONE LIKE THIS'], `${w}x${h}: one line and nothing else`);
+    // A big picture: the phone alone is at least half the screen wide (or as tall as the screen allows), the hands fit, the line above it.
+    const I = introLayout(w, h);
+    assert.ok(I.PW >= w * 0.5 || I.PH >= h * 0.45, `${w}x${h}: a phone ${Math.round(I.PW)} px wide`);
+    assert.ok(I.cx - I.W / 2 >= 0 && I.cx + I.W / 2 <= w, `${w}x${h}: the hands on screen`);
+    assert.ok(I.titleY + I.size / 2 < I.cy - I.PH / 2, `${w}x${h}: the line above the phone`);
+    assert.ok(I.size * 0.62 * 26 <= w * 0.9 + 1, `${w}x${h}: the line fits across`);
+  }
+  game.setViewport(844, 390);
+  // A tap anywhere: on with the game, the black fading out.
+  run(game, 0.05, touch(false, false, ['tap']));
+  assert.ok(T.pause > 0, 'the tap ends it');
+  assert.ok(T.intro() > 0 && T.intro() < 1, 'fading');
   run(game, 1, touch(false, false));
   assert.equal(T.step.id, 'move');
-  // Walking off without putting the other thumb down moves on too (nobody gets stuck on it).
+  assert.equal(T.intro(), 0);
+  // A thumb coming down does it too.
   game = make();
   T = game.tutorial;
-  run(game, 0.2, touch(true, false));
-  Object.assign(game.player, { x: game.player.x + 200 });
-  run(game, 0.1, touch(true, false));
-  assert.ok(T.pause > 0 || T.step.id === 'move');
+  run(game, 0.05, touch(true, false));
+  assert.ok(T.pause > 0);
   // With a mouse it never shows.
   game = make();
   T = game.tutorial;
   game.update(1 / 60, { ...idle(), source: 'mouse' });
   assert.equal(T.step.id, 'move');
+  assert.equal(T.intro(), 0);
   assert.ok(!('hold' in T.times));
-});
-
-test('the holding picture: a phone on its side, a hand at each end, thumbs on the sticks; it fits between the HUD and the card on every phone, clear of the buttons', () => {
-  const ctx = mockCtx();
-  for (const [w, h] of [[568, 320], [640, 360], [844, 390], [1024, 768]]) {
-    const game = make();
-    game.setViewport(w, h);
-    const L = computeLayout(w, h, { l: 0, r: 0, t: 0, b: 0 }, game.settings);
-    const R = game.settings.stickRadius;
-    const card = cardRect(L, R, 2);
-    const P = holdRect(L, card);
-    assert.ok(P.y >= L.safe.t + 56 && P.y + P.h <= card.y - 10 + 0.5, `${w}x${h}: between the HUD and the card`);
-    assert.ok(P.x >= 0 && P.x + P.w <= w, `${w}x${h}: on screen`);
-    for (const b of [L.byId.shove, L.byId.reload]) {
-      if (b.hidden) continue;
-      const nx = Math.max(P.x, Math.min(b.x, P.x + P.w));
-      const ny = Math.max(P.y, Math.min(b.y, P.y + P.h));
-      assert.ok(Math.hypot(b.x - nx, b.y - ny) > b.r, `${w}x${h}: clear of the ${b.id} button`);
-    }
-    texts.length = 0;
-    bad = null;
-    for (const [left, right] of [[false, false], [true, false], [true, true]]) {
-      const input = { source: 'touch', touch: { move: { active: left }, aim: { active: right, crossedFire: false }, pressed: new Map() } };
-      drawTutorialHud(ctx, game, input, { title: false, forceSticks: false }, L);
-      assert.equal(bad, null, `${w}x${h}: ${bad}`);
-    }
-    assert.ok(texts.includes('HOLD IT LIKE THIS'));
-  }
 });
 
 test('the coaching draws on a phone at every lesson (touch, mouse, pad) without a bad number, and the card sits between the thumbs', () => {
@@ -593,6 +585,10 @@ test('the coaching draws on a phone at every lesson (touch, mouse, pad) without 
         drawTutorialHud(ctx, game, touchIn(src), { title: false, forceSticks: false }, L);
         drawTutorialBright(R, game, game.viewRect(40));
         assert.equal(bad, null, `${s.id} (${src}): ${bad}`);
+        if (s.intro) {
+          assert.equal(texts.length, 0, 'the first screen has it all to itself: no card');
+          continue;
+        }
         assert.ok(texts.includes(s.title) || texts.includes(`✓ ${s.title}`), `${s.id}: the card says what it is`);
         if (src === 'touch') for (const t of texts) seen.add(t);
       }
@@ -613,6 +609,7 @@ test("the card's words are never cut short, down to the smallest phones (and the
     game.setViewport(w, h);
     const L = computeLayout(w, h, { l: 0, r: 0, t: 0, b: 0 }, game.settings);
     for (const s of STEPS) {
+      if (s.intro) continue; // no card on the first screen
       skipTo(game, s.id);
       texts.length = 0;
       drawTutorialHud(ctx, game, { source: 'touch', touch: { move: { active: true }, aim: { active: true, crossedFire: false }, pressed: new Map() } }, { title: false }, L);

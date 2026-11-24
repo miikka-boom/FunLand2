@@ -6,7 +6,7 @@ import { TAU, clamp } from '../util.js';
 import { ALLY } from '../game/ally.js';
 import { ARMOR_MAX, ADRENALINE_TIME } from '../game/loot.js';
 import { witchOutcome } from '../game/witch.js';
-import { drawTutorialHud } from './tutorial-render.js';
+import { drawTutorialHud, drawTutorialIntro } from './tutorial-render.js';
 
 let vignette = null;
 let vignetteKey = '';
@@ -17,6 +17,11 @@ export function drawHud(ctx, game, input, ui, renderer) {
   const w = L.w;
   const h = L.h;
   const p = game.player;
+  // Tutorial 1's first screen (how to hold the phone) covers everything until you tap.
+  if (!ui.title && game.tutorial && game.tutorial.intro() >= 1) {
+    drawTutorialIntro(ctx, game, w, h);
+    return;
+  }
 
   // --- Damage / low health vignette --------------------------------------------
   const hpf = p.hp / p.maxHp;
@@ -61,6 +66,7 @@ export function drawHud(ctx, game, input, ui, renderer) {
   drawMessages(ctx, game, L);
   if (game.won || game.lost) drawEnd(ctx, game, L, ui);
   if (S.showDebug) drawDebug(ctx, game, input, ui, L);
+  if (!ui.title && game.tutorial) drawTutorialIntro(ctx, game, w, h); // ...and fades out over it after the tap
 }
 
 // --- Sticks --------------------------------------------------------------------------

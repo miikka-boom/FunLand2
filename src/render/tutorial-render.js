@@ -2,8 +2,9 @@
 //   - in the world (bright pass): the ring to walk to, beacons on the gates
 //     (red shut, amber opening, green open), brackets on the targets in the
 //     pen, a red pulse round the alarm car while its lesson is on
-//   - on the HUD, first of all (touch): a picture of how to hold the phone, on
-//     its side with a thumb on each stick, and where the thumbs go;
+//   - first of all (touch), a screen of its own: black, a big picture of how
+//     to hold the phone (on its side, a thumb on each stick) and one line,
+//     until you tap (drawTutorialIntro, called by hud.js);
 //   - on the HUD: the lesson card at the bottom, between the thumbs (what you
 //     need to see is mostly ahead of you, up the screen, so the card stays out
 //     of its way), and for touch a ghost thumb doing the gesture on the half of
@@ -120,6 +121,7 @@ export function drawTutorialBright(R, game, vr) {
 export function drawTutorialHud(ctx, game, input, ui, L) {
   const T = game.tutorial;
   if (!T || ui.title || game.lost || game.won) return;
+  if (T.intro() > 0) return; // the first screen (how to hold the phone) has the screen to itself
   const touch = input.source === 'touch' || ui.forceSticks;
   const view = T.view(input.source === 'touch' ? 'touch' : input.source);
   drawCard(ctx, game, view, L);
@@ -217,7 +219,7 @@ function drawCard(ctx, game, view, L) {
   lines.forEach((l, i) => ctx.fillText(l, x + pad, y + 10 + 22 + lineH / 2 + 1 + i * lineH));
 }
 
-// --- How to hold the phone -------------------------------------------------------------------
+// --- How to hold the phone (Tutorial 1's first screen) -------------------------------------
 
 const INK = '40,44,52'; // the ghost thumbs' dark
 
@@ -242,45 +244,39 @@ function bar(ctx, x0, y0, x1, y1, w, style) {
   ctx.stroke();
 }
 
-/** Where the picture of how to hold the phone goes: the middle of the screen, between the HUD and the card, short of the buttons on the right. */
-export function holdRect(L, card) {
-  const top = L.safe.t + 56;
-  const bottom = card.y - 10;
-  let right = L.w;
-  for (const b of [L.byId.shove, L.byId.reload]) if (b && !b.hidden) right = Math.min(right, b.x - b.r - 8);
-  const W = Math.max(110, Math.min(300, L.w * 0.44, (bottom - top) / 0.66, (right - L.w / 2) / 0.56));
-  return { x: L.w / 2 - 0.56 * W, y: top + Math.max(0, (bottom - top - 0.66 * W) / 2), w: 1.12 * W, h: 0.66 * W, W };
+/**
+ * Where the first screen puts things on a w x h screen: the picture W wide
+ * (the hands at the ends of the phone reach its edges), the phone centred at
+ * (cx, cy), and the one line above it.
+ */
+export function introLayout(w, h) {
+  const W = Math.min(w * 0.7, h * 1.35, 720);
+  const PH = 0.4 * W;
+  const top = h * 0.24;
+  let size = Math.round(clamp(h * 0.065, 18, 34));
+  // The line fits across the screen (a size smaller where it has to).
+  while (size > 14 && size * 0.62 * 26 > w * 0.9) size -= 1;
+  return { W, PW: 0.8 * W, PH, cx: w / 2, cy: top + PH / 2, titleY: Math.min(h * 0.12, top - size), size };
 }
 
 /**
- * How to hold the phone, for anyone who has never played this way: the phone
- * on its side, a hand round each end, the thumbs on the two sticks (pressing
- * now and then). Drawn like the ghost thumbs (dark, outlined in white), on a
- * dark panel.
+ * A phone on its side, held in both hands, the thumbs on the two sticks
+ * (pressing in turn, a ripple under each): drawn like the ghost thumbs, dark
+ * and outlined in white. The forearms come up from below `floor`.
  */
-function holdPicture(ctx, P, t) {
-  const W = P.W;
+function phoneInHands(ctx, cx, cy, W, t, floor) {
   const PW = 0.8 * W;
   const PH = 0.4 * W;
-  const cx = P.x + P.w / 2;
-  const cy = P.y + 0.08 * W + PH / 2;
   const x0 = cx - PW / 2;
   const y0 = cy - PH / 2;
-  ctx.save();
-  ctx.fillStyle = 'rgba(8,10,14,0.68)';
-  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  rrect(ctx, P.x, P.y, P.w, P.h, 14);
-  ctx.fill();
-  ctx.stroke();
-  ctx.clip(); // the forearms run out of the bottom of the panel
-
   // The hands round the ends (outlines first, then the dark: one silhouette each).
   const hands = [-1, 1].map((s) => {
     const ex = cx + (s * PW) / 2;
+    const hx = ex + s * 0.005 * W;
+    const hy = cy + PH / 2 + 0.03 * W;
+    const fy = floor + 0.12 * W; // past the bottom of the screen
     return {
-      arm: [ex + s * 0.1 * W, cy + 0.5 * W, ex + s * 0.005 * W, cy + PH / 2 + 0.03 * W, 0.17 * W],
+      arm: [hx + s * 0.35 * (fy - hy), fy, hx, hy, 0.17 * W],
       palm: [ex + s * 0.015 * W, cy + 0.045 * W, 0.15 * W, PH + 0.09 * W, 0.07 * W, -s * 0.1],
     };
   });
@@ -300,7 +296,7 @@ function holdPicture(ctx, P, t) {
     }
   }
 
-  // The phone, on its side.
+  // The phone.
   ctx.fillStyle = '#0e1015';
   ctx.strokeStyle = 'rgba(255,255,255,0.75)';
   ctx.lineWidth = 2;
@@ -351,7 +347,7 @@ function holdPicture(ctx, P, t) {
     const ph = (t * 0.8 + i * 0.5) % 1;
     const press = ph < 0.2 ? Math.sin((ph / 0.2) * Math.PI) : 0;
     const ex = cx + (s * PW) / 2;
-    return { base: [ex - s * 0.045 * W, cy + PH / 2 - 0.005 * W], tip: [stick[i].x, stick[i].y + press * 0.006 * W], ph, s };
+    return { base: [ex - s * 0.045 * W, cy + PH / 2 - 0.005 * W], tip: [stick[i].x, stick[i].y + press * 0.006 * W], ph };
   });
   for (const pass of [0, 1]) {
     for (const th of thumbs) bar(ctx, th.base[0], th.base[1], th.tip[0], th.tip[1], 0.072 * W + (pass ? 0 : 3), pass ? `rgb(${INK})` : 'rgba(255,255,255,0.85)');
@@ -373,7 +369,31 @@ function holdPicture(ctx, P, t) {
     }
   }
   ctx.lineCap = 'butt';
+}
+
+/**
+ * Tutorial 1's first screen, on a phone or tablet: black, a big picture of
+ * how to hold it, and its one line ("HOLD YOUR PHONE LIKE THIS"). Nothing
+ * else until you tap (hud.js draws nothing under it); then it fades into the
+ * game. Returns how opaque it was (1: it covered everything; 0: not shown).
+ */
+export function drawTutorialIntro(ctx, game, w, h) {
+  const T = game.tutorial;
+  const a = T ? T.intro() : 0;
+  if (a <= 0) return 0;
+  const I = introLayout(w, h);
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  phoneInHands(ctx, I.cx, I.cy, I.W, game.time, h);
+  ctx.font = `900 ${I.size}px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(T.step.title, I.cx, I.titleY);
   ctx.restore();
+  return a;
 }
 
 // --- The ghost thumb ---------------------------------------------------------------------
@@ -496,31 +516,6 @@ function coach(ctx, game, input, view, L, touch) {
     }
   }
   if (!touch) return;
-  if (kind === 'hold') {
-    // The picture, and on the real screen where each thumb goes (green once it's there).
-    holdPicture(ctx, holdRect(L, cardRect(L, R, 2)), t);
-    for (const [g, side, on] of [[L.fixedMove, -1, tp.move.active], [L.fixedAim, 1, tp.aim.active]]) {
-      if (on) {
-        ctx.strokeStyle = `rgba(${GREEN},0.9)`;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        circle(ctx, g.x, g.y, R * 0.72);
-        ctx.stroke();
-        continue;
-      }
-      const k = 0.5 + 0.5 * Math.sin(t * 4 + side);
-      ctx.strokeStyle = `rgba(255,255,255,${0.3 + 0.35 * k})`;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 6]);
-      ctx.beginPath();
-      circle(ctx, g.x, g.y, R * (0.68 + 0.08 * k));
-      ctx.stroke();
-      ctx.setLineDash([]);
-      const ph = (t * 1.1 + (side > 0 ? 0.5 : 0)) % 1;
-      thumb(ctx, g.x, g.y, side, 0.85, ph < 0.3 ? 1 : 0);
-    }
-    return;
-  }
   // Each ghost fades while your own thumb is on that stick.
   const moveA = tp.move.active ? 0.15 : 1;
   const aimA = tp.aim.active ? 0.15 : 1;
