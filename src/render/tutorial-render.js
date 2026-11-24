@@ -215,7 +215,8 @@ function drawCard(ctx, game, view, L) {
   }
 
   ctx.font = `600 ${size}px ${FONT}`;
-  ctx.fillStyle = done ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.88)';
+  // A nudge (someone's doing it wrong: tutorial.js) is in amber, so it reads as new.
+  ctx.fillStyle = done ? 'rgba(255,255,255,0.45)' : view.nudge ? `rgba(${AMBER},${0.8 + 0.2 * pulse})` : 'rgba(255,255,255,0.88)';
   lines.forEach((l, i) => ctx.fillText(l, x + pad, y + 10 + 22 + lineH / 2 + 1 + i * lineH));
 }
 
@@ -392,6 +393,15 @@ export function drawTutorialIntro(ctx, game, w, h) {
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#fff';
   ctx.fillText(T.step.title, I.cx, I.titleY);
+  // Still there after a while, with nothing tapped: say how to go on (the step's nudge).
+  if (T.nudge && T.nudge.key === 'hold.no-tap') {
+    const k = Math.min(1, T.nudge.t / 0.4);
+    ctx.globalAlpha = a * k;
+    ctx.font = `700 ${Math.round(I.size * 0.62)}px ${FONT}`;
+    ctx.fillStyle = `rgb(${AMBER})`;
+    // Just under the phone, between the hands.
+    ctx.fillText(T.nudge.n.text.touch, I.cx, Math.min(h - I.size, I.cy + I.PH / 2 + Math.max(I.size * 1.3, I.W * 0.09)));
+  }
   ctx.restore();
   return a;
 }

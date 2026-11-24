@@ -601,6 +601,105 @@ test('the HUD comes in a part at a time: the two sticks first, SHOVE for the sho
   assert.ok(!L.byId.reload.hidden && !L.byId.pause.hidden && !L.byId.swap.hidden && L.byId.shove.hidden === !S.shoveButton);
 });
 
+test('doing it wrong: each way of getting stuck gets its own nudge on the card (in amber), and the report counts them', () => {
+  const touch = (o = {}) => ({ ...idle(), source: 'touch', thumbs: { left: false, right: false }, ...o });
+  const at = (id) => {
+    const game = make();
+    skipTo(game, id);
+    if (id === 'hold') return game;
+    run(game, 0.05, touch()); // (a pad got it here; from now on it's a phone)
+    return game;
+  };
+  const check = (game, key, text) => {
+    const T = game.tutorial;
+    assert.ok(T.nudge, `${key}: no nudge`);
+    assert.equal(T.nudge.key, key);
+    const v = T.view(game.input.source === 'touch' ? 'touch' : game.input.source);
+    assert.ok(v.nudge, 'the card knows it is a nudge (amber)');
+    assert.equal(v.text, text);
+    assert.equal(T.nudges[key], 1, 'counted');
+  };
+  // The first screen: nothing tapped for a while.
+  let g = at('hold');
+  run(g, 7, touch());
+  check(g, 'hold.no-tap', 'Tap the screen to start.');
+  run(g, 10, touch());
+  assert.equal(g.tutorial.nudge.key, 'hold.no-tap', 'and it stays up until the tap');
+  // Move: taps instead of a slide; a thumb down that doesn't slide; walking with the right thumb.
+  g = at('move');
+  run(g, 1.2, (() => { let i = 0; return () => touch({ thumbs: { left: i++ % 30 < 6, right: false } }); })());
+  check(g, 'move.tapped', 'Keep your thumb down and slide it.');
+  g = at('move');
+  run(g, 1.5, touch({ thumbs: { left: true, right: false } }));
+  check(g, 'move.still-thumb', 'Now slide your thumb toward the ring.');
+  g = at('move');
+  run(g, 2, touch({ thumbs: { left: false, right: true }, aimActive: true, aimRaw: 0.7 }));
+  check(g, 'move.right-thumb', 'Walk with your LEFT thumb.');
+  // Aim: tapping instead of holding.
+  g = at('aim');
+  g.update(1 / 60, touch({ events: ['shove'] }));
+  run(g, 0.5, touch());
+  g.update(1 / 60, touch({ events: ['shove'] }));
+  check(g, 'aim.tapped', 'Not a tap: keep your right thumb down.');
+  // Fire: aiming that never pushes past the ring (and with a mouse, the mouse's words).
+  for (const [src, text] of [['touch', 'Push your thumb further, past the ring.'], ['mouse', 'Click to shoot.']]) {
+    g = at('aim');
+    g.tutorial.aimT = 1; // aimed: on to fire, the six still up
+    run(g, 1, touch());
+    assert.equal(g.tutorial.step.id, 'fire');
+    run(g, 3, { ...touch({ thumbs: { left: false, right: true } }), source: src, aimActive: true, aimRaw: 0.5 });
+    check(g, 'fire.no-push', text);
+  }
+  // Shove: firing the empty gun; holding the thumb down; shoving the air; going down.
+  g = at('shove');
+  run(g, 1, touch({ thumbs: { left: false, right: true }, aimActive: true, aimRaw: 1, fire: true }));
+  check(g, 'shove.empty-gun', 'No ammo! A quick tap shoves.');
+  g = at('shove');
+  run(g, 1, touch({ thumbs: { left: false, right: true }, aimActive: true, aimRaw: 0.4 }));
+  check(g, 'shove.held', "Just a quick tap. Don't hold.");
+  g = at('shove');
+  g.update(1 / 60, touch({ events: ['shove'] }));
+  run(g, 0.6, touch());
+  g.update(1 / 60, touch({ events: ['shove'] }));
+  check(g, 'shove.too-far', 'Let them get close, then tap.');
+  g = at('shove');
+  g.tutorial.rescue();
+  run(g, 0.1, touch());
+  check(g, 'shove.rescued', 'Tap the right side to push them off!');
+  // Reload: the button never tapped.
+  g = at('reload');
+  run(g, 5.5, touch());
+  check(g, 'reload.no-reload', 'Tap the round ⟳ button.');
+  // Both thumbs: not shooting with them close; standing still with one on you.
+  g = at('kite');
+  run(g, 4, touch());
+  check(g, 'kite.not-shooting', 'Right thumb: keep shooting!');
+  g = at('kite');
+  run(g, 2.5, () => {
+    // One right on you, and you shooting the other way, standing still.
+    const z = g.tutorial.group.find((q) => q.alive);
+    if (z) Object.assign(z, { x: g.player.x + 60, y: g.player.y, vx: 0, vy: 0 });
+    return touch({ fire: true, aimActive: true, aimRaw: 1, aimX: -1, aimY: 0 });
+  });
+  check(g, 'kite.not-backing', 'Left thumb: back off!');
+  // Run for it: staying put.
+  g = at('saferoom');
+  run(g, 5.5, touch());
+  check(g, 'saferoom.fighting', "Don't fight them all: run for the door!");
+  // A nudge has the card for a few seconds, then the lesson's own line is back; it comes back if it's still happening.
+  g = at('move');
+  run(g, 1.5, touch({ thumbs: { left: true, right: false } }));
+  run(g, 4.1, touch());
+  assert.equal(g.tutorial.nudge, null);
+  assert.equal(g.tutorial.view('touch').text, 'Left thumb: walk to the ring.');
+  run(g, 8, touch({ thumbs: { left: true, right: false } }));
+  assert.equal(g.tutorial.nudges['move.still-thumb'], 2);
+  // The report says where people were doing it wrong.
+  const r = buildReport(g);
+  assert.deepEqual(r.tutorial.nudges, { 'move.still-thumb': 2 });
+  assert.match(reportText(r), /Tutorial nudges: move\.still-thumb ×2/);
+});
+
 test('the coaching draws on a phone at every lesson (touch, mouse, pad) without a bad number, and the card sits between the thumbs', () => {
   const settings = { ...DEFAULTS, level: 'tutorial', playtestPrompt: false };
   for (const [w, h] of [[844, 390], [667, 375], [1024, 768]]) {
@@ -802,4 +901,5 @@ test('a bot gets through every lesson to the safe room through the real game loo
   assert.equal(tutorialDone(), true);
   assert.equal(p.weapon.def.id, 'smg', 'one gun, all the way');
   assert.ok(game.stats.shoveHits >= 3 && game.stats.kills >= 17, `${game.stats.shoveHits} shoves, ${game.stats.kills} kills`);
+  assert.deepEqual(T.nudges, {}, 'played right: never told off');
 });

@@ -427,6 +427,29 @@ test('the secret: a glint down a dead end (the arrow says GLINT, no ring), the b
   assert.equal(T.step.id, 'saferoom');
 });
 
+test('doing Day 2 wrong: lost on the chalk, shoving the boards from too far off, lost on the secret: each gets a nudge', () => {
+  const touch = (o = {}) => ({ ...idle(), source: 'touch', thumbs: { left: false, right: false }, ...o });
+  let game = make();
+  skipTo(game, 'chalk');
+  run(game, 12.5, touch());
+  assert.equal(game.tutorial.nudge && game.tutorial.nudge.key, 'chalk.lost');
+  assert.equal(game.tutorial.view('touch').text, 'The white arrows on the ground point the way.');
+  game = make();
+  skipTo(game, 'boards');
+  const p = game.player;
+  Object.assign(p, { x: game.tutorial.L.boards.x + 37, y: game.tutorial.L.boards.y + 200 }); // well off
+  game.update(1 / 60, touch({ events: ['shove'] }));
+  run(game, 0.7, touch());
+  game.update(1 / 60, touch({ events: ['shove'] }));
+  assert.equal(game.tutorial.nudge && game.tutorial.nudge.key, 'boards.too-far');
+  assert.equal(game.tutorial.view('touch').text, 'Get right up to the boards, then tap.');
+  game = make();
+  skipTo(game, 'secret');
+  run(game, 10.5, touch());
+  assert.equal(game.tutorial.nudge && game.tutorial.nudge.key, 'secret.lost');
+  assert.match(reportText(buildReport(game)), /Tutorial nudges: secret\.lost/);
+});
+
 test('the words fit on the card (touch, mouse, pad), and the coaching draws at every Day 2 lesson without a bad number', () => {
   for (const s of DAY2_STEPS) {
     for (const src of ['touch', 'mouse', 'gamepad']) {
@@ -572,4 +595,5 @@ test('a bot gets through Day 2 to the safe room through the real game loop: find
   assert.equal(game.stats.boards, 1);
   assert.ok(game.stats.kills >= 6, `${game.stats.kills} kills`);
   assert.equal(game.stats.secrets, 1, 'and the secret');
+  assert.deepEqual(T.nudges, {}, 'played right: never told off');
 });

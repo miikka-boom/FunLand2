@@ -170,6 +170,9 @@ export function reportText(r) {
     const T = r.tutorial;
     const slow = Object.entries(T.times).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} ${v}s`);
     lines.push(`Tutorial${T.day > 1 ? ` ${T.day}` : ''}: ${T.lessons}/${T.of} lessons, reached "${T.step}"${T.rescues ? ` · ${T.rescues} close call${T.rescues > 1 ? 's' : ''}` : ''}${T.alarm ? ' · set off the alarm' : ''}${slow.length ? ` · longest: ${slow.join(', ')}` : ''}`);
+    // The nudges: where someone was doing it wrong (and what), most first. That's where to add a guide.
+    const nudged = Object.entries(T.nudges || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}${n > 1 ? ` ×${n}` : ''}`);
+    if (nudged.length) lines.push(`Tutorial nudges: ${nudged.join(', ')}`);
   }
   if (r.device) {
     const fps = r.fps ? ` · ${r.fps.avg} fps avg, ${r.fps.low} low` : '';

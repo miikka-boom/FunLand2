@@ -186,6 +186,32 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
   What hasn't come in can't be pressed either: `applyHudReveal` in layout.js
   marks those buttons hidden every frame, and the hit test skips hidden
   buttons (a touch there is just a touch on that side of the screen).
+- **Nudges: doing it wrong.** Nothing can break the tutorial, but some wrong
+  gestures stall a lesson for good (found by running wrong players through
+  the game loop: tests reproduce each one). Each lesson lists `nudges`, each
+  a condition on what the player has been doing this lesson (`Tutorial.watch`:
+  thumbs down and for how long, taps that went nowhere, aiming that never
+  fired, shoves that missed, the empty gun being fired, standing still, not
+  firing, second winds, no progress toward the lesson's spot) and one line.
+  The first that applies takes the card's line, in amber, for 4 s; the same
+  one can come back after 8 s. The first screen's ("Tap the screen to
+  start.", after 6 s) appears under the phone and stays.
+
+  | Lesson | Doing it wrong | Told |
+  |---|---|---|
+  | First screen | Nothing tapped for 6 s | Tap the screen to start. |
+  | Move | Two short taps on the left / thumb down, not sliding / dragging the right thumb alone | Keep your thumb down and slide it. / Now slide your thumb toward the ring. / Walk with your LEFT thumb. |
+  | Aim | Tapping / no right thumb for 5 s | Not a tap: keep your right thumb down. / Use your RIGHT thumb now. |
+  | Fire | Aiming 2.5 s without pushing past the ring / tapping | Push your thumb further, past the ring. / A tap shoves. Push past the ring to shoot. |
+  | Shove | Firing the empty gun / holding the thumb down / two shoves that hit nothing / a second wind | No ammo! A quick tap shoves. / Just a quick tap. Don't hold. / Let them get close, then tap. / Tap the right side to push them off! |
+  | Reload | 5 s and no reload | Tap the round ⟳ button. |
+  | Both thumbs | Not firing with them within 450 u / standing still with one within 110 u | Right thumb: keep shooting! / Left thumb: back off! |
+  | Run for it | 5 s without getting closer to the door | Don't fight them all: run for the door! |
+  | Day 2 | 12 s on the chalk / two shoves that miss the boards / 10 s on the secret | The white arrows on the ground point the way. / Get right up to the boards, then tap. / Up the dead end: the loose manhole. |
+
+  Mouse and pad get their own words where it matters ("Click to shoot.").
+  The report (Playtest) counts them under `tutorial.nudges`, and the
+  readable line lists them, most first: that's where to add a guide.
 - **Ghost thumbs** (touch only), on the half of the screen the gesture
   belongs to, at the resting stick positions: a thumb that lands and slides
   toward where you're going ("SLIDE"); one that stays inside the dashed

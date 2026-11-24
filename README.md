@@ -320,6 +320,18 @@ and no dependencies.
   "both thumbs" on, each fading in; until a button has come in, it can't be
   pressed by mistake either.
 
+  **Doing it wrong** never breaks it (nobody dies, nothing locks), but some
+  wrong gestures would stall a lesson for good, so each has a nudge: tapping
+  where a slide is wanted, a thumb down that never slides, walking with the
+  right thumb, aiming that never pushes past the ring, firing the empty gun,
+  holding instead of tapping, shoving from too far off, going down in the
+  shove lesson, never pressing ⟳, running from the pack without shooting (or
+  standing still with them on you), staying to fight the rush, and leaving
+  the first screen untapped. The card's line becomes the fix, in amber, for
+  a few seconds (it comes back while it keeps happening), and the playtest
+  report lists the nudges ("Tutorial nudges: move.still-thumb ×2"), so a
+  test shows where people got stuck. Day 2 has a few of its own.
+
   A card at the bottom of the screen, between the thumbs, says what to do in
   one short line (in words for touch, mouse and keys, or a pad: whatever you
   last used), with a dot per lesson. For touch, a ghost thumb does the gesture on the half of the

@@ -42,6 +42,7 @@ export const DAY2_STEPS = [
     dot: true,
     title: 'CHALK ARROWS',
     text: { touch: 'Chalk arrows lead to more. Follow them.' },
+    nudges: [{ id: 'lost', when: (t) => t.t > 12, text: { touch: 'The white arrows on the ground point the way.' } }],
     target: (t) => crateSpot(t, t.L.crates.yard, 'CRATE'),
     update: (t) => t.crate(t.L.crates.yard).opened,
     done: (t) => t.openGate('g1'),
@@ -63,6 +64,7 @@ export const DAY2_STEPS = [
       mouse: 'Nailed shut. Space to shove the boards in.',
       pad: 'Nailed shut. RB to shove the boards in.',
     },
+    nudges: [{ id: 'too-far', when: (t) => t.watch.missed >= 2, text: { touch: 'Get right up to the boards, then tap.', mouse: 'Get right up to the boards, then Space.', pad: 'Get right up to the boards, then RB.' } }],
     target: (t) => {
       const b = t.L.boards;
       return b.broken ? null : { x: b.x + b.w / 2, y: b.y + b.h + 30, ring: true, r: 30, label: 'BOARDS' };
@@ -103,6 +105,7 @@ export const DAY2_STEPS = [
     dot: true,
     title: 'THE SECRET',
     text: { touch: 'See it glint? Stand on it.' },
+    nudges: [{ id: 'lost', when: (t) => t.t > 10, text: { touch: 'Up the dead end: the loose manhole.' } }],
     target: (t) => crateSpot(t, t.L.crates.secret, 'GLINT'),
     update: (t) => t.crate(t.L.crates.secret).opened,
     done: (t) => t.openGate('g3'),
