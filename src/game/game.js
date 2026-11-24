@@ -158,7 +158,7 @@ export class Game {
     for (const spot of map.witches || []) spawnWitch(this, spot);
     this.world.flow.compute(this.player.x, this.player.y);
     this.ally = null;
-    this.locks = null; // what the tutorial holds back (reload, swap)
+    this.locks = null; // what the tutorial holds back (swap: one gun)
     this.tutorial = null;
     this.syncAlly();
     this.director.populate();
@@ -324,15 +324,29 @@ export class Game {
   update(dt, input) {
     const S = this.settings;
     const p = this.player;
-    this.time += dt;
     this.input = input; // the latest frame (the tutorial looks at the source and the thumbs)
+    // The tutorial can slow the world to a stop while it shows you the one button
+    // to press; until you press it, nothing else gets through (Tutorial.ask).
+    const T = this.tutorial;
+    const real = dt;
+    let events = input.events;
+    if (T) {
+      events = T.events(events);
+      dt *= T.timeScale();
+    }
 
-    for (const ev of input.events) {
+    for (const ev of events) {
       if (this.won || this.lost) break;
       if (ev === 'shove') shove(this);
       else if (ev === 'reload') startReload(this, p);
       else if (ev === 'swap') swapWeapon(this, p);
     }
+    if (dt <= 0) {
+      // Stopped: nothing moves and nothing counts down; the tutorial alone keeps time.
+      T.update(0, real);
+      return;
+    }
+    this.time += dt;
 
     if (!this.won && !this.lost) this.stats.time += dt;
     updatePlayer(this, dt, input);
@@ -364,7 +378,7 @@ export class Game {
     updateLoot(this, dt);
     updateWorldEvents(this, dt);
     updateBen(this, dt);
-    if (this.tutorial) this.tutorial.update(dt);
+    if (T) T.update(dt, real);
 
     // Pickups.
     for (const k of this.pickups) {

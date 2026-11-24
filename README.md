@@ -294,15 +294,17 @@ and no dependencies.
   - First, on a phone or tablet, a screen of its own: **how to hold it**.
     Black, a big picture of a phone on its side with a hand at each end and
     the thumbs on the two sticks, and one line, "HOLD YOUR PHONE LIKE THIS";
-    nothing else (no HUD, sticks, buttons or card) until you tap anywhere,
-    then it fades into the game. With a mouse or a pad it never shows, and it
-    isn't one of the lessons.
+    nothing else (no HUD, sticks or buttons) until you tap anywhere, then it
+    fades into the game. With a mouse or a pad it never shows, and it isn't
+    one of the lessons.
   - **Move** (walk to a ring), **aim** (laser on one of six drowsers shut
-    behind a fence), **fire** (past the dashed ring), then through the first
-    gate.
-  - **Shove**: the SMG clicks empty and two come out of a doorway; reloading
-    is held back until you've shoved three times. Then **reload** (⟳) and
-    finish them off, and **both thumbs**: a pack of five comes down the
+    behind a fence), **fire** (past the dashed ring), then **reload**: the
+    world stops and the screen goes dark but for the ⟳ button, and a thumb
+    shows the tap. Then through the first gate.
+  - **Shove**: the gun still works, but one bursts out of a door as you come
+    by. The world slows as it closes in and stops once it's in reach, dark
+    but for you, it and the SHOVE button: only a shove gets you going again.
+    Then you shoot it. Then **both thumbs**: a pack of five comes down the
     street at you, and you walk back with the left thumb while you shoot with
     the right.
   - **Don't shoot the car** with the blinking red light: it stands in plain
@@ -314,40 +316,48 @@ and no dependencies.
 
   No Witch: she's too much for a first run.
 
+  **As little to read as can be:** no card at the bottom (that's where the
+  thumbs are), at most one short line at the top of the screen (in words for
+  touch, mouse and keys, or a pad: whatever you last used), and often none:
+  the gates and the walk to the door have only the arrow. No writing on the
+  walls either (Ben's one crayon line waits in the safe room at the end), no
+  painted signs, one car (the one not to shoot). The rest is shown: a big
+  green arrow bobbing over where to go (a big edge arrow when it's off
+  screen), a bright ring on the ground, brackets on the targets, beacons on
+  the gates going from red to green, and for touch a ghost thumb doing the
+  gesture on the half of the screen it belongs to (slide on the left; aim
+  inside the ring or push past it on the right; both at once to back off
+  while you shoot), stepping aside while your own thumb is on that stick.
+  For a button you have to press (⟳, SHOVE) the world waits for you, as
+  above: nothing else works until you press it.
+
   The HUD comes in a part at a time: the two sticks alone for the first
-  lessons, the SHOVE button for the shove lesson, ⟳ for the reload, and the
-  rest (health, ammo, the clock, the pause button, the threat arrows) from
-  "both thumbs" on, each fading in; until a button has come in, it can't be
-  pressed by mistake either.
+  lessons, ⟳ for the reload, SHOVE when the shove is asked for, and the rest
+  (health, ammo, the pause button, the threat arrows) from "both thumbs" on,
+  each fading in; until a button has come in, it can't be pressed by
+  mistake either.
 
-  **Doing it wrong** never breaks it (nobody dies, nothing locks), but some
-  wrong gestures would stall a lesson for good, so each has a nudge: tapping
-  where a slide is wanted, a thumb down that never slides, walking with the
-  right thumb, aiming that never pushes past the ring, firing the empty gun,
-  holding instead of tapping, shoving from too far off, going down in the
-  shove lesson, never pressing ⟳, running from the pack without shooting (or
-  standing still with them on you), staying to fight the rush, and leaving
-  the first screen untapped. The card's line becomes the fix, in amber, for
-  a few seconds (it comes back while it keeps happening), and the playtest
-  report lists the nudges ("Tutorial nudges: move.still-thumb ×2"), so a
-  test shows where people got stuck. Day 2 has a few of its own.
+  **Doing it wrong** never breaks it (nobody dies, nothing locks, the gun
+  always works), but some wrong gestures would stall a lesson for good, so
+  each has a nudge: tapping where a slide is wanted, a thumb down that never
+  slides, walking with the right thumb, aiming that never pushes past the
+  ring, never pressing the lit button while the world waits, not shooting
+  the one you shoved, standing at an open gate, running from the pack
+  without shooting (or standing still with them on you), staying to fight
+  the rush, and leaving the first screen untapped. The line at the top
+  becomes the fix, in amber, for a few seconds (it comes back while it
+  keeps happening), and the playtest report lists the nudges ("Tutorial
+  nudges: move.still-thumb ×2"), so a test shows where people got stuck.
+  Day 2 has a few of its own.
 
-  A card at the bottom of the screen, between the thumbs, says what to do in
-  one short line (in words for touch, mouse and keys, or a pad: whatever you
-  last used), with a dot per lesson. For touch, a ghost thumb does the gesture on the half of the
-  screen it belongs to (slide on the left; aim inside the ring, push past it,
-  or a quick tap on the right; both at once to back off while you shoot) and
-  steps aside while your own thumb is on that stick; the button to press (⟳,
-  SHOVE) pulses. A ring on the
-  ground and the green edge arrow show where to go; brackets mark the
-  targets; beacons on the gates go from red to green. Nobody dies here: at 0
-  HP you get a second wind (what's on you is thrown back: "CLOSE ONE!"), the
-  director sends nothing of its own (no wanderers, mobs or specials, whatever
-  the panel says; a Witch seated from the panel swipes once and runs off) and
-  there is no teammate. The end card points you on to **Tutorial 2**. Done
-  is remembered on the device; the playtest report says how far you got,
-  the close calls and the seconds each lesson took. The lessons and their
-  words are in [`src/game/tutorial.js`](src/game/tutorial.js), the course in
+  Nobody dies here: at 0 HP you get a second wind (what's on you is thrown
+  back: "CLOSE ONE!"), the director sends nothing of its own (no wanderers,
+  mobs or specials, whatever the panel says; a Witch seated from the panel
+  swipes once and runs off) and there is no teammate. The end card points
+  you on to **Tutorial 2**. Done is remembered on the device; the playtest
+  report says how far you got, the close calls and the seconds each lesson
+  took. The lessons and their words are in
+  [`src/game/tutorial.js`](src/game/tutorial.js), the course in
   [`src/world/tutorial-gen.js`](src/world/tutorial-gen.js);
   [docs/CONTROLS.md](docs/CONTROLS.md#the-tutorial-teaching-the-thumbs) has
   the details.
@@ -362,7 +372,8 @@ and no dependencies.
   - **Supplies**: a crate right outside the door (stand on it: armor), then
     **chalk arrows** to a second one round a corner in a yard (hot rounds).
   - **Break in**: a room on the next street has its door nailed shut. Shove
-    the boards three times (or shoot them); it's loud. What was shut in
+    the boards three times (SHOVE lights up once you're at them; or shoot
+    them); it's loud. What was shut in
     comes out, the noise brings three more down the street, and **the good
     stuff** inside is extended mags.
   - **The secret**: on the last street a loose manhole down a dead end,
@@ -924,7 +935,7 @@ src/layout.js              HUD/button/stick positions (shared by drawing + hit t
 src/iso.js                 the camera: orthographic projection (yaw + tilt), project / unproject, stick and mouse mapping, and the painter's order for boxes (pure, unit tested)
 src/input/                 stick-math (pure, unit tested), touch, desktop, gamepad
 src/world/                 seeded generators for the six map types (city, building, docks; graveyard, suburbia and junkyard, which share gen-kit.js), the tutorials' hand-built courses (tutorial-gen.js: three streets, three gates, a spot for every lesson, and the helpers Day 2 shares; tutorial2-gen.js: Day 2, every street left to right, with its crates, chalk, nailed room and secret), Ben's traces (ben-content: every line; ben-gen: placement), world features (walls, gates, breach, landmarks), scavenging pass (stashes, boarded rooms, secret, chalk), where the Witch sits (witch-gen.js), world flavor (lore-content: every line of graffiti / poster / note; lore-gen: placement), collision, ray casts, flow field
-src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), the Witch (witch.js), the tutorials' lessons (tutorial.js: the runner and Day 1's steps and words, what each spawns and holds back, the gates, the second wind; tutorial-day2.js: Day 2's), Ben at run time (ben.js: his bed, the glimpse, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects (particles in 3D), game state + the view
+src/game/                  player, AI teammate, weapons, zombies, specials (Hunter, Tank), the Night Terror (terror.js), the Witch (witch.js), the tutorials' lessons (tutorial.js: the runner and Day 1's steps and words, what each spawns, the prompts that stop the world for a button, the gates, the second wind; tutorial-day2.js: Day 2's), Ben at run time (ben.js: his bed, the glimpse, what he remembers), director, loot, world events (holdout, breach, explosions), the Pier 9 finale (finale.js), effects (particles in 3D), game state + the view
 src/render/renderer.js     the passes: ground -> night overlay -> everything that stands (far to near) -> overhead -> bright -> HUD
 src/render/lighting.js     one list of lights: the ground overlay (night + line of sight) and the sampler that shades what stands on it
 src/render/prims.js        3D shapes on the 2D canvas: boxes, cylinders, prisms, balls, limbs; colour tones
@@ -934,7 +945,7 @@ src/render/theme-models.js the newer maps' models, added to the table in models.
 src/render/theme-render.js the newer maps' ground (lawns and lots, grave plots and paths, the yard) and what lies on it
 src/render/decor3d.js      the small things that stand up (chairs, signs, the lemonade stand, Ben's fort and rabbit, boats)
 src/render/figures.js      survivors, the horde (batched), Hunter, Tank, Night Terror, the Witch
-src/render/*-render.js     what is painted flat (ground, graffiti, posters, chalk, Ben's crayon) and the big set pieces (docks: piers, cranes, the ferry; features: the canopy, fires, fireballs), the tutorial's coaching (tutorial-render.js: the lesson card, ghost thumbs, rings and gate beacons), hud.js
+src/render/*-render.js     what is painted flat (ground, graffiti, posters, chalk, Ben's crayon) and the big set pieces (docks: piers, cranes, the ferry; features: the canopy, fires, fireballs), the tutorial's coaching (tutorial-render.js: the line at the top, the prompts, the arrows, ghost thumbs, rings and gate beacons), hud.js
 src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
 src/audio.js               WebAudio synth SFX
 battle/                    WOBBLE WAR card battler (separate page; code map above)
@@ -945,7 +956,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), the tutorial (the course: one short walk, gates, no slivers; the lessons in order, what they hold back, one gun and no Witch, crowds that turn up out of sight, the second wind, the coaching on a phone; a bot that plays it to the safe room; Day 2's own: the course, left to right all the way, the crates and chalk, the boards and what the noise brings, the secret, and its bot), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), the tutorial (the course: one short walk, gates, no slivers; the lessons in order, the world stopping for a button, one gun and no Witch, crowds that turn up out of sight, the second wind, the coaching on a phone; a bot that plays it to the safe room; Day 2's own: the course, left to right all the way, the crates and chalk, the boards and what the noise brings, the secret, and its bot), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

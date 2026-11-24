@@ -1,15 +1,18 @@
 // The tutorial at run time (the map is world/tutorial-gen.js, the coaching on
 // screen render/tutorial-render.js). One lesson after another, each with:
-//   - a prompt, worded for whatever you play with (touch, mouse, pad),
-//   - the gesture to show (a ghost thumb on the half of the screen it uses,
-//     or a pulse round the button), and where to go (ring + edge arrow),
+//   - at most one short line of words, at the top of the screen (worded for
+//     whatever you play with: touch, mouse, pad), and often none at all,
+//   - the gesture to show (a ghost thumb on the half of the screen it uses)
+//     and where to go (a ring, a bouncing arrow over the spot, an edge arrow),
+//   - for a button you have to press, a prompt: the world slows to a stop,
+//     the screen goes dark but for that button (and you), a thumb shows the
+//     tap, and nothing but that button works until you press it,
 //   - the zombies it needs, spawned on cue and counted until they're down,
-//   - what it holds back until then (no reload while you learn to shove),
 //     and the gate it opens when you're done.
 // One gun all the way through (the final game has no weapon changing, so the
-// tutorial doesn't teach it: the gun panel stays shut). No Witch either: she
-// is too much for a first run. Nobody dies in the tutorial: at 0 HP you get a
-// second wind instead.
+// tutorial doesn't teach it: the gun panel stays shut), and it always works:
+// nothing here empties it behind your back. No Witch either: she is too much
+// for a first run. Nobody dies in the tutorial: at 0 HP you get a second wind.
 // It's short on purpose: eight lessons on three short streets, a couple of
 // minutes for a first-timer. Everything the player reads is in STEPS, at the
 // top, for editing.
@@ -19,54 +22,65 @@
 
 import { startFlee } from './witch.js';
 import { releasePin } from './specials.js';
-import { DAY2_STEPS } from './tutorial-day2.js';
+import { SHOVE_REACH } from './player.js';
+import { DAY2_STEPS, LOST } from './tutorial-day2.js';
 import { DEG, wrapAngle, clamp, pointInRect } from '../util.js';
 
 /** Done on this device, per day (Day 1's key is the one it always had). */
 const KEYS = { 1: 'funland2.p0.tutorial.v1', 2: 'funland2.p0.tutorial2.v1' };
 const GATE_OPEN = 1.1; // s for the bars to slide back into the wall
-const PAUSE = 0.6; // s between a lesson done (✓) and the next prompt
+const PAUSE = 0.6; // s between a lesson done (✓) and the next one
 const AIM_HOLD = 0.45; // s of laser on a target that counts as "aimed"
 const RESCUE_HP = 0.55; // of max HP: the second wind
 const RESCUE_PUSH = 180; // u: what's that close gets thrown back
 const REVEAL = 0.5; // s for a part of the HUD to fade in when its time comes
-const NUDGE_SHOW = 4; // s a nudge has the card's line
+const NUDGE_SHOW = 4; // s a nudge has the line
 const NUDGE_AGAIN = 8; // s before the same nudge can come back
+export const PROMPT_IN = 0.25; // s for the world to stop and the screen to go dark round the button
+export const PROMPT_OUT = 0.3; // s for both to come back once it's pressed
+const SLOW_FROM = 170; // u: one coming at you this close slows the world (the shove prompt), to a stop in reach
+const BURST = 250; // u: how close you come by the door before the one in it bursts out (Day 1's shove)
+const NONE = [];
 
 /**
  * What the player has been doing in this lesson, for the nudges (reset as
  * each lesson starts): thumbs down and for how long, taps that went nowhere,
- * aiming that never fired, shoves that missed, an empty gun being fired,
- * standing still, not firing, the second winds so far, and how long since
- * they last got any closer to where the lesson points.
+ * aiming that never fired, shoves that missed, standing still, not firing,
+ * the second winds so far, and how long since they last got any closer to
+ * where the lesson points.
  */
 function freshWatch() {
-  return { leftDown: 0, leftSlid: false, leftTaps: 0, leftStill: 0, rightDown: 0, rightDrag: 0, noRight: 0, aimNoFire: 0, taps: 0, missed: 0, lastHits: 0, emptyFire: 0, noFire: 0, still: 0, rescues: 0, best: Infinity, noProgress: 0 };
+  return { leftDown: 0, leftSlid: false, leftTaps: 0, leftStill: 0, rightDown: 0, rightDrag: 0, noRight: 0, aimNoFire: 0, taps: 0, missed: 0, lastHits: 0, noFire: 0, still: 0, rescues: 0, best: Infinity, noProgress: 0 };
 }
 
 /**
  * The HUD, a part at a time (Day 1): a step's `hud` brings in that part and
  * the ones before it. 'sticks' is the two sticks alone (and the tutorial's own
- * card, arrow and rings); then the SHOVE button; then ⟳; then all of it (health,
- * ammo, the clock, the pause button, the threat arrows). A course whose steps
+ * line, arrows and rings); then ⟳; then the SHOVE button; then all of it
+ * (health, ammo, the pause button, the threat arrows). A course whose steps
  * never say shows it all from the start.
  */
-export const HUD_PARTS = ['sticks', 'shove', 'reload', 'all'];
+export const HUD_PARTS = ['sticks', 'reload', 'shove', 'all'];
 
 const left = (list) => list.reduce((n, z) => n + (z.alive ? 1 : 0), 0);
 const near = (p, q, r) => Math.hypot(p.x - q.x, p.y - q.y) < r;
 const ease = (f) => f * f * (3 - 2 * f);
 
+/** The shove prompt's words, and what follows it. */
+const SHOVE_NOW = { touch: 'Too close! Tap SHOVE.', mouse: 'Too close! Press Space.', pad: 'Too close! Press RB.' };
+const SHOOT_IT = { touch: 'Now shoot it.', mouse: 'Now shoot it.', pad: 'Now shoot it.' };
+
 /**
- * The lessons. text: what the card says, per input (pad falls back to mouse);
- * nudges: what someone doing it wrong is told instead, each { id, when(t, g),
- * text } (`t.watch` says what they've been doing; see freshWatch). The card's
- * line becomes the nudge's, in amber, for a few seconds, and the playtest
- * report counts them: that's where people get stuck.
- * coach: the gesture drawn for touch ('move' | 'aim' | 'fire' | 'tap' |
- * 'reload' | 'kite': both thumbs at once), or a function that picks one as the
- * lesson goes; dot: it is one of the lessons counted along the top of the
- * card. The functions get the Tutorial and the Game.
+ * The lessons. text: the one line at the top, per input (pad falls back to
+ * mouse, mouse to touch); null for none, or a function (Tutorial, Game) that
+ * picks one as the lesson goes. nudges: what someone doing it wrong is told
+ * instead, each { id, when(t, g), text } (`t.watch` says what they've been
+ * doing; see freshWatch): the line becomes the nudge's, in amber, for a few
+ * seconds, and the playtest report counts them: that's where people get stuck.
+ * coach: the gesture drawn for touch ('move' | 'aim' | 'fire' | 'kite': both
+ * thumbs at once), or a function that picks one; a prompt (Tutorial.ask) takes
+ * its place while it's up. dot: it is one of the lessons counted in the
+ * report. The functions get the Tutorial and the Game.
  */
 export const STEPS = [
   {
@@ -100,7 +114,7 @@ export const STEPS = [
     },
     nudges: [
       { id: 'tapped', when: (t) => t.watch.leftTaps >= 2, text: { touch: 'Keep your thumb down and slide it.' } },
-      { id: 'still-thumb', when: (t) => t.watch.leftStill > 1.2, text: { touch: 'Now slide your thumb toward the ring.' } },
+      { id: 'still-thumb', when: (t) => t.watch.leftStill > 1.2, text: { touch: 'Now slide it toward the ring.' } },
       { id: 'right-thumb', when: (t) => t.watch.rightDrag > 1.5, text: { touch: 'Walk with your LEFT thumb.' } },
     ],
     target: (t) => ({ ...t.L.moveRing, ring: true }),
@@ -112,12 +126,12 @@ export const STEPS = [
     title: 'AIM',
     coach: 'aim',
     text: {
-      touch: 'Right thumb, gently: laser on one.',
-      mouse: 'Point the mouse: laser on one.',
-      pad: 'Right stick, gently: laser on one.',
+      touch: 'Right thumb: aim at one.',
+      mouse: 'Point the mouse at one.',
+      pad: 'Right stick: aim at one.',
     },
     nudges: [
-      { id: 'tapped', when: (t) => t.watch.taps >= 2, text: { touch: 'Not a tap: keep your right thumb down.' } },
+      { id: 'tapped', when: (t) => t.watch.taps >= 2, text: { touch: "Don't tap: keep your right thumb down." } },
       { id: 'no-right', when: (t, g) => t.watch.noRight > 5 && g.input.source === 'touch', text: { touch: 'Use your RIGHT thumb now.' } },
     ],
     target: (t) => t.penTarget(),
@@ -138,77 +152,97 @@ export const STEPS = [
     text: {
       touch: 'Push past the ring to shoot.',
       mouse: 'Click to shoot.',
-      pad: 'Right stick all the way (or RT) to shoot.',
+      pad: 'Push the stick all the way to shoot.',
     },
     nudges: [
       { id: 'no-push', when: (t) => t.watch.aimNoFire > 2.5, text: { touch: 'Push your thumb further, past the ring.', mouse: 'Click to shoot.', pad: 'Push the stick all the way, or pull RT.' } },
-      { id: 'tapped', when: (t) => t.watch.taps >= 2, text: { touch: 'A tap shoves. Push past the ring to shoot.' } },
+      { id: 'tapped', when: (t) => t.watch.taps >= 2, text: { touch: 'A tap shoves. Push past the ring.' } },
     ],
     target: (t) => t.penTarget(),
     count: (t) => `${t.pen.length - left(t.pen)}/${t.pen.length}`,
     update: (t) => left(t.pen) === 0,
+  },
+  {
+    // Straight after the shooting, nothing about: the world stops, the screen
+    // goes dark but for the ⟳ button coming in, a thumb taps it, and only it
+    // works. (The gun reloads itself when it clicks empty too; this is the
+    // button for topping up between fights.)
+    id: 'reload',
+    dot: true,
+    title: 'RELOAD',
+    hud: 'reload', // ⟳ comes in
+    text: { touch: 'Tap to reload.', mouse: 'Press R to reload.', pad: 'Press X to reload.' },
+    nudges: [{ id: 'no-reload', when: (t) => t.t > 5, text: { touch: 'Tap the round ⟳ button.', mouse: 'Press R.', pad: 'Press X.' } }],
+    enter: (t, g) => {
+      // Something to reload (it's out of sight: the ammo count comes in later).
+      const w = g.player.weapon;
+      w.reloading = false;
+      w.mag = Math.min(w.mag, w.cap - 14);
+      t.ask('reload');
+    },
+    update: (t, g) => g.player.weapon.reloading,
     done: (t) => t.openGate('g1'),
   },
   {
     id: 'gate1',
     title: "GATE'S OPEN",
-    text: { touch: 'Through the gate.' },
+    text: null, // the gate's lights go green and the arrow bounces over it: no words needed
+    nudges: [LOST],
     target: (t) => t.gateTarget('g1'),
     update: (t, g) => g.player.y < t.L.gates.g1.y - 40,
   },
   {
+    // The gun still works. As you come by the door, one bursts out of it at
+    // you; the world slows as it closes in and stops when it's in reach, the
+    // screen goes dark but for you, it and the SHOVE button (coming in just
+    // then), and only a shove gets you going again. Then you shoot it.
     id: 'shove',
     dot: true,
     title: 'SHOVE',
-    hud: 'shove', // the SHOVE button comes in
-    coach: 'tap',
-    text: {
-      touch: 'Empty! Tap the right side to shove.',
-      mouse: 'Empty! Space to shove.',
-      pad: 'Empty! RB to shove.',
-    },
+    text: (t) => (!t || !t.lunger ? null : t.shoved ? SHOOT_IT : SHOVE_NOW),
+    coach: (t) => (t.shoved && t.lunger && t.lunger.alive ? 'fire' : null),
     nudges: [
-      { id: 'empty-gun', when: (t) => t.watch.emptyFire > 0.8, text: { touch: 'No ammo! A quick tap shoves.', mouse: 'No ammo! Space shoves.', pad: 'No ammo! RB shoves.' } },
-      { id: 'held', when: (t) => t.watch.rightDown > 0.8, text: { touch: "Just a quick tap. Don't hold." } },
-      { id: 'too-far', when: (t) => t.watch.missed >= 2, text: { touch: 'Let them get close, then tap.', mouse: 'Let them get close, then Space.', pad: 'Let them get close, then RB.' } },
-      { id: 'rescued', when: (t) => t.rescues > t.watch.rescues, text: { touch: 'Tap the right side to push them off!', mouse: 'Space to push them off!', pad: 'RB to push them off!' } },
+      { ...LOST, when: (t) => !t.lunger && LOST.when(t) },
+      { id: 'no-shove', when: (t) => !t.shoved && !!t.prompt && t.scale === 0 && t.prompt.t > 4.5, text: { touch: 'Tap the SHOVE button.', mouse: 'Press Space.', pad: 'Press RB.' } },
+      { id: 'not-shooting', when: (t) => t.shoved && t.watch.noFire > 4, text: { touch: 'Push past the ring to shoot.', mouse: 'Click to shoot.', pad: 'Pull RT to shoot.' } },
     ],
     enter: (t, g) => {
-      // The gun is dry, and no reloading until you've shoved.
-      const w = g.player.weapon;
-      w.mag = 0;
-      w.reloading = false;
-      t.lock(true, true);
-      g.audio.dryFire();
+      t.lunger = null;
+      t.shoved = false;
       t.group = [];
-      t.spawn([t.L.shoveSpawn], 2, 0.5, t.group);
       t.base.hits = g.stats.shoveHits;
     },
-    count: (t, g) => `${Math.min(3, g.stats.shoveHits - t.base.hits)}/3`,
-    update: (t, g) => g.stats.shoveHits - t.base.hits >= 3 || (t.spawned(t.group) && left(t.group) === 0),
-  },
-  {
-    id: 'reload',
-    dot: true,
-    title: 'RELOAD',
-    hud: 'reload', // and ⟳
-    // The ⟳ button pulses until the gun is loading; then the fire thumb.
-    coach: (t) => (t.reloaded ? 'fire' : 'reload'),
-    text: {
-      touch: 'Tap ⟳, then finish them.',
-      mouse: 'R to reload, then finish them.',
-      pad: 'X to reload, then finish them.',
-    },
-    nudges: [{ id: 'no-reload', when: (t) => t.t > 5 && !t.reloaded, text: { touch: 'Tap the round ⟳ button.', mouse: 'Press R.', pad: 'Press X.' } }],
-    enter: (t) => {
-      t.reloaded = false;
-      t.lock(false, true);
-    },
-    count: (t) => `${t.group.length - left(t.group)}/${t.group.length}`,
+    // Along the street to the door (after that, it comes to you).
+    target: (t) => (t.lunger ? null : { ...t.L.shoveWalk }),
     update: (t, g) => {
-      const w = g.player.weapon;
-      if (w.reloading || w.mag > 0) t.reloaded = true;
-      return t.reloaded && t.spawned(t.group) && t.cleared(t.group);
+      const p = g.player;
+      if (!t.lunger) {
+        const D = t.L.shoveSpawn;
+        if (Math.hypot(p.x - D.x, p.y - D.y) > BURST && p.x > D.x + 100) return false;
+        const z = g.director.spawnAt(D.x, D.y, true);
+        if (!z) return false;
+        z.speed *= 1.2; // bursting out
+        t.lunger = z;
+        t.lungerHp = z.hp;
+        t.group = [z];
+        g.audio.snarl(z.x, z.y);
+        return false;
+      }
+      const z = t.lunger;
+      if (!t.shoved) {
+        z.hp = Math.max(z.hp, t.lungerHp); // a shove first: until then, bullets don't put this one down
+        if (!t.prompt && z.alive && Math.hypot(z.x - p.x, z.y - p.y) < SLOW_FROM) {
+          t.revealUpTo('shove'); // SHOVE comes in, in the light
+          t.ask('shove', { threat: z });
+        }
+        if (g.stats.shoveHits > t.base.hits) {
+          t.shoved = true;
+          t.watch.noFire = 0; // (from now on it's about shooting it)
+          t.answer();
+        }
+        return false;
+      }
+      return !z.alive;
     },
   },
   {
@@ -217,11 +251,7 @@ export const STEPS = [
     title: 'BOTH THUMBS',
     hud: 'all', // and from here on, all of it
     coach: 'kite',
-    text: {
-      touch: 'Left thumb back, right thumb shoot.',
-      mouse: 'Back off and shoot at once.',
-      pad: 'Back off and shoot at once.',
-    },
+    text: { touch: 'Back off and shoot.', mouse: 'Back off and shoot.', pad: 'Back off and shoot.' },
     nudges: [
       { id: 'not-shooting', when: (t) => t.watch.noFire > 3.5 && t.close(t.group, 450), text: { touch: 'Right thumb: keep shooting!', mouse: 'Keep shooting!', pad: 'Keep shooting!' } },
       { id: 'not-backing', when: (t) => t.watch.still > 1.2 && t.close(t.group, 110), text: { touch: 'Left thumb: back off!', mouse: 'Back off (W A S D)!', pad: 'Back off!' } },
@@ -240,7 +270,8 @@ export const STEPS = [
   {
     id: 'gate2',
     title: "GATE'S OPEN",
-    text: { touch: 'One more street.' },
+    text: null,
+    nudges: [LOST],
     target: (t) => t.gateTarget('g2', 170), // out into the street, where this one's done
     // Done once you're out on row 3, where the car is in plain view.
     update: (t, g) => g.player.y < t.L.gates.g2.y - 130,
@@ -249,7 +280,7 @@ export const STEPS = [
     id: 'alarm',
     dot: true,
     title: "DON'T SHOOT THE CAR",
-    text: { touch: 'Red light = alarm. Let them come around it.' },
+    text: { touch: "Don't shoot the car." },
     enter: (t) => {
       t.group = [];
       t.spawn(t.L.alarmSpawns, 4, 1.2, t.group);
@@ -262,8 +293,8 @@ export const STEPS = [
     id: 'saferoom',
     dot: true,
     title: 'RUN FOR IT',
-    text: { touch: 'Get to the safe room!' },
-    nudges: [{ id: 'fighting', when: (t) => t.watch.noProgress > 5, text: { touch: "Don't fight them all: run for the door!" } }],
+    text: { touch: 'Run to the safe room!' },
+    nudges: [{ id: 'fighting', when: (t) => t.watch.noProgress > 5, text: { touch: "Don't fight: run for it!" } }],
     enter: (t, g) => {
       // A crowd up through the last gate, behind you: no need to fight it.
       const from = t.unseen(t.L.rushSpawns);
@@ -281,7 +312,7 @@ export const STEPS = [
   },
 ];
 
-/** The lessons that count (the dots along the top of the card). */
+/** The lessons that count (in the report: how far you got). */
 export const LESSONS = STEPS.filter((s) => s.dot).length;
 
 /** Each day's lessons, by map.tutorial.day. */
@@ -290,9 +321,10 @@ export const COURSES = { 1: STEPS, 2: DAY2_STEPS };
 /** The tutorial level ids, in order (each one, won, leads to the next; after the last, the Streets). */
 export const TUTORIAL_LEVELS = ['tutorial', 'tutorial2'];
 
-/** Words for an input source: touch | mouse | gamepad. */
-export function stepText(step, source) {
-  const T = step.text;
+/** A step's (or a nudge's) line for an input source: touch | mouse | gamepad; null for none. */
+export function stepText(step, source, t = null, g = null) {
+  const T = typeof step.text === 'function' ? step.text(t, g) : step.text;
+  if (!T) return null;
   if (source === 'gamepad') return T.pad || T.mouse || T.touch;
   if (source === 'mouse') return T.mouse || T.touch;
   return T.touch;
@@ -306,7 +338,8 @@ export class Tutorial {
     this.steps = COURSES[this.day] || STEPS;
     this.of = this.steps.filter((s) => s.dot).length;
     this.i = -1;
-    this.t = 0; // seconds in this lesson
+    this.t = 0; // seconds in this lesson (real ones: they run on while the world waits)
+    this.clock = 0; // seconds since it began, real ones (the coaching's animation)
     this.pause = 0; // seconds left of the ✓ before the next one
     this.over = false;
     this.queue = []; // zombies still to come: { x, y, t, list }
@@ -315,13 +348,17 @@ export class Tutorial {
     this.base = { hits: 0 };
     this.aimT = 0;
     this.aimed = null;
-    this.reloaded = false; // the reload lesson: the gun is loading
+    this.lunger = null; // Day 1's shove: the one out of the door
+    this.shoved = false;
     this.rescues = 0;
     this.alarmed = false;
     this.finished = false; // reached the safe room (remembered on the device)
     this.times = {};
-    game.locks = { reload: false, swap: true }; // one gun, all the way through
-    // The HUD: when each part came in (game time); none yet if the course says when.
+    // A button to press (ask): the world slows to a stop while it's up, and only that button works.
+    this.prompt = null;
+    this.scale = 1; // how fast the world runs (1: as ever; 0: stopped)
+    game.locks = { swap: true }; // one gun, all the way through
+    // The HUD: when each part came in (the tutorial's clock); none yet if the course says when.
     this.revealT = {};
     if (!this.steps.some((s) => s.hud)) for (const k of HUD_PARTS.slice(1)) this.revealT[k] = -Infinity;
     // The gates, shut.
@@ -333,7 +370,7 @@ export class Tutorial {
     // Day 2: whoever is nailed in with the good stuff (spawned with the map's boarded room).
     this.sleepers = this.L.room ? game.zombies.filter((z) => z.alive && pointInRect(z.x, z.y, this.L.room, 4)) : [];
     this.need = 0;
-    // The nudges: what you've been doing this lesson, the one on the card now, when each last came, how many there were.
+    // The nudges: what you've been doing this lesson, the one on the line now, when each last came, how many there were.
     this.watch = freshWatch();
     this.nudge = null;
     this.nudgedAt = {};
@@ -352,11 +389,6 @@ export class Tutorial {
     return n;
   }
 
-  lock(reload, swap) {
-    this.game.locks.reload = reload;
-    this.game.locks.swap = swap;
-  }
-
   /** On to the next lesson (skipping any that don't apply on this run). */
   next() {
     const g = this.game;
@@ -365,7 +397,6 @@ export class Tutorial {
       if (this.i >= this.steps.length) {
         this.over = true;
         this.i = this.steps.length - 1;
-        this.lock(false, true);
         return;
       }
       const s = this.steps[this.i];
@@ -385,13 +416,20 @@ export class Tutorial {
     const g = this.game;
     const s = this.step;
     this.times[s.id] = +this.t.toFixed(1);
+    this.answer(); // whatever it was waiting on, it's done
     if (s.done) s.done(this, g);
     this.pause = PAUSE;
     if (s.dot) g.audio.pickup();
   }
 
-  update(dt) {
+  /**
+   * dt: the world's seconds (slowed or stopped while a prompt is up); real: the
+   * player's. The lessons' timers, the nudges, the ✓ and the prompts run on
+   * real seconds; the zombies on cue and the gates on the world's.
+   */
+  update(dt, real = dt) {
     const g = this.game;
+    this.clock += real;
     this.updateQueue(dt);
     this.updateGates(dt);
     this.watchWitch(dt);
@@ -399,9 +437,10 @@ export class Tutorial {
       this.finished = true;
       saveTutorialDone(g.stats.time, this.day);
     }
+    this.updatePrompt(real);
     if (this.over) return;
     if (this.pause > 0) {
-      this.pause -= dt;
+      this.pause -= real;
       if (this.pause <= 0) {
         this.pause = 0;
         this.next();
@@ -414,13 +453,97 @@ export class Tutorial {
       this.next();
       return;
     }
-    this.t += dt;
-    this.watchInput(dt);
+    this.t += real;
+    this.watchInput(real);
     if (s.update(this, g, dt)) {
       this.complete();
       return;
     }
-    this.checkNudges(s, dt);
+    this.checkNudges(s, real);
+  }
+
+  // --- A button to press ------------------------------------------------------------------------
+
+  /**
+   * Ask for a button ('reload' | 'shove'): the screen goes dark but for it (and
+   * you, and `threat` if there's one on you) and a thumb taps it. stop: the
+   * world slows to a stop while it's up (with a threat, as that closes in:
+   * stopped once it's in reach) and only that button works; without, it's a
+   * pointer and nothing more.
+   */
+  ask(kind, { stop = true, threat = null } = {}) {
+    this.prompt = { kind, stop, threat, t: 0, out: 0, answered: false, held: false, beat: 0 };
+  }
+
+  /** It's been pressed (or isn't needed any more): the dark lifts and the world speeds up again. */
+  answer() {
+    if (this.prompt && !this.prompt.answered) this.prompt.answered = true;
+  }
+
+  /** How fast the world runs this frame: 1 as ever, less while a prompt slows it, 0 stopped. */
+  timeScale() {
+    return this.scale;
+  }
+
+  /** Is this one close enough for a shove to land? */
+  inReach(z) {
+    const p = this.game.player;
+    return Math.hypot(z.x - p.x, z.y - p.y) - z.r <= SHOVE_REACH - 6;
+  }
+
+  /** How fast a prompt wants the world: stopped, or slowing as its threat closes in. */
+  wantScale(P) {
+    if (!P.stop) return 1;
+    const z = P.threat;
+    if (!z || !z.alive || this.inReach(z)) return 0;
+    const p = this.game.player;
+    const d = Math.hypot(z.x - p.x, z.y - p.y) - z.r;
+    return clamp((d - SHOVE_REACH) / (SLOW_FROM - SHOVE_REACH), 0.12, 1);
+  }
+
+  updatePrompt(real) {
+    const P = this.prompt;
+    let want = 1;
+    if (P) {
+      P.t += real;
+      if (P.answered) {
+        P.out += real;
+        if (P.out >= PROMPT_OUT) this.prompt = null;
+      } else want = this.wantScale(P);
+    }
+    // Down quickly, back up a little slower.
+    if (want < this.scale) this.scale = Math.max(want, this.scale - real / PROMPT_IN);
+    else this.scale = Math.min(want, this.scale + real / PROMPT_OUT);
+    // While the world waits with one on you: a heartbeat.
+    if (P && !P.answered && P.threat && this.scale === 0) {
+      P.beat -= real;
+      if (P.beat <= 0) {
+        P.beat = 1.1;
+        this.game.audio.heartbeat(0.5);
+      }
+    }
+  }
+
+  /**
+   * What gets through of this frame's taps and presses. While a prompt holds
+   * the world, only its own button: a shove pressed before the one coming at
+   * you is in reach waits for it (it goes the moment it can land).
+   */
+  events(list) {
+    const P = this.prompt;
+    if (!P || P.answered || !P.stop) return list;
+    const ready = !P.threat || !P.threat.alive || this.inReach(P.threat);
+    let go = false;
+    for (const e of list) {
+      if (e !== P.kind) continue;
+      if (ready) go = true;
+      else P.held = true;
+    }
+    if (ready && P.held) {
+      P.held = false;
+      go = true;
+    }
+    return go ? [P.kind] : NONE;
   }
 
   // --- Doing it wrong ------------------------------------------------------------------------
@@ -448,9 +571,8 @@ export class Tutorial {
     W.rightDown = th.right ? W.rightDown + dt : 0;
     W.rightDrag = th.right && !th.left && f.aimRaw > 0.4 ? W.rightDrag + dt : 0;
     W.noRight = th.right ? 0 : W.noRight + dt;
-    // Aiming that never fires; firing an empty gun; not firing at all.
+    // Aiming that never fires; not firing at all.
     if (f.aimActive && !f.fire) W.aimNoFire += dt;
-    if (f.fire && p.weapon.mag === 0 && !p.weapon.reloading) W.emptyFire += dt;
     W.noFire = f.fire ? 0 : W.noFire + dt;
     // Taps (shoves), and the ones that hit nothing.
     let taps = 0;
@@ -479,9 +601,8 @@ export class Tutorial {
     return list.some((z) => z.alive && Math.hypot(z.x - p.x, z.y - p.y) < r);
   }
 
-  /** The first of this lesson's nudges that applies takes the card's line for a few seconds (and is counted). */
+  /** The first of this lesson's nudges that applies takes the line for a few seconds (and is counted). */
   checkNudges(s, dt) {
-    const g = this.game;
     if (this.nudge) {
       this.nudge.t += dt;
       if (this.nudge.t >= NUDGE_SHOW && !this.nudge.n.stays) this.nudge = null;
@@ -490,10 +611,10 @@ export class Tutorial {
     if (!s.nudges) return;
     for (const n of s.nudges) {
       const key = `${s.id}.${n.id}`;
-      if (this.nudgedAt[key] !== undefined && g.time - this.nudgedAt[key] < NUDGE_AGAIN) continue;
-      if (!n.when(this, g)) continue;
+      if (this.nudgedAt[key] !== undefined && this.clock - this.nudgedAt[key] < NUDGE_AGAIN) continue;
+      if (!n.when(this, this.game)) continue;
       this.nudge = { key, n, t: 0 };
-      this.nudgedAt[key] = g.time;
+      this.nudgedAt[key] = this.clock;
       this.nudges[key] = (this.nudges[key] || 0) + 1;
       // Start counting again, so the same thing has to happen again to bring it back.
       const W = this.watch;
@@ -501,7 +622,6 @@ export class Tutorial {
       W.taps = 0;
       W.missed = 0;
       W.aimNoFire = 0;
-      W.emptyFire = 0;
       return;
     }
   }
@@ -601,7 +721,7 @@ export class Tutorial {
         best = z;
       }
     }
-    return best ? { x: best.x, y: best.y, label: 'TARGETS' } : null;
+    return best ? { x: best.x, y: best.y, label: 'TARGETS', marker: false } : null; // (the brackets mark them)
   }
 
   /** One of the pen's six has been hit. */
@@ -709,12 +829,12 @@ export class Tutorial {
   /** Bring in the HUD up to this part (HUD_PARTS), from now. */
   revealUpTo(part) {
     const n = HUD_PARTS.indexOf(part);
-    for (let k = 1; k <= n; k++) if (this.revealT[HUD_PARTS[k]] === undefined) this.revealT[HUD_PARTS[k]] = this.game.time;
+    for (let k = 1; k <= n; k++) if (this.revealT[HUD_PARTS[k]] === undefined) this.revealT[HUD_PARTS[k]] = this.clock;
   }
 
-  /** How much of each part of the HUD shows, 0..1 (fading in as it comes): { shove, reload, all }. */
+  /** How much of each part of the HUD shows, 0..1 (fading in as it comes, on the tutorial's own clock): { shove, reload, all }. */
   hud() {
-    const t = this.game.time;
+    const t = this.clock;
     const a = (k) => (this.revealT[k] === undefined ? 0 : clamp((t - this.revealT[k]) / REVEAL, 0, 1));
     return { shove: a('shove'), reload: a('reload'), all: a('all') };
   }
@@ -732,21 +852,22 @@ export class Tutorial {
     return s.target ? s.target(this, this.game) : null;
   }
 
-  /** What the card shows. */
+  /** What the coaching shows: the line (null for none), whether it's a nudge, the count, the gesture, the ✓. */
   view(source) {
     const g = this.game;
     const s = this.step;
-    const n = this.nudge && this.pause <= 0 && !this.over ? this.nudge.n : null;
+    const done = this.pause > 0 || this.over;
+    const n = this.nudge && !done ? this.nudge.n : null;
     return {
       id: s.id,
       title: s.title,
-      text: stepText(n || s, source),
+      text: done ? null : stepText(n || s, source, this, g),
       nudge: !!n, // the line is a nudge: someone's doing it wrong
-      count: s.count && !this.over ? s.count(this, g) : null,
-      coach: this.pause > 0 || this.over ? null : (typeof s.coach === 'function' ? s.coach(this, g) : s.coach) || null,
-      done: this.pause > 0 || this.over,
-      lessons: this.lessonsDone,
-      of: this.of,
+      count: s.count && !done ? s.count(this, g) : null,
+      // A prompt up is all the coaching there is.
+      coach: done || this.prompt ? null : (typeof s.coach === 'function' ? s.coach(this, g) : s.coach) || null,
+      prompt: this.prompt ? this.prompt.kind : null,
+      done: done && !!s.dot, // a ✓ for a lesson done
       t: this.t,
     };
   }

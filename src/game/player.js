@@ -256,7 +256,6 @@ const reloadScale = (p) => (p.adrenT > 0 ? 0.6 : 1);
 export function startReload(game, p) {
   const w = p.weapon;
   if (w.reloading || w.mag >= w.cap) return;
-  if (game.locks && game.locks.reload) return; // the tutorial holds it back while you learn to shove
   w.reloading = true;
   w.reloadT = (w.def.reloadType === 'shell' ? w.def.reload + 0.15 : w.def.reload) * reloadScale(p);
   game.audio.reloadStart();

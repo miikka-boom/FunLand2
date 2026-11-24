@@ -13,6 +13,7 @@ globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null)
 let bad = null;
 const COORD = new Set(['moveTo', 'lineTo', 'arc', 'ellipse', 'rect', 'fillRect', 'strokeRect', 'fillText', 'arcTo']);
 const texts = [];
+const placed = []; // [text, x, y] of every fillText
 function mockCtx() {
   const t = { globalAlpha: 1, fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, font: '', lineCap: 'butt', textAlign: 'left', textBaseline: 'top' };
   return new Proxy(t, {
@@ -22,7 +23,10 @@ function mockCtx() {
       if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => ({ addColorStop() {} });
       if (k === 'getImageData') return (x, y, w, h) => ({ data: new Uint8ClampedArray(Math.max(1, w * h * 4)) });
       return (...a) => {
-        if (k === 'fillText') texts.push(String(a[0]));
+        if (k === 'fillText') {
+          texts.push(String(a[0]));
+          placed.push([String(a[0]), a[1], a[2]]);
+        }
         if (!bad && COORD.has(k)) for (const v of a) if (typeof v === 'number' && !Number.isFinite(v)) bad = `${k}(${a.join(', ')})`;
       };
     },
@@ -40,7 +44,7 @@ Math.random = mulberry32(20201123); // the zombies' wandering and aim spread: th
 
 const { Game, GENERATORS } = await import('../src/game/game.js');
 const { DEFAULTS, LEVELS } = await import('../src/settings.js');
-const { generateTutorial2, DAY2_WALLS, TUT2_W, TUT2_H } = await import('../src/world/tutorial2-gen.js');
+const { generateTutorial2, DAY2_BEN, TUT2_W, TUT2_H } = await import('../src/world/tutorial2-gen.js');
 const { STEPS: DAY1, COURSES, TUTORIAL_LEVELS, stepText, tutorialDone, saveTutorialDone } = await import('../src/game/tutorial.js');
 const { DAY2_STEPS } = await import('../src/game/tutorial-day2.js');
 const { World, FlowField, NAV_CELL } = await import('../src/world/world.js');
@@ -48,6 +52,7 @@ const { damageBoards } = await import('../src/game/loot.js');
 const { hasModel } = await import('../src/render/models.js');
 const { computeLayout } = await import('../src/layout.js');
 const { drawTutorialHud, drawTutorialBright } = await import('../src/render/tutorial-render.js');
+const { PROMPT_IN } = await import('../src/game/tutorial.js');
 const { buildReport, reportText } = await import('../src/playtest.js');
 
 const INF = 0x3fffffff;
@@ -254,25 +259,16 @@ test('left to right all the way: from the start room to the safe room the walk n
   assert.ok(Math.hypot(q.x - goal.x, q.y - goal.y) <= 40, 'got there');
 });
 
-test("the squad's writing: on open ground, readable, never running into each other, and none of it about a Witch", () => {
+test("next to nothing to read on the way: the chalk arrows (the lesson), no writing on the streets, no painted words, no cars; Ben's one line at the end", () => {
   const map = generateTutorial2(1);
-  const lines = map.decor.filter((d) => d.type === 'graffiti');
-  assert.equal(lines.length, DAY2_WALLS.length);
-  assert.ok(lines.some((d) => /CHALK/.test(d.text)) && lines.some((d) => /NAILED/.test(d.text)) && lines.some((d) => /GLINT/.test(d.text)), 'a word for each lesson');
+  const words = map.decor.filter((d) => d.text);
+  assert.deepEqual(words.map((d) => d.type), ['bentext'], 'one line, in his crayon');
+  assert.equal(words[0].text, DAY2_BEN.text);
+  assert.ok(pointInRect(words[0].x, words[0].y, map.endRoom.interior), 'in the safe room at the end');
   assert.ok(!map.decor.some((d) => /CRYING|HER\b|WITCH/i.test(d.text || '')), 'no warnings about someone who is not there');
-  const buildings = map.obstacles.filter((o) => o.kind === 'building');
-  const all = map.decor.filter((d) => d.text && (d.type === 'graffiti' || d.type === 'spray' || d.type === 'bentext'));
-  assert.ok(all.some((d) => d.type === 'bentext'), 'Ben, in his crayon');
-  const box = (d) => {
-    const size = d.size || 18 * (d.s || 1);
-    const hw = (d.text.length * size * 0.6) / 2;
-    return { x: d.x - hw, y: d.y - size / 2, w: hw * 2, h: size };
-  };
-  for (const d of all) {
-    assert.ok(!buildings.some((b) => pointInRect(d.x, d.y, b)), `"${d.text}" is under a building`);
-    if (d.size) assert.ok(d.size >= 10, `"${d.text}" is readable`);
-  }
-  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) assert.ok(!rectsOverlap(box(all[i]), box(all[j])), `"${all[i].text}" runs into "${all[j].text}"`);
+  assert.equal(map.decor.filter((d) => d.type === 'chalk').length, 4, 'the trail of chalk arrows: the lesson itself');
+  assert.equal(map.obstacles.filter((o) => o.kind === 'car').length, 0, 'no cars to wonder about');
+  assert.ok(map.decor.filter((d) => ['puddle', 'crack', 'trash', 'manhole'].includes(d.type)).length <= 17, 'a little clutter, no more');
 });
 
 // --- At run time ---------------------------------------------------------------------------
@@ -284,7 +280,7 @@ test('a run: Day 2 lessons, three shut in with the good stuff, no Witch, no team
   assert.equal(T.day, 2);
   assert.equal(T.steps, DAY2_STEPS);
   assert.equal(T.step.id, 'supplies');
-  assert.equal(T.view('touch').of, LESSONS2);
+  assert.equal(T.of, LESSONS2);
   assert.equal(game.ally, null);
   assert.ok(game.director.scripted);
   assert.equal(T.sleepers.length, 3);
@@ -292,7 +288,7 @@ test('a run: Day 2 lessons, three shut in with the good stuff, no Witch, no team
   assert.equal(game.witches.length, 0, 'no Witch, whatever the panel says');
   assert.equal(game.zombies.filter((z) => z.type === 'common').length, 3, 'no wanderers');
   assert.equal(game.dailyKey, null);
-  assert.deepEqual(game.locks, { reload: false, swap: true }, 'one gun');
+  assert.deepEqual(game.locks, { swap: true }, 'one gun');
   run(game, 30);
   assert.equal(game.zombies.filter((z) => z.type === 'common').length, 3);
   assert.equal(game.stats.hordes, 0);
@@ -364,9 +360,14 @@ test('breaking in: three shoves (counted on the card), the three inside wake, an
   skipTo(game, 'boards');
   const b = T.L.boards;
   assert.equal(T.view('touch').count, '0/3');
-  assert.equal(T.view('touch').coach, 'tap', 'the shove ghost');
-  // Stand in front of the door, facing it, and shove.
+  assert.equal(T.view('touch').text, 'Shove the boards in.');
+  assert.equal(T.prompt, null, 'nothing lit while you walk up');
+  // Stand in front of the door, facing it: SHOVE lit (but the world doesn't stop: nothing is coming yet), and shove.
   Object.assign(p, { x: b.x + b.w / 2, y: b.y + b.h + 16, vx: 0, vy: 0 });
+  p.facing = p.aimAngle = p.fireAngle = -Math.PI / 2;
+  run(game, PROMPT_IN + 0.05);
+  assert.ok(T.prompt && T.prompt.kind === 'shove' && !T.prompt.stop, 'SHOVE lit');
+  assert.equal(T.timeScale(), 1, 'the world goes on');
   p.facing = p.aimAngle = p.fireAngle = -Math.PI / 2;
   const born = [];
   const spawnAt = game.director.spawnAt.bind(game.director);
@@ -433,7 +434,7 @@ test('doing Day 2 wrong: lost on the chalk, shoving the boards from too far off,
   skipTo(game, 'chalk');
   run(game, 12.5, touch());
   assert.equal(game.tutorial.nudge && game.tutorial.nudge.key, 'chalk.lost');
-  assert.equal(game.tutorial.view('touch').text, 'The white arrows on the ground point the way.');
+  assert.equal(game.tutorial.view('touch').text, 'Look for white arrows.');
   game = make();
   skipTo(game, 'boards');
   const p = game.player;
@@ -442,7 +443,7 @@ test('doing Day 2 wrong: lost on the chalk, shoving the boards from too far off,
   run(game, 0.7, touch());
   game.update(1 / 60, touch({ events: ['shove'] }));
   assert.equal(game.tutorial.nudge && game.tutorial.nudge.key, 'boards.too-far');
-  assert.equal(game.tutorial.view('touch').text, 'Get right up to the boards, then tap.');
+  assert.equal(game.tutorial.view('touch').text, 'Get right up to them.');
   game = make();
   skipTo(game, 'secret');
   run(game, 10.5, touch());
@@ -450,17 +451,20 @@ test('doing Day 2 wrong: lost on the chalk, shoving the boards from too far off,
   assert.match(reportText(buildReport(game)), /Tutorial nudges: secret\.lost/);
 });
 
-test('the words fit on the card (touch, mouse, pad), and the coaching draws at every Day 2 lesson without a bad number', () => {
+test('the words: one short line or none (touch, mouse, pad), and the coaching draws at every Day 2 lesson without a bad number, words only at the top', () => {
   for (const s of DAY2_STEPS) {
     for (const src of ['touch', 'mouse', 'gamepad']) {
-      const t = stepText(s, src);
-      assert.ok(t && t.length <= 48, `${s.id} (${src}): ${t && t.length} characters`);
+      const line = stepText(s, src, { spawned: () => true, cleared: () => true, group: [] }, null);
+      if (line !== null) assert.ok(line.length <= 28, `${s.id} (${src}): "${line}" (${line.length})`);
+      for (const n of s.nudges || []) assert.ok(stepText(n, src).length <= 28, `${s.id}.${n.id} (${src})`);
     }
     assert.ok(s.title && s.title === s.title.toUpperCase());
   }
-  // The touch words of the boards lesson talk taps; the mouse words never do.
+  // No words where the arrow says it all: the gates.
+  for (const id of ['gate1', 'gate2']) assert.equal(stepText(DAY2_STEPS.find((q) => q.id === id), 'touch'), null);
+  // The boards: Space with a mouse, RB with a pad (the lit SHOVE button shows a phone where).
   const boards = DAY2_STEPS.find((q) => q.id === 'boards');
-  assert.ok(/tap/i.test(stepText(boards, 'touch')) && !/tap|thumb/i.test(stepText(boards, 'mouse')));
+  assert.ok(/space/i.test(stepText(boards, 'mouse')) && /RB/.test(stepText(boards, 'gamepad')));
   const ctx = mockCtx();
   for (const [w, h] of [[844, 390], [640, 360], [568, 320]]) {
     const game = make();
@@ -469,18 +473,24 @@ test('the words fit on the card (touch, mouse, pad), and the coaching draws at e
     const R = { ctx, v: game.view, ground() {}, reset() {} };
     for (const s of DAY2_STEPS) {
       skipTo(game, s.id);
+      if (s.id === 'boards') {
+        // Up at them, SHOVE lit.
+        const b = game.tutorial.L.boards;
+        Object.assign(game.player, { x: b.x + b.w / 2, y: b.y + b.h + 16, vx: 0, vy: 0 });
+        run(game, 0.3);
+        assert.ok(game.tutorial.prompt);
+      }
       for (const src of ['touch', 'mouse', 'gamepad']) {
         texts.length = 0;
+        placed.length = 0;
         bad = null;
         const input = { source: src, touch: { move: { active: false }, aim: { active: false, crossedFire: false }, pressed: new Map() } };
         drawTutorialHud(ctx, game, input, { title: false, forceSticks: false }, L);
         drawTutorialBright(R, game, game.viewRect(40));
         assert.equal(bad, null, `${w}x${h} ${s.id} (${src}): ${bad}`);
-        assert.ok(texts.includes(s.title) || texts.includes(`✓ ${s.title}`), `${s.id}: the card says what it is`);
-        if (src === 'touch') {
-          const shown = texts.join(' ');
-          for (const word of stepText(s, 'touch').split(' ')) assert.ok(shown.includes(word), `${w}x${h} ${s.id}: "${word}" is missing`);
-        }
+        for (const [t, , y] of placed) assert.ok(y < h * 0.3, `${w}x${h} ${s.id} (${src}): "${t}" at y ${Math.round(y)}`);
+        const v = game.tutorial.view(src === 'touch' ? 'touch' : src);
+        if (v.text) assert.ok(texts.includes(v.text), `${w}x${h} ${s.id} (${src}): the line says "${v.text}"`);
       }
     }
   }

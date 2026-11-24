@@ -13,16 +13,20 @@ globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null)
 let bad = null;
 const COORD = new Set(['moveTo', 'lineTo', 'arc', 'ellipse', 'rect', 'fillRect', 'strokeRect', 'fillText', 'arcTo']);
 const texts = [];
-function mockCtx() {
+const placed = []; // [text, x, y] of every fillText
+function mockCtx(measure = (s) => String(s).length * 7) {
   const t = { globalAlpha: 1, fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, font: '', lineCap: 'butt', textAlign: 'left', textBaseline: 'top' };
   return new Proxy(t, {
     get(o, k) {
       if (k in o) return o[k];
-      if (k === 'measureText') return (s) => ({ width: String(s).length * 7 });
+      if (k === 'measureText') return (s) => ({ width: measure(s, o.font) });
       if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => ({ addColorStop() {} });
       if (k === 'getImageData') return (x, y, w, h) => ({ data: new Uint8ClampedArray(Math.max(1, w * h * 4)) });
       return (...a) => {
-        if (k === 'fillText') texts.push(String(a[0]));
+        if (k === 'fillText') {
+          texts.push(String(a[0]));
+          placed.push([String(a[0]), a[1], a[2]]);
+        }
         if (!bad && COORD.has(k)) for (const v of a) if (typeof v === 'number' && !Number.isFinite(v)) bad = `${k}(${a.join(', ')})`;
       };
     },
@@ -40,14 +44,14 @@ Math.random = mulberry32(20201122); // the zombies' wandering and aim spread: th
 
 const { Game, GENERATORS } = await import('../src/game/game.js');
 const { DEFAULTS, LEVELS } = await import('../src/settings.js');
-const { generateTutorial, TUT_W, TUT_H, TUTORIAL_WALLS } = await import('../src/world/tutorial-gen.js');
-const { STEPS, LESSONS, stepText, tutorialDone, saveTutorialDone } = await import('../src/game/tutorial.js');
+const { generateTutorial, TUT_W, TUT_H, TUTORIAL_BEN } = await import('../src/world/tutorial-gen.js');
+const { STEPS, LESSONS, HUD_PARTS, PROMPT_IN, PROMPT_OUT, stepText, tutorialDone, saveTutorialDone } = await import('../src/game/tutorial.js');
 const { World, FlowField, NAV_CELL } = await import('../src/world/world.js');
 const { startle, seatWitchNear } = await import('../src/game/witch.js');
 const { startReload, swapWeapon } = await import('../src/game/player.js');
 const { hasModel } = await import('../src/render/models.js');
 const { computeLayout, applyHudReveal, hitButton } = await import('../src/layout.js');
-const { drawTutorialHud, drawTutorialBright, cardRect, cardText, introLayout } = await import('../src/render/tutorial-render.js');
+const { drawTutorialHud, drawTutorialBright, lineLayout, introLayout, promptSpot } = await import('../src/render/tutorial-render.js');
 const { drawHud } = await import('../src/render/hud.js');
 const { buildReport, reportText } = await import('../src/playtest.js');
 
@@ -79,14 +83,21 @@ function skipTo(game, id) {
     };
     if (s === 'move') Object.assign(p, { x: T.L.moveRing.x, y: T.L.moveRing.y });
     else if (s === 'aim' || s === 'fire') kill(T.pen);
+    else if (s === 'reload') game.update(1 / 60, idle(['reload'])); // the one button that works
     else if (s === 'gate1' || s === 'gate2') {
       run(game, 1.3); // the bars slide away
       const G = T.L.gates[s === 'gate1' ? 'g1' : 'g2'];
       Object.assign(p, { x: G.x, y: G.y - 160 });
-    } else if (s === 'shove') game.stats.shoveHits += 3;
-    else if (s === 'reload') {
-      game.update(1 / 60, idle(['reload']));
-      kill(T.group.concat(T.extra));
+    } else if (s === 'shove') {
+      // Come by the door: out it bursts; shove it (by hand) and put it down.
+      const D = T.L.shoveSpawn;
+      Object.assign(p, { x: D.x + 120, y: D.y + 215, vx: 0, vy: 0 }); // where walking up the street gets you as it bursts out
+      run(game, 1 / 30);
+      if (T.lunger) {
+        T.shoved = true;
+        T.answer();
+        T.lunger.alive = false;
+      }
     } else if (s === 'kite' || s === 'alarm') kill(T.group.concat(T.extra));
     run(game, 1 / 30);
   }
@@ -226,22 +237,14 @@ test('what a first run leaves out: no Witch (and nobody writes about her), one g
   }
 });
 
-test("the squad's writing: on open ground, readable, and no line runs into another", () => {
+test("next to nothing to read on the way: no writing on the streets, no painted words, one car, Ben's one line in the safe room at the end", () => {
   const map = generateTutorial(1);
-  const buildings = map.obstacles.filter((o) => o.kind === 'building');
-  const lines = map.decor.filter((d) => d.text && (d.type === 'graffiti' || d.type === 'spray' || d.type === 'bentext'));
-  assert.equal(lines.filter((d) => d.type === 'graffiti').length, TUTORIAL_WALLS.length);
-  assert.ok(lines.some((d) => d.type === 'bentext'), 'one line in orange crayon');
-  for (const d of lines) {
-    assert.ok(!buildings.some((b) => pointInRect(d.x, d.y, b)), `"${d.text}" is under a building`);
-    if (d.size) assert.ok(d.size >= 10, `"${d.text}" is readable`);
-  }
-  const box = (d) => {
-    const size = d.size || 18 * (d.s || 1);
-    const hw = (d.text.length * size * 0.6) / 2;
-    return { x: d.x - hw, y: d.y - size / 2, w: hw * 2, h: size };
-  };
-  for (let i = 0; i < lines.length; i++) for (let j = i + 1; j < lines.length; j++) assert.ok(!rectsOverlap(box(lines[i]), box(lines[j])), `"${lines[i].text}" runs into "${lines[j].text}"`);
+  const words = map.decor.filter((d) => d.text);
+  assert.deepEqual(words.map((d) => d.type), ['bentext'], 'one line, in his crayon');
+  assert.equal(words[0].text, TUTORIAL_BEN.text);
+  assert.ok(pointInRect(words[0].x, words[0].y, map.endRoom.interior), 'in the safe room at the end');
+  assert.equal(map.obstacles.filter((o) => o.kind === 'car').length, 1, 'the one car is the one not to shoot');
+  assert.ok(map.decor.filter((d) => ['puddle', 'crack', 'trash', 'manhole'].includes(d.type)).length <= 16, 'a little clutter, no more');
 });
 
 // --- At run time ---------------------------------------------------------------------------
@@ -295,27 +298,34 @@ test('every lesson can be done (by hand), in order, and the safe room ends it: d
   for (const G of Object.values(T.gates)) assert.equal(G.state, 'open');
 });
 
-test('what a lesson holds back: no reload while you learn to shove, then reload and finish them off', () => {
+test('reload, straight after the shooting: the world stops, the screen goes dark but for ⟳, only ⟳ works, and gate 1 opens', () => {
   const game = make();
   const T = game.tutorial;
   const p = game.player;
-  skipTo(game, 'shove');
-  run(game, 0.1);
-  assert.equal(p.weapon.def.id, 'smg');
-  assert.equal(p.weapon.mag, 0, 'click: empty');
-  startReload(game, p);
-  assert.equal(p.weapon.reloading, false, 'no reloading yet');
   skipTo(game, 'reload');
-  assert.equal(T.view('touch').coach, 'reload', 'the ⟳ button pulses');
-  assert.equal(T.view('touch').count, '0/2', 'the two you shoved are still up');
+  assert.ok(T.prompt && T.prompt.kind === 'reload' && T.prompt.stop);
+  assert.ok(p.weapon.mag > 0 && p.weapon.mag < p.weapon.cap, 'something to reload (and a gun that still shoots)');
+  assert.equal(T.view('touch').text, 'Tap to reload.');
+  assert.equal(T.view('mouse').text, 'Press R to reload.');
+  assert.equal(T.view('touch').coach, null, 'the prompt is the coaching');
+  run(game, PROMPT_IN + 0.05);
+  assert.equal(T.timeScale(), 0, 'stopped');
+  const t0 = game.time;
+  const shoves = game.stats.shoves;
+  game.update(1 / 60, idle(['shove', 'swap']));
+  run(game, 1);
+  assert.equal(game.time, t0, 'the world waits');
+  assert.equal(game.stats.shoves, shoves, 'a tap anywhere else does nothing');
+  assert.equal(p.wi, 0);
+  assert.equal(T.gates.g1.state, 'shut');
   game.update(1 / 60, idle(['reload']));
   assert.equal(p.weapon.reloading, true);
-  run(game, 0.1);
-  assert.equal(T.view('touch').coach, 'fire', 'then the fire thumb');
-  assert.equal(T.step.id, 'reload', 'not done while they are up');
-  for (const z of T.group) z.alive = false;
-  run(game, 0.1);
   assert.ok(T.pause > 0, 'done');
+  assert.notEqual(T.gates.g1.state, 'shut', 'gate 1 opens');
+  run(game, PROMPT_OUT + 0.05);
+  assert.equal(T.timeScale(), 1, 'and the world goes on');
+  assert.equal(T.prompt, null);
+  assert.ok(game.time > t0);
   swapWeapon(game, p);
   assert.equal(p.wi, 0, 'and never a swap');
 });
@@ -370,25 +380,79 @@ test('short: eight lessons, and the crowds turn up out of sight (the pack down t
   for (const spot of [{ x: G2.x, y: G2.y - 60 }, { x: G2.x + 200, y: G2.y - 300 }, { x: T.L.car.x, y: T.L.car.y + 120 }]) from2(T.L.rushSpawns, spot);
 });
 
-test('the shove lesson counts shoves that land, and the zombies come to you', () => {
+test('shove: one bursts out of the door as you come by, the world slows to a stop as it reaches you, only a shove gets you going, then you shoot it', () => {
   const game = make();
-  skipTo(game, 'shove');
   const T = game.tutorial;
-  run(game, 1);
-  assert.equal(T.group.length, 2);
-  assert.ok(T.group.every((z) => z.state === 'chase'));
   const p = game.player;
-  // Shove air: no count. Shove one of them: one.
-  game.update(1 / 60, idle(['shove']));
-  assert.equal(game.stats.shoveHits, 0);
+  skipTo(game, 'shove');
+  assert.equal(T.lunger, null);
+  assert.equal(T.view('touch').text, null, 'no words: the arrow shows the way along the street');
+  assert.deepEqual({ x: T.arrow().x, y: T.arrow().y }, { x: T.L.shoveWalk.x, y: T.L.shoveWalk.y });
+  assert.equal(T.hud().shove, 0, 'no SHOVE button yet');
   run(game, 1);
-  const z = T.group[0];
-  Object.assign(z, { x: p.x + Math.cos(p.facing) * 30, y: p.y + Math.sin(p.facing) * 30, vx: 0, vy: 0 });
-  game.zhash.clear();
-  for (const q of game.zombies) if (q.alive) game.zhash.insert(q);
+  assert.equal(T.lunger, null, 'nothing until you come by the door');
+  const D = T.L.shoveSpawn;
+  Object.assign(p, { x: D.x + 120, y: D.y + 180, vx: 0, vy: 0 });
+  run(game, 1 / 60);
+  const z = T.lunger;
+  assert.ok(z && z.alive && z.state === 'chase', 'out it comes');
+  assert.deepEqual(T.group, [z]);
+  assert.equal(T.prompt, null, 'not yet: it has to close in');
+  // As it closes in: the prompt, SHOVE coming in, the world slowing (not all at once).
+  const scales = [];
+  for (let i = 0; i < 60 * 8 && T.timeScale() > 0; i++) {
+    game.update(1 / 60, idle());
+    if (T.prompt) scales.push(T.timeScale());
+  }
+  assert.ok(T.prompt && T.prompt.kind === 'shove' && T.prompt.threat === z);
+  assert.equal(T.timeScale(), 0, 'stopped');
+  assert.ok(scales.some((k) => k > 0.1 && k < 0.9), 'slowing as it came');
+  assert.ok(T.inReach(z), 'with it in reach');
+  assert.ok(T.hud().shove > 0, 'SHOVE comes in with it');
+  assert.equal(T.view('touch').text, 'Too close! Tap SHOVE.');
+  assert.equal(T.view('mouse').text, 'Too close! Press Space.');
+  assert.equal(T.view('touch').coach, null, 'the prompt is the coaching');
+  // The gun still works (nothing emptied it), but bullets don't put this one down before the shove.
+  assert.ok(p.weapon.mag > 0);
+  z.hp = 10;
+  run(game, 1 / 60);
+  assert.equal(z.hp, 50);
+  // Stopped: nothing moves, and nothing but a shove gets through.
+  const at = { x: z.x, y: z.y, t: game.time };
+  game.update(1 / 60, idle(['reload', 'swap']));
+  run(game, 1);
+  assert.deepEqual({ x: z.x, y: z.y, t: game.time }, at);
+  assert.equal(p.weapon.reloading, false);
   game.update(1 / 60, idle(['shove']));
+  assert.equal(T.shoved, true);
   assert.equal(game.stats.shoveHits, 1);
-  assert.equal(T.view('touch').count, '1/3');
+  assert.ok(z.stagger > 0, 'knocked back');
+  run(game, PROMPT_OUT + 0.1);
+  assert.equal(T.timeScale(), 1);
+  assert.equal(T.prompt, null);
+  assert.equal(T.view('touch').text, 'Now shoot it.');
+  assert.equal(T.view('touch').coach, 'fire');
+  z.alive = false; // shot
+  run(game, 0.1);
+  assert.ok(T.pause > 0, 'done');
+});
+
+test('a shove pressed before the one coming at you is in reach waits for it, and lands the moment it can', () => {
+  const game = make();
+  const T = game.tutorial;
+  const p = game.player;
+  skipTo(game, 'shove');
+  const D = T.L.shoveSpawn;
+  Object.assign(p, { x: D.x + 120, y: D.y + 180, vx: 0, vy: 0 });
+  for (let i = 0; i < 600 && !T.prompt; i++) game.update(1 / 60, idle());
+  assert.ok(T.prompt && !T.inReach(T.lunger), 'up, with it not yet in reach');
+  const shoves = game.stats.shoves;
+  game.update(1 / 60, idle(['shove']));
+  assert.equal(game.stats.shoves, shoves, 'not thrown at the air');
+  for (let i = 0; i < 600 && !T.shoved; i++) game.update(1 / 60, idle());
+  assert.equal(T.shoved, true, 'it went as soon as it could land');
+  assert.equal(game.stats.shoves, shoves + 1);
+  assert.equal(game.stats.shoveHits, 1);
 });
 
 test('nobody dies in the tutorial: 0 HP is a second wind that throws back what is on you', () => {
@@ -440,14 +504,14 @@ test('the alarm car is in plain view when its lesson starts: close, on screen, p
   assert.ok(d < 380, `the car is ${Math.round(d)} u away`);
   const s = game.worldToScreen(c.x, c.y);
   assert.ok(s.x > 40 && s.x < 600 && s.y > 70, `on screen, below the HUD (${Math.round(s.x)}, ${Math.round(s.y)})`);
-  // ...and not behind a button or the card.
+  // ...and not behind a button or the line at the top.
   const L = computeLayout(640, 360, { l: 0, r: 0, t: 0, b: 0 }, game.settings);
   for (const b of L.buttons || Object.values(L.byId)) {
     if (!b || b.hidden || b.r === undefined) continue;
     assert.ok(Math.hypot(s.x - b.x, s.y - b.y) > b.r + 40, `behind the ${b.id} button`);
   }
-  const card = cardRect(L, game.settings.stickRadius, 2);
-  assert.ok(s.y < card.y - 30, 'above the card');
+  const line = lineLayout(mockCtx(), L, `${T.view('touch').text}   0/4`, true);
+  assert.ok(s.y > line.y + line.h / 2 + 20, 'below the line at the top');
   // The four come along the street from beyond it.
   for (const q of T.L.alarmSpawns) {
     assert.ok(Math.hypot(q.x - p.x, q.y - p.y) > d + 200, 'they start out further off than the car');
@@ -488,22 +552,33 @@ test('a Witch seated from the tuning panel can\'t end the tutorial either: one s
   assert.equal(T.over, false);
 });
 
-test('the words: every lesson has them for touch, the mouse and pads fall back sensibly, and they fit on the card', () => {
+test('the words: one short line or none, for touch, the mouse and pads; the touch ones talk thumbs and taps, the mouse ones never do', () => {
   assert.equal(LESSONS, STEPS.filter((s) => s.dot).length);
+  // (The shove lesson's line goes with how far it's got: none on the way, the prompt's, then "shoot it".)
+  const states = [{ lunger: null }, { lunger: {}, shoved: false }, { lunger: {}, shoved: true }];
   for (const s of STEPS) {
     for (const src of ['touch', 'mouse', 'gamepad']) {
-      const t = stepText(s, src);
-      // One short line: the ghost thumb shows the rest.
-      assert.ok(t && t.length <= 48, `${s.id} (${src}): ${t && t.length} characters`);
+      for (const t of states) {
+        const line = stepText(s, src, t, null);
+        if (line !== null) assert.ok(line.length <= 36, `${s.id} (${src}): "${line}" is ${line.length} characters`);
+      }
+      for (const n of s.nudges || []) {
+        const line = stepText(n, src);
+        assert.ok(line && line.length <= 40, `${s.id}.${n.id} (${src}): ${line && line.length} characters`);
+      }
     }
     assert.ok(s.title && s.title === s.title.toUpperCase());
   }
+  // No words where the arrow says it all: the gates.
+  for (const id of ['gate1', 'gate2']) assert.equal(stepText(STEPS.find((q) => q.id === id), 'touch'), null, id);
   // The touch words talk about thumbs and taps; the mouse words never do.
-  for (const id of ['move', 'aim', 'fire', 'shove', 'reload', 'kite']) {
+  for (const id of ['move', 'aim', 'fire', 'reload']) {
     const s = STEPS.find((q) => q.id === id);
     assert.ok(/thumb|tap|push|ring/i.test(stepText(s, 'touch')), id);
     assert.ok(!/thumb|tap /i.test(stepText(s, 'mouse')), id);
   }
+  const shove = STEPS.find((q) => q.id === 'shove');
+  assert.ok(/tap/i.test(stepText(shove, 'touch', states[1])) && !/tap|thumb/i.test(stepText(shove, 'mouse', states[1])));
 });
 
 test('first, on a phone: a black screen with a big picture of how to hold it and one line, nothing else, until you tap', () => {
@@ -556,7 +631,8 @@ test('first, on a phone: a black screen with a big picture of how to hold it and
   assert.ok(!('hold' in T.times));
 });
 
-test('the HUD comes in a part at a time: the two sticks first, SHOVE for the shove lesson, ⟳ for the reload, then all of it', () => {
+test('the HUD comes in a part at a time: the two sticks first, ⟳ for the reload, SHOVE when the shove is asked for, then all of it (never the clock)', () => {
+  assert.deepEqual(HUD_PARTS, ['sticks', 'reload', 'shove', 'all']);
   const game = make();
   const T = game.tutorial;
   const S = game.settings;
@@ -566,6 +642,7 @@ test('the HUD comes in a part at a time: the two sticks first, SHOVE for the sho
   const shown = () => {
     texts.length = 0;
     bad = null;
+    applyHudReveal(L, S, T.hud()); // as main.js does every frame
     drawHud(ctx, game, pad, { layout: L, title: false, forceSticks: false, input: pad }, null);
     assert.equal(bad, null, bad);
     return { hp: texts.includes('HP'), gun: texts.includes('SMG'), clock: texts.some((t) => /kills/.test(t)), shove: texts.includes('SHOVE') };
@@ -579,21 +656,23 @@ test('the HUD comes in a part at a time: the two sticks first, SHOVE for the sho
   assert.deepEqual(T.hud(), { shove: 0, reload: 0, all: 0 });
   assert.deepEqual(shown(), { hp: false, gun: false, clock: false, shove: false }, 'the sticks and nothing else');
   assert.deepEqual(pressable(), { shove: false, reload: false, pause: false, gun: false }, 'and nothing there to press by mistake');
-  skipTo(game, 'shove');
-  run(game, 0.6);
-  assert.equal(T.hud().shove, 1);
-  assert.deepEqual(shown(), { hp: false, gun: false, clock: false, shove: true }, 'SHOVE comes in for the shove lesson');
-  assert.deepEqual(pressable(), { shove: true, reload: false, pause: false, gun: false });
   skipTo(game, 'reload');
-  run(game, 0.1);
-  assert.ok(T.hud().reload > 0 && T.hud().reload < 1, 'fading in');
-  run(game, 0.5);
-  assert.deepEqual(pressable(), { shove: true, reload: true, pause: false, gun: false }, '⟳ for the reload lesson');
-  assert.equal(shown().hp, false);
+  assert.ok(T.hud().reload < 1, 'fading in');
+  run(game, 0.6);
+  assert.equal(T.hud().reload, 1, 'in, though the world has stopped (the HUD runs on the tutorial clock)');
+  assert.deepEqual(pressable(), { shove: false, reload: true, pause: false, gun: false }, '⟳ for the reload');
+  skipTo(game, 'shove');
+  assert.deepEqual(pressable(), { shove: false, reload: true, pause: false, gun: false }, 'no SHOVE on the way to the door');
+  const D = T.L.shoveSpawn;
+  Object.assign(game.player, { x: D.x + 120, y: D.y + 180, vx: 0, vy: 0 });
+  for (let i = 0; i < 600 && !T.prompt; i++) game.update(1 / 60, idle());
+  run(game, 0.6);
+  assert.deepEqual(shown(), { hp: false, gun: false, clock: false, shove: true }, 'SHOVE comes in when it is asked for');
+  assert.deepEqual(pressable(), { shove: true, reload: true, pause: false, gun: false });
   skipTo(game, 'kite');
   run(game, 0.6);
   assert.deepEqual(T.hud(), { shove: 1, reload: 1, all: 1 });
-  assert.deepEqual(shown(), { hp: true, gun: true, clock: true, shove: true }, 'then all of it');
+  assert.deepEqual(shown(), { hp: true, gun: true, clock: false, shove: true }, 'then all of it (the top is kept for the line: no clock)');
   assert.deepEqual(pressable(), { shove: true, reload: true, pause: true, gun: true });
   // Day 2 shows it all from the start, and with no tutorial nothing is held back.
   assert.deepEqual(make({ level: 'tutorial2' }).tutorial.hud(), { shove: 1, reload: 1, all: 1 });
@@ -601,7 +680,7 @@ test('the HUD comes in a part at a time: the two sticks first, SHOVE for the sho
   assert.ok(!L.byId.reload.hidden && !L.byId.pause.hidden && !L.byId.swap.hidden && L.byId.shove.hidden === !S.shoveButton);
 });
 
-test('doing it wrong: each way of getting stuck gets its own nudge on the card (in amber), and the report counts them', () => {
+test('doing it wrong: each way of getting stuck gets its own nudge on the line (in amber), and the report counts them', () => {
   const touch = (o = {}) => ({ ...idle(), source: 'touch', thumbs: { left: false, right: false }, ...o });
   const at = (id) => {
     const game = make();
@@ -615,7 +694,7 @@ test('doing it wrong: each way of getting stuck gets its own nudge on the card (
     assert.ok(T.nudge, `${key}: no nudge`);
     assert.equal(T.nudge.key, key);
     const v = T.view(game.input.source === 'touch' ? 'touch' : game.input.source);
-    assert.ok(v.nudge, 'the card knows it is a nudge (amber)');
+    assert.ok(v.nudge, 'the line knows it is a nudge (amber)');
     assert.equal(v.text, text);
     assert.equal(T.nudges[key], 1, 'counted');
   };
@@ -631,7 +710,7 @@ test('doing it wrong: each way of getting stuck gets its own nudge on the card (
   check(g, 'move.tapped', 'Keep your thumb down and slide it.');
   g = at('move');
   run(g, 1.5, touch({ thumbs: { left: true, right: false } }));
-  check(g, 'move.still-thumb', 'Now slide your thumb toward the ring.');
+  check(g, 'move.still-thumb', 'Now slide it toward the ring.');
   g = at('move');
   run(g, 2, touch({ thumbs: { left: false, right: true }, aimActive: true, aimRaw: 0.7 }));
   check(g, 'move.right-thumb', 'Walk with your LEFT thumb.');
@@ -640,7 +719,7 @@ test('doing it wrong: each way of getting stuck gets its own nudge on the card (
   g.update(1 / 60, touch({ events: ['shove'] }));
   run(g, 0.5, touch());
   g.update(1 / 60, touch({ events: ['shove'] }));
-  check(g, 'aim.tapped', 'Not a tap: keep your right thumb down.');
+  check(g, 'aim.tapped', "Don't tap: keep your right thumb down.");
   // Fire: aiming that never pushes past the ring (and with a mouse, the mouse's words).
   for (const [src, text] of [['touch', 'Push your thumb further, past the ring.'], ['mouse', 'Click to shoot.']]) {
     g = at('aim');
@@ -650,28 +729,24 @@ test('doing it wrong: each way of getting stuck gets its own nudge on the card (
     run(g, 3, { ...touch({ thumbs: { left: false, right: true } }), source: src, aimActive: true, aimRaw: 0.5 });
     check(g, 'fire.no-push', text);
   }
-  // Shove: firing the empty gun; holding the thumb down; shoving the air; going down.
+  // Shove: never pressing it with the world stopped for it; then not shooting the one shoved off.
   g = at('shove');
-  run(g, 1, touch({ thumbs: { left: false, right: true }, aimActive: true, aimRaw: 1, fire: true }));
-  check(g, 'shove.empty-gun', 'No ammo! A quick tap shoves.');
-  g = at('shove');
-  run(g, 1, touch({ thumbs: { left: false, right: true }, aimActive: true, aimRaw: 0.4 }));
-  check(g, 'shove.held', "Just a quick tap. Don't hold.");
-  g = at('shove');
+  const D = g.tutorial.L.shoveSpawn;
+  Object.assign(g.player, { x: D.x + 120, y: D.y + 180, vx: 0, vy: 0 });
+  for (let i = 0; i < 600 && !(g.tutorial.prompt && g.tutorial.timeScale() === 0); i++) g.update(1 / 60, touch());
+  run(g, 5, touch());
+  check(g, 'shove.no-shove', 'Tap the SHOVE button.');
   g.update(1 / 60, touch({ events: ['shove'] }));
-  run(g, 0.6, touch());
-  g.update(1 / 60, touch({ events: ['shove'] }));
-  check(g, 'shove.too-far', 'Let them get close, then tap.');
-  g = at('shove');
-  g.tutorial.rescue();
-  run(g, 0.1, touch());
-  check(g, 'shove.rescued', 'Tap the right side to push them off!');
+  assert.equal(g.tutorial.shoved, true);
+  run(g, 6, touch());
+  check(g, 'shove.not-shooting', 'Push past the ring to shoot.');
   // Reload: the button never tapped.
   g = at('reload');
   run(g, 5.5, touch());
   check(g, 'reload.no-reload', 'Tap the round ⟳ button.');
   // Both thumbs: not shooting with them close; standing still with one on you.
   g = at('kite');
+  Object.assign(g.player, { x: g.tutorial.L.gates.g1.x, y: g.tutorial.L.gates.g1.y - 160 }); // far enough off that they're a while coming
   run(g, 4, touch());
   check(g, 'kite.not-shooting', 'Right thumb: keep shooting!');
   g = at('kite');
@@ -685,8 +760,8 @@ test('doing it wrong: each way of getting stuck gets its own nudge on the card (
   // Run for it: staying put.
   g = at('saferoom');
   run(g, 5.5, touch());
-  check(g, 'saferoom.fighting', "Don't fight them all: run for the door!");
-  // A nudge has the card for a few seconds, then the lesson's own line is back; it comes back if it's still happening.
+  check(g, 'saferoom.fighting', "Don't fight: run for it!");
+  // A nudge has the line for a few seconds, then the lesson's own is back; it comes back if it's still happening.
   g = at('move');
   run(g, 1.5, touch({ thumbs: { left: true, right: false } }));
   run(g, 4.1, touch());
@@ -700,71 +775,91 @@ test('doing it wrong: each way of getting stuck gets its own nudge on the card (
   assert.match(reportText(r), /Tutorial nudges: move\.still-thumb ×2/);
 });
 
-test('the coaching draws on a phone at every lesson (touch, mouse, pad) without a bad number, and the card sits between the thumbs', () => {
-  const settings = { ...DEFAULTS, level: 'tutorial', playtestPrompt: false };
-  for (const [w, h] of [[844, 390], [667, 375], [1024, 768]]) {
-    const L = computeLayout(w, h, { l: 0, r: 0, t: 0, b: 0 }, settings);
-    const R = settings.stickRadius;
-    const c = cardRect(L, R, 3);
-    assert.ok(c.x >= L.fixedMove.x + R && c.x + c.w <= L.fixedAim.x - R, `${w}x${h}: clear of the sticks`);
-    assert.ok(c.y + c.h <= h - 8 && c.y > h * 0.5, `${w}x${h}: at the bottom`);
-  }
+test('the coaching draws at every lesson (touch, mouse, pad) without a bad number: one line at the top or none, no words anywhere else, no labels on the sticks', () => {
   const game = make();
   const L = computeLayout(844, 390, { l: 0, r: 0, t: 0, b: 0 }, game.settings);
   const ctx = mockCtx();
   const R = { ctx, v: game.view, ground() {}, reset() {} };
   const touchIn = (source, active = false) => ({ source, touch: { move: { active }, aim: { active, crossedFire: false }, pressed: new Map() } });
   const seen = new Set();
+  const draw = (label) => {
+    for (const src of ['touch', 'mouse', 'gamepad']) {
+      texts.length = 0;
+      placed.length = 0;
+      bad = null;
+      drawTutorialHud(ctx, game, touchIn(src), { title: false, forceSticks: false }, L);
+      drawTutorialBright(R, game, game.viewRect(40));
+      assert.equal(bad, null, `${label} (${src}): ${bad}`);
+      for (const [t, , y] of placed) assert.ok(y < L.h * 0.25, `${label} (${src}): "${t}" at y ${Math.round(y)}: words only at the top`);
+      const v = game.tutorial.view(src === 'touch' ? 'touch' : src);
+      if (v.text) assert.ok(texts.includes(v.text), `${label} (${src}): the line says "${v.text}"`);
+      if (src === 'touch') for (const t of texts) seen.add(t);
+    }
+  };
   for (const s of STEPS) {
     skipTo(game, s.id);
-    // The reload lesson shows two things: the ⟳ button, then (loading) the fire thumb.
-    for (const loaded of s.id === 'reload' ? [false, true] : [false]) {
-      if (loaded) {
-        game.update(1 / 60, idle(['reload']));
-        run(game, 0.1);
-      }
-      for (const src of ['touch', 'mouse', 'gamepad']) {
-        texts.length = 0;
-        bad = null;
-        drawTutorialHud(ctx, game, touchIn(src), { title: false, forceSticks: false }, L);
-        drawTutorialBright(R, game, game.viewRect(40));
-        assert.equal(bad, null, `${s.id} (${src}): ${bad}`);
-        if (s.intro) {
-          assert.equal(texts.length, 0, 'the first screen has it all to itself: no card');
-          continue;
-        }
-        assert.ok(texts.includes(s.title) || texts.includes(`✓ ${s.title}`), `${s.id}: the card says what it is`);
-        if (src === 'touch') for (const t of texts) seen.add(t);
-      }
+    if (s.intro) {
+      texts.length = 0;
+      drawTutorialHud(ctx, game, touchIn('touch'), { title: false, forceSticks: false }, L);
+      assert.equal(texts.length, 0, 'the first screen has it all to itself');
+      continue;
+    }
+    draw(s.id);
+    if (s.id === 'shove') {
+      // ...and once it's on you, with the world stopped: the prompt.
+      const D = game.tutorial.L.shoveSpawn;
+      Object.assign(game.player, { x: D.x + 120, y: D.y + 180, vx: 0, vy: 0 });
+      for (let i = 0; i < 600 && !(game.tutorial.prompt && game.tutorial.timeScale() === 0); i++) game.update(1 / 60, idle());
+      draw('the shove prompt');
     }
   }
-  // One word under each ghost, no more.
-  for (const label of ['SLIDE', 'AIM', 'FIRE', 'TAP', 'BACK OFF']) assert.ok(seen.has(label), `a ghost thumb says ${label}`);
+  assert.ok(seen.has('✓'), 'a ✓ when a lesson is done');
+  // No labels under the ghost thumbs any more: the thumbs show it.
+  for (const label of ['SLIDE', 'AIM', 'FIRE', 'TAP', 'BACK OFF']) assert.ok(!seen.has(label), `"${label}" is drawn`);
+  // Where a prompt's button is: the one it's for (with no SHOVE button, the right side, where a tap shoves).
+  assert.deepEqual(promptSpot(L, 'reload', game.settings), { x: L.byId.reload.x, y: L.byId.reload.y, r: L.byId.reload.r });
+  assert.deepEqual(promptSpot(L, 'shove', game.settings), { x: L.byId.shove.x, y: L.byId.shove.y, r: L.byId.shove.r });
+  assert.equal(promptSpot(L, 'shove', { ...game.settings, shoveButton: false }).x, L.fixedAim.x);
   // Title screen: nothing drawn.
   texts.length = 0;
   drawTutorialHud(ctx, game, touchIn('touch'), { title: true }, L);
   assert.equal(texts.length, 0);
 });
 
-test("the card's words are never cut short, down to the smallest phones (and they get a size smaller before that)", () => {
-  const ctx = mockCtx();
-  for (const [w, h] of [[640, 360], [568, 320]]) {
-    const game = make();
-    game.setViewport(w, h);
-    const L = computeLayout(w, h, { l: 0, r: 0, t: 0, b: 0 }, game.settings);
-    for (const s of STEPS) {
-      if (s.intro) continue; // no card on the first screen
-      skipTo(game, s.id);
-      texts.length = 0;
-      drawTutorialHud(ctx, game, { source: 'touch', touch: { move: { active: true }, aim: { active: true, crossedFire: false }, pressed: new Map() } }, { title: false }, L);
-      const shown = texts.join(' ');
-      for (const word of stepText(s, 'touch').split(' ')) assert.ok(shown.includes(word), `${w}x${h} ${s.id}: "${word}" is missing`);
+test('the line: one line, never cut short, at the top: between the health and gun panels once they are up (or under them on the smallest phones)', () => {
+  // Text as wide as a bold face at the size set.
+  const ctx = mockCtx((t, font) => String(t).length * parseFloat((/(\d+(?:\.\d+)?)px/.exec(font) || [0, 13])[1]) * 0.56);
+  const kite = STEPS.findIndex((q) => q.id === 'kite');
+  const lines = [];
+  for (const [i, s] of STEPS.entries()) {
+    if (s.intro) continue;
+    for (const src of ['touch', 'mouse', 'gamepad']) {
+      for (const t of [{ lunger: null }, { lunger: {}, shoved: false }, { lunger: {}, shoved: true }]) {
+        const l = stepText(s, src, t, null);
+        if (l) lines.push({ text: s.count ? `${l}   8/8` : l, panels: i >= kite });
+      }
+      for (const n of s.nudges || []) lines.push({ text: stepText(n, src), panels: i >= kite });
     }
   }
-  // More words than four lines hold: a size smaller, and all of them still there.
-  const fit = cardText(ctx, 'word '.repeat(40).trim(), 120);
-  assert.ok(fit.size < 13, `${fit.size} px`);
-  assert.equal(fit.lines.join(' ').split(' ').length, 40);
+  for (const [w, h] of [[568, 320], [640, 360], [844, 390], [1024, 768]]) {
+    const L = computeLayout(w, h, { l: 0, r: 0, t: 0, b: 0 }, DEFAULTS);
+    for (const { text, panels } of lines) {
+      for (const up of panels ? [true] : [false, true]) {
+        const B = lineLayout(ctx, L, text, up);
+        const what = `${w}x${h} "${text}"${up ? ' (panels up)' : ''}`;
+        ctx.font = `800 ${B.size}px sans-serif`;
+        assert.ok(B.size >= 13 && B.size <= 19, `${what}: ${B.size} px`);
+        assert.ok(ctx.measureText(text).width <= B.w, `${what}: cut short`);
+        assert.ok(B.x - B.w / 2 >= 8 && B.x + B.w / 2 <= w - 8, `${what}: off the screen`);
+        assert.ok(B.y - B.h / 2 <= h * 0.3, `${what}: not at the top`);
+        if (!up) continue;
+        const between = B.x - B.w / 2 >= L.hp.x + L.hp.w && B.x + B.w / 2 <= L.byId.swap.x;
+        const under = B.y - B.h / 2 >= L.hp.y + L.hp.h;
+        assert.ok(between || under, `${what}: on top of a panel`);
+        if (w >= 640 && panels) assert.ok(between, `${what}: room enough between the panels`);
+      }
+    }
+  }
 });
 
 test('the report: how far you got, the close calls, and the seconds per lesson (where people get stuck)', () => {
@@ -840,6 +935,7 @@ test('a bot gets through every lesson to the safe room through the real game loo
   };
   const order = [];
   let evT = 0;
+  let minMag = Infinity;
   for (let i = 0; i < 60 * 400 && !game.won; i++) {
     const s = T.step.id;
     if (order[order.length - 1] !== s) order.push(s);
@@ -878,17 +974,22 @@ test('a bot gets through every lesson to the safe room through the real game loo
         f.events.push('shove');
         evT = 0.5;
       }
-    } else if (s === 'shove') {
-      const z = nearest(T.group);
-      if (z && Math.hypot(z.x - p.x, z.y - p.y) < 55 && evT <= 0) {
-        f.events.push('shove');
-        evT = 0.45;
-      }
-    } else if (s === 'reload' && !T.reloaded) {
-      if (evT <= 0) {
+    } else if (s === 'reload') {
+      // The world has stopped for ⟳: tap it.
+      if (T.prompt && evT <= 0) {
         f.events.push('reload');
         evT = 0.5;
       }
+    } else if (s === 'shove') {
+      minMag = Math.min(minMag, p.weapon.reloading ? p.weapon.cap : p.weapon.mag);
+      if (!T.lunger) f.move = walkTo(T.arrow().x, T.arrow().y); // along the street, by the door
+      else if (!T.shoved) {
+        // Tap SHOVE as soon as it's asked for (the tap waits until it can land).
+        if (T.prompt && evT <= 0) {
+          f.events.push('shove');
+          evT = 0.5;
+        }
+      } else fight([T.lunger], false);
     } else fight(T.group.concat(T.extra));
     game.update(1 / 60, f);
   }
@@ -900,6 +1001,7 @@ test('a bot gets through every lesson to the safe room through the real game loo
   assert.ok(game.stats.time < 100, `${game.stats.time.toFixed(0)} s for a bot`);
   assert.equal(tutorialDone(), true);
   assert.equal(p.weapon.def.id, 'smg', 'one gun, all the way');
-  assert.ok(game.stats.shoveHits >= 3 && game.stats.kills >= 17, `${game.stats.shoveHits} shoves, ${game.stats.kills} kills`);
+  assert.ok(game.stats.shoveHits >= 1 && game.stats.kills >= 16, `${game.stats.shoveHits} shoves, ${game.stats.kills} kills`);
+  assert.ok(minMag > 0, 'nothing emptied the gun for the shove lesson');
   assert.deepEqual(T.nudges, {}, 'played right: never told off');
 });

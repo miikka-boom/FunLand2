@@ -57,7 +57,7 @@ export function drawHud(ctx, game, input, ui, renderer) {
     if (game.ally && game.ally.alive && !ui.title) drawAllyMarker(ctx, game, L);
     drawWeapon(ctx, game, L, ui);
     if (!ui.title) drawBuffs(ctx, game, L);
-    drawStats(ctx, game, L);
+    if (!game.tutorial) drawStats(ctx, game, L); // (the tutorial keeps the top for its one line)
     ctx.globalAlpha = 1;
   }
   drawButtons(ctx, game, L, input.touch, reveal);
@@ -72,7 +72,7 @@ export function drawHud(ctx, game, input, ui, renderer) {
   drawHoldoutBar(ctx, game, L);
   drawFerryBar(ctx, game, L);
   if (p.pinnedBy && p.alive) drawPinned(ctx, game, L);
-  if (game.tutorial) drawTutorialHud(ctx, game, input, ui, L); // the lesson card and the ghost thumbs
+  if (game.tutorial) drawTutorialHud(ctx, game, input, ui, L); // its line at the top, arrows, ghost thumbs, prompts
   drawMessages(ctx, game, L);
   if (game.won || game.lost) drawEnd(ctx, game, L, ui);
   if (S.showDebug) drawDebug(ctx, game, input, ui, L);
@@ -592,6 +592,14 @@ function drawObjective(ctx, game, L) {
   const ang = Math.atan2(gs.y - ps.y, gs.x - ps.x);
   const e = offButtons(L, edgePoint(L, ps.x, ps.y, ang, 40));
   const pulse = 0.65 + Math.sin(game.time * 3) * 0.2;
+  if (T) {
+    // The tutorial's: big, and no words (the arrow says it).
+    ctx.fillStyle = `rgba(0,0,0,${0.5 * pulse})`;
+    chevron(ctx, e.x + 1.5, e.y + 2, ang, 19);
+    ctx.fillStyle = `rgba(125,255,161,${0.35 + pulse})`;
+    chevron(ctx, e.x, e.y, ang, 17);
+    return;
+  }
   ctx.fillStyle = `rgba(110,255,150,${pulse})`;
   chevron(ctx, e.x, e.y, ang, 11);
   const path = !goal && Number.isFinite(game.goalDist) ? game.goalDist : Math.hypot(gx - p.x, gy - p.y);

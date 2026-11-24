@@ -149,31 +149,11 @@ const BLOCKS = [
 // The yard is a little lot behind the buildings.
 const LOTS = [{ ...YARD, type: 'parking' }];
 
-/** The squad's writing for day 2 (no line runs into another: tests). */
-export const DAY2_WALLS = [
-  // The start room.
-  { x: START_ROOM.x + 116, y: 1470, text: 'DAY 2. SUPPLY RUN.', size: 12, color: '#e8e8e0' },
-  { x: START_ROOM.x + 116, y: 1574, text: 'LOOK OFF THE WAY. — ODILE', size: 11, color: '#9fd8ff' },
-  // Row 1: the chalk, and the yard.
-  { x: 612, y: 1428, text: 'FOLLOW THE CHALK. — TEO', size: 12, color: '#f2c94c' },
-  { x: 772, y: 1218, text: "TEO'S. HANDS OFF.", size: 11, color: '#f2c94c' },
-  // Row 2: across from the nailed door, and the oldest argument going.
-  { x: ROOM.x + ROOM.w / 2, y: 1088, text: 'NAILED SHUT = SOMETHING INSIDE', size: 13, color: '#e8e8e0' },
-  { x: ROOM.x + ROOM.w / 2, y: 1106, text: 'BOTH KINDS OF SOMETHING. — MAGS', size: 11, color: '#9fd8ff' },
-  { x: 1680, y: 922, text: 'MAGS OWES ME A CAN OF PEACHES — TEO', size: 11, color: '#f2c94c' },
-  // Row 3: the glint, and Lou's story.
-  { x: 2030, y: 592, text: 'LOOK FOR THE GLINT. — ODILE', size: 12, color: '#9fd8ff' },
-  { x: 2380, y: 592, text: 'LOU FOUND PEACHES DOWN A MANHOLE ONCE', size: 11, color: '#f2c94c' },
-  // The safe room.
-  { x: END_ROOM.x + 116, y: 230, text: 'DAY 2: DONE. — ODILE', size: 11, color: '#e8e8e0' },
-  { x: END_ROOM.x + 116, y: 246, text: 'TOMORROW: NO GATES. — LOU', size: 11, color: '#f2c94c' },
-];
-
-/** Ben's turn (day 1 he wrote "my turn tomorrow."): one line at each end, in his crayon. */
-export const DAY2_BEN = [
-  { x: START_ROOM.x + 116, y: 1590, text: 'my turn.' },
-  { x: END_ROOM.x + 116, y: 262, text: 'i saw it glint first.' },
-];
+/**
+ * The only writing on the course: Ben's turn (day 1 he wrote "my turn
+ * tomorrow."). One line in his crayon, in the safe room at the end.
+ */
+export const DAY2_BEN = { x: END_ROOM.x + 116, y: 246, text: 'i saw it glint first.' };
 
 export function generateTutorial2(seed = 1) {
   // Fixed dice: every player gets the same course, whatever the seed.
@@ -253,11 +233,8 @@ export function generateTutorial2(seed = 1) {
   const g3 = gateLine(C3.x - SW, C3.x + C3.w + SW, 296);
   for (const g of [g1, g2, g3]) obstacles.push(...g.walls, g.bars);
 
-  // --- Cars (no alarms today), a medkit for after the fight, and the way to go ---------------------
-  obstacles.push(ob('car', 1150, 1582, 86, 44, { color: '#6b6b6b', vertical: false, front: -1 }));
-  obstacles.push(ob('car', 1900, 1066, 86, 44, { color: '#7a3b32', vertical: false, front: 1 }));
+  // --- A medkit for after the fight ---------------------------------------------------------------
   pickups.push({ kind: 'medkit', x: 1600, y: 1131 });
-  decor.push({ type: 'spray', x: 522, y: 1598, text: 'THIS WAY', color: '#e8e8e0', a: 0, s: 0.9 });
 
   // --- Light: lamps along the streets, a glow at every gate, a bulb over the yard and the nailed door --
   streetLamps([S1, S2, S3], [C1, C2, C3], lamps);
@@ -268,13 +245,13 @@ export function generateTutorial2(seed = 1) {
   glows.push({ x: yardCrate.x - 40, y: yardCrate.y + 4, r: 130, k: 0.34 });
   glows.push({ x: d0 + DOOR_W / 2, y: ROOM.y + ROOM.h + 36, r: 160, k: 0.42 });
 
-  // --- Paint, clutter and the squad's writing --------------------------------------------------
+  // --- Paint, a little clutter, and Ben's one line ----------------------------------------------
+  // Kept plain on purpose: what stands out on the way is what a lesson points at.
   const markings = { dashes: [], crosswalks: [], parking: [] };
   for (const [s, c] of [[S1, C1], [S2, C2], [S3, C3]]) markings.dashes.push({ x0: s.x + 60, y0: s.y + s.h / 2, x1: c.x - 20, y1: s.y + s.h / 2 });
   for (const c of [C1, C2, C3]) markings.dashes.push({ x0: c.x + c.w / 2, y0: c.y + 20, x1: c.x + c.w / 2, y1: c.y + c.h - 20 });
-  streetClutter(D, [S1, S2, S3, S1, S2, S3, C1, C2, C3], 48, decor);
-  for (const w of DAY2_WALLS) decor.push({ type: 'graffiti', x: w.x, y: w.y, text: w.text, color: w.color, size: w.size, a: w.a || 0, drip: false, marker: w.size < 13 });
-  for (const b of DAY2_BEN) decor.push({ type: 'bentext', x: b.x, y: b.y, text: b.text, size: 10, a: -0.03 });
+  streetClutter(D, [S1, S2, S3, C1, C2, C3], 16, decor);
+  decor.push({ type: 'bentext', x: DAY2_BEN.x, y: DAY2_BEN.y, text: DAY2_BEN.text, size: 10, a: -0.03 });
 
   const map = {
     seed,

@@ -54,7 +54,7 @@ const END_ROOM = { x: C3.x - SW - 232, y: 96 }; // its door opens on the stub's 
 // Holes in the buildings: alleys, a doorway, the pen (rects you can walk in).
 // Edges line up where they can, so the buildings between them come out deep.
 const SOUTH_ALLEY = { x: 900, y: 630, w: 96, h: 90 }; // row 3, south side
-const SHOVE_DOOR = { x: 760, y: 800, w: 64, h: 74 }; // row 2, north side: the two you shove come out of it
+const SHOVE_DOOR = { x: 760, y: 800, w: 64, h: 74 }; // row 2, north side: the one you shove bursts out of it
 const PEN = { x: 560, y: 1216, w: 352, h: 170 }; // row 1, the lot behind the fence
 
 /** Everything you can walk on: the streets with their sidewalks, the holes, the rooms. */
@@ -235,27 +235,11 @@ export function streetClutter(D, streets, n, decor) {
 }
 
 /**
- * The squad's own writing, sprayed for the practice run: a few lines, none
- * repeating what the card says (no line ever runs into another:
- * tests/tutorial.test.js). marker = a thinner pen, size in world units.
+ * The only writing on the course: Ben was with them on day 1. One line in his
+ * crayon, in the safe room at the end (nothing on the streets: the lessons'
+ * own arrows and rings are all there is to read on the way).
  */
-export const TUTORIAL_WALLS = [
-  // The start room (its medkit is in the top left corner).
-  { x: 300, y: 1470, text: 'DAY 1. PRACTICE RUN.', size: 12, color: '#e8e8e0' },
-  // Row 1.
-  { x: PEN.x + PEN.w / 2, y: 1430, text: 'LIVE TARGETS. DON\'T ASK. — LOU', size: 12, color: '#f2c94c' },
-  // Row 2.
-  { x: 1150, y: 1088, text: 'SHOVE FIRST. ASK NEVER.', size: 14, color: '#e8e8e0' },
-  { x: 640, y: 1088, text: 'THEY COME IN PACKS. — MAGS', size: 12, color: '#9fd8ff' },
-  // Row 3: the tip, under the car.
-  { x: 560, y: 590, text: 'RED LIGHT CARS = DINNER BELLS', size: 12, color: '#ffb37a' },
-  // The safe room (medkits in the top corners, its name across the middle).
-  { x: END_ROOM.x + 116, y: 230, text: 'DAY 1: DONE. — ODILE', size: 11, color: '#e8e8e0' },
-  { x: END_ROOM.x + 116, y: 246, text: 'YOU\'LL DO. — LOU', size: 11, color: '#f2c94c' },
-];
-
-/** Ben was with them on day 1. One line, in his crayon, under theirs. */
-export const TUTORIAL_BEN = { x: END_ROOM.x + 116, y: 262, text: 'my turn tomorrow.' };
+export const TUTORIAL_BEN = { x: END_ROOM.x + 116, y: 246, text: 'my turn tomorrow.' };
 
 /**
  * Move everything on the map by (dx, dy): from the plan into the frame. Each
@@ -344,13 +328,7 @@ export function generateTutorial(seed = 1) {
   // A few steps up and to the right of where you come in from gate 2: the middle of
   // a phone's screen, clear of the buttons on the right.
   const car = ob('car', 372, S3.y + S3.h / 2 - 22, 86, 44, { color: '#b8b8b2', alarm: true, vertical: false, front: -1 });
-  obstacles.push(car);
-  // Two more cars for company (no alarm, out of the way of every lesson).
-  obstacles.push(ob('car', 900, 1580, 86, 44, { color: '#6b6b6b', vertical: false, front: -1 }));
-  obstacles.push(ob('car', S2.x + 8, 1064, 86, 44, { color: '#2e4a6d', vertical: false, front: 1 }));
-  // The way to go: the first thing you see out of the door, and the last turn.
-  decor.push({ type: 'spray', x: 520, y: 1594, text: 'THIS WAY', color: '#e8e8e0', a: 0, s: 0.9 });
-  decor.push({ type: 'spray', x: C3.x + C3.w / 2, y: 566, text: 'SAFE ROOM', color: '#7dffa1', a: -Math.PI / 2, s: 0.8 });
+  obstacles.push(car); // the only car on the course: the one not to shoot
 
   // --- Medkits: one in each room (safeRoom), one on each street with a fight ------------------------
   pickups.push({ kind: 'medkit', x: 1000, y: 884 });
@@ -365,12 +343,12 @@ export function generateTutorial(seed = 1) {
   }
   glows.push({ x: PEN.x + PEN.w / 2, y: PEN.y + PEN.h / 2, r: 230, k: 0.5 });
 
-  // --- Paint, clutter and the squad's writing --------------------------------------------------
+  // --- Paint, a little clutter, and Ben's one line ----------------------------------------------
+  // Kept plain on purpose: what stands out on the way is what a lesson points at.
   const markings = { dashes: [], crosswalks: [], parking: [] };
   for (const s of [S1, S2, S3]) markings.dashes.push({ x0: s.x + 60, y0: s.y + s.h / 2, x1: C1.x - 20, y1: s.y + s.h / 2 });
   for (const c of [C1, C2, C3]) markings.dashes.push({ x0: c.x + c.w / 2, y0: c.y + 20, x1: c.x + c.w / 2, y1: c.y + c.h - 20 });
-  streetClutter(D, [S1, S2, S3, S1, S2, S3, C1, C2, C3], 48, decor);
-  for (const w of TUTORIAL_WALLS) decor.push({ type: 'graffiti', x: w.x, y: w.y, text: w.text, color: w.color, size: w.size, a: w.a || 0, drip: false, marker: w.size < 13 });
+  streetClutter(D, [S1, S2, S3, C1, C2, C3], 16, decor);
   decor.push({ type: 'bentext', x: TUTORIAL_BEN.x, y: TUTORIAL_BEN.y, text: TUTORIAL_BEN.text, size: 10, a: -0.03 });
 
   // --- Ground --------------------------------------------------------------------------------
@@ -408,7 +386,8 @@ export function generateTutorial(seed = 1) {
       penZombies,
       fence,
       gates: { g1, g2, g3 },
-      shoveSpawn: { x: SHOVE_DOOR.x + SHOVE_DOOR.w / 2, y: SHOVE_DOOR.y + 30 },
+      shoveSpawn: { x: SHOVE_DOOR.x + SHOVE_DOOR.w / 2, y: SHOVE_DOOR.y + 30 }, // the one that bursts out at you
+      shoveWalk: { x: SHOVE_DOOR.x + SHOVE_DOOR.w / 2 - 60, y: S2.y + S2.h / 2 }, // along the street to it
       // The crowds turn up where you can't see them (src/game/tutorial.js picks
       // the first group with a spot out of sight). The pack comes down row 2
       // from the far end, out of the stub before gate 2 (the corner hides it), so
@@ -445,7 +424,7 @@ export function generateTutorial(seed = 1) {
       ],
     },
   };
-  shiftMap(map, FRAME.l, FRAME.t, { one: ['moveRing', 'pen', 'shoveSpawn'], many: ['penZombies', 'packSpawns', 'alarmSpawns', 'panicSpawns', 'rushSpawns'] });
+  shiftMap(map, FRAME.l, FRAME.t, { one: ['moveRing', 'pen', 'shoveSpawn', 'shoveWalk'], many: ['penZombies', 'packSpawns', 'alarmSpawns', 'panicSpawns', 'rushSpawns'] });
   border(obstacles, TUT_W, TUT_H);
   return map;
 }

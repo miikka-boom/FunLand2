@@ -264,8 +264,9 @@ test('writing on the ground never runs into other writing (every map type)', () 
       }
       // The safe rooms' walls are laid out by hand (and tested with the lore): leave them out.
       const T = map.decor.filter((d) => d.text && ['graffiti', 'paint', 'epitaph', 'chalkart'].includes(d.type) && !pointInRect(d.x, d.y, map.startRoom.outer, 10) && !pointInRect(d.x, d.y, map.endRoom.outer, 10));
-      // (The tutorials keep it to a few lines: there's a card to read already.)
-      assert.ok(T.length >= (map.tutorial ? 4 : 20), `${level} ${seed}: ${T.length} lines to read`);
+      // (The tutorials keep their streets bare: what stands out on the way is what a lesson points at.)
+      if (map.tutorial) assert.equal(T.length, 0, `${level} ${seed}: ${T.length} lines to read`);
+      else assert.ok(T.length >= 20, `${level} ${seed}: ${T.length} lines to read`);
       for (let i = 0; i < T.length; i++) {
         for (let j = i + 1; j < T.length; j++) {
           // A reply written right under its line is meant to sit that close.

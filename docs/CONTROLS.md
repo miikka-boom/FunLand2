@@ -138,7 +138,7 @@ It's a hand-built course (`src/world/tutorial-gen.js`), the same every time:
 three short streets joined by short connectors, each shut by a gate in a wall
 that runs east-west, so the camera, looking north, sees the bars face on.
 It's kept short on purpose: eight lessons, about 3,800 u of walking (a bot
-does it in about half a minute, a first-timer in a couple of minutes). The
+does it in under a minute, a first-timer in a couple of minutes). The
 lessons are in `src/game/tutorial.js` (every word the player reads is in
 `STEPS`, at the top), and the coaching is drawn by
 `src/render/tutorial-render.js`.
@@ -148,102 +148,131 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
 | (Hold your phone like this) | Touch only, not counted as a lesson: a black screen with a big picture of the phone on its side, a hand at each end, the thumbs on the sticks, and that one line | A tap anywhere (it fades into the game) |
 | Move | Slide the left thumb, walk to the ring | You're in it |
 | Aim | Right thumb inside the dashed ring, laser on a target behind the fence | 0.45 s of laser on one (or you've already hit one) |
-| Fire | Push past the ring | The six in the pen are down: gate 1 opens |
-| Shove | The SMG is empty; tap the right side (or SHOVE) | 3 shoves that land |
-| Reload | Tap ⟳, then finish off the two you shoved | Reloading, and both down |
+| Fire | Push past the ring | The six in the pen are down |
+| Reload | The world stops and the screen goes dark but for ⟳: tap it | Reloading: gate 1 opens |
+| Shove | Walk on along the street; one bursts out of a door as you come by. The world slows as it closes in and stops once it's in reach, dark but for you, it and SHOVE: tap it. Then shoot it | It's down |
 | Both thumbs | Five come down the street: walk back with the left thumb while you shoot with the right | Down: gate 2 opens |
 | Don't shoot the car | The alarm car is in plain view a few steps from where you come in (ringed in red); four come along the street from beyond it | Down, and any alarm over: gate 3 opens |
 | Run for it | A crowd comes up through gate 2 behind you; make for the safe room | You're in: the run is won |
 
-- **The card** sits at the bottom, between the two sticks: what you're
-  coaching is mostly ahead of you, up the screen, and the top is the HUD's.
-  A title, a count where there is one ("2/3", or the gun you hold), one
-  short line of words (48 characters at most, tested: the ghost thumb shows
-  the rest; a size smaller on the smallest phones, never cut short), and a
-  dot per lesson. A lesson done turns it green with a ✓ for
-  0.6 s before the next one. The words follow the device you last used:
-  touch ("tap ⟳"), mouse and keys ("press R") or a pad ("press X").
+- **As little to read as can be.** Nothing at the bottom of the screen
+  (that's where the thumbs are): at most one short line at the top, centred
+  on a dark pill, level with the health and gun panels (between them once
+  they're up), as big as fits from 19 px down to 13, and under the panels
+  on the smallest phones if it can't fit between them (`lineLayout`,
+  tested down to 568 x 320: never cut short). Many steps say nothing at all:
+  the gates and the walk to the door have only the arrow. A count goes on
+  the end of the line, in amber ("2/6"); a lesson done shows a green ✓ for
+  0.6 s. The words follow the device you last used: touch ("Tap to
+  reload."), mouse and keys ("Press R to reload.") or a pad ("Press X to
+  reload."). In the tutorials the clock and kill count are left off the top
+  (the line has it), and nothing is written under the sticks: the ghost
+  thumbs show it.
+- **A button to press: the world waits for you** (`Tutorial.ask`). For ⟳
+  and SHOVE the world slows to a stop (over 0.25 s; with a zombie coming at
+  you, as it closes in, stopped once it's in shove reach), the screen goes
+  dark but for the button (and you, and the one on you), a ring beats round
+  the button and another goes out from it, and for touch a thumb taps it,
+  resting off to one side so its label shows. Until you press it nothing
+  else gets through (the game loop asks `Tutorial.events()`); a shove
+  pressed before the one coming at you is in reach is held, and goes the
+  moment it can land. Pressed, the dark lifts and the world is back up to
+  speed in 0.3 s. A heartbeat sounds while the world waits with one on you.
+  The scale is `Tutorial.timeScale()`; the lessons' timers, the nudges, the
+  HUD's fade-ins and the coaching's animation run on real seconds
+  (`Tutorial.clock`), so they carry on while the world waits. Day 2 lights
+  SHOVE the same way at the boards without stopping anything
+  (`stop: false`): nothing is coming yet.
+- **The gun always works.** Nothing empties it behind your back. The reload
+  lesson comes straight after the shooting, with the gun part used (the
+  ammo count isn't on screen yet, so it's set to 14 short of full if it's
+  fuller than that). The shove lesson's zombie can't be shot down before
+  the shove (bullets hit it, but it keeps its health until it's been
+  shoved), so the shove is what works. A gun that clicks empty reloads
+  itself, as everywhere: ⟳ is for topping up between fights.
 - **How to hold it** (touch only, before the first lesson): a screen of its
   own. Black, the picture big (the phone about 60% of the screen wide on a
   phone, the forearms coming up from the bottom edge), drawn like the ghost
   thumbs (dark, outlined in white) with its thumbs pressing in turn, and one
   line above it, "HOLD YOUR PHONE LIKE THIS". Nothing else is drawn (hud.js
-  stops there: no HUD, sticks, buttons, arrow or card) until you tap
+  stops there: no HUD, sticks, buttons, arrow or line) until you tap
   anywhere; then it fades out over the game in the ✓ pause and the first
-  lesson's card comes up (`drawTutorialIntro` / `introLayout` in
+  lesson comes up (`drawTutorialIntro` / `introLayout` in
   tutorial-render.js, `Tutorial.intro()`). A tap where the pause or reload
   button would be only ends it (main.js turns any event into a plain tap
   while it's up). The input frame says which thumbs are down
   (`thumbs.left`, `thumbs.right`); the step has a `skip` for any other
   input, checked every frame, so with a mouse or a pad it goes at once.
 - **The HUD, a part at a time** (Day 1): after the first screen only the
-  two sticks show (with the tutorial's own card, arrow and rings); the
-  SHOVE button comes in with the shove lesson, ⟳ with the reload lesson, and
-  everything else (health, ammo, the clock, the pause button, the threat
+  two sticks show (with the tutorial's own line, arrows and rings); ⟳ comes
+  in with the reload lesson, SHOVE when the shove is asked for (in the
+  light), and everything else (health, ammo, the pause button, the threat
   arrows) with "both thumbs". Each part fades in over 0.5 s. A step's `hud`
   says what comes in (`HUD_PARTS` and `Tutorial.hud()` in tutorial.js, drawn
-  by hud.js); a course that never says (Day 2) shows it all from the start.
-  What hasn't come in can't be pressed either: `applyHudReveal` in layout.js
-  marks those buttons hidden every frame, and the hit test skips hidden
-  buttons (a touch there is just a touch on that side of the screen).
+  by hud.js; the shove lesson calls `revealUpTo('shove')` as it asks); a
+  course that never says (Day 2) shows it all from the start. What hasn't
+  come in can't be pressed either: `applyHudReveal` in layout.js marks those
+  buttons hidden every frame, and the hit test skips hidden buttons (a touch
+  there is just a touch on that side of the screen).
 - **Nudges: doing it wrong.** Nothing can break the tutorial, but some wrong
   gestures stall a lesson for good (found by running wrong players through
   the game loop: tests reproduce each one). Each lesson lists `nudges`, each
   a condition on what the player has been doing this lesson (`Tutorial.watch`:
   thumbs down and for how long, taps that went nowhere, aiming that never
-  fired, shoves that missed, the empty gun being fired, standing still, not
-  firing, second winds, no progress toward the lesson's spot) and one line.
-  The first that applies takes the card's line, in amber, for 4 s; the same
-  one can come back after 8 s. The first screen's ("Tap the screen to
-  start.", after 6 s) appears under the phone and stays.
+  fired, shoves that missed, standing still, not firing, second winds, no
+  progress toward the lesson's spot) and one line. The first that applies
+  takes the line, in amber, for 4 s; the same one can come back after 8 s.
+  The first screen's ("Tap the screen to start.", after 6 s) appears under
+  the phone and stays.
 
   | Lesson | Doing it wrong | Told |
   |---|---|---|
   | First screen | Nothing tapped for 6 s | Tap the screen to start. |
-  | Move | Two short taps on the left / thumb down, not sliding / dragging the right thumb alone | Keep your thumb down and slide it. / Now slide your thumb toward the ring. / Walk with your LEFT thumb. |
-  | Aim | Tapping / no right thumb for 5 s | Not a tap: keep your right thumb down. / Use your RIGHT thumb now. |
-  | Fire | Aiming 2.5 s without pushing past the ring / tapping | Push your thumb further, past the ring. / A tap shoves. Push past the ring to shoot. |
-  | Shove | Firing the empty gun / holding the thumb down / two shoves that hit nothing / a second wind | No ammo! A quick tap shoves. / Just a quick tap. Don't hold. / Let them get close, then tap. / Tap the right side to push them off! |
+  | Move | Two short taps on the left / thumb down, not sliding / dragging the right thumb alone | Keep your thumb down and slide it. / Now slide it toward the ring. / Walk with your LEFT thumb. |
+  | Aim | Tapping / no right thumb for 5 s | Don't tap: keep your right thumb down. / Use your RIGHT thumb now. |
+  | Fire | Aiming 2.5 s without pushing past the ring / tapping | Push your thumb further, past the ring. / A tap shoves. Push past the ring. |
   | Reload | 5 s and no reload | Tap the round ⟳ button. |
+  | The gates, the walk to the door | 8 s without getting closer to where the arrow points | Follow the green arrow. |
+  | Shove | 4.5 s stopped and no shove / 4 s without shooting it after | Tap the SHOVE button. / Push past the ring to shoot. |
   | Both thumbs | Not firing with them within 450 u / standing still with one within 110 u | Right thumb: keep shooting! / Left thumb: back off! |
-  | Run for it | 5 s without getting closer to the door | Don't fight them all: run for the door! |
-  | Day 2 | 12 s on the chalk / two shoves that miss the boards / 10 s on the secret | The white arrows on the ground point the way. / Get right up to the boards, then tap. / Up the dead end: the loose manhole. |
+  | Run for it | 5 s without getting closer to the door | Don't fight: run for it! |
+  | Day 2 | 12 s on the chalk / two shoves that miss the boards / 10 s on the secret / 8 s at an open gate | Look for white arrows. / Get right up to them. / Check the dead end. / Follow the green arrow. |
 
   Mouse and pad get their own words where it matters ("Click to shoot.").
   The report (Playtest) counts them under `tutorial.nudges`, and the
   readable line lists them, most first: that's where to add a guide.
-- **Ghost thumbs** (touch only), on the half of the screen the gesture
-  belongs to, at the resting stick positions: a thumb that lands and slides
-  toward where you're going ("SLIDE"); one that stays inside the dashed
-  ring and sweeps ("AIM"); one that pushes past it while the ring lights
-  orange ("FIRE"); quick taps with ripples (shove, "TAP"); and both at once
-  for the pack (the left thumb slides away from them, "BACK OFF", the right
-  one fires at them). One word under each, no more. In the reload lesson
-  the ⟳ button pulses until the gun is loading, then the fire thumb shows. Each fades while your
-  own thumb is on that stick, so it never covers the real one. Buttons to
-  press (⟳, SHOVE) pulse amber, with a tapping thumb and "TAP".
-- **In the world:** a dashed green ring where to walk, brackets on the
-  targets in the pen (orange on the one your laser is on), a red dashed
-  pulse round the alarm car while its lesson is on, red / amber / green
-  beacons on the gates, and the green edge arrow pointing at the lesson's
-  spot instead of the safe room (none while there's a fight on).
-- **Little else to read:** no "GATE OPEN" or second line under a call-out
-  (the card says it); the squad's writing on the ground is down to a few
-  lines, none of them repeating the card.
-- **What it holds back:** reloading is locked while you learn to shove (the
-  SMG stays empty: you have to shove) and unlocks for the reload lesson.
-  Swapping is off all the way through: the final game won't have weapon
-  changing, so the tutorial plays with one gun (the gun panel doesn't swap
-  and doesn't show the ⇄). Pressing a locked button clicks.
+- **Ghost thumbs** (touch only), 1.2 times life size, on the half of the
+  screen the gesture belongs to, at the resting stick positions: a thumb
+  that lands and slides toward where you're going; one that stays inside
+  the dashed ring and sweeps (aim); one that pushes past it while the ring
+  lights orange (fire); and both at once for the pack (the left thumb
+  slides away from them, the right one fires at them). No words under them.
+  Each fades while your own thumb is on that stick, so it never covers the
+  real one; while a button is asked for, the prompt takes their place.
+- **Where to go:** a big green arrow bobs over the lesson's spot while it's
+  on screen (the ring, a gate's way through, the way to the door, a crate,
+  the safe room); off screen, a big green edge arrow points at it (in the
+  tutorials without words or metres). In the world: a bright dashed ring
+  where to walk, brackets on the targets in the pen (orange on the one your
+  laser is on), a red dashed pulse round the alarm car while its lesson is
+  on, and red / amber / green beacons on the gates. None of it while
+  there's a fight on.
+- **Nothing on the walls:** no writing on the streets, no painted THIS WAY
+  or SAFE ROOM, one car (the one not to shoot) and a little clutter, so
+  what stands out on the way is what a lesson points at. Ben's one crayon
+  line is in the safe room at the end. No "GATE OPEN" or second line under
+  a call-out either.
+- **What it holds back:** swapping, all the way through: the final game
+  won't have weapon changing, so the tutorial plays with one gun (the gun
+  panel doesn't swap and doesn't show the ⇄; pressing it clicks).
 - **What it leaves out:** the Witch (too much for a first run), searching
   crates, the Hunter, the Tank and the Night Terror, the teammate.
 - **Where the crowds come from:** a spot you can't see (off screen, or far
   off round a corner; `Tutorial.unseen` picks), so nobody pops up in plain
   view. The pack comes down row 2 from the far end, round the corner by gate
-  2, so you see it coming across the screen, in the band between the HUD
-  and the card (not up from under the card or the thumbs); if you're
-  already down that end, it comes up through gate 1 instead. The rush at the
-  end comes up through gate 2, behind you: you outrun it.
+  2, so you see it coming across the screen; if you're already down that
+  end, it comes up through gate 1 instead. The rush at the end comes up
+  through gate 2, behind you: you outrun it.
 - **Forgiving on purpose:** nobody dies. At 0 HP you get a second wind
   (55% HP, everything within 180 u thrown back and staggered, "CLOSE ONE!");
   the report counts them. Shoot the car and the game says so ("YOU SHOT THE
@@ -254,8 +283,9 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
   The director spawns nothing of its own (no wanderers, mobs, Hunters, Tank
   or Night Terror, whatever the panel says), and there's no teammate.
 - **Tuning:** the numbers are at the top of `tutorial.js` (`AIM_HOLD`,
-  `PAUSE`, `GATE_OPEN`, `RESCUE_HP`, `RESCUE_PUSH`); how many come in each
-  fight is in its step.
+  `PAUSE`, `GATE_OPEN`, `RESCUE_HP`, `RESCUE_PUSH`, `PROMPT_IN`,
+  `PROMPT_OUT`, `SLOW_FROM`, `BURST`); how many come in each fight is in its
+  step.
 - **The report** (Playtest) has a `tutorial` part: the lesson you reached,
   how many of them, the close calls, whether the alarm went off, and the
   seconds per lesson. The readable line names the three longest: that's
@@ -271,28 +301,32 @@ helpers and frame, on a wider plan: every street is walked left to right,
 each ending in a connector up to the next, which carries on to the right
 (start room bottom left, safe room top right). The lessons are in
 `src/game/tutorial-day2.js`, run by the same `Tutorial` (map.tutorial.day
-picks the list). It teaches scavenging, on by default on the Streets, with
-the game's own crates and boarded room (game/loot.js), so they behave
-exactly as they will later. No Witch (the plan is for her to be off by
-default).
+picks the list), with Day 1's coaching: one short line at the top or none,
+the arrows, the ghost thumbs. It teaches scavenging, on by default on the
+Streets, with the game's own crates and boarded room (game/loot.js), so they
+behave exactly as they will later. No Witch (the plan is for her to be off
+by default).
 
 | Lesson | What you do | Done when |
 |---|---|---|
 | Supplies | Stand on the crate outside the door | It opens (ARMOR +50) |
 | Chalk arrows | Follow the chalk to a crate round a corner in a yard | It opens (HOT ROUNDS ×60): gate 1 opens |
-| Break in | Shove the boards on a nailed door three times (or shoot them) | They break (loud) |
+| Break in | Shove the boards on a nailed door three times (SHOVE lights up once you're at them; or shoot them) | They break (loud) |
 | The good stuff | The three shut in come out, the noise brings three down the street; then search the crate inside | All six down and the crate open (EXTENDED MAGS): gate 2 opens |
 | The secret | A glint down a dead end: stand on the loose manhole | It opens (+25 MAX HP, FULL ARMOR, HOT ROUNDS ×150): gate 3 opens |
 | Safe room | Get in | The run is won |
 
-- **The card's counts:** the boards in shoves (0/3, worked out from their
-  hit points, so shots count too), the fight as six.
+- **The counts:** the boards in shoves (0/3, worked out from their hit
+  points, so shots count too), the fight as six.
 - **What the noise brings** comes down row 2 from the far end, round the
   corner before gate 2 (`Tutorial.unseen`, like Day 1's pack), so you see
   it coming across the screen; or up through gate 1 if you're already down
   that end.
-- **The secret** gets the edge arrow ("GLINT") but no ring on the ground:
-  the glint is what to look for. Two of Ben's little eyes are on it.
+- **The secret** gets the arrow but no ring on the ground: the glint is what
+  to look for. Two of Ben's little eyes are on it.
+- **Nothing on the walls** but the chalk arrows (they're the lesson): no
+  writing, no painted words, no cars; Ben's one crayon line is in the safe
+  room at the end.
 - **Done** is remembered per day (`tutorialDone(day)`; Day 2's key is
   `funland2.p0.tutorial2.v1`). The report's line says "Tutorial 2".
 
@@ -807,10 +841,12 @@ What a map gets:
 ## Playtest checklist
 
 - **Tutorial** (hand someone a phone and say nothing): do they read the
-  card, or copy the ghost thumb? Does the dashed ring make sense after the
-  aim lesson, or only after fire? Do they tap the right side to shove, or go
-  for the SHOVE button? Does anyone hold the shove tap too long and aim
-  instead? Do they really use both thumbs on the pack, or stand and shoot?
+  line at the top, or copy the ghost thumb? Does the dashed ring make sense
+  after the aim lesson, or only after fire? When the world stops, do they
+  find the lit button at once, or tap around first (the no-reload and
+  no-shove nudges say)? Does the zombie bursting out read as "too close", and
+  do they know to shoot it after? Does anyone stand at an open gate without
+  the words (the lost nudge)? Do they really use both thumbs on the pack, or stand and shoot?
   Do they run for the safe room at the end, or turn and fight? Which lessons
   are slowest (the report's longest line)? Who sets off the alarm, and does
   the next car survive in their first real run?

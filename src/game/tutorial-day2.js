@@ -10,7 +10,14 @@
 // dying (a second wind at 0 HP), and no Witch: she won't be on by default.
 //
 // Short on purpose: six lessons on three short streets, every one walked left
-// to right. Everything the player reads is here, for editing.
+// to right, and as few words as Day 1 (one short line at the top, or none).
+// Everything the player reads is here, for editing.
+
+/**
+ * For anyone standing about where there are no words, only the arrow (a gate;
+ * Day 1's walk to the door): both days' lessons use it.
+ */
+export const LOST = { id: 'lost', when: (t) => t.watch.noProgress > 8, text: { touch: 'Follow the green arrow.' } };
 
 const left = (list) => list.reduce((n, z) => n + (z.alive ? 1 : 0), 0);
 
@@ -27,13 +34,22 @@ function boardsDown(t) {
   return Math.min(2, Math.floor(((b.maxHp - b.hp) / b.maxHp) * 3 + 1e-6));
 }
 
+/** Where to stand to shove the boards (just in front of them, on the street side). */
+function atBoards(t) {
+  const b = t.L.boards;
+  return { x: b.x + b.w / 2, y: b.y + b.h + 30 };
+}
+
+/** The room's three and the three the noise brought are down. */
+const fought = (t) => t.spawned(t.group) && t.cleared(t.group);
+
 export const DAY2_STEPS = [
   {
     id: 'supplies',
     dot: true,
     title: 'SUPPLIES',
     coach: 'move',
-    text: { touch: 'Stand on the crate until it opens.' },
+    text: { touch: 'Stand on the crate.' },
     target: (t) => crateSpot(t, t.L.crates.door, 'CRATE', true),
     update: (t) => t.crate(t.L.crates.door).opened,
   },
@@ -41,8 +57,8 @@ export const DAY2_STEPS = [
     id: 'chalk',
     dot: true,
     title: 'CHALK ARROWS',
-    text: { touch: 'Chalk arrows lead to more. Follow them.' },
-    nudges: [{ id: 'lost', when: (t) => t.t > 12, text: { touch: 'The white arrows on the ground point the way.' } }],
+    text: { touch: 'Follow the chalk arrows.' },
+    nudges: [{ id: 'lost', when: (t) => t.t > 12, text: { touch: 'Look for white arrows.' } }],
     target: (t) => crateSpot(t, t.L.crates.yard, 'CRATE'),
     update: (t) => t.crate(t.L.crates.yard).opened,
     done: (t) => t.openGate('g1'),
@@ -50,27 +66,29 @@ export const DAY2_STEPS = [
   {
     id: 'gate1',
     title: "GATE'S OPEN",
-    text: { touch: 'Through the gate.' },
+    text: null,
+    nudges: [LOST],
     target: (t) => t.gateTarget('g1'),
     update: (t, g) => g.player.y < t.L.gates.g1.y - 40,
   },
   {
+    // Up at the boards, SHOVE is lit (the world doesn't stop for this one:
+    // nothing is coming yet) until they're down.
     id: 'boards',
     dot: true,
     title: 'BREAK IN',
-    coach: 'tap',
-    text: {
-      touch: 'Nailed shut. Tap to shove the boards in.',
-      mouse: 'Nailed shut. Space to shove the boards in.',
-      pad: 'Nailed shut. RB to shove the boards in.',
-    },
-    nudges: [{ id: 'too-far', when: (t) => t.watch.missed >= 2, text: { touch: 'Get right up to the boards, then tap.', mouse: 'Get right up to the boards, then Space.', pad: 'Get right up to the boards, then RB.' } }],
-    target: (t) => {
-      const b = t.L.boards;
-      return b.broken ? null : { x: b.x + b.w / 2, y: b.y + b.h + 30, ring: true, r: 30, label: 'BOARDS' };
-    },
+    text: { touch: 'Shove the boards in.', mouse: 'Space: shove them in.', pad: 'RB: shove them in.' },
+    nudges: [{ id: 'too-far', when: (t) => t.watch.missed >= 2, text: { touch: 'Get right up to them.' } }],
+    target: (t) => (t.L.boards.broken ? null : { ...atBoards(t), ring: true, r: 30, label: 'BOARDS' }),
     count: (t) => `${boardsDown(t)}/3`,
-    update: (t) => t.L.boards.broken,
+    update: (t, g) => {
+      const b = t.L.boards;
+      const q = atBoards(t);
+      const there = !b.broken && Math.hypot(g.player.x - q.x, g.player.y - q.y) < 70;
+      if (there && !t.prompt) t.ask('shove', { stop: false });
+      else if (!there && t.prompt) t.answer();
+      return b.broken;
+    },
   },
   {
     id: 'goodstuff',
@@ -78,7 +96,7 @@ export const DAY2_STEPS = [
     title: 'THE GOOD STUFF',
     // The fire thumb while there's a fight on; then nothing (the ring shows the crate).
     coach: (t) => (left(t.group) > 0 ? 'fire' : null),
-    text: { touch: 'Deal with them, then search the crate inside.' },
+    text: (t) => (fought(t) ? { touch: 'Stand on the crate.' } : { touch: 'Clear them out.' }),
     enter: (t, g) => {
       // The three in the room (the boards coming down woke them), and three more down the street.
       t.group = t.sleepers.slice();
@@ -86,17 +104,17 @@ export const DAY2_STEPS = [
       const from = t.unseen(t.L.companySpawns);
       t.spawn(from, 3, 1.2, t.group);
       g.audio.horde(from[0].x, from[0].y);
-      g.announce('THE NOISE CARRIES', '#ffb347', 2, 'small');
     },
-    count: (t) => `${Math.min(t.need, t.need - left(t.group) - t.pending(t.group))}/${t.need}`,
-    target: (t) => (t.spawned(t.group) && t.cleared(t.group) ? crateSpot(t, t.L.crates.room, 'CRATE', true) : null),
-    update: (t) => t.spawned(t.group) && t.cleared(t.group) && t.crate(t.L.crates.room).opened,
+    count: (t) => (fought(t) ? null : `${Math.min(t.need, t.need - left(t.group) - t.pending(t.group))}/${t.need}`),
+    target: (t) => (fought(t) ? crateSpot(t, t.L.crates.room, 'CRATE', true) : null),
+    update: (t) => fought(t) && t.crate(t.L.crates.room).opened,
     done: (t) => t.openGate('g2'),
   },
   {
     id: 'gate2',
     title: "GATE'S OPEN",
-    text: { touch: 'Keep your eyes open.' },
+    text: null,
+    nudges: [LOST],
     target: (t) => t.gateTarget('g2'),
     update: (t, g) => g.player.y < t.L.gates.g2.y - 40,
   },
@@ -104,8 +122,8 @@ export const DAY2_STEPS = [
     id: 'secret',
     dot: true,
     title: 'THE SECRET',
-    text: { touch: 'See it glint? Stand on it.' },
-    nudges: [{ id: 'lost', when: (t) => t.t > 10, text: { touch: 'Up the dead end: the loose manhole.' } }],
+    text: { touch: 'Stand on the glint.' },
+    nudges: [{ id: 'lost', when: (t) => t.t > 10, text: { touch: 'Check the dead end.' } }],
     target: (t) => crateSpot(t, t.L.crates.secret, 'GLINT'),
     update: (t) => t.crate(t.L.crates.secret).opened,
     done: (t) => t.openGate('g3'),
