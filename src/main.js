@@ -3,7 +3,7 @@
 import { loadSettings, saveSettings, worldSignature, DEFAULTS } from './settings.js';
 import { seatWitchNear } from './game/witch.js';
 import { tutorialDone, TUTORIAL_LEVELS } from './game/tutorial.js';
-import { computeLayout } from './layout.js';
+import { computeLayout, applyHudReveal } from './layout.js';
 import { Input } from './input/input.js';
 import { Game } from './game/game.js';
 import { Renderer } from './render/renderer.js';
@@ -351,6 +351,8 @@ function frame(now) {
     ui.frameMs += (raw * 1000 - ui.frameMs) * 0.05;
   }
 
+  // The tutorial brings the HUD in a part at a time: what isn't shown yet can't be pressed.
+  applyHudReveal(layout, settings, state === 'play' && game.tutorial ? game.tutorial.hud() : null);
   const f = input.sample();
   // Tutorial 1's first screen (how to hold the phone): a tap anywhere only ends it
   // (no pausing, reloading or shoving through the black).

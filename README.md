@@ -314,6 +314,12 @@ and no dependencies.
 
   No Witch: she's too much for a first run.
 
+  The HUD comes in a part at a time: the two sticks alone for the first
+  lessons, the SHOVE button for the shove lesson, ⟳ for the reload, and the
+  rest (health, ammo, the clock, the pause button, the threat arrows) from
+  "both thumbs" on, each fading in; until a button has come in, it can't be
+  pressed by mistake either.
+
   A card at the bottom of the screen, between the thumbs, says what to do in
   one short line (in words for touch, mouse and keys, or a pad: whatever you
   last used), with a dot per lesson. For touch, a ghost thumb does the gesture on the half of the

@@ -176,6 +176,16 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
   while it's up). The input frame says which thumbs are down
   (`thumbs.left`, `thumbs.right`); the step has a `skip` for any other
   input, checked every frame, so with a mouse or a pad it goes at once.
+- **The HUD, a part at a time** (Day 1): after the first screen only the
+  two sticks show (with the tutorial's own card, arrow and rings); the
+  SHOVE button comes in with the shove lesson, ⟳ with the reload lesson, and
+  everything else (health, ammo, the clock, the pause button, the threat
+  arrows) with "both thumbs". Each part fades in over 0.5 s. A step's `hud`
+  says what comes in (`HUD_PARTS` and `Tutorial.hud()` in tutorial.js, drawn
+  by hud.js); a course that never says (Day 2) shows it all from the start.
+  What hasn't come in can't be pressed either: `applyHudReveal` in layout.js
+  marks those buttons hidden every frame, and the hit test skips hidden
+  buttons (a touch there is just a touch on that side of the screen).
 - **Ghost thumbs** (touch only), on the half of the screen the gesture
   belongs to, at the resting stick positions: a thumb that lands and slides
   toward where you're going ("SLIDE"); one that stays inside the dashed

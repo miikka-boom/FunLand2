@@ -46,7 +46,7 @@ const { World, FlowField, NAV_CELL } = await import('../src/world/world.js');
 const { startle, seatWitchNear } = await import('../src/game/witch.js');
 const { startReload, swapWeapon } = await import('../src/game/player.js');
 const { hasModel } = await import('../src/render/models.js');
-const { computeLayout } = await import('../src/layout.js');
+const { computeLayout, applyHudReveal, hitButton } = await import('../src/layout.js');
 const { drawTutorialHud, drawTutorialBright, cardRect, cardText, introLayout } = await import('../src/render/tutorial-render.js');
 const { drawHud } = await import('../src/render/hud.js');
 const { buildReport, reportText } = await import('../src/playtest.js');
@@ -554,6 +554,51 @@ test('first, on a phone: a black screen with a big picture of how to hold it and
   assert.equal(T.step.id, 'move');
   assert.equal(T.intro(), 0);
   assert.ok(!('hold' in T.times));
+});
+
+test('the HUD comes in a part at a time: the two sticks first, SHOVE for the shove lesson, ⟳ for the reload, then all of it', () => {
+  const game = make();
+  const T = game.tutorial;
+  const S = game.settings;
+  const L = computeLayout(844, 390, { l: 0, r: 0, t: 0, b: 0 }, S);
+  const ctx = mockCtx();
+  const pad = { source: 'gamepad', touch: { move: { active: false }, aim: { active: false, crossedFire: false }, pressed: new Map() } };
+  const shown = () => {
+    texts.length = 0;
+    bad = null;
+    drawHud(ctx, game, pad, { layout: L, title: false, forceSticks: false, input: pad }, null);
+    assert.equal(bad, null, bad);
+    return { hp: texts.includes('HP'), gun: texts.includes('SMG'), clock: texts.some((t) => /kills/.test(t)), shove: texts.includes('SHOVE') };
+  };
+  const pressable = () => {
+    applyHudReveal(L, S, T.hud());
+    const B = L.byId;
+    return { shove: hitButton(B.shove, B.shove.x, B.shove.y), reload: hitButton(B.reload, B.reload.x, B.reload.y), pause: hitButton(B.pause, B.pause.x, B.pause.y), gun: hitButton(B.swap, B.swap.x + 5, B.swap.y + 5) };
+  };
+  skipTo(game, 'move');
+  assert.deepEqual(T.hud(), { shove: 0, reload: 0, all: 0 });
+  assert.deepEqual(shown(), { hp: false, gun: false, clock: false, shove: false }, 'the sticks and nothing else');
+  assert.deepEqual(pressable(), { shove: false, reload: false, pause: false, gun: false }, 'and nothing there to press by mistake');
+  skipTo(game, 'shove');
+  run(game, 0.6);
+  assert.equal(T.hud().shove, 1);
+  assert.deepEqual(shown(), { hp: false, gun: false, clock: false, shove: true }, 'SHOVE comes in for the shove lesson');
+  assert.deepEqual(pressable(), { shove: true, reload: false, pause: false, gun: false });
+  skipTo(game, 'reload');
+  run(game, 0.1);
+  assert.ok(T.hud().reload > 0 && T.hud().reload < 1, 'fading in');
+  run(game, 0.5);
+  assert.deepEqual(pressable(), { shove: true, reload: true, pause: false, gun: false }, '⟳ for the reload lesson');
+  assert.equal(shown().hp, false);
+  skipTo(game, 'kite');
+  run(game, 0.6);
+  assert.deepEqual(T.hud(), { shove: 1, reload: 1, all: 1 });
+  assert.deepEqual(shown(), { hp: true, gun: true, clock: true, shove: true }, 'then all of it');
+  assert.deepEqual(pressable(), { shove: true, reload: true, pause: true, gun: true });
+  // Day 2 shows it all from the start, and with no tutorial nothing is held back.
+  assert.deepEqual(make({ level: 'tutorial2' }).tutorial.hud(), { shove: 1, reload: 1, all: 1 });
+  applyHudReveal(L, S, null);
+  assert.ok(!L.byId.reload.hidden && !L.byId.pause.hidden && !L.byId.swap.hidden && L.byId.shove.hidden === !S.shoveButton);
 });
 
 test('the coaching draws on a phone at every lesson (touch, mouse, pad) without a bad number, and the card sits between the thumbs', () => {

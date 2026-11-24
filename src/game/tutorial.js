@@ -29,6 +29,16 @@ const PAUSE = 0.6; // s between a lesson done (✓) and the next prompt
 const AIM_HOLD = 0.45; // s of laser on a target that counts as "aimed"
 const RESCUE_HP = 0.55; // of max HP: the second wind
 const RESCUE_PUSH = 180; // u: what's that close gets thrown back
+const REVEAL = 0.5; // s for a part of the HUD to fade in when its time comes
+
+/**
+ * The HUD, a part at a time (Day 1): a step's `hud` brings in that part and
+ * the ones before it. 'sticks' is the two sticks alone (and the tutorial's own
+ * card, arrow and rings); then the SHOVE button; then ⟳; then all of it (health,
+ * ammo, the clock, the pause button, the threat arrows). A course whose steps
+ * never say shows it all from the start.
+ */
+export const HUD_PARTS = ['sticks', 'shove', 'reload', 'all'];
 
 const left = (list) => list.reduce((n, z) => n + (z.alive ? 1 : 0), 0);
 const near = (p, q, r) => Math.hypot(p.x - q.x, p.y - q.y) < r;
@@ -51,6 +61,7 @@ export const STEPS = [
     id: 'hold',
     title: 'HOLD YOUR PHONE LIKE THIS',
     intro: true,
+    hud: 'sticks', // after this, the two sticks and nothing else
     text: { touch: 'Both hands, a thumb on each side.' },
     skip: (t, g) => !!g.input && g.input.source !== 'touch',
     update: (t, g) => {
@@ -118,6 +129,7 @@ export const STEPS = [
     id: 'shove',
     dot: true,
     title: 'SHOVE',
+    hud: 'shove', // the SHOVE button comes in
     coach: 'tap',
     text: {
       touch: 'Empty! Tap the right side to shove.',
@@ -142,6 +154,7 @@ export const STEPS = [
     id: 'reload',
     dot: true,
     title: 'RELOAD',
+    hud: 'reload', // and ⟳
     // The ⟳ button pulses until the gun is loading; then the fire thumb.
     coach: (t) => (t.reloaded ? 'fire' : 'reload'),
     text: {
@@ -164,6 +177,7 @@ export const STEPS = [
     id: 'kite',
     dot: true,
     title: 'BOTH THUMBS',
+    hud: 'all', // and from here on, all of it
     coach: 'kite',
     text: {
       touch: 'Left thumb back, right thumb shoot.',
@@ -264,6 +278,9 @@ export class Tutorial {
     this.finished = false; // reached the safe room (remembered on the device)
     this.times = {};
     game.locks = { reload: false, swap: true }; // one gun, all the way through
+    // The HUD: when each part came in (game time); none yet if the course says when.
+    this.revealT = {};
+    if (!this.steps.some((s) => s.hud)) for (const k of HUD_PARTS.slice(1)) this.revealT[k] = -Infinity;
     // The gates, shut.
     this.gates = {};
     for (const [id, G] of Object.entries(this.L.gates)) this.gates[id] = { ...G, state: 'shut', f: 0 };
@@ -304,6 +321,7 @@ export class Tutorial {
         return;
       }
       const s = this.steps[this.i];
+      if (s.hud) this.revealUpTo(s.hud); // (a step that's skipped still brings its part of the HUD)
       if (s.skip && s.skip(this, g)) continue;
       this.t = 0;
       if (s.enter) s.enter(this, g);
@@ -547,6 +565,19 @@ export class Tutorial {
   }
 
   // --- For the HUD and the report ------------------------------------------------------------
+
+  /** Bring in the HUD up to this part (HUD_PARTS), from now. */
+  revealUpTo(part) {
+    const n = HUD_PARTS.indexOf(part);
+    for (let k = 1; k <= n; k++) if (this.revealT[HUD_PARTS[k]] === undefined) this.revealT[HUD_PARTS[k]] = this.game.time;
+  }
+
+  /** How much of each part of the HUD shows, 0..1 (fading in as it comes): { shove, reload, all }. */
+  hud() {
+    const t = this.game.time;
+    const a = (k) => (this.revealT[k] === undefined ? 0 : clamp((t - this.revealT[k]) / REVEAL, 0, 1));
+    return { shove: a('shove'), reload: a('reload'), all: a('all') };
+  }
 
   /** The first screen (how to hold the phone): 1 while it's up, fading to 0 after the tap; 0 otherwise. */
   intro() {

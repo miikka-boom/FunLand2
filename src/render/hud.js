@@ -41,16 +41,26 @@ export function drawHud(ctx, game, input, ui, renderer) {
     ctx.globalAlpha = 1;
   }
 
-  if (S.threatIndicators && p.alive && !ui.title) drawThreats(ctx, game, L);
+  // The tutorial brings the HUD in a part at a time (Tutorial.hud); everywhere else it's all there.
+  const reveal = !ui.title && game.tutorial ? game.tutorial.hud() : ALL_OF_IT;
+  if (S.threatIndicators && p.alive && !ui.title && reveal.all > 0) {
+    ctx.globalAlpha = reveal.all;
+    drawThreats(ctx, game, L);
+    ctx.globalAlpha = 1;
+  }
   if (!game.won && !game.lost && !ui.title) drawObjective(ctx, game, L);
 
-  drawHealth(ctx, game, L);
-  if (game.ally) drawAllyPanel(ctx, game, L);
-  if (game.ally && game.ally.alive && !ui.title) drawAllyMarker(ctx, game, L);
-  drawWeapon(ctx, game, L, ui);
-  if (!ui.title) drawBuffs(ctx, game, L);
-  drawStats(ctx, game, L);
-  drawButtons(ctx, game, L, input.touch);
+  if (reveal.all > 0) {
+    ctx.globalAlpha = reveal.all;
+    drawHealth(ctx, game, L);
+    if (game.ally) drawAllyPanel(ctx, game, L);
+    if (game.ally && game.ally.alive && !ui.title) drawAllyMarker(ctx, game, L);
+    drawWeapon(ctx, game, L, ui);
+    if (!ui.title) drawBuffs(ctx, game, L);
+    drawStats(ctx, game, L);
+    ctx.globalAlpha = 1;
+  }
+  drawButtons(ctx, game, L, input.touch, reveal);
 
   if (input.source === 'touch' || ui.forceSticks) {
     drawStick(ctx, input.touch.move, 'move', S, L, input.touch, ui);
@@ -152,57 +162,67 @@ function drawStick(ctx, st, kind, S, L, touch, ui) {
 
 // --- Buttons ---------------------------------------------------------------------------
 
-function drawButtons(ctx, game, L, touch) {
+const ALL_OF_IT = { shove: 1, reload: 1, all: 1 };
+
+/** The buttons, each as far in as the tutorial has brought it (reveal: 0..1 per part; all of it elsewhere). */
+function drawButtons(ctx, game, L, touch, reveal = ALL_OF_IT) {
   const p = game.player;
   const pressed = touch.pressed;
   const B = L.byId;
 
   // Tuning panel.
   const g = B.pause;
-  btnCircle(ctx, g, pressed.has('pause'));
-  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-  ctx.lineWidth = 2;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  for (let i = -1; i <= 1; i++) {
-    ctx.moveTo(g.x - 9, g.y + i * 6);
-    ctx.lineTo(g.x + 9, g.y + i * 6);
-  }
-  ctx.stroke();
-  ctx.fillStyle = '#fff';
-  for (const [dx, dy] of [[-3, -6], [4, 0], [-1, 6]]) {
+  if (reveal.all > 0) {
+    ctx.globalAlpha = reveal.all;
+    btnCircle(ctx, g, pressed.has('pause'));
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    circle(ctx, g.x + dx, g.y + dy, 2.6);
-    ctx.fill();
+    for (let i = -1; i <= 1; i++) {
+      ctx.moveTo(g.x - 9, g.y + i * 6);
+      ctx.lineTo(g.x + 9, g.y + i * 6);
+    }
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    for (const [dx, dy] of [[-3, -6], [4, 0], [-1, 6]]) {
+      ctx.beginPath();
+      circle(ctx, g.x + dx, g.y + dy, 2.6);
+      ctx.fill();
+    }
   }
 
   // Reload.
   const r = B.reload;
   const w = p.weapon;
-  btnCircle(ctx, r, pressed.has('reload'));
-  if (w.reloading) {
-    const total = w.def.reloadType === 'shell' ? w.def.reload : w.def.reload;
-    const k = w.def.reloadType === 'shell' ? w.mag / w.cap : 1 - w.reloadT / total;
-    ctx.strokeStyle = 'rgba(255,210,120,0.9)';
-    ctx.lineWidth = 3;
+  if (reveal.reload > 0) {
+    ctx.globalAlpha = reveal.reload;
+    btnCircle(ctx, r, pressed.has('reload'));
+    if (w.reloading) {
+      const total = w.def.reloadType === 'shell' ? w.def.reload : w.def.reload;
+      const k = w.def.reloadType === 'shell' ? w.mag / w.cap : 1 - w.reloadT / total;
+      ctx.strokeStyle = 'rgba(255,210,120,0.9)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, r.r - 3, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(k, 0, 1));
+      ctx.stroke();
+    }
+    ctx.strokeStyle = w.mag === 0 && !w.reloading ? '#ffcf6a' : 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.arc(r.x, r.y, r.r - 3, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(k, 0, 1));
+    ctx.arc(r.x, r.y, 9, -Math.PI * 0.2, Math.PI * 1.45);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(r.x + 9 * Math.cos(-Math.PI * 0.2) - 5, r.y + 9 * Math.sin(-Math.PI * 0.2) - 1);
+    ctx.lineTo(r.x + 9 * Math.cos(-Math.PI * 0.2) + 1, r.y + 9 * Math.sin(-Math.PI * 0.2) + 1);
+    ctx.lineTo(r.x + 9 * Math.cos(-Math.PI * 0.2) + 2, r.y + 9 * Math.sin(-Math.PI * 0.2) - 6);
     ctx.stroke();
   }
-  ctx.strokeStyle = w.mag === 0 && !w.reloading ? '#ffcf6a' : 'rgba(255,255,255,0.85)';
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.arc(r.x, r.y, 9, -Math.PI * 0.2, Math.PI * 1.45);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(r.x + 9 * Math.cos(-Math.PI * 0.2) - 5, r.y + 9 * Math.sin(-Math.PI * 0.2) - 1);
-  ctx.lineTo(r.x + 9 * Math.cos(-Math.PI * 0.2) + 1, r.y + 9 * Math.sin(-Math.PI * 0.2) + 1);
-  ctx.lineTo(r.x + 9 * Math.cos(-Math.PI * 0.2) + 2, r.y + 9 * Math.sin(-Math.PI * 0.2) - 6);
-  ctx.stroke();
 
   // Shove.
   const s = B.shove;
-  if (!s.hidden) {
+  if (!s.hidden && reveal.shove > 0) {
+    ctx.globalAlpha = reveal.shove;
     btnCircle(ctx, s, pressed.has('shove'));
     if (p.shoveCd > 0) {
       ctx.strokeStyle = 'rgba(160,200,255,0.8)';
@@ -217,6 +237,7 @@ function drawButtons(ctx, game, L, touch) {
     ctx.textBaseline = 'middle';
     ctx.fillText('SHOVE', s.x, s.y + 1);
   }
+  ctx.globalAlpha = 1;
 }
 
 function btnCircle(ctx, b, down) {

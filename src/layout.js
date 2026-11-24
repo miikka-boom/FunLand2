@@ -47,6 +47,19 @@ export function computeLayout(w, h, safe, s) {
   };
 }
 
+/**
+ * The tutorial brings the HUD in a part at a time (Tutorial.hud: { shove,
+ * reload, all }, or null for all of it): a button it hasn't shown yet can't
+ * be pressed either. Called every frame (a resize makes a fresh layout).
+ */
+export function applyHudReveal(L, S, reveal) {
+  const B = L.byId;
+  B.shove.hidden = !S.shoveButton || (!!reveal && reveal.shove <= 0);
+  B.reload.hidden = !!reveal && reveal.reload <= 0;
+  B.pause.hidden = !!reveal && reveal.all <= 0;
+  B.swap.hidden = !!reveal && reveal.all <= 0; // the gun panel (tap it to swap)
+}
+
 export function hitButton(b, x, y, slop = 8) {
   if (b.hidden) return false;
   if (b.shape === 'circle') {
