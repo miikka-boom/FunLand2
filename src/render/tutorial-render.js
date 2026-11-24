@@ -1,6 +1,7 @@
 // The tutorial's coaching (src/game/tutorial.js runs the lessons):
 //   - in the world (bright pass): the ring to walk to, beacons on the gates
-//     (red shut, amber opening, green open), brackets on the targets in the pen
+//     (red shut, amber opening, green open), brackets on the targets in the
+//     pen, a red pulse round the alarm car while its lesson is on
 //   - on the HUD: the lesson card at the bottom, between the thumbs (what you
 //     need to see is mostly ahead of you, up the screen, so the card stays out
 //     of its way), and for touch a ghost thumb doing the gesture on the half of
@@ -73,8 +74,23 @@ export function drawTutorialBright(R, game, vr) {
     }
   }
 
-  // The targets in the pen: corner brackets, bright on the one your laser is on.
   const id = T.step.id;
+  // The alarm lesson: a slow red pulse round the car, until it has gone off.
+  const car = T.L.car;
+  if (id === 'alarm' && T.pause <= 0 && car && !car.alarmOn && !car.alarmDone) {
+    const k = 0.5 + 0.5 * Math.sin(t * 4);
+    R.ground(0);
+    ctx.strokeStyle = `rgba(${RED},${0.3 + 0.35 * k})`;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([7, 6]);
+    ctx.beginPath();
+    circle(ctx, car.x + car.w / 2, car.y + car.h / 2, 62 + 4 * k);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    R.reset();
+  }
+
+  // The targets in the pen: corner brackets, bright on the one your laser is on.
   if ((id === 'aim' || id === 'fire') && T.pause <= 0) {
     for (const z of T.pen) {
       if (!z.alive) continue;
@@ -324,20 +340,20 @@ function coach(ctx, game, input, view, L, touch) {
   const aimA = tp.aim.active ? 0.15 : 1;
 
   if (kind === 'move') {
-    moveGhost(ctx, L.fixedMove, screenDir(game, T.arrow(), { x: 1, y: 0 }), R, moveA, 'LEFT THUMB: SLIDE', t, S);
+    moveGhost(ctx, L.fixedMove, screenDir(game, T.arrow(), { x: 1, y: 0 }), R, moveA, 'SLIDE', t, S);
     return;
   }
   if (kind === 'aim' || kind === 'fire') {
     const z = T.step.id === 'aim' || T.step.id === 'fire' ? T.pen.find((q) => q.alive) : nearestOn(game, T.group);
     const fire = kind === 'fire';
-    aimGhost(ctx, L.fixedAim, screenDir(game, z, { x: 0.6, y: -0.8 }), R, aimA, fire, fire ? 'PAST THE RING: FIRE' : 'RIGHT THUMB: AIM', t, S);
+    aimGhost(ctx, L.fixedAim, screenDir(game, z, { x: 0.6, y: -0.8 }), R, aimA, fire, fire ? 'FIRE' : 'AIM', t, S);
     return;
   }
   if (kind === 'kite') {
     // Both thumbs at once: the left one walks you away from them while the right one shoots at them.
     const toward = screenDir(game, nearestOn(game, T.group) || T.L.packSpawns[0][0], { x: -1, y: 0 });
-    moveGhost(ctx, L.fixedMove, { x: -toward.x, y: -toward.y }, R, moveA, 'LEFT THUMB: BACK OFF', t, S);
-    aimGhost(ctx, L.fixedAim, toward, R, aimA, true, 'RIGHT THUMB: FIRE', t, S);
+    moveGhost(ctx, L.fixedMove, { x: -toward.x, y: -toward.y }, R, moveA, 'BACK OFF', t, S);
+    aimGhost(ctx, L.fixedAim, toward, R, aimA, true, 'FIRE', t, S);
     return;
   }
   if (kind === 'tap') {
@@ -354,7 +370,7 @@ function coach(ctx, game, input, view, L, touch) {
       ctx.stroke();
     }
     thumb(ctx, g.x, g.y + (down ? 0 : 7), 1, a, down ? 1 : 0);
-    label(ctx, 'QUICK TAP: SHOVE', g.x, g.y + R + 22, a);
+    label(ctx, 'TAP', g.x, g.y + R + 22, a);
   }
 }
 

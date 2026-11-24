@@ -33,7 +33,7 @@ export const DAY2_STEPS = [
     dot: true,
     title: 'SUPPLIES',
     coach: 'move',
-    text: { touch: 'A supply crate, right outside the door. Stand on it until it opens.' },
+    text: { touch: 'Stand on the crate until it opens.' },
     target: (t) => crateSpot(t, t.L.crates.door, 'CRATE', true),
     update: (t) => t.crate(t.L.crates.door).opened,
   },
@@ -41,7 +41,7 @@ export const DAY2_STEPS = [
     id: 'chalk',
     dot: true,
     title: 'CHALK ARROWS',
-    text: { touch: 'Armor: it takes hits before your health does. Chalk arrows mark more supplies off the way. Follow them.' },
+    text: { touch: 'Chalk arrows lead to more. Follow them.' },
     target: (t) => crateSpot(t, t.L.crates.yard, 'CRATE'),
     update: (t) => t.crate(t.L.crates.yard).opened,
     done: (t) => t.openGate('g1'),
@@ -49,7 +49,7 @@ export const DAY2_STEPS = [
   {
     id: 'gate1',
     title: "GATE'S OPEN",
-    text: { touch: 'Hot rounds: they hit harder and go through (orange tracers). On through the gate.' },
+    text: { touch: 'Through the gate.' },
     target: (t) => t.gateTarget('g1'),
     update: (t, g) => g.player.y < t.L.gates.g1.y - 40,
   },
@@ -59,9 +59,9 @@ export const DAY2_STEPS = [
     title: 'BREAK IN',
     coach: 'tap',
     text: {
-      touch: 'Nailed shut: something good inside. Shove the boards three times (tap the right side), or shoot them. Loud!',
-      mouse: 'Nailed shut: something good inside. Shove the boards three times (Space), or shoot them. Loud!',
-      pad: 'Nailed shut: something good inside. Shove the boards three times (RB), or shoot them. Loud!',
+      touch: 'Nailed shut. Tap to shove the boards in.',
+      mouse: 'Nailed shut. Space to shove the boards in.',
+      pad: 'Nailed shut. RB to shove the boards in.',
     },
     target: (t) => {
       const b = t.L.boards;
@@ -76,7 +76,7 @@ export const DAY2_STEPS = [
     title: 'THE GOOD STUFF',
     // The fire thumb while there's a fight on; then nothing (the ring shows the crate).
     coach: (t) => (left(t.group) > 0 ? 'fire' : null),
-    text: { touch: 'What was shut in there is coming out, and the noise carried. Deal with them, then search the crate inside.' },
+    text: { touch: 'Deal with them, then search the crate inside.' },
     enter: (t, g) => {
       // The three in the room (the boards coming down woke them), and three more down the street.
       t.group = t.sleepers.slice();
@@ -94,7 +94,7 @@ export const DAY2_STEPS = [
   {
     id: 'gate2',
     title: "GATE'S OPEN",
-    text: { touch: 'Through the gate. Keep your eyes open: not everything good is on the way.' },
+    text: { touch: 'Keep your eyes open.' },
     target: (t) => t.gateTarget('g2'),
     update: (t, g) => g.player.y < t.L.gates.g2.y - 40,
   },
@@ -102,7 +102,7 @@ export const DAY2_STEPS = [
     id: 'secret',
     dot: true,
     title: 'THE SECRET',
-    text: { touch: 'See it glint? A loose manhole. Only a glint gives a secret away, and it holds the best stuff. Stand on it.' },
+    text: { touch: 'See it glint? Stand on it.' },
     target: (t) => crateSpot(t, t.L.crates.secret, 'GLINT'),
     update: (t) => t.crate(t.L.crates.secret).opened,
     done: (t) => t.openGate('g3'),
@@ -111,7 +111,7 @@ export const DAY2_STEPS = [
     id: 'saferoom',
     dot: true,
     title: 'SAFE ROOM',
-    text: { touch: 'The last gate is open. Get to the safe room. Tomorrow nobody opens gates for you: the green arrow shows the way.' },
+    text: { touch: 'Get to the safe room.' },
     target: (t, g) => {
       const er = g.world.map.endRoom.interior;
       return { x: er.x + er.w / 2, y: er.y + er.h / 2, label: 'SAFE' };

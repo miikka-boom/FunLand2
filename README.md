@@ -299,16 +299,18 @@ and no dependencies.
     finish them off, and **both thumbs**: a pack of five comes down the
     street at you, and you walk back with the left thumb while you shoot with
     the right.
-  - **Don't shoot the car** with the blinking red light while four come round
-    it (shoot it and the alarm brings two small waves). The last gate opens,
+  - **Don't shoot the car** with the blinking red light: it stands in plain
+    view a few steps from where you come in, and four come along the street
+    from beyond it, round it (shoot it and "YOU SHOT THE CAR!", and the alarm
+    brings two small waves). The last gate opens,
     and **run for it**: a crowd comes up behind you as you make for the safe
     room.
 
   No Witch: she's too much for a first run.
 
-  A card at the bottom of the screen, between the thumbs, says what to do (in
-  words for touch, mouse and keys, or a pad: whatever you last used), with a
-  dot per lesson. For touch, a ghost thumb does the gesture on the half of the
+  A card at the bottom of the screen, between the thumbs, says what to do in
+  one short line (in words for touch, mouse and keys, or a pad: whatever you
+  last used), with a dot per lesson. For touch, a ghost thumb does the gesture on the half of the
   screen it belongs to (slide on the left; aim inside the ring, push past it,
   or a quick tap on the right; both at once to back off while you shoot) and
   steps aside while your own thumb is on that stick; the button to press (⟳,

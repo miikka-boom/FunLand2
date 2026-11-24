@@ -151,30 +151,35 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
 | Shove | The SMG is empty; tap the right side (or SHOVE) | 3 shoves that land |
 | Reload | Tap ⟳, then finish off the two you shoved | Reloading, and both down |
 | Both thumbs | Five come down the street: walk back with the left thumb while you shoot with the right | Down: gate 2 opens |
-| Don't shoot the car | Four come round the alarm car | Down, and any alarm over: gate 3 opens |
+| Don't shoot the car | The alarm car is in plain view a few steps from where you come in (ringed in red); four come along the street from beyond it | Down, and any alarm over: gate 3 opens |
 | Run for it | A crowd comes up through gate 2 behind you; make for the safe room | You're in: the run is won |
 
 - **The card** sits at the bottom, between the two sticks: what you're
   coaching is mostly ahead of you, up the screen, and the top is the HUD's.
-  A title, a count where there is one ("2/3", or the gun you hold), the
-  words (up to four lines; a size smaller on the smallest phones, never cut
-  short), and a dot per lesson. A lesson done turns it green with a ✓ for
+  A title, a count where there is one ("2/3", or the gun you hold), one
+  short line of words (48 characters at most, tested: the ghost thumb shows
+  the rest; a size smaller on the smallest phones, never cut short), and a
+  dot per lesson. A lesson done turns it green with a ✓ for
   0.6 s before the next one. The words follow the device you last used:
   touch ("tap ⟳"), mouse and keys ("press R") or a pad ("press X").
 - **Ghost thumbs** (touch only), on the half of the screen the gesture
   belongs to, at the resting stick positions: a thumb that lands and slides
-  toward where you're going (move, "LEFT THUMB: SLIDE"); one that stays
-  inside the dashed ring and sweeps (aim); one that pushes past it while the
-  ring lights orange (fire, "PAST THE RING: FIRE"); quick taps with ripples
-  (shove, "QUICK TAP: SHOVE"); and both at once for the pack (the left thumb
-  slides away from them, the right one fires at them). In the reload lesson
+  toward where you're going ("SLIDE"); one that stays inside the dashed
+  ring and sweeps ("AIM"); one that pushes past it while the ring lights
+  orange ("FIRE"); quick taps with ripples (shove, "TAP"); and both at once
+  for the pack (the left thumb slides away from them, "BACK OFF", the right
+  one fires at them). One word under each, no more. In the reload lesson
   the ⟳ button pulses until the gun is loading, then the fire thumb shows. Each fades while your
   own thumb is on that stick, so it never covers the real one. Buttons to
   press (⟳, SHOVE) pulse amber, with a tapping thumb and "TAP".
 - **In the world:** a dashed green ring where to walk, brackets on the
-  targets in the pen (orange on the one your laser is on), red / amber /
-  green beacons on the gates, and the green edge arrow pointing at the
-  lesson's spot instead of the safe room (none while there's a fight on).
+  targets in the pen (orange on the one your laser is on), a red dashed
+  pulse round the alarm car while its lesson is on, red / amber / green
+  beacons on the gates, and the green edge arrow pointing at the lesson's
+  spot instead of the safe room (none while there's a fight on).
+- **Little else to read:** no "GATE OPEN" or second line under a call-out
+  (the card says it); the squad's writing on the ground is down to a few
+  lines, none of them repeating the card.
 - **What it holds back:** reloading is locked while you learn to shove (the
   SMG stays empty: you have to shove) and unlocks for the reload lesson.
   Swapping is off all the way through: the final game won't have weapon
@@ -191,8 +196,10 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
   end comes up through gate 2, behind you: you outrun it.
 - **Forgiving on purpose:** nobody dies. At 0 HP you get a second wind
   (55% HP, everything within 180 u thrown back and staggered, "CLOSE ONE!");
-  the report counts them. An alarm brings two small waves (5, then 3) and
-  goes quiet after 9 s instead of a panic event. A Witch seated from the
+  the report counts them. Shoot the car and the game says so ("YOU SHOT THE
+  CAR!": in the tutorials only your own shots set one off); the alarm brings
+  two small waves (5, then 3) and goes quiet after 9 s instead of a panic
+  event. A Witch seated from the
   tuning panel swipes once (or chases you for 5 s) and runs off.
   The director spawns nothing of its own (no wanderers, mobs, Hunters, Tank
   or Night Terror, whatever the panel says), and there's no teammate.

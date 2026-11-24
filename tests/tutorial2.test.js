@@ -431,7 +431,7 @@ test('the words fit on the card (touch, mouse, pad), and the coaching draws at e
   for (const s of DAY2_STEPS) {
     for (const src of ['touch', 'mouse', 'gamepad']) {
       const t = stepText(s, src);
-      assert.ok(t && t.length <= 130, `${s.id} (${src}): ${t && t.length} characters`);
+      assert.ok(t && t.length <= 48, `${s.id} (${src}): ${t && t.length} characters`);
     }
     assert.ok(s.title && s.title === s.title.toUpperCase());
   }

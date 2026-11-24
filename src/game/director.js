@@ -400,7 +400,8 @@ export class Director {
     if (this.phase === 'calm' || this.phase === 'relax') this.phase = 'build';
     const fire = car.kind === 'alarmbox';
     g.audio.alarm(car.x + car.w / 2, car.y + car.h / 2, 15, fire ? 'fire' : 'car');
-    g.announce(fire ? 'FIRE ALARM!' : 'CAR ALARM!', '#ffb347', 2.5);
+    // In the tutorial only your own shots set one off: say so, so nobody wonders what happened.
+    g.announce(fire ? 'FIRE ALARM!' : this.scripted ? 'YOU SHOT THE CAR!' : 'CAR ALARM!', '#ffb347', 2.5);
     g.noise(car.x + car.w / 2, car.y + car.h / 2, 950);
   }
 

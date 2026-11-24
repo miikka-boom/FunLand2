@@ -81,7 +81,7 @@ function skipTo(game, id) {
     else if (s === 'gate1' || s === 'gate2') {
       run(game, 1.3); // the bars slide away
       const G = T.L.gates[s === 'gate1' ? 'g1' : 'g2'];
-      Object.assign(p, { x: G.x, y: G.y - 80 });
+      Object.assign(p, { x: G.x, y: G.y - 160 });
     } else if (s === 'shove') game.stats.shoveHits += 3;
     else if (s === 'reload') {
       game.update(1 / 60, idle(['reload']));
@@ -186,7 +186,8 @@ test('the pen: six of them behind a fence they can neither cross nor reach throu
   const map = generateTutorial(1);
   const T = map.tutorial;
   assert.equal(T.penZombies.length, 6);
-  assert.match(stepText(STEPS.find((q) => q.id === 'fire'), 'touch'), /all six/, 'the card counts them right');
+  const game = make();
+  assert.equal(STEPS.find((q) => q.id === 'fire').count(game.tutorial, game), '0/6', 'the card counts them');
   for (const q of T.penZombies) assert.ok(pointInRect(q.x, q.y, T.pen));
   for (let i = 0; i < 6; i++) for (let j = i + 1; j < 6; j++) assert.ok(Math.hypot(T.penZombies[i].x - T.penZombies[j].x, T.penZombies[i].y - T.penZombies[j].y) > 40, 'room to stand');
   const fence = T.fence;
@@ -408,6 +409,7 @@ test('an alarm here is two small waves (not a panic event), and the lesson waits
   const T = game.tutorial;
   game.director.triggerAlarm(T.L.car);
   assert.ok(game.director.alarm);
+  assert.ok(game.messages.some((m) => m.text === 'YOU SHOT THE CAR!'), 'it says what happened');
   run(game, 9.5);
   assert.equal(game.director.alarm, null, 'over sooner than out on the streets');
   assert.equal(T.extra.length, 8);
@@ -419,6 +421,45 @@ test('an alarm here is two small waves (not a panic event), and the lesson waits
   run(game, 0.2);
   assert.ok(T.pause > 0, 'done');
   assert.ok(buildReport(game).tutorial.alarm);
+});
+
+test('the alarm car is in plain view when its lesson starts: close, on screen, pulsing, and between you and the four', () => {
+  const game = make();
+  game.setViewport(640, 360); // the smallest common phone
+  skipTo(game, 'alarm');
+  run(game, 0.6); // the camera settles
+  const T = game.tutorial;
+  const p = game.player;
+  const car = T.L.car;
+  const c = { x: car.x + car.w / 2, y: car.y + car.h / 2 };
+  const d = Math.hypot(c.x - p.x, c.y - p.y);
+  assert.ok(d < 380, `the car is ${Math.round(d)} u away`);
+  const s = game.worldToScreen(c.x, c.y);
+  assert.ok(s.x > 40 && s.x < 600 && s.y > 70, `on screen, below the HUD (${Math.round(s.x)}, ${Math.round(s.y)})`);
+  // ...and not behind a button or the card.
+  const L = computeLayout(640, 360, { l: 0, r: 0, t: 0, b: 0 }, game.settings);
+  for (const b of L.buttons || Object.values(L.byId)) {
+    if (!b || b.hidden || b.r === undefined) continue;
+    assert.ok(Math.hypot(s.x - b.x, s.y - b.y) > b.r + 40, `behind the ${b.id} button`);
+  }
+  const card = cardRect(L, game.settings.stickRadius, 2);
+  assert.ok(s.y < card.y - 30, 'above the card');
+  // The four come along the street from beyond it.
+  for (const q of T.L.alarmSpawns) {
+    assert.ok(Math.hypot(q.x - p.x, q.y - p.y) > d + 200, 'they start out further off than the car');
+    assert.ok(q.x > c.x + 200, 'on its far side');
+  }
+  // In the world: a red pulse round it (until it goes off).
+  const ctx = mockCtx();
+  const R = { ctx, v: game.view, ground() {}, reset() {} };
+  let rings = 0;
+  const arc = ctx.arc;
+  ctx.ellipse = ctx.arc = (...a) => {
+    if (Math.abs(a[0] - c.x) < 1 && Math.abs(a[1] - c.y) < 1) rings++;
+    return arc(...a);
+  };
+  drawTutorialBright(R, game, game.viewRect(40));
+  assert.ok(rings > 0, 'the car is ringed');
 });
 
 test('a Witch seated from the tuning panel can\'t end the tutorial either: one swipe and she runs off', () => {
@@ -448,7 +489,8 @@ test('the words: every lesson has them for touch, the mouse and pads fall back s
   for (const s of STEPS) {
     for (const src of ['touch', 'mouse', 'gamepad']) {
       const t = stepText(s, src);
-      assert.ok(t && t.length <= 130, `${s.id} (${src}): ${t && t.length} characters`);
+      // One short line: the ghost thumb shows the rest.
+      assert.ok(t && t.length <= 48, `${s.id} (${src}): ${t && t.length} characters`);
     }
     assert.ok(s.title && s.title === s.title.toUpperCase());
   }
@@ -494,7 +536,8 @@ test('the coaching draws on a phone at every lesson (touch, mouse, pad) without 
       }
     }
   }
-  for (const label of ['LEFT THUMB: SLIDE', 'RIGHT THUMB: AIM', 'PAST THE RING: FIRE', 'QUICK TAP: SHOVE', 'TAP', 'LEFT THUMB: BACK OFF', 'RIGHT THUMB: FIRE']) assert.ok(seen.has(label), `a ghost thumb says ${label}`);
+  // One word under each ghost, no more.
+  for (const label of ['SLIDE', 'AIM', 'FIRE', 'TAP', 'BACK OFF']) assert.ok(seen.has(label), `a ghost thumb says ${label}`);
   // Title screen: nothing drawn.
   texts.length = 0;
   drawTutorialHud(ctx, game, touchIn('touch'), { title: true }, L);
@@ -622,7 +665,7 @@ test('a bot gets through every lesson to the safe room through the real game loo
     } else if (s === 'fire') fight(T.pen, false);
     else if (s === 'gate1' || s === 'gate2') {
       const t = T.arrow();
-      f.move = walkTo(t.x, t.y - 60);
+      f.move = walkTo(t.x, t.y - 100);
     } else if (s === 'saferoom') {
       // Run for it (and shove off any that catch up).
       const t = T.arrow();

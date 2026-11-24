@@ -48,11 +48,11 @@ export const STEPS = [
     title: 'MOVE',
     coach: 'move',
     text: {
-      touch: 'Left thumb: touch anywhere on the left half and slide. Walk to the ring.',
-      mouse: 'W A S D (or the arrow keys) to walk. Walk to the ring.',
-      pad: 'Left stick to walk. Walk to the ring.',
+      touch: 'Left thumb: walk to the ring.',
+      mouse: 'W A S D: walk to the ring.',
+      pad: 'Left stick: walk to the ring.',
     },
-    target: (t) => ({ ...t.L.moveRing, ring: true, label: 'WALK HERE' }),
+    target: (t) => ({ ...t.L.moveRing, ring: true }),
     update: (t, g) => near(g.player, t.L.moveRing, t.L.moveRing.r),
   },
   {
@@ -61,9 +61,9 @@ export const STEPS = [
     title: 'AIM',
     coach: 'aim',
     text: {
-      touch: 'Right thumb: drag on the right half, inside the dashed ring. Put your laser on one of them.',
-      mouse: 'Point with the mouse: the laser is your aim. Put it on one of them.',
-      pad: 'Tilt the right stick a little: the laser is your aim. Put it on one of them.',
+      touch: 'Right thumb, gently: laser on one.',
+      mouse: 'Point the mouse: laser on one.',
+      pad: 'Right stick, gently: laser on one.',
     },
     target: (t) => t.penTarget(),
     enter: (t) => {
@@ -81,9 +81,9 @@ export const STEPS = [
     title: 'FIRE',
     coach: 'fire',
     text: {
-      touch: 'Push past the dashed ring to shoot. Drop all six.',
-      mouse: 'Click to shoot. Drop all six.',
-      pad: 'Push the right stick all the way (or pull RT) to shoot. Drop all six.',
+      touch: 'Push past the ring to shoot.',
+      mouse: 'Click to shoot.',
+      pad: 'Right stick all the way (or RT) to shoot.',
     },
     target: (t) => t.penTarget(),
     count: (t) => `${t.pen.length - left(t.pen)}/${t.pen.length}`,
@@ -93,7 +93,7 @@ export const STEPS = [
   {
     id: 'gate1',
     title: "GATE'S OPEN",
-    text: { touch: 'Through the gate. The green arrow at the edge of the screen points the way.' },
+    text: { touch: 'Through the gate.' },
     target: (t) => t.gateTarget('g1'),
     update: (t, g) => g.player.y < t.L.gates.g1.y - 40,
   },
@@ -103,9 +103,9 @@ export const STEPS = [
     title: 'SHOVE',
     coach: 'tap',
     text: {
-      touch: 'Click. Empty! Tap the right side (or SHOVE) to knock them back.',
-      mouse: 'Click. Empty! Space or right-click to knock them back.',
-      pad: 'Click. Empty! RB to knock them back.',
+      touch: 'Empty! Tap the right side to shove.',
+      mouse: 'Empty! Space to shove.',
+      pad: 'Empty! RB to shove.',
     },
     enter: (t, g) => {
       // The gun is dry, and no reloading until you've shoved.
@@ -128,9 +128,9 @@ export const STEPS = [
     // The ⟳ button pulses until the gun is loading; then the fire thumb.
     coach: (t) => (t.reloaded ? 'fire' : 'reload'),
     text: {
-      touch: 'Tap ⟳ to reload, then finish them off.',
-      mouse: 'Press R to reload, then finish them off.',
-      pad: 'Press X to reload, then finish them off.',
+      touch: 'Tap ⟳, then finish them.',
+      mouse: 'R to reload, then finish them.',
+      pad: 'X to reload, then finish them.',
     },
     enter: (t) => {
       t.reloaded = false;
@@ -149,9 +149,9 @@ export const STEPS = [
     title: 'BOTH THUMBS',
     coach: 'kite',
     text: {
-      touch: 'Five of them. Walk back with your left thumb while you shoot with your right.',
-      mouse: 'Five of them. Walk back (W A S D) while you shoot (click).',
-      pad: 'Five of them. Back off with the left stick while you shoot with the right.',
+      touch: 'Left thumb back, right thumb shoot.',
+      mouse: 'Back off and shoot at once.',
+      pad: 'Back off and shoot at once.',
     },
     enter: (t, g) => {
       // Down the street at you, so you see them coming (map.tutorial.packSpawns).
@@ -167,15 +167,16 @@ export const STEPS = [
   {
     id: 'gate2',
     title: "GATE'S OPEN",
-    text: { touch: 'Through the gate. One street to go.' },
+    text: { touch: 'One more street.' },
     target: (t) => t.gateTarget('g2'),
-    update: (t, g) => g.player.y < t.L.gates.g2.y - 40,
+    // Done once you're out on row 3, where the car is in plain view.
+    update: (t, g) => g.player.y < t.L.gates.g2.y - 130,
   },
   {
     id: 'alarm',
     dot: true,
     title: "DON'T SHOOT THE CAR",
-    text: { touch: 'A blinking red light means an alarm. Let them come around the car, then shoot.' },
+    text: { touch: 'Red light = alarm. Let them come around it.' },
     enter: (t) => {
       t.group = [];
       t.spawn(t.L.alarmSpawns, 4, 1.2, t.group);
@@ -188,7 +189,7 @@ export const STEPS = [
     id: 'saferoom',
     dot: true,
     title: 'RUN FOR IT',
-    text: { touch: 'They heard the shooting. The last gate is open: get inside the safe room!' },
+    text: { touch: 'Get to the safe room!' },
     enter: (t, g) => {
       // A crowd up through the last gate, behind you: no need to fight it.
       const from = t.unseen(t.L.rushSpawns);
@@ -361,7 +362,7 @@ export class Tutorial {
     return left(list) === 0 && left(this.extra) === 0 && this.spawned(this.extra);
   }
 
-  /** Called by the director when an alarm goes off here: two small waves instead of a panic event. */
+  /** Called by the director when an alarm goes off here: two small waves instead of a panic event (the director says "YOU SHOT THE CAR!"). */
   alarmWave(wave) {
     const g = this.game;
     const n = [5, 3][wave] || 0;
@@ -371,10 +372,6 @@ export class Tutorial {
     const s = this.L.panicSpawns[0];
     g.audio.horde(s.x, s.y);
     g.stats.hordes++;
-    if (wave === 0) {
-      g.announce("THAT'S WHAT ALARMS DO", '#ffb347', 2.4);
-      g.announce('HOLD ON!', 'rgba(255,236,200,0.9)', 2.4, 'small');
-    }
   }
 
   // --- The gates -----------------------------------------------------------------------------
@@ -400,7 +397,6 @@ export class Tutorial {
       G.state = 'open';
       g.world.removeObstacle(b);
       g.audio.gateOpen(G.x, G.y);
-      g.announce('GATE OPEN', '#7dffa1', 1.6, 'small');
     }
   }
 
@@ -523,7 +519,6 @@ export class Tutorial {
     g.audio.deadstop();
     g.addTrauma(0.3);
     g.announce('CLOSE ONE!', '#ffd27a', 1.8);
-    g.announce('SHOVE THEM OFF WHEN THEY GET CLOSE', 'rgba(255,236,200,0.9)', 2.6, 'small');
     this.rescues++;
     return true;
   }

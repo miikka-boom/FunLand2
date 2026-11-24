@@ -8,8 +8,8 @@
 //
 //   north
 //   ┌──────────────────────────────────────┐
-//   │ ████ alley ██ [SAFE ROOM] ◄┐ C3 ████ │
-//   │ █ S3 → → alarm car → → → → ┴ G3 ████ │
+//   │ ██████████████ [SAFE ROOM] ◄┐ C3 ████ │
+//   │ █ S3 → → [car] → → → → → → ┴ G3 ████ │
 //   │ █ G2 ████ door █████ alley █████████ │
 //   │ █ S2 ← ← ← ← shove ← ← ← ← ┬ G1 ████ │
 //   │ ███████████ [PEN] ████████ │ ███████ │
@@ -18,7 +18,10 @@
 //   └──────────────────────────────────────┘
 //
 // The start room is bottom left and the safe room top right, as on the
-// Streets. Everything with a place in a lesson is in map.tutorial.
+// Streets. Everything with a place in a lesson is in map.tutorial. The alarm
+// car stands in the middle of row 3, a few steps from where you come in, in
+// plain view: what comes for you comes along the street from the far end, so
+// it's between you and them (shoot it and you know you did).
 //
 // The course is laid out on a 1472 x 1824 plan (the numbers below), then
 // framed with more buildings all round (FRAME) and moved over by the frame,
@@ -50,7 +53,6 @@ const END_ROOM = { x: C3.x - SW - 232, y: 96 }; // its door opens on the stub's 
 
 // Holes in the buildings: alleys, a doorway, the pen (rects you can walk in).
 // Edges line up where they can, so the buildings between them come out deep.
-const NORTH_ALLEY = { x: 640, y: 210, w: 96, h: 152 }; // row 3, north side: right behind the alarm car
 const SOUTH_ALLEY = { x: 900, y: 630, w: 96, h: 90 }; // row 3, south side
 const SHOVE_DOOR = { x: 760, y: 800, w: 64, h: 74 }; // row 2, north side: the two you shove come out of it
 const PEN = { x: 560, y: 1216, w: 352, h: 170 }; // row 1, the lot behind the fence
@@ -65,7 +67,7 @@ const OPEN = [
   { x: C3.x - SW, y: C3.y, w: C3.w + 2 * SW, h: C3.h - SW },
   { ...START_ROOM, w: 232, h: 192 },
   { ...END_ROOM, w: 232, h: 192 },
-  NORTH_ALLEY, SOUTH_ALLEY, SHOVE_DOOR, PEN,
+  SOUTH_ALLEY, SHOVE_DOOR, PEN,
 ];
 
 /**
@@ -233,24 +235,20 @@ export function streetClutter(D, streets, n, decor) {
 }
 
 /**
- * The squad's own writing, sprayed for the practice run (no line ever runs
- * into another: tests/tutorial.test.js). marker = a thinner pen, size in world units.
+ * The squad's own writing, sprayed for the practice run: a few lines, none
+ * repeating what the card says (no line ever runs into another:
+ * tests/tutorial.test.js). marker = a thinner pen, size in world units.
  */
 export const TUTORIAL_WALLS = [
   // The start room (its medkit is in the top left corner).
   { x: 300, y: 1470, text: 'DAY 1. PRACTICE RUN.', size: 12, color: '#e8e8e0' },
-  { x: 278, y: 1570, text: 'LEFT THUMB WALKS.', size: 11, color: '#f2c94c' },
-  { x: 278, y: 1586, text: 'RIGHT THUMB TALKS. — LOU', size: 11, color: '#f2c94c' },
   // Row 1.
   { x: PEN.x + PEN.w / 2, y: 1430, text: 'LIVE TARGETS. DON\'T ASK. — LOU', size: 12, color: '#f2c94c' },
   // Row 2.
   { x: 1150, y: 1088, text: 'SHOVE FIRST. ASK NEVER.', size: 14, color: '#e8e8e0' },
   { x: 640, y: 1088, text: 'THEY COME IN PACKS. — MAGS', size: 12, color: '#9fd8ff' },
-  // Row 3: the squad's oldest argument, and the tip by the car.
-  { x: 440, y: 560, text: 'WHO TOOK THE LAST CAN OF PEACHES', size: 13, color: '#e8e8e0' },
-  { x: 470, y: 580, text: 'NOT ME — TEO', size: 11, color: '#9fd8ff' },
-  { x: 520, y: 598, text: 'IT WAS TEO', size: 11, color: '#f2c94c' },
-  { x: 720, y: 590, text: 'RED LIGHT CARS = DINNER BELLS', size: 12, color: '#ffb37a' },
+  // Row 3: the tip, under the car.
+  { x: 560, y: 590, text: 'RED LIGHT CARS = DINNER BELLS', size: 12, color: '#ffb37a' },
   // The safe room (medkits in the top corners, its name across the middle).
   { x: END_ROOM.x + 116, y: 230, text: 'DAY 1: DONE. — ODILE', size: 11, color: '#e8e8e0' },
   { x: END_ROOM.x + 116, y: 246, text: 'YOU\'LL DO. — LOU', size: 11, color: '#f2c94c' },
@@ -343,7 +341,9 @@ export function generateTutorial(seed = 1) {
   for (const g of [g1, g2, g3]) obstacles.push(...g.walls, g.bars);
 
   // --- Row 3: the alarm car, parked across the north lane in front of the alley it hides ----------
-  const car = ob('car', NORTH_ALLEY.x + 14, 446, 86, 44, { color: '#b8b8b2', alarm: true, vertical: false, front: 1 });
+  // A few steps up and to the right of where you come in from gate 2: the middle of
+  // a phone's screen, clear of the buttons on the right.
+  const car = ob('car', 372, S3.y + S3.h / 2 - 22, 86, 44, { color: '#b8b8b2', alarm: true, vertical: false, front: -1 });
   obstacles.push(car);
   // Two more cars for company (no alarm, out of the way of every lesson).
   obstacles.push(ob('car', 900, 1580, 86, 44, { color: '#6b6b6b', vertical: false, front: -1 }));
@@ -426,8 +426,10 @@ export function generateTutorial(seed = 1) {
         ],
       ],
       car,
+      // The four for the alarm lesson come along row 3 from the far end (the
+      // stub below gate 3, the south alley), with the car between you and them.
       alarmSpawns: [
-        { x: NORTH_ALLEY.x + NORTH_ALLEY.w / 2, y: NORTH_ALLEY.y + 36 },
+        { x: C3.x + C3.w / 2, y: C3.y + C3.h - 40 },
         { x: SOUTH_ALLEY.x + SOUTH_ALLEY.w / 2, y: SOUTH_ALLEY.y + 60 },
       ],
       panicSpawns: [
