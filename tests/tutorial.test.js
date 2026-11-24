@@ -47,7 +47,7 @@ const { startle, seatWitchNear } = await import('../src/game/witch.js');
 const { startReload, swapWeapon } = await import('../src/game/player.js');
 const { hasModel } = await import('../src/render/models.js');
 const { computeLayout } = await import('../src/layout.js');
-const { drawTutorialHud, drawTutorialBright, cardRect, cardText } = await import('../src/render/tutorial-render.js');
+const { drawTutorialHud, drawTutorialBright, cardRect, cardText, holdRect } = await import('../src/render/tutorial-render.js');
 const { buildReport, reportText } = await import('../src/playtest.js');
 
 const INF = 0x3fffffff;
@@ -249,7 +249,10 @@ test('a run: the lessons in order, the pen filled, the gates shut, no teammate, 
   const game = make({ ally: true, specials: true, nightTerror: true, wanderers: 10, hordeSize: 10 });
   const T = game.tutorial;
   assert.ok(T);
+  assert.equal(T.step.id, 'hold', 'first, how to hold the phone');
+  run(game, 1 / 60); // ...which a pad (this test's input) skips at once
   assert.equal(T.step.id, 'move');
+  assert.equal(T.pause, 0, 'straight on, no tick for it');
   assert.equal(game.ally, null, 'the tutorial is yours alone');
   assert.ok(game.director.scripted);
   assert.equal(T.pen.length, 6);
@@ -318,7 +321,7 @@ test('what a lesson holds back: no reload while you learn to shove, then reload 
 
 test('short: eight lessons, and the crowds turn up out of sight (the pack down the street ahead of you, the rush at the end behind you)', () => {
   assert.equal(LESSONS, 8);
-  assert.equal(STEPS.length, 10);
+  assert.equal(STEPS.length, 11, 'eight lessons, two gates, and how to hold the phone');
   const game = make();
   const T = game.tutorial;
   // Where each one turns up, and whether you could see the spot right then.
@@ -499,6 +502,65 @@ test('the words: every lesson has them for touch, the mouse and pads fall back s
     const s = STEPS.find((q) => q.id === id);
     assert.ok(/thumb|tap|push|ring/i.test(stepText(s, 'touch')), id);
     assert.ok(!/thumb|tap /i.test(stepText(s, 'mouse')), id);
+  }
+});
+
+test('first, how to hold the phone (touch only): done once both thumbs have been on the glass, or once you walk off', () => {
+  const touch = (left, right) => ({ ...idle(), source: 'touch', thumbs: { left, right } });
+  // Both thumbs (one after the other is enough).
+  let game = make();
+  let T = game.tutorial;
+  assert.equal(T.step.id, 'hold');
+  assert.equal(T.step.dot, undefined, 'not a lesson of its own');
+  run(game, 2, touch(false, false));
+  assert.equal(T.step.id, 'hold', 'it waits for you');
+  assert.equal(T.view('touch').coach, 'hold');
+  run(game, 0.3, touch(true, false));
+  assert.equal(T.step.id, 'hold', 'one thumb is not both');
+  run(game, 0.1, touch(true, true));
+  assert.ok(T.pause > 0, 'both: done');
+  run(game, 1, touch(false, false));
+  assert.equal(T.step.id, 'move');
+  // Walking off without putting the other thumb down moves on too (nobody gets stuck on it).
+  game = make();
+  T = game.tutorial;
+  run(game, 0.2, touch(true, false));
+  Object.assign(game.player, { x: game.player.x + 200 });
+  run(game, 0.1, touch(true, false));
+  assert.ok(T.pause > 0 || T.step.id === 'move');
+  // With a mouse it never shows.
+  game = make();
+  T = game.tutorial;
+  game.update(1 / 60, { ...idle(), source: 'mouse' });
+  assert.equal(T.step.id, 'move');
+  assert.ok(!('hold' in T.times));
+});
+
+test('the holding picture: a phone on its side, a hand at each end, thumbs on the sticks; it fits between the HUD and the card on every phone, clear of the buttons', () => {
+  const ctx = mockCtx();
+  for (const [w, h] of [[568, 320], [640, 360], [844, 390], [1024, 768]]) {
+    const game = make();
+    game.setViewport(w, h);
+    const L = computeLayout(w, h, { l: 0, r: 0, t: 0, b: 0 }, game.settings);
+    const R = game.settings.stickRadius;
+    const card = cardRect(L, R, 2);
+    const P = holdRect(L, card);
+    assert.ok(P.y >= L.safe.t + 56 && P.y + P.h <= card.y - 10 + 0.5, `${w}x${h}: between the HUD and the card`);
+    assert.ok(P.x >= 0 && P.x + P.w <= w, `${w}x${h}: on screen`);
+    for (const b of [L.byId.shove, L.byId.reload]) {
+      if (b.hidden) continue;
+      const nx = Math.max(P.x, Math.min(b.x, P.x + P.w));
+      const ny = Math.max(P.y, Math.min(b.y, P.y + P.h));
+      assert.ok(Math.hypot(b.x - nx, b.y - ny) > b.r, `${w}x${h}: clear of the ${b.id} button`);
+    }
+    texts.length = 0;
+    bad = null;
+    for (const [left, right] of [[false, false], [true, false], [true, true]]) {
+      const input = { source: 'touch', touch: { move: { active: left }, aim: { active: right, crossedFire: false }, pressed: new Map() } };
+      drawTutorialHud(ctx, game, input, { title: false, forceSticks: false }, L);
+      assert.equal(bad, null, `${w}x${h}: ${bad}`);
+    }
+    assert.ok(texts.includes('HOLD IT LIKE THIS'));
   }
 });
 

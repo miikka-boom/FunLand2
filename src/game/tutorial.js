@@ -43,6 +43,28 @@ const ease = (f) => f * f * (3 - 2 * f);
  */
 export const STEPS = [
   {
+    // Before anything: how to hold the phone (a picture of it on its side,
+    // a hand at each end, the thumbs on the sticks). Touch only, and not a
+    // lesson of its own: done once both thumbs have been on the glass, or
+    // you're already walking off.
+    id: 'hold',
+    title: 'HOLD IT LIKE THIS',
+    coach: 'hold',
+    text: { touch: 'Both hands, a thumb on each side.' },
+    skip: (t, g) => !!g.input && g.input.source !== 'touch',
+    enter: (t, g) => {
+      t.thumbsSeen = { left: false, right: false };
+      t.from = { x: g.player.x, y: g.player.y };
+    },
+    update: (t, g) => {
+      const th = (g.input && g.input.thumbs) || {};
+      if (th.left) t.thumbsSeen.left = true;
+      if (th.right) t.thumbsSeen.right = true;
+      if (t.thumbsSeen.left && t.thumbsSeen.right) return true;
+      return Math.hypot(g.player.x - t.from.x, g.player.y - t.from.y) > 160;
+    },
+  },
+  {
     id: 'move',
     dot: true,
     title: 'MOVE',
@@ -168,7 +190,7 @@ export const STEPS = [
     id: 'gate2',
     title: "GATE'S OPEN",
     text: { touch: 'One more street.' },
-    target: (t) => t.gateTarget('g2'),
+    target: (t) => t.gateTarget('g2', 170), // out into the street, where this one's done
     // Done once you're out on row 3, where the car is in plain view.
     update: (t, g) => g.player.y < t.L.gates.g2.y - 130,
   },
@@ -256,6 +278,8 @@ export class Tutorial {
     // Day 2: whoever is nailed in with the good stuff (spawned with the map's boarded room).
     this.sleepers = this.L.room ? game.zombies.filter((z) => z.alive && pointInRect(z.x, z.y, this.L.room, 4)) : [];
     this.need = 0;
+    this.thumbsSeen = { left: false, right: false };
+    this.from = null;
     this.next();
   }
 
@@ -321,8 +345,13 @@ export class Tutorial {
       }
       return;
     }
-    this.t += dt;
     const s = this.step;
+    // A step for one kind of input only (the holding picture is for touch) goes as soon as it's clear it's not you.
+    if (s.skip && s.skip(this, g)) {
+      this.next();
+      return;
+    }
+    this.t += dt;
     if (s.update(this, g, dt)) this.complete();
   }
 
@@ -400,9 +429,10 @@ export class Tutorial {
     }
   }
 
-  gateTarget(id) {
+  /** The arrow's spot for a gate: just past it (or `ahead` units past it). */
+  gateTarget(id, ahead = 70) {
     const G = this.gates[id];
-    return { x: G.x, y: G.y - 70, label: 'GATE' };
+    return { x: G.x, y: G.y - ahead, label: 'GATE' };
   }
 
   // --- What the lessons look at ------------------------------------------------------------

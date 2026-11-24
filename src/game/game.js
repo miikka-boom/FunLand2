@@ -325,6 +325,7 @@ export class Game {
     const S = this.settings;
     const p = this.player;
     this.time += dt;
+    this.input = input; // the latest frame (the tutorial looks at the source and the thumbs)
 
     for (const ev of input.events) {
       if (this.won || this.lost) break;

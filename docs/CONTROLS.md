@@ -145,6 +145,7 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
 
 | Lesson | What you do | Done when |
 |---|---|---|
+| (Hold it like this) | Touch only, not counted as a lesson: a picture of the phone on its side, a hand at each end, the thumbs on the sticks; marks on the real sticks turn green as your thumbs land | Both thumbs have been on the glass (or you've walked 160 u off) |
 | Move | Slide the left thumb, walk to the ring | You're in it |
 | Aim | Right thumb inside the dashed ring, laser on a target behind the fence | 0.45 s of laser on one (or you've already hit one) |
 | Fire | Push past the ring | The six in the pen are down: gate 1 opens |
@@ -162,6 +163,15 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
   dot per lesson. A lesson done turns it green with a ✓ for
   0.6 s before the next one. The words follow the device you last used:
   touch ("tap ⟳"), mouse and keys ("press R") or a pad ("press X").
+- **How to hold it** (touch only, before the first lesson): the picture is
+  drawn like the ghost thumbs (dark, outlined in white) on a dark panel in
+  the middle of the screen, between the HUD and the card and short of the
+  buttons on the right (`holdPicture` / `holdRect` in tutorial-render.js),
+  with the picture's thumbs pressing in turn. On the real screen a dashed
+  ring and a pressing ghost thumb mark each stick's resting place, and turn
+  into a green ring once your thumb is down there. The input frame says
+  which thumbs are down (`thumbs.left`, `thumbs.right`); the step has a
+  `skip` for any other input, checked every frame, so it goes at once.
 - **Ghost thumbs** (touch only), on the half of the screen the gesture
   belongs to, at the resting stick positions: a thumb that lands and slides
   toward where you're going ("SLIDE"); one that stays inside the dashed
