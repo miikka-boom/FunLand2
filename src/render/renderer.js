@@ -24,10 +24,10 @@ import { GUN_Z } from '../game/player.js';
 import { TAU, rectsOverlap, pointInRect, lampLit, clamp } from '../util.js';
 import { Scene, boxHides } from './scene3d.js';
 import { CRANE_H, drawDoorPlans } from './models.js';
-import { tone, box, boxShadow, disc, ball, line3, limb } from './prims.js';
+import { tone, box, boxShadow, disc, ball, line3 } from './prims.js';
 import { Horde, drawSurvivor, drawLying, drawHunter, drawTank, drawTerror, drawWitch, witchEyes, drawRock, ghostPath, hunterLift, hunterEyes, PLAYER_LOOK, ALLY_LOOK } from './figures.js';
 import { WITCH } from '../game/witch.js';
-import { ZombieArt, GHOST } from './zombie-art.js';
+import { ZombieArt } from './zombie-art.js';
 import { drawFloors, drawChalk, drawLoot, drawStash, drawLootBright } from './loot-render.js';
 import { drawCanopies, drawFeatureDecor, drawFeaturesBright } from './features-render.js';
 import { drawLoreDecor, drawPosters, roofText, drawLoreBright } from './lore-render.js';
@@ -195,7 +195,7 @@ export class Renderer {
     R.game = game;
     R.t = game.time;
     R.night = !!S.night;
-    R.zart = S.zombieModels && this.zart.sync(v, dpr) ? this.zart : null;
+    R.zart = S.zombieModels && this.zart.sync(v, dpr, undefined, S.zombieLean, S.zombieHeadTilt) ? this.zart : null;
     // The key light comes from the right of the screen, a little toward the camera:
     // the wall on that side is the bright one, shadows fall to the left.
     const lx = v.cy + 0.2 * v.gx;
@@ -958,10 +958,8 @@ export class Renderer {
           ctx.lineWidth = 11 * v.scale;
           ctx.beginPath();
         }
-        if (model && z.type === 'common') {
-          const k = z.r / 11;
-          limb(ctx, v, z.x, z.y, GHOST.body0 * k, z.x, z.y, GHOST.body1 * k);
-        } else ghostPath(ctx, v, z, z.type === 'hunter' ? hunterLift(z) : 0);
+        if (model && z.type === 'common') this.R.zart.ghostBody(ctx, v, z);
+        else ghostPath(ctx, v, z, z.type === 'hunter' ? hunterLift(z) : 0);
       }
       if (!any) continue;
       ctx.stroke();
@@ -969,7 +967,7 @@ export class Renderer {
       for (const z of xr) {
         if ((z.type === undefined) !== (pass === 1)) continue;
         const k = z.r / 11;
-        if (model && z.type === 'common') ball(ctx, v, z.x, z.y, GHOST.head * k, GHOST.headR * k);
+        if (model && z.type === 'common') this.R.zart.ghostHead(ctx, v, z);
         else ball(ctx, v, z.x, z.y, 37 * k + (z.type === 'hunter' ? hunterLift(z) : 0), 5.4 * k);
       }
       ctx.fill();

@@ -71,6 +71,12 @@ mipmaps.
   ready yet borrows the nearest one that is, for a frame or two, and spare time warms up
   every look's first facings. When the tilt or zoom changes, it starts over once the
   change has settled.
+- **Leaning toward the camera.** From the steep street camera (75°) a zombie would be
+  mostly the top of its head, so the zombies lean toward the camera about their feet and
+  their heads tip further toward it about the neck, whichever way they face. On screen a
+  tilt toward the camera is the same as a lower camera, so the body's parts are baked and
+  placed as if seen from 20° lower and the head from 20° lower again (`tiltPitches`). A
+  camera that is already low leaves them be: bodies never go below 35°, heads below 20°.
 - **Posed every frame**: feet step, the body bobs and sways, the head nods, the arms
   hang, reach, go up for a swing and come down on you, and flail when it's hit. The arm
   poses switch like drawn frames; the small motions are bobs.
@@ -89,6 +95,8 @@ figures.
 
 ## Settings and cost
 
+**Zombie lean toward camera** and **Zombie head tilt toward camera** (under Presentation,
+20° each, 0 to 40°) set the lean; a change bakes the sprites again once the slider stops.
 **Zombie models** (under Presentation in the tuning panel, on by default) switches the
 horde back to the stick figures (`src/render/figures.js`, batched by colour), which are
 cheaper for the biggest stress-test hordes: a model zombie is six sprites, twelve in the
@@ -96,5 +104,6 @@ dark. **Debug read-out** shows how many sprites have been baked for this camera,
 long that took and how much atlas it uses (about 1 to 2 Mpx once a horde has been
 around).
 
-Seen from straight above, a zombie is mostly the top of its head; the lower the camera
-tilt, the more of the faces you see.
+With no lean, a zombie seen from straight above is mostly the top of its head. The lean
+trades a little of the world's true perspective for their faces: they stand a little taller
+on screen than the camera alone would draw them, their feet where they are.

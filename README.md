@@ -566,6 +566,10 @@ and no dependencies.
     feet step, the body bobs and sways, the head nods, the arms hang, reach for
     you, go up for a swing and come down on you, and flail when it's hit. The
     dead lie on their backs, arms flung up, heads where the shot threw them.
+  - They lean toward the camera, and their heads tip further toward it, so
+    even the steep street camera shows their faces, profiles and backs
+    instead of the tops of their heads: **Zombie lean toward camera** and
+    **Zombie head tilt toward camera** (20° each) under Presentation.
   - The parts are baked into sprites for the camera, per facing, as they are
     first needed, so it is still one 2D canvas with no build step. How it
     works, and how to update the art: [docs/ZOMBIE-MODELS.md](docs/ZOMBIE-MODELS.md).

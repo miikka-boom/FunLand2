@@ -40,7 +40,7 @@ globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null)
 
 const M = await import('../assets/zombies/meshes.js');
 const { decodeMesh, Texture, bake, overlap } = await import('../src/render/zombie-bake.js');
-const { ZombieArt, orderFor, DIRS, ARM_PITCH, FOOT_L, FOOT_R, TORSO, ARM_L, ARM_R, HEAD } = await import('../src/render/zombie-art.js');
+const { ZombieArt, orderFor, tiltPitches, DIRS, ARM_PITCH, FOOT_L, FOOT_R, TORSO, ARM_L, ARM_R, HEAD } = await import('../src/render/zombie-art.js');
 const { LOOKS, pickLook } = await import('../src/game/zombie-looks.js');
 const { Zombie } = await import('../src/game/zombies.js');
 const { IsoView } = await import('../src/iso.js');
@@ -205,14 +205,15 @@ test('baker: a colour block moves the painted UVs, never the palette (eyes stay 
 });
 
 test('draw order: feet first, the torso before the head, arms in front when they reach at you and behind when it turns away', () => {
-  for (const tilt of [75, 45]) {
-    const sp = Math.sin(tilt * DEG);
-    const cp = Math.cos(tilt * DEG);
+  // Upright, and leaning toward the camera with the head tipped further (as the settings have it).
+  for (const [tilt, headTilt] of [[75, 75], [45, 45], [55, 35]]) {
+    const b = { sp: Math.sin(tilt * DEG), cp: Math.cos(tilt * DEG) };
+    const h = { sp: Math.sin(headTilt * DEG), cp: Math.cos(headTilt * DEG) };
     for (const [bodyId, headId] of [['normal', 'bald'], ['normal', 'ponytail'], ['big', 'wideBig']]) {
       const body = M.BODIES[bodyId];
       const head = M.HEADS[headId];
       for (let d = 0; d < DIRS; d += 4) {
-        const ord = orderFor(body, head, TEX, sp, cp, d);
+        const ord = orderFor(body, head, TEX, b, h, d);
         for (let k = 0; k < NP * NP; k++) {
           const o = Array.from(ord.slice(k * 6, k * 6 + 6));
           assert.deepEqual([...o].sort(), [0, 1, 2, 3, 4, 5], 'each part once');
@@ -222,8 +223,8 @@ test('draw order: feet first, the torso before the head, arms in front when they
         }
       }
       // Reaching (pose 2) straight at the camera: both arms in front of the torso. Turned away: behind it.
-      const toward = orderFor(body, head, TEX, sp, cp, DIRS / 4).slice((2 * NP + 2) * 6, (2 * NP + 2) * 6 + 6);
-      const away = orderFor(body, head, TEX, sp, cp, (DIRS * 3) / 4).slice((2 * NP + 2) * 6, (2 * NP + 2) * 6 + 6);
+      const toward = orderFor(body, head, TEX, b, h, DIRS / 4).slice((2 * NP + 2) * 6, (2 * NP + 2) * 6 + 6);
+      const away = orderFor(body, head, TEX, b, h, (DIRS * 3) / 4).slice((2 * NP + 2) * 6, (2 * NP + 2) * 6 + 6);
       const ix = (o, p) => Array.from(o).indexOf(p);
       assert.ok(ix(toward, ARM_L) > ix(toward, TORSO) && ix(toward, ARM_R) > ix(toward, TORSO), `${bodyId} ${tilt}°: arms reach in front`);
       // (The big one's shoulders are the top of its torso: seen from high up, its arms' roots lie on it either way.)
@@ -231,6 +232,43 @@ test('draw order: feet first, the torso before the head, arms in front when they
       assert.ok(ix(away, HEAD) === 5, 'turned away, the back of the head is the nearest thing');
     }
   }
+});
+
+test('lean: bodies drawn as if the camera were lower, heads lower still; never below the floors', () => {
+  const t = (pitch, lean, head) => tiltPitches(pitch * DEG, lean * DEG, head * DEG).map((x) => Math.round(x / DEG));
+  assert.deepEqual(t(75, 20, 20), [55, 35], 'the streets camera');
+  assert.deepEqual(t(70, 20, 20), [50, 30], 'the building camera');
+  assert.deepEqual(t(90, 20, 20), [70, 50], 'straight down');
+  assert.deepEqual(t(45, 20, 20), [35, 20], 'a low camera leans them less');
+  assert.deepEqual(t(25, 20, 20), [25, 20], 'lower than the floor: the body stays, the head still turns a little');
+  assert.deepEqual(t(75, 0, 0), [75, 75], 'no lean: the true camera');
+  assert.deepEqual(t(75, 0, 30), [75, 45], 'the head on its own');
+});
+
+test('lean: a leaning zombie stands taller on screen, its feet where they were; the sprites are baked for the lean', () => {
+  const v = view(75);
+  const top = (lean, head) => {
+    const art = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
+    art.sync(v, 2, 0, lean, head);
+    const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2 };
+    calls.length = 0;
+    art.drawZombie(R, common(0, Math.PI / 2, { state: 'idle', vx: 0, vy: 0 }), 1);
+    const ys = calls.map((c) => [c.a[6], c.a[6] + c.a[8]]);
+    // The feet go first (they are under everything): the bottom of the lower one.
+    return { art, top: Math.min(...ys.map((y) => y[0])), feet: Math.max(ys[0][1], ys[1][1]) };
+  };
+  const upright = top(0, 0);
+  const leaning = top(20, 20);
+  assert.ok(leaning.top < upright.top - 5, `taller: top ${leaning.top.toFixed(1)} vs ${upright.top.toFixed(1)}`);
+  assert.ok(Math.abs(leaning.feet - upright.feet) < 2.5, `it leans about its feet: ${leaning.feet.toFixed(1)} vs ${upright.feet.toFixed(1)}`);
+  assert.ok(Math.abs(leaning.art.cam.pb - 55 * DEG) < 1e-9 && Math.abs(leaning.art.cam.ph - 35 * DEG) < 1e-9);
+  // Changing the lean bakes again, once it settles, like any camera change.
+  const art = leaning.art;
+  const cam = art.cam;
+  art.sync(v, 2, 1, 30, 20);
+  assert.equal(art.cam, cam, 'still moving');
+  art.sync(v, 2, 1.4, 30, 20);
+  assert.ok(Math.abs(art.cam.pb - 45 * DEG) < 1e-9, 'settled: baked for the new lean');
 });
 
 test('overlap: which of two sprites is nearer where they share pixels', () => {
@@ -374,10 +412,14 @@ test('art: the dead lie as decals of their own look, head where they were thrown
   assert.equal(bad, null, bad);
 });
 
-test('settings: the models are on by default and can be switched to the stick figures', () => {
+test('settings: the models are on by default and can be switched to the stick figures; their lean and head tilt are sliders', () => {
   assert.equal(DEFAULTS.zombieModels, true);
   const items = SCHEMA.flatMap((g) => g.items || []);
   assert.ok(items.some((i) => i.key === 'zombieModels' && i.type === 'toggle'));
+  for (const key of ['zombieLean', 'zombieHeadTilt']) {
+    const it = items.find((i) => i.key === key);
+    assert.ok(it && it.type === 'range' && it.min === 0 && DEFAULTS[key] > it.min && DEFAULTS[key] <= it.max, key);
+  }
 });
 
 test('the renderer draws a horde and its dead with the models', async () => {

@@ -123,6 +123,8 @@ export const DEFAULTS = Object.freeze({
   los: false, // line-of-sight shadows: what's behind a building stays hidden until you round the corner
   threatIndicators: true,
   zombieModels: true, // the horde drawn with the artist's 3D zombie models (off: the stick figures)
+  zombieLean: 20, // degrees the model zombies lean toward the camera, so a steep camera sees more of them than their tops
+  zombieHeadTilt: 20, // and degrees more for their heads, turned toward the camera whichever way they face
   haptics: 'light', // 'off' | 'light' | 'full'
   volume: 0.8,
   musicVolume: 0.7, // the music on top of the master volume (0 = no music)
@@ -304,6 +306,8 @@ export const SCHEMA = [
       { key: 'los', label: 'Line-of-sight shadows', type: 'toggle' },
       { key: 'threatIndicators', label: 'Off-screen threat arrows', type: 'toggle' },
       { key: 'zombieModels', label: 'Zombie models (off: stick figures)', type: 'toggle' },
+      { key: 'zombieLean', label: 'Zombie lean toward camera', type: 'range', min: 0, max: 40, step: 1, fmt: deg },
+      { key: 'zombieHeadTilt', label: 'Zombie head tilt toward camera', type: 'range', min: 0, max: 40, step: 1, fmt: deg },
       {
         key: 'haptics',
         label: 'Haptics (Android)',

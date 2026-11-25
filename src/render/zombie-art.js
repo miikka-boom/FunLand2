@@ -19,6 +19,11 @@
 // over that part at (1 - brightness), which darkens exactly its own pixels, by any amount. A
 // silhouette only depends on the shape, so all the colours of a part share theirs.
 //
+// Lean: a steep camera would mostly see the tops of their heads, so the zombies lean toward the
+// camera, pivoting at their feet (the body's parts are baked and placed as if the camera were
+// lower: tiltPitches), and their heads tip further toward it about the neck, whichever way they
+// face. The draw order is worked out for the same angles.
+//
 // The dead lie on the ground as decals of their models, on their backs with their arms flung up.
 
 import { BODIES, FOOT, HEADS, BLOCKS } from '../../assets/zombies/meshes.js';
@@ -54,6 +59,20 @@ export const ARM_R = 4;
 export const HEAD = 5;
 /** A model zombie's outline seen through walls (k = 1): its body from body0 to body1 high, its head at head, radius headR. */
 export const GHOST = { body0: 4, body1: 17, head: 30, headR: 10.5 };
+const DEG = Math.PI / 180;
+// A lean stops here: from a camera this low the zombies already show their profiles.
+const MIN_BODY = 35 * DEG;
+const MIN_HEAD = 20 * DEG;
+
+/**
+ * The camera tilts the zombies' bodies and heads are drawn for (radians above the horizon), for a
+ * camera at `pitch` and a lean and head tilt toward it (radians).
+ */
+export function tiltPitches(pitch, lean, headTilt) {
+  const body = Math.max(pitch - lean, Math.min(pitch, MIN_BODY));
+  const head = Math.max(body - headTilt, Math.min(body, MIN_HEAD));
+  return [body, head];
+}
 
 const meshes = new Map();
 function mesh(m) {
@@ -164,7 +183,8 @@ class Atlas {
 
 /** A part in one colour block: its sprites by facing and pose, baked when first wanted. */
 class Part {
-  constructor(m, shift, poses, sil) {
+  constructor(m, shift, poses, sil, head) {
+    this.head = head; // baked at the head's tilt
     this.item = { mesh: m, shift, pitch: 0 };
     this.poses = poses;
     this.n = poses.length;
@@ -177,9 +197,13 @@ class Part {
  * The order a zombie's six parts are drawn in when it faces direction d, for every pair of arm
  * poses, worked out from small bakes of the parts in place: where two overlap on screen, the one
  * whose pixels are mostly nearer the camera goes later; parts that don't overlap keep the depth
- * order of their pivots. Returns Uint8Array: at (leftArm * NP + rightArm) * 6, the parts far to near.
+ * order of their pivots. b and h are the cameras ({ sp, cp }: sine and cosine of the tilt) the
+ * body and the head are drawn for (a head tipped toward the camera about its neck is the same,
+ * on screen, as that head seen from lower down). Returns Uint8Array: at (leftArm * NP + rightArm)
+ * * 6, the parts far to near.
  */
-export function orderFor(body, head, tex, sp, cp, d) {
+export function orderFor(body, head, tex, b, h, d) {
+  const { sp, cp } = b;
   const o = { phi: d * STEP, sp, cp, ppu: ORDER_PPU, ss: 1 };
   const out = new Uint8Array(NP * NP * 6);
   const mounts = [body.feet[0], body.feet[1], [0, 0, 0], body.shoulders[0], body.shoulders[1], [0, 0, body.neck]];
@@ -196,7 +220,7 @@ export function orderFor(body, head, tex, sp, cp, d) {
     Z[i] = g * cp + h * sp;
   }
   const foot = bake([{ mesh: mesh(FOOT) }], tex, o);
-  const spr = [foot, foot, bake([{ mesh: mesh(body.torso) }], tex, o), null, null, bake([{ mesh: mesh(head.mesh) }], tex, o)];
+  const spr = [foot, foot, bake([{ mesh: mesh(body.torso) }], tex, o), null, null, bake([{ mesh: mesh(head.mesh) }], tex, { ...o, sp: h.sp, cp: h.cp })];
   const am = mesh(body.arm);
   const arms = ARM_PITCH.map((p) => bake([{ mesh: am, pitch: p }], tex, o));
   const sign = (s) => (s > 1 ? 1 : s < -1 ? -1 : 0);
@@ -273,14 +297,15 @@ export class ZombieArt {
     this.parts = new Map();
     this.sils = new Map();
     this.orders = new Map();
-    this.orderPitch = NaN;
+    this.orderKey = '';
     this.spent = 0; // ms baked this frame
     this.bakeMs = 0; // ms baked since the camera last changed
     this.bakes = 0;
     this.warmAt = 0; // how far warm() has got through every look's first facings
     this.X = new Float64Array(6);
     this.Y = new Float64Array(6);
-    this.o = { phi: 0, sp: 1, cp: 0, ppu: 1, ss: SS };
+    this.o = { phi: 0, sp: 1, cp: 0, ppu: 1, ss: SS }; // the body's parts
+    this.oH = { phi: 0, sp: 1, cp: 0, ppu: 1, ss: SS }; // the head
     this.one = [null];
   }
 
@@ -314,41 +339,42 @@ export class ZombieArt {
   }
 
   /**
-   * Keep the sprites in step with the camera (once a frame, before drawing). Returns true when the
-   * horde can be drawn with the models this frame. t: seconds, any clock.
+   * Keep the sprites in step with the camera (once a frame, before drawing). lean and headTilt:
+   * degrees the zombies and their heads lean toward the camera. Returns true when the horde can be
+   * drawn with the models this frame. t: seconds, any clock.
    */
-  sync(v, dpr, t = now() / 1000) {
+  sync(v, dpr, t = now() / 1000, lean = 0, headTilt = 0) {
     if (this.state === 'idle') this.load();
     if (this.state !== 'ready') return false;
     this.spent = 0;
     const ppu = Math.min(SCALE * v.scale * dpr, MAX_PPU);
-    const cam = this.cam;
-    if (cam && Math.abs(cam.pitch - v.pitch) < 1e-4 && Math.abs(cam.ppu / ppu - 1) < 0.01) {
+    const [pb, ph] = tiltPitches(v.pitch, lean * DEG, headTilt * DEG);
+    const same = (c) => c && Math.abs(c.pb - pb) < 1e-4 && Math.abs(c.ph - ph) < 1e-4 && Math.abs(c.ppu / ppu - 1) < 0.01;
+    if (same(this.cam)) {
       this.want = null;
       return true;
     }
-    if (cam) {
+    if (this.cam) {
       // A new camera: wait until it holds still, drawing with the sprites there are.
-      const w = this.want;
-      if (!w || Math.abs(w.pitch - v.pitch) > 1e-4 || Math.abs(w.ppu / ppu - 1) > 0.01) {
-        this.want = { pitch: v.pitch, ppu };
+      if (!same(this.want)) {
+        this.want = { pb, ph, ppu };
         this.wantT = t;
         return true;
       }
       if (t - this.wantT < SETTLE) return true;
     }
     this.want = null;
-    this.cam = { pitch: v.pitch, ppu, sp: v.sp, cp: v.cp };
-    this.o.sp = v.sp;
-    this.o.cp = v.cp;
-    this.o.ppu = ppu;
+    const c = (this.cam = { pitch: v.pitch, pb, ph, ppu, sp: Math.sin(pb), cp: Math.cos(pb), spH: Math.sin(ph), cpH: Math.cos(ph) });
+    Object.assign(this.o, { sp: c.sp, cp: c.cp, ppu });
+    Object.assign(this.oH, { sp: c.spH, cp: c.cpH, ppu });
     this.atlas.clear();
     this.looks.length = 0;
     this.parts.clear();
     this.sils.clear();
-    if (this.orderPitch !== v.pitch) {
+    const okey = `${pb} ${ph}`;
+    if (this.orderKey !== okey) {
       this.orders.clear();
-      this.orderPitch = v.pitch;
+      this.orderKey = okey;
     }
     this.bakeMs = 0;
     this.bakes = 0;
@@ -356,7 +382,7 @@ export class ZombieArt {
     return true;
   }
 
-  _part(key, shape, m, shift, poses) {
+  _part(key, shape, m, shift, poses, head = false) {
     let p = this.parts.get(key);
     if (!p) {
       let sil = this.sils.get(shape);
@@ -364,7 +390,7 @@ export class ZombieArt {
         sil = new Array(DIRS * poses.length);
         this.sils.set(shape, sil);
       }
-      p = new Part(m, shift, poses, sil);
+      p = new Part(m, shift, poses, sil, head);
       this.parts.set(key, p);
     }
     return p;
@@ -388,7 +414,7 @@ export class ZombieArt {
       look: lk,
       body,
       headDef: head,
-      head: this._part(`head ${lk.head} ${lk.block}`, `head ${lk.head}`, mesh(head.mesh), shift, STILL),
+      head: this._part(`head ${lk.head} ${lk.block}`, `head ${lk.head}`, mesh(head.mesh), shift, STILL, true),
       torso: this._part(`torso ${lk.body} ${lk.block}`, `torso ${lk.body}`, mesh(body.torso), shift, STILL),
       arm: this._part(`arm ${lk.body} ${lk.block}`, `arm ${lk.body}`, mesh(body.arm), shift, ARM_PITCH),
       foot: this._part(`foot ${lk.block}`, 'foot', mesh(FOOT), shift, STILL),
@@ -401,7 +427,7 @@ export class ZombieArt {
   /** Bake a part's sprite for facing d and pose p (and its shape's silhouette, if that's new). */
   _bake(part, d, p) {
     const t0 = now();
-    const o = this.o;
+    const o = part.head ? this.oH : this.o;
     o.phi = d * STEP;
     part.item.pitch = part.poses[p];
     this.one[0] = part.item;
@@ -424,12 +450,11 @@ export class ZombieArt {
 
   /** Bake what's missing for facing d while the frame's budget lasts (or regardless, when forced). */
   _fill(L, d, iL, iR, force) {
-    const c = this.cam;
     const go = () => force || this.spent < this.budget;
     if (!L.order[d]) {
       if (!go()) return false;
       const t0 = now();
-      L.order[d] = orderFor(L.body, L.headDef, this.tex, c.sp, c.cp, d);
+      L.order[d] = orderFor(L.body, L.headDef, this.tex, this.o, this.oH, d);
       const ms = now() - t0;
       this.spent += ms;
       this.bakeMs += ms;
@@ -558,13 +583,19 @@ export class ZombieArt {
     const sR = body.shoulders[1];
     const X = this.X;
     const Y = this.Y;
-    const x = z.x;
-    const y = z.y;
+    // Parts are placed in the leaning body's frame: on screen, the same as seen from its lower camera.
+    const X0 = v.px(z.x, z.y);
+    const Y0 = v.py(z.x, z.y, 0);
+    const k = S * v.scale;
+    const spB = this.cam.sp;
+    const cpB = this.cam.cp;
+    const ex = v.cy; // screen right, on the ground
+    const ey = v.sy;
     const put = (i, a, c, h) => {
-      const wx = x + (ca * a - sa * c) * S;
-      const wy = y + (sa * a + ca * c) * S;
-      X[i] = v.px(wx, wy);
-      Y[i] = v.py(wx, wy, h * S);
+      const wx = ca * a - sa * c;
+      const wy = sa * a + ca * c;
+      X[i] = X0 + k * (wx * ex + wy * ey);
+      Y[i] = Y0 + k * ((wy * ex - wx * ey) * spB - h * cpB);
     };
     put(FOOT_L, fL[0] + sn * stride, fL[1], cs > 0 ? cs * lift : 0);
     put(FOOT_R, fR[0] - sn * stride, fR[1], cs < 0 ? -cs * lift : 0);
@@ -638,6 +669,26 @@ export class ZombieArt {
     }
     ctx.globalAlpha = 1;
     v.applyGround(ctx, dpr, 0);
+  }
+
+  /**
+   * The outline of a zombie seen through a wall, as the leaning model stands (subpaths, in CSS
+   * px): body() a line to stroke, head() a disc to fill.
+   */
+  ghostBody(ctx, v, z) {
+    const x = v.px(z.x, z.y);
+    const y = v.py(z.x, z.y, 0);
+    const k = (z.r / 11) * v.scale * (this.cam ? this.cam.cp : v.cp);
+    ctx.moveTo(x, y - GHOST.body0 * k);
+    ctx.lineTo(x, y - GHOST.body1 * k);
+  }
+
+  ghostHead(ctx, v, z) {
+    const x = v.px(z.x, z.y);
+    const y = v.py(z.x, z.y, 0) - (z.r / 11) * v.scale * (this.cam ? this.cam.cp : v.cp) * GHOST.head;
+    const r = (z.r / 11) * v.scale * GHOST.headR;
+    ctx.moveTo(x + r, y);
+    ctx.arc(x, y, r, 0, TAU);
   }
 
   /** For the debug read-out. */
