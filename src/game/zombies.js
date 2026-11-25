@@ -4,6 +4,7 @@
 // plug in through type/mass/knockScale and optional onHit/onDeath hooks.
 
 import { rand, TAU, wrapAngle, smoothstep } from '../util.js';
+import { pickLook } from './zombie-looks.js';
 
 export const SKINS = ['#8d9a7e', '#9a917c', '#7f8c84', '#a39a86', '#86907a', '#958a7c'];
 export const SHIRTS = ['#4a4f63', '#5c3b33', '#3e5241', '#6b6252', '#2f3540', '#6a4a5a', '#7b6a3a', '#3a3a3a', '#8a8378', '#4b2f2f'];
@@ -47,6 +48,7 @@ export class Zombie {
     this.shirtI = (Math.random() * SHIRTS.length) | 0;
     this.skin = SKINS[this.skinI];
     this.shirt = SHIRTS[this.shirtI];
+    this.look = pickLook(); // which of the artist's zombie models it is (zombie-looks.js)
     this.groanT = rand(3, 14);
     this.idleT = 0;
   }

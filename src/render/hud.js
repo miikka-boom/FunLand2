@@ -58,7 +58,7 @@ export function drawHud(ctx, game, input, ui, renderer) {
   if (p.pinnedBy && p.alive) drawPinned(ctx, game, L);
   drawMessages(ctx, game, L);
   if (game.won || game.lost) drawEnd(ctx, game, L, ui);
-  if (S.showDebug) drawDebug(ctx, game, input, ui, L);
+  if (S.showDebug) drawDebug(ctx, game, input, ui, L, renderer);
 }
 
 // --- Sticks --------------------------------------------------------------------------
@@ -845,7 +845,7 @@ function drawTouchDebug(ctx, touch, L) {
   }
 }
 
-function drawDebug(ctx, game, input, ui, L) {
+function drawDebug(ctx, game, input, ui, L, renderer) {
   const d = game.director;
   const f = input.frame;
   const t = input.touch;
@@ -855,6 +855,11 @@ function drawDebug(ctx, game, input, ui, L) {
     `director ${d.phase}  intensity ${d.intensity.toFixed(2)}  next mob ${Math.max(0, d.mobT).toFixed(0)}s  near ${d.threatNear}  ·  hunter in ${Math.max(0, d.specialT).toFixed(0)}s  tank at ${Math.round(d.tankAt * 100)}% (route ${Math.round(game.progress * 100)}%)`,
     `input ${f.source}  move ${f.move.x.toFixed(2)},${f.move.y.toFixed(2)} (raw ${t.move.out.raw.toFixed(2)})  aim raw ${f.aimRaw.toFixed(2)}  fire ${f.fire ? 'Y' : '-'}  assist ${game.player.assist ? 'lock' : '-'}`,
   ];
+  const za = renderer && renderer.zart;
+  if (za && game.settings.zombieModels) {
+    const st = za.stats();
+    lines.push(`zombie models ${za.state}  ·  ${st.bakes} sprites baked in ${st.ms}ms for this camera  ·  atlas ${st.pages} page${st.pages === 1 ? '' : 's'} (${(st.px / 1e6).toFixed(2)} Mpx)`);
+  }
   ctx.font = `600 11px ui-monospace, Menlo, monospace`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';

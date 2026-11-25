@@ -211,7 +211,7 @@ export class Effects {
     const s = Math.min(force, 260);
     this.corpses.push({
       x: z.x, y: z.y, r: z.r, ang: Math.atan2(dy, dx) + randSpread() * 0.6,
-      vx: dx * s, vy: dy * s, t: 0, skin: z.skin, shirt: z.shirt, flip: Math.random() < 0.5 ? -1 : 1,
+      vx: dx * s, vy: dy * s, t: 0, skin: z.skin, shirt: z.shirt, look: z.look, flip: Math.random() < 0.5 ? -1 : 1,
     });
   }
 

@@ -122,6 +122,7 @@ export const DEFAULTS = Object.freeze({
   darkness: 0.6, // how much light the night takes away where nothing is lit
   los: false, // line-of-sight shadows: what's behind a building stays hidden until you round the corner
   threatIndicators: true,
+  zombieModels: true, // the horde drawn with the artist's 3D zombie models (off: the stick figures)
   haptics: 'light', // 'off' | 'light' | 'full'
   volume: 0.8,
   musicVolume: 0.7, // the music on top of the master volume (0 = no music)
@@ -302,6 +303,7 @@ export const SCHEMA = [
       { key: 'darkness', label: 'Darkness', type: 'range', min: 0.4, max: 0.97, step: 0.01, fmt: pct },
       { key: 'los', label: 'Line-of-sight shadows', type: 'toggle' },
       { key: 'threatIndicators', label: 'Off-screen threat arrows', type: 'toggle' },
+      { key: 'zombieModels', label: 'Zombie models (off: stick figures)', type: 'toggle' },
       {
         key: 'haptics',
         label: 'Haptics (Android)',

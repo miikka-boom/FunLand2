@@ -8,7 +8,9 @@
 // The commons are drawn in batches (Horde): bodies that are next to each
 // other in the painter's order are laid down layer by layer (legs, far arms,
 // trunks, heads, near arms), each layer one path per colour, so a crowd still
-// costs a few dozen canvas calls instead of ten per zombie.
+// costs a few dozen canvas calls instead of ten per zombie. That is the
+// fallback (and the "stick figures" setting): the horde is normally drawn with
+// the artist's 3D zombie models, as sprites (zombie-art.js).
 
 import { ball, limb, line3, tone, tones, toneIndex } from './prims.js';
 import { SKINS, SHIRTS } from '../game/zombies.js';
@@ -184,8 +186,12 @@ export class Horde {
     return this.n < this.cap && (this.n === 0 || depth - this.d0 < 13);
   }
 
-  /** Pose a common and put it in the batch. b: its brightness. */
+  /** Pose a common and put it in the batch. b: its brightness. (With the 3D models it is drawn at once.) */
   add(R, z, b, depth) {
+    if (R.zart) {
+      R.zart.drawZombie(R, z, b);
+      return;
+    }
     const v = R.v;
     const t = R.t;
     const i = this.n++;
