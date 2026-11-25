@@ -145,7 +145,7 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
 
 | Lesson | What you do | Done when |
 |---|---|---|
-| (Hold your phone like this) | Touch only, not counted as a lesson: a black screen with a big picture of the phone on its side, a hand at each end, the thumbs on the sticks, and that one line | A tap anywhere (it fades into the game) |
+| (Hold your phone like this) | Touch only, not counted as a lesson: a black screen with a big photo of a phone held on its side, a hand at each end, the thumbs on the glass, and that one line | A tap anywhere (it fades into the game) |
 | Move | Slide the left thumb, walk to the ring | You're in it |
 | Aim | Right thumb inside the dashed ring, laser on a target behind the fence | 0.45 s of laser on one (or you've already hit one) |
 | Fire | Push past the ring | The six in the pen are down |
@@ -191,18 +191,21 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
   shoved), so the shove is what works. A gun that clicks empty reloads
   itself, as everywhere: ⟳ is for topping up between fights.
 - **How to hold it** (touch only, before the first lesson): a screen of its
-  own. Black, the picture big (the phone about 60% of the screen wide on a
-  phone, the forearms coming up from the bottom edge), drawn like the ghost
-  thumbs (dark, outlined in white) with its thumbs pressing in turn, and one
-  line above it, "HOLD YOUR PHONE LIKE THIS". Nothing else is drawn (hud.js
+  own. Black, a big photo of two hands holding a phone on its side, the
+  thumbs on the glass (the phone a little over half the screen wide on a
+  phone, the forearms coming up from below the bottom edge, the photo's own
+  edges faded to black), a green ripple going out from each thumb in turn,
+  and one line above it, "HOLD YOUR PHONE LIKE THIS". Nothing else is drawn (hud.js
   stops there: no HUD, sticks, buttons, arrow or line) until you tap
   anywhere; then it fades out over the game in the ✓ pause and the first
   lesson comes up (`drawTutorialIntro` / `introLayout` in
   tutorial-render.js, `Tutorial.intro()`). A tap where the pause or reload
   button would be only ends it (main.js turns any event into a plain tap
   while it's up). The input frame says which thumbs are down
-  (`thumbs.left`, `thumbs.right`); the step has a `skip` for any other
-  input, checked every frame, so with a mouse or a pad it goes at once.
+  (`thumbs.left`, `thumbs.right`) and whether any finger came down since the
+  last frame (`thumbs.landed`: a tap too quick for any frame to see it held
+  still counts); the step has a `skip` for any other input, checked every
+  frame, so with a mouse or a pad it goes at once.
 - **The HUD, a part at a time** (Day 1): after the first screen only the
   two sticks show (with the tutorial's own line, arrows and rings); ⟳ comes
   in with the reload lesson, SHOVE when the shove is asked for (in the
@@ -241,14 +244,26 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
   Mouse and pad get their own words where it matters ("Click to shoot.").
   The report (Playtest) counts them under `tutorial.nudges`, and the
   readable line lists them, most first: that's where to add a guide.
-- **Ghost thumbs** (touch only), 1.2 times life size, on the half of the
+- **Ghost thumbs** (touch only): a photo of a real thumb, nail up, its base
+  fading out (the right one as it is, the left one mirrored), with a soft
+  shadow under it, 48 px wide at the nail, on the half of the
   screen the gesture belongs to, at the resting stick positions: a thumb
   that lands and slides toward where you're going; one that stays inside
   the dashed ring and sweeps (aim); one that pushes past it while the ring
   lights orange (fire); and both at once for the pack (the left thumb
   slides away from them, the right one fires at them). No words under them.
   Each fades while your own thumb is on that stick, so it never covers the
-  real one; while a button is asked for, the prompt takes their place.
+  real one; while a button is asked for, the prompt takes their place (its
+  tapping thumb is the same photo). A thin white ring round the fingertip
+  says it's pressing.
+- **The pictures** are in `assets/tutorial` (`hands.webp`, 37 KB, and
+  `thumb.webp`, 21 KB, with transparency), made with Scenario's GPT Image
+  2.5 model (Boom Corp's Default Project) and cut to size: the hands' edges
+  faded to black, the thumb's base faded out along it. Where the phone, the
+  fingers and the thumbs' pads are in the photo, and where the thumb's nail
+  is, are written next to them in tutorial-render.js (`HANDS`, `THUMB`).
+  Until they have loaded, and where there are no images (the tests), simple
+  drawings of the same things stand in.
 - **Where to go:** a big green arrow bobs over the lesson's spot while it's
   on screen (the ring, a gate's way through, the way to the door, a crate,
   the safe room); off screen, a big green edge arrow points at it (in the

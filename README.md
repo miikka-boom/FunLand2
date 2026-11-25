@@ -292,8 +292,8 @@ and no dependencies.
   gun all the way (the final game won't have weapon changing, so the tutorial
   doesn't teach it: the gun panel doesn't swap here):
   - First, on a phone or tablet, a screen of its own: **how to hold it**.
-    Black, a big picture of a phone on its side with a hand at each end and
-    the thumbs on the two sticks, and one line, "HOLD YOUR PHONE LIKE THIS";
+    Black, a big photo of two hands holding a phone on its side, the thumbs
+    on the glass, and one line, "HOLD YOUR PHONE LIKE THIS";
     nothing else (no HUD, sticks or buttons) until you tap anywhere, then it
     fades into the game. With a mouse or a pad it never shows, and it isn't
     one of the lessons.
@@ -328,6 +328,8 @@ and no dependencies.
   gesture on the half of the screen it belongs to (slide on the left; aim
   inside the ring or push past it on the right; both at once to back off
   while you shoot), stepping aside while your own thumb is on that stick.
+  The hands and the thumb are photos (made with Scenario, in
+  [`assets/tutorial`](assets/tutorial)).
   For a button you have to press (⟳, SHOVE) the world waits for you, as
   above: nothing else works until you press it.
 

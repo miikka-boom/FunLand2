@@ -145,3 +145,18 @@ test('a cancelled touch releases without shoving', () => {
   assert.equal(tc.aim.active, false);
   assert.deepEqual(tc.consumeEvents(), []);
 });
+
+test('a finger that comes down is reported once, even if it is already up again before the next frame', () => {
+  const { tc } = make();
+  assert.equal(tc.consumeLanded(), false);
+  // Down and up between two frames, on the move side (no event of its own, and never seen held).
+  tc._contact('start', 1, 150, 300);
+  tc._contact('end', 1, 150, 300);
+  assert.equal(tc.move.active, false);
+  assert.deepEqual(tc.consumeEvents(), []);
+  assert.equal(tc.consumeLanded(), true, 'it landed');
+  assert.equal(tc.consumeLanded(), false, 'once');
+  tc._contact('start', 2, 650, 300);
+  tc.reset();
+  assert.equal(tc.consumeLanded(), false, 'a reset forgets it');
+});

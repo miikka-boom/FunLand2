@@ -28,7 +28,7 @@ export class Input {
       fire: false,
       assist: true,
       events: [],
-      thumbs: { left: false, right: false }, // touch: a thumb down on that half (the tutorial's first step)
+      thumbs: { left: false, right: false, landed: false }, // touch: a thumb down on that half; landed: any finger came down since the last frame (the tutorial's first step)
     };
   }
 
@@ -48,6 +48,7 @@ export class Input {
     f.source = this.source;
     f.thumbs.left = this.source === 'touch' && this.touch.move.active;
     f.thumbs.right = this.source === 'touch' && this.touch.aim.active;
+    f.thumbs.landed = this.touch.consumeLanded(); // (a tap too quick for any frame to see it held)
     f.events = [...this.touch.consumeEvents(), ...this.desktop.consumeEvents(), ...(pad ? pad.events : [])];
     f.aimScreen = null;
 

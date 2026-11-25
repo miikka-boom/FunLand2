@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 const store = new Map();
 globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
 let bad = null;
-const COORD = new Set(['moveTo', 'lineTo', 'arc', 'ellipse', 'rect', 'fillRect', 'strokeRect', 'fillText', 'arcTo']);
+const COORD = new Set(['moveTo', 'lineTo', 'arc', 'ellipse', 'rect', 'fillRect', 'strokeRect', 'fillText', 'arcTo', 'drawImage', 'translate', 'scale']);
 const texts = [];
 const placed = []; // [text, x, y] of every fillText
 function mockCtx(measure = (s) => String(s).length * 7) {
@@ -51,7 +51,7 @@ const { startle, seatWitchNear } = await import('../src/game/witch.js');
 const { startReload, swapWeapon } = await import('../src/game/player.js');
 const { hasModel } = await import('../src/render/models.js');
 const { computeLayout, applyHudReveal, hitButton } = await import('../src/layout.js');
-const { drawTutorialHud, drawTutorialBright, lineLayout, introLayout, promptSpot } = await import('../src/render/tutorial-render.js');
+const { drawTutorialHud, drawTutorialBright, lineLayout, introLayout, promptSpot, setTutorialPictures, HANDS, THUMB } = await import('../src/render/tutorial-render.js');
 const { drawHud } = await import('../src/render/hud.js');
 const { buildReport, reportText } = await import('../src/playtest.js');
 
@@ -602,11 +602,16 @@ test('first, on a phone: a black screen with a big picture of how to hold it and
     drawHud(ctx, game, input, { layout: L, title: false, forceSticks: true }, null);
     assert.equal(bad, null, `${w}x${h}: ${bad}`);
     assert.deepEqual(texts, ['HOLD YOUR PHONE LIKE THIS'], `${w}x${h}: one line and nothing else`);
-    // A big picture: the phone alone is at least half the screen wide (or as tall as the screen allows), the hands fit, the line above it.
+    // A big picture: the phone alone is at least half the screen wide (or as tall as the screen allows), it and the thumbs
+    // on screen, the photo down past the bottom (the forearms come up from below), the line above it and clear of the fingers.
     const I = introLayout(w, h);
     assert.ok(I.PW >= w * 0.5 || I.PH >= h * 0.45, `${w}x${h}: a phone ${Math.round(I.PW)} px wide`);
-    assert.ok(I.cx - I.W / 2 >= 0 && I.cx + I.W / 2 <= w, `${w}x${h}: the hands on screen`);
-    assert.ok(I.titleY + I.size / 2 < I.cy - I.PH / 2, `${w}x${h}: the line above the phone`);
+    assert.ok(I.cx - I.PW / 2 >= 0 && I.cx + I.PW / 2 <= w && I.cy + I.PH / 2 < h, `${w}x${h}: the phone on screen`);
+    for (const q of I.thumbs) assert.ok(q.x > 0 && q.x < w && q.y > 0 && q.y < h, `${w}x${h}: a thumb off screen`);
+    assert.ok(I.y + I.H >= h - 0.5, `${w}x${h}: the photo stops short of the bottom`);
+    assert.ok(Math.abs(I.x + I.W / 2 - w / 2) < 30, `${w}x${h}: off centre`);
+    assert.ok(I.titleY + I.size / 2 < I.cy - I.PH / 2 && I.titleY + I.size / 2 < I.fingers, `${w}x${h}: the line above the phone and the fingers`);
+    assert.ok(I.titleY - I.size / 2 >= 0, `${w}x${h}: the line off the top`);
     assert.ok(I.size * 0.62 * 26 <= w * 0.9 + 1, `${w}x${h}: the line fits across`);
   }
   game.setViewport(844, 390);
@@ -622,6 +627,11 @@ test('first, on a phone: a black screen with a big picture of how to hold it and
   T = game.tutorial;
   run(game, 0.05, touch(true, false));
   assert.ok(T.pause > 0);
+  // ...and a tap so quick that no frame saw the thumb down (down and up between two frames: input reports it landed).
+  game = make();
+  T = game.tutorial;
+  run(game, 1 / 60, { ...touch(false, false), thumbs: { left: false, right: false, landed: true } });
+  assert.ok(T.pause > 0, 'the quickest tap ends it too');
   // With a mouse it never shows.
   game = make();
   T = game.tutorial;
@@ -629,6 +639,66 @@ test('first, on a phone: a black screen with a big picture of how to hold it and
   assert.equal(T.step.id, 'move');
   assert.equal(T.intro(), 0);
   assert.ok(!('hold' in T.times));
+});
+
+test('the photos (hands holding the phone, the ghost thumb), once loaded: drawn where the layout says, nothing else changes, never a bad number', () => {
+  // Stand-ins for loaded images (node has no Image): what drawImage gets is checked instead.
+  const fake = (P) => ({ complete: true, naturalWidth: P.w, width: P.w, height: P.h });
+  const pics = { hands: fake(HANDS), thumb: fake(THUMB) };
+  setTutorialPictures(pics);
+  try {
+    const touch = (left, right, events = []) => ({ ...idle(events), source: 'touch', thumbs: { left, right } });
+    const game = make();
+    for (const [w, h] of [[568, 320], [844, 390], [1024, 768]]) {
+      game.setViewport(w, h);
+      const L = computeLayout(w, h, { l: 0, r: 0, t: 0, b: 0 }, game.settings);
+      const drawn = [];
+      const ctx = mockCtx();
+      const base = ctx.drawImage;
+      ctx.drawImage = (im, ...a) => {
+        drawn.push([im, ...a]);
+        return base(im, ...a);
+      };
+      texts.length = 0;
+      bad = null;
+      const input = { source: 'touch', touch: { move: { active: false }, aim: { active: false, crossedFire: false }, pressed: new Map() } };
+      drawHud(ctx, game, input, { layout: L, title: false, forceSticks: true }, null);
+      assert.equal(bad, null, `${w}x${h}: ${bad}`);
+      assert.deepEqual(texts, ['HOLD YOUR PHONE LIKE THIS'], 'still the one line and nothing else');
+      const I = introLayout(w, h);
+      assert.deepEqual(drawn.map((d) => d.slice(0, 5)), [[pics.hands, I.x, I.y, I.W, I.H]], `${w}x${h}: the photo, where the layout puts it`);
+    }
+    // On to the lessons: the ghost thumbs and the prompt's thumb are the photo thumb (mirrored on the left).
+    game.setViewport(844, 390);
+    run(game, 0.05, touch(false, false, ['tap']));
+    run(game, 1, touch(false, false));
+    assert.equal(game.tutorial.step.id, 'move');
+    const L = computeLayout(844, 390, { l: 0, r: 0, t: 0, b: 0 }, game.settings);
+    const seen = [];
+    for (const id of ['move', 'aim', 'reload', 'kite']) {
+      skipTo(game, id);
+      const ctx = mockCtx();
+      const base = ctx.drawImage;
+      const scale = ctx.scale;
+      let mirrored = 0;
+      ctx.scale = (x, y) => {
+        if (x < 0) mirrored++;
+        return scale(x, y);
+      };
+      let thumbs = 0;
+      ctx.drawImage = (im, ...a) => {
+        if (im === pics.thumb) thumbs++;
+        return base(im, ...a);
+      };
+      bad = null;
+      drawTutorialHud(ctx, game, { source: 'touch', touch: { move: { active: false }, aim: { active: false, crossedFire: false }, pressed: new Map() } }, { title: false, forceSticks: false }, L);
+      assert.equal(bad, null, `${id}: ${bad}`);
+      seen.push([id, thumbs, mirrored]);
+    }
+    assert.deepEqual(seen, [['move', 1, 1], ['aim', 1, 0], ['reload', 1, 0], ['kite', 2, 1]], 'the left thumb mirrored, the right one as it is; the prompt taps with one');
+  } finally {
+    setTutorialPictures({ hands: null, thumb: null });
+  }
 });
 
 test('the HUD comes in a part at a time: the two sticks first, ⟳ for the reload, SHOVE when the shove is asked for, then all of it (never the clock)', () => {

@@ -99,7 +99,7 @@ export const STEPS = [
     update: (t, g) => {
       const f = g.input;
       if (!f) return false;
-      return !!((f.thumbs && (f.thumbs.left || f.thumbs.right)) || (f.events && f.events.length));
+      return !!((f.thumbs && (f.thumbs.left || f.thumbs.right || f.thumbs.landed)) || (f.events && f.events.length));
     },
   },
   {

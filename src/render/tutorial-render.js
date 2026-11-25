@@ -2,9 +2,9 @@
 //   - in the world (bright pass): the ring to walk to, beacons on the gates
 //     (red shut, amber opening, green open), brackets on the targets in the
 //     pen, a red pulse round the alarm car while its lesson is on;
-//   - first of all (touch), a screen of its own: black, a big picture of how
-//     to hold the phone (on its side, a thumb on each stick) and one line,
-//     until you tap (drawTutorialIntro, called by hud.js);
+//   - first of all (touch), a screen of its own: black, a big photo of how
+//     to hold the phone (on its side, a thumb on each side of the screen) and
+//     one line, until you tap (drawTutorialIntro, called by hud.js);
 //   - on the HUD, as little writing as can be: at most one short line at the
 //     top of the screen (nothing at the bottom, where the thumbs are). The
 //     rest is shown: a big arrow bobbing over where to go, a ghost thumb doing
@@ -13,6 +13,10 @@
 //     and, for a button you have to press, the screen gone dark but for that
 //     button (and you), with a thumb tapping it.
 // The ghost stands aside while your own thumb is on that stick.
+//
+// The hands and the thumb are photos (assets/tutorial, made with Scenario's
+// GPT Image 2.5 model); until they have loaded, and wherever there are no
+// images (the tests), simple drawings of them stand in.
 
 import { FONT, rrect, circle } from './draw-utils.js';
 import { ball } from './prims.js';
@@ -23,6 +27,54 @@ const GREEN = '125,255,161';
 const AMBER = '255,190,90';
 const RED = '255,80,64';
 const ORANGE = '255,140,80';
+
+// --- The pictures --------------------------------------------------------------------------
+
+/**
+ * The first screen's photo: two hands holding a phone on its side, the thumbs
+ * on the glass, on black (its edges faded to black). Where things are in it,
+ * in its own pixels: the phone, the tops of the fingers over it, and the two
+ * thumbs' pads on the screen.
+ */
+export const HANDS = {
+  src: 'assets/tutorial/hands.webp',
+  w: 1536,
+  h: 874,
+  phone: { x0: 352, y0: 122, x1: 1190, y1: 510 },
+  fingers: 75,
+  thumbs: [
+    { x: 512, y: 345 },
+    { x: 1030, y: 350 },
+  ],
+};
+
+/**
+ * The ghost thumb: a right thumb seen from above, nail up, reaching up and to
+ * the left, its base faded out (mirrored, it's the left one). In its own
+ * pixels: the middle of the nail (where it touches) and the thumb's width there.
+ */
+export const THUMB = { src: 'assets/tutorial/thumb.webp', w: 255, h: 313, nail: { x: 63, y: 58.4 }, width: 140.7 };
+
+const pictures = {};
+if (typeof Image !== 'undefined') {
+  for (const [k, P] of Object.entries({ hands: HANDS, thumb: THUMB })) {
+    const im = new Image();
+    im.decoding = 'async';
+    im.src = P.src;
+    pictures[k] = im;
+  }
+}
+
+/** A picture once it has loaded (null before then, or if it never does: the drawing stands in). */
+function picture(k) {
+  const im = pictures[k];
+  return im && im.complete && im.naturalWidth > 0 ? im : null;
+}
+
+/** For tests: stand-ins for the pictures ({ hands, thumb }; null takes one away again). */
+export function setTutorialPictures(p) {
+  Object.assign(pictures, p);
+}
 
 // --- In the world ----------------------------------------------------------------------------
 
@@ -321,24 +373,64 @@ function bar(ctx, x0, y0, x1, y1, w, style) {
 }
 
 /**
- * Where the first screen puts things on a w x h screen: the picture W wide
- * (the hands at the ends of the phone reach its edges), the phone centred at
- * (cx, cy), and the one line above it.
+ * Where the first screen puts things on a w x h screen. The photo (HANDS) is
+ * scaled so the phone in it is as wide as 0.56 of the screen (at most 1.08 h
+ * and 576 px), its top a quarter of the way down; and more, if that's what it
+ * takes for the photo to reach the bottom of the screen (the forearms come up
+ * from below it), but never so the phone is wider than 0.9 of the screen.
+ * Returns the photo's place and scale (x, y, s, W, H), the phone's middle and
+ * size (cx, cy, PW, PH), the thumbs' pads and the tops of the fingers on
+ * screen, and the one line above it all (titleY, size).
  */
 export function introLayout(w, h) {
-  const W = Math.min(w * 0.7, h * 1.35, 720);
-  const PH = 0.4 * W;
+  const P = HANDS.phone;
+  const pw = P.x1 - P.x0;
   const top = h * 0.24;
+  let s = Math.min(w * 0.56, h * 1.08, 576) / pw;
+  s = Math.min(Math.max(s, (h - top) / (HANDS.h - P.y0)), (w * 0.9) / pw);
+  const x = w / 2 - ((P.x0 + P.x1) / 2) * s;
+  const y = top - P.y0 * s;
   let size = Math.round(clamp(h * 0.065, 18, 34));
   // The line fits across the screen (a size smaller where it has to).
   while (size > 14 && size * 0.62 * 26 > w * 0.9) size -= 1;
-  return { W, PW: 0.8 * W, PH, cx: w / 2, cy: top + PH / 2, titleY: Math.min(h * 0.12, top - size), size };
+  const PH = (P.y1 - P.y0) * s;
+  const fingers = y + HANDS.fingers * s;
+  return {
+    x,
+    y,
+    s,
+    W: HANDS.w * s,
+    H: HANDS.h * s,
+    PW: pw * s,
+    PH,
+    cx: w / 2,
+    cy: top + PH / 2,
+    thumbs: HANDS.thumbs.map((q) => ({ x: x + q.x * s, y: y + q.y * s })),
+    fingers,
+    titleY: Math.min(h * 0.12, top - size, fingers - size * 0.8),
+    size,
+  };
+}
+
+/** The photo's thumbs pressing in turn: a ripple out from each pad on the glass. */
+function touches(ctx, I, t) {
+  I.thumbs.forEach((q, i) => {
+    const ph = (t * 0.8 + i * 0.5) % 1;
+    if (ph >= 0.5) return;
+    const k = ph / 0.5;
+    ctx.strokeStyle = `rgba(${GREEN},${0.8 * (1 - k)})`;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    circle(ctx, q.x, q.y, I.PW * (0.08 + 0.06 * k));
+    ctx.stroke();
+  });
 }
 
 /**
- * A phone on its side, held in both hands, the thumbs on the two sticks
- * (pressing in turn, a ripple under each): drawn like the ghost thumbs, dark
- * and outlined in white. The forearms come up from below `floor`.
+ * The drawing that stands in for the photo until it has loaded: a phone on
+ * its side, held in both hands, the thumbs on the two sticks (pressing in
+ * turn, a ripple under each), dark and outlined in white. W is the drawing's
+ * width (the phone 0.8 of it); the forearms come up from below `floor`.
  */
 function phoneInHands(ctx, cx, cy, W, t, floor) {
   const PW = 0.8 * W;
@@ -462,7 +554,11 @@ export function drawTutorialIntro(ctx, game, w, h) {
   ctx.globalAlpha = a;
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, h);
-  phoneInHands(ctx, I.cx, I.cy, I.W, game.time, h);
+  const im = picture('hands');
+  if (im) {
+    ctx.drawImage(im, I.x, I.y, I.W, I.H);
+    touches(ctx, I, T.clock);
+  } else phoneInHands(ctx, I.cx, I.cy, I.PW / 0.8, T.clock, h);
   ctx.font = `900 ${I.size}px ${FONT}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -475,7 +571,7 @@ export function drawTutorialIntro(ctx, game, w, h) {
     ctx.font = `700 ${Math.round(I.size * 0.62)}px ${FONT}`;
     ctx.fillStyle = `rgb(${AMBER})`;
     // Just under the phone, between the hands.
-    ctx.fillText(T.nudge.n.text.touch, I.cx, Math.min(h - I.size, I.cy + I.PH / 2 + Math.max(I.size * 1.3, I.W * 0.09)));
+    ctx.fillText(T.nudge.n.text.touch, I.cx, Math.min(h - I.size, I.cy + I.PH / 2 + Math.max(I.size * 1.3, I.PW * 0.11)));
   }
   ctx.restore();
   return a;
@@ -484,40 +580,58 @@ export function drawTutorialIntro(ctx, game, w, h) {
 // --- The ghost thumb ---------------------------------------------------------------------
 
 /**
- * A thumb seen from above: the tip at (x, y), the rest of it reaching down to
- * the bottom corner of its side (side -1 left, 1 right), s times life size.
- * press 0..1 squashes the tip and rings it.
+ * A thumb seen from above, its pad at (x, y), reaching down to the bottom
+ * corner of its side (side -1 left, 1 right), s times its size (40 px wide at
+ * the nail). press 0..1 squashes it a little and rings the pad. The photo
+ * (THUMB, mirrored for the left), with a soft shadow under it, or until that
+ * has loaded a drawing of one.
  */
 function thumb(ctx, x, y, side, alpha, press = 0, s = 1) {
   if (alpha <= 0.01) return;
-  const bx = x + side * 30 * s;
-  const by = y + 52 * s;
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = `rgba(255,255,255,${0.8 * alpha})`;
-  ctx.lineWidth = 37 * s;
-  ctx.beginPath();
-  ctx.moveTo(x, y);
-  ctx.lineTo(bx, by);
-  ctx.stroke();
-  ctx.strokeStyle = `rgba(40,44,52,${0.8 * alpha})`;
-  ctx.lineWidth = 33 * s;
-  ctx.beginPath();
-  ctx.moveTo(x, y);
-  ctx.lineTo(bx, by);
-  ctx.stroke();
-  // The nail.
-  ctx.fillStyle = `rgba(255,255,255,${0.3 * alpha})`;
-  ctx.beginPath();
-  ctx.ellipse(x + side * 3 * s, y + 3 * s, 7 * s, 9 * s, side * 0.5, 0, TAU);
-  ctx.fill();
+  const im = picture('thumb');
+  if (im) {
+    const k = ((40 * s) / THUMB.width) * (1 - 0.05 * press);
+    ctx.save();
+    ctx.globalAlpha *= Math.min(1, alpha);
+    ctx.translate(x, y);
+    if (side < 0) ctx.scale(-1, 1);
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 10 * s;
+    ctx.shadowOffsetY = 4 * s;
+    ctx.drawImage(im, -THUMB.nail.x * k, -THUMB.nail.y * k, THUMB.w * k, THUMB.h * k);
+    ctx.restore();
+  } else {
+    const bx = x + side * 30 * s;
+    const by = y + 52 * s;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = `rgba(255,255,255,${0.8 * alpha})`;
+    ctx.lineWidth = 37 * s;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(40,44,52,${0.8 * alpha})`;
+    ctx.lineWidth = 33 * s;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+    // The nail.
+    ctx.fillStyle = `rgba(255,255,255,${0.3 * alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(x + side * 3 * s, y + 3 * s, 7 * s, 9 * s, side * 0.5, 0, TAU);
+    ctx.fill();
+    ctx.lineCap = 'butt';
+  }
   if (press > 0.01) {
-    ctx.strokeStyle = `rgba(255,255,255,${0.8 * alpha * press})`;
+    // Round the fingertip (the photo's is wider than the drawing's), not on the nail.
+    const r = im ? 27 + 8 * (1 - press) : 18 + 10 * (1 - press);
+    ctx.strokeStyle = `rgba(255,255,255,${(im ? 0.6 : 0.8) * alpha * press})`;
     ctx.lineWidth = 2.5;
     ctx.beginPath();
-    circle(ctx, x, y, (18 + 10 * (1 - press)) * s);
+    circle(ctx, x, y, r * s);
     ctx.stroke();
   }
-  ctx.lineCap = 'butt';
 }
 
 /** A screen direction (unit) from the survivor toward a world point, or `dflt`. */

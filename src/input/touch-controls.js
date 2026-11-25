@@ -97,6 +97,7 @@ export class TouchControls {
   _contact(type, id, x, y) {
     const now = performance.now();
     this.lastUsed = now;
+    if (type === 'start') this.landed = true; // a finger came down (seen by the next frame, however short the touch)
     if (!this.enabled) {
       if (type === 'end' || type === 'cancel') this._end(id, x, y, now, true);
       return;
@@ -234,6 +235,13 @@ export class TouchControls {
     return e;
   }
 
+  /** Did a finger come down since the last call (even one already lifted again)? */
+  consumeLanded() {
+    const l = !!this.landed;
+    this.landed = false;
+    return l;
+  }
+
   /** Drop every touch (pause, blur, orientation change...). */
   reset() {
     this.move.release();
@@ -242,5 +250,6 @@ export class TouchControls {
     this.pressed.clear();
     this.extraTaps.clear();
     this.events = [];
+    this.landed = false;
   }
 }
