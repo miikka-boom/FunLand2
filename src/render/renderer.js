@@ -27,7 +27,7 @@ import { CRANE_H, drawDoorPlans } from './models.js';
 import { tone, box, boxShadow, disc, ball, line3 } from './prims.js';
 import { Horde, drawSurvivor, drawLying, drawHunter, drawTank, drawTerror, drawWitch, witchEyes, drawRock, ghostPath, hunterLift, hunterEyes, PLAYER_LOOK, ALLY_LOOK } from './figures.js';
 import { WITCH } from '../game/witch.js';
-import { ZombieArt, FALL_T } from './zombie-art.js';
+import { ZombieArt } from './zombie-art.js';
 import { drawFloors, drawChalk, drawLoot, drawStash, drawLootBright } from './loot-render.js';
 import { drawCanopies, drawFeatureDecor, drawFeaturesBright } from './features-render.js';
 import { drawLoreDecor, drawPosters, roofText, drawLoreBright } from './lore-render.js';
@@ -556,7 +556,7 @@ export class Renderer {
     for (const c of game.effects.corpses) {
       if (!pointInRect(c.x, c.y, vr)) continue;
       if (zart && c.look !== undefined) {
-        if (!(c.t < FALL_T && zart.startFall(c))) dead.push(c);
+        if (!zart.falling(c)) dead.push(c);
       } else vis.push(c);
     }
     if (dead.length) zart.drawCorpses(ctx, this.R, dead);
@@ -806,7 +806,7 @@ export class Renderer {
     if (this.R.zart) {
       for (const c of game.effects.corpses) {
         if (c.look === undefined) continue;
-        if (c.fall === true && c.t < FALL_T && v.onScreen(c.x, c.y, 60, 60)) {
+        if (c.fall === true && this.R.zart.falling(c) && v.onScreen(c.x, c.y, 60, 60)) {
           const b = L.sample(c.x, c.y);
           if (b >= 0.032) this._mover(T_FALL, c, c.x, c.y, 12, b);
         }

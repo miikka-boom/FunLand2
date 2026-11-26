@@ -62,7 +62,10 @@ pixel each way, with texture mipmaps. The shading is toon-style, to go with the
 hand-inked texture: two bands of light with a soft edge, from a light fixed to the
 camera, and a pale rim of light on the shadow side of skin and clothes. It can also
 roll a head's pupils and shut its eyes: the build tool tags each head's eye whites,
-their outlines and the pupils (`grp` in `meshes.js`).
+their outlines and the pupils (`grp` in `meshes.js`). And it paints blood on: splats
+placed in a part's own axes, with ragged edges, running down in drips, on skin and
+clothes but never on the outlines (only the triangles a splat can reach pay for it).
+It can tip a whole body back (onto its back or its face) and roll it onto a side.
 
 `src/render/zombie-art.js` puts the horde together:
 
@@ -94,6 +97,11 @@ their outlines and the pupils (`grp` in `meshes.js`).
   the order is worked out per facing from small bakes of the parts in place: where two
   overlap on screen, the one that's mostly nearer the camera goes later. It matches a
   single z-buffered render of the whole body to within the outlines where parts meet.
+- **Blood on its shirt.** A zombie that's been shot (and bled: a shove or a fire
+  doesn't show) wears its torso's second set of sprites, bloodied low on the belly,
+  out of the back and on a side: the head is big and tipped toward the camera, so
+  that's the part of the torso that shows. Every other colour block has its wounds
+  on the other side. The blood doesn't change the shape, so both share a silhouette.
 - **Light**: sprites are baked fully lit. A zombie in the dark gets each part's black
   silhouette over that part at `1 - brightness` (silhouettes depend only on the shape,
   so all colours share them). A hit flashes it brighter.
@@ -101,16 +109,26 @@ their outlines and the pupils (`grp` in `meshes.js`).
   darkness), so every sprite also gets a copy darkened to that when it's baked: those
   zombies are drawn with six sprites, not twelve. The copies keep the rim light at its
   daylight strength, a moonlit edge that keeps a zombie readable on a dark street.
-- **The dead fall.** A zombie that dies goes over backwards, away from the shot, in three
-  frames over a third of a second (16 facings, baked as deaths happen, a sample a pixel:
-  they're on screen a tenth of a second each), then lies on the ground as a decal of its
-  own look, on its back, arms flung up, feet where it stood. A death whose fall can't be
-  baked in time drops straight to the ground (two a frame may go past the budget, so a
-  shotgun blast still drops most of a crowd over).
+- **The dead fall, and lie eight ways** (`DEATHS`): on its back with its arms flung up
+  in a V, out in a T, or one out and one up; on its face, reaching past its head or
+  with an arm out; on its left side or its right, arms out in front. Each has its head
+  turned a little and its eyes rolled up, crossed or shut, and a weight (on its back
+  is the most common). Its head goes the way the shot threw it, so a body on its back
+  faces the shooter, one on its face faces away, one on its side faces across. It
+  goes over in three frames over a third of a second (16 facings, baked as deaths
+  happen, a sample a pixel: they're on screen a tenth of a second each), then lies on
+  the ground as a decal of its own look in its pose, bloodied all over, feet where it
+  stood. A death whose fall can't be baked in time drops straight to the ground, lying
+  as one of its look's dead already do if it can (two a frame may go past the budget,
+  so a shotgun blast still drops most of a crowd over). A body that has landed holds
+  its last frame a quarter of a second at most while its decal is baked within the
+  budget, so a crowd going down together doesn't bake every decal in one frame.
 - **Heads come off.** A common killed by one big blow (45 damage or more in one moment: a
   hunting rifle round, a shotgun blast up close, an explosion) loses its head four times
-  in five. It flies the way the blow went, tumbling, bounces off walls and the ground
-  (blood where it first lands; `effects.js`), and lies face up by the headless body.
+  in five, or once in five to a shotgun (`pop` in `weapons.js`: a blast up close mostly
+  drops them whole). The head flies the way the blow went, tumbling, bounces off walls
+  and the ground (blood where it first lands; `effects.js`), and lies face up by the
+  headless body, whose neck is bloodied.
 
 The specials (Hunter, Tank, Night Terror, the Witch) and the survivors keep their own
 figures.
@@ -124,12 +142,18 @@ once the slider stops.
 horde back to the stick figures (`src/render/figures.js`, batched by colour), which are
 cheaper for the biggest stress-test hordes: a model zombie is six sprites (twelve when
 it's partly lit; the dead are one, and a fall or a flying head one or two). The eyes,
-the toon shading, the rim and the dead cost no extra draws; what they cost is baking
-and atlas memory. New sprites are baked for one zombie a frame at most, within about
+the toon shading, the rim, the blood and the dead cost no extra draws; what they cost
+is baking and memory. The dead are kept apart from the standing: the decals (one per
+look, pose and head or not, as they're needed) have their own atlas pages, and fall
+frames, each wanted for a tenth of a second, have small canvases of their own, only
+the last 96 kept. (When they went in with the rest, every fight spread the horde's
+sprites over more pages, and in a software-drawn canvas the horde drew up to three
+times slower afterwards.) New sprites are baked for one zombie a frame at most, within about
 4 ms, since every upload makes the browser copy an atlas page: in the first minute or
-so a zombie may borrow a near facing or plain eyes for a frame or two. **Debug
-read-out** shows how many sprites have been baked for this camera, how long that took
-and how much atlas it uses (about 2 to 3 Mpx once a horde has been around).
+so a zombie may borrow a near facing, plain eyes or a clean shirt for a frame or two.
+**Debug read-out** shows how many sprites have been baked for this camera, how long
+that took, how much atlas it uses (about 2 to 4 Mpx once a horde has been around, the
+dead's decals a few tenths of that) and how many fall frames are kept.
 
 With no lean, a zombie seen from straight above is mostly the top of its head. The lean
 trades a little of the world's true perspective for their faces: they stand a little taller

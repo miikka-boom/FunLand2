@@ -10,7 +10,8 @@ export const SKINS = ['#8d9a7e', '#9a917c', '#7f8c84', '#a39a86', '#86907a', '#9
 export const SHIRTS = ['#4a4f63', '#5c3b33', '#3e5241', '#6b6252', '#2f3540', '#6a4a5a', '#7b6a3a', '#3a3a3a', '#8a8378', '#4b2f2f'];
 const HIT_DAMAGE = 5;
 // A common's head comes off when one blow (everything that hits it at the same moment) of at least
-// this much kills it, this often. Commons have 50 HP: the SMG and the rifle take two hits.
+// this much kills it, this often (a weapon can have its own chance: weapons.js pop). Commons have
+// 50 HP: the SMG and the rifle take two hits.
 export const POP_BURST = 45;
 export const POP_CHANCE = 0.8;
 let nextId = 1;
@@ -349,8 +350,10 @@ export function resolveCrowd(game, dt) {
   for (const z of zombies) if (z.alive && !z.noCollide) world.collide(z, z.r);
 }
 
-export function damageZombie(game, z, dmg, dx, dy, knock, stagger, bleed = true) {
+/** pop: how likely a killing blow this big is to take the head off (default POP_CHANCE). */
+export function damageZombie(game, z, dmg, dx, dy, knock, stagger, bleed = true, pop = POP_CHANCE) {
   if (!z.alive) return false;
+  z.popChance = pop ?? POP_CHANCE;
   z.hp -= dmg;
   // What it took in this one moment (a shotgun's pellets land together): a big enough blow takes its head off.
   z.burst = z.burstT === game.time ? z.burst + dmg : dmg;
@@ -360,7 +363,10 @@ export function damageZombie(game, z, dmg, dx, dy, knock, stagger, bleed = true)
   z.vy += dy * knock * z.knockScale;
   if (stagger > 0 && z.staggerable) z.stagger = Math.max(z.stagger, stagger);
   if (z.state === 'idle') alertZombie(game, z, 0);
-  if (bleed) game.effects.blood(z.x, z.y, dx, dy, z.type === 'tank' ? 2 : 3, 170);
+  if (bleed) {
+    game.effects.blood(z.x, z.y, dx, dy, z.type === 'tank' ? 2 : 3, 170);
+    z.bloodied = true; // a model zombie shows it (zombie-art.js)
+  }
   if (z.onHit && z.hp > 0) z.onHit(game, dmg, stagger, dx, dy);
   if (z.hp <= 0) {
     killZombie(game, z, dx, dy, knock * 1.6 + 60);
@@ -379,7 +385,7 @@ export function killZombie(game, z, dx, dy, force) {
   if (force > 300 || Math.random() < 0.35) fx.gibs(z.x, z.y, dx, dy, force > 300 ? 4 : 2);
   fx.pool(z.x + dx * 10, z.y + dy * 10, z.r * 1.1);
   // Killed by one big blow (a hunting rifle, a shotgun up close, a blast): sometimes the head comes off.
-  const pop = z.type === 'common' && z.look !== undefined && (z.burst || 0) >= POP_BURST && Math.random() < POP_CHANCE;
+  const pop = z.type === 'common' && z.look !== undefined && (z.burst || 0) >= POP_BURST && Math.random() < (z.popChance ?? POP_CHANCE);
   if (pop) fx.blood(z.x, z.y, dx, dy, 6, 260);
   fx.corpse(z, dx, dy, force, pop);
   game.audio.splat(z.x, z.y);

@@ -564,14 +564,17 @@ and no dependencies.
     wider skull, a big heavy one) in four sets of clothes and skin make twelve
     looks for the crowd. Each is put together from its parts every frame:
     feet step, the body bobs and sways, the head nods, the arms hang, reach for
-    you, go up for a swing and come down on you, and flail when it's hit. The
-    dead lie on their backs, arms flung up, heads where the shot threw them.
+    you, go up for a swing and come down on you, and flail when it's hit. One
+    that's been shot has blood on its shirt. The dead go down bloodied, eight
+    ways: on their backs with their arms flung up or out, on their faces
+    reaching, on either side, their heads where the shot threw them.
   - Their heads have a mind of their own: a hunter's turns to you before its
     body does, a shambler's glances about, and the googly eyes roll (toward
     you, drooping, rolled up or crossed when hit) and blink. Toon shading and
     a pale rim of light match the hand-inked texture and keep them readable
-    at night. The dead fall over backwards, and a big enough blow (a hunting
-    rifle, a shotgun up close, a blast) knocks the head clean off.
+    at night. The dead fall the way they'll lie, and a big enough blow knocks
+    the head clean off: four times in five for a hunting rifle round or a
+    blast, once in five for a shotgun (which drops them whole, mostly).
   - They lean toward the camera, and their heads tip further toward it, so
     even the steep street camera shows their faces, profiles and backs
     instead of the tops of their heads: **Zombie lean toward camera** and
@@ -874,8 +877,8 @@ src/render/theme-models.js the newer maps' models, added to the table in models.
 src/render/theme-render.js the newer maps' ground (lawns and lots, grave plots and paths, the yard) and what lies on it
 src/render/decor3d.js      the small things that stand up (chairs, signs, the lemonade stand, Ben's fort and rabbit, boats)
 src/render/figures.js      survivors, the horde as stick figures (batched), Hunter, Tank, Night Terror, the Witch
-src/render/zombie-art.js   the horde as the artist's 3D zombie models: each part baked into sprites per facing (and arm pose) as they're needed, packed in atlas pages, posed and drawn far to near, darkened in the dark; the dead as decals (docs/ZOMBIE-MODELS.md)
-src/render/zombie-bake.js  the baker: a small z-buffered rasterizer for the models' parts through the game's camera (pure, unit tested)
+src/render/zombie-art.js   the horde as the artist's 3D zombie models: each part baked into sprites per facing (and arm pose, eyes, bloodied shirt) as they're needed, packed in atlas pages, posed and drawn far to near, darkened in the dark; the dead falling and lying in one of eight poses, as decals (docs/ZOMBIE-MODELS.md)
+src/render/zombie-bake.js  the baker: a small z-buffered rasterizer for the models' parts through the game's camera, with toon shading and painted-on blood (pure, unit tested)
 src/game/zombie-looks.js   which model a common is: body, head and colour block
 src/render/*-render.js     what is painted flat (ground, graffiti, posters, chalk, Ben's crayon) and the big set pieces (docks: piers, cranes, the ferry; features: the canopy, fires, fireballs), hud.js
 src/playtest.js            playtest kit: rating card, reports (copy / share / history), daily map seed
@@ -894,7 +897,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, the music director, the sound effects (the bank ships every sound the engine plays, surfaces and materials, the soundscape), the zombie models (the parts as built, the looks, the baker, the draw order, darkness, the bake budget, corpses), Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, the music director, the sound effects (the bank ships every sound the engine plays, surfaces and materials, the soundscape), the zombie models (the parts as built, the looks, the baker, the draw order, darkness, the bake budget, blood, the death poses, corpses, the shotgun's head pops), Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.

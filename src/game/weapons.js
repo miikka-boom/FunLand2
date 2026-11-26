@@ -70,6 +70,7 @@ export const WEAPONS = [
     reloadType: 'shell',
     knock: 75, // per pellet
     stagger: 0.22,
+    pop: 0.2, // a blast up close drops them whole, mostly: the head comes off one kill in five
     trauma: 0.3,
     kick: 10,
     noise: 720,

@@ -387,7 +387,7 @@ export function hitscan(game, p, mx, my, ang, def, alarms = true) {
     if (z.type === 'rock') damageRock(game, z, dmg, dx, dy);
     else {
       game.audio.bulletHit(z.x, z.y, z.type === 'tank' || z.type === 'witch');
-      damageZombie(game, z, dmg, dx, dy, def.knock, def.stagger);
+      damageZombie(game, z, dmg, dx, dy, def.knock, def.stagger, true, def.pop);
     }
     if (i === n - 1 && hitList.length >= def.pierce) {
       endT = t;

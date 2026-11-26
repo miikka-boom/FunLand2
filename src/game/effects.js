@@ -214,6 +214,7 @@ export class Effects {
     const c = {
       x: z.x, y: z.y, r: z.r, ang: Math.atan2(dy, dx) + randSpread() * 0.6,
       vx: dx * s, vy: dy * s, t: 0, skin: z.skin, shirt: z.shirt, look: z.look, flip: Math.random() < 0.5 ? -1 : 1,
+      pose: Math.random(), // which way a model zombie lies (zombie-art.js: DEATHS)
     };
     if (pop) {
       // Off it flies, the way the blow went, up, tumbling.

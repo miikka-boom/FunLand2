@@ -32,9 +32,11 @@
 // lower: tiltPitches), and their heads tip further toward it about the neck, whichever way they
 // face. The draw order is worked out for the same angles.
 //
-// The dead fall: a few frames of the body going over backwards (16 facings, baked as deaths
-// happen), then a decal of the model on the ground, on its back with its arms flung up. A big
-// enough hit takes the head off: it flies, tumbling, bounces (effects.js) and lies by the body.
+// Blood: a zombie that's been shot has it on its shirt (its torso has a second set of sprites,
+// bloodied). The dead fall: a few frames of the body going over (16 facings, baked as deaths
+// happen), then a decal of the model on the ground, bloodied, lying one of several ways (DEATHS:
+// on its back with its arms flung up or out, on its face, on its side). A big enough hit takes
+// the head off: it flies, tumbling, bounces (effects.js) and lies by the body.
 
 import { BODIES, FOOT, HEADS, BLOCKS } from '../../assets/zombies/meshes.js';
 import { decodeMesh, Texture, bake, overlap, RIM_COLOUR } from './zombie-bake.js';
@@ -76,11 +78,13 @@ const FILLS = 1;
 const WARM_DIRS = [8, 24, 0, 16];
 const WARM_POSES = [1, 2];
 const ORDER_PPU = 0.08; // px per model unit for the small bakes that work out the draw order
-/** How long the dead take to fall (s), the frames of it (how far over: radians), and the facings those are baked for. */
+/** How long the dead take to fall (s), the frames of it (how far over, of the way down), and the facings those are baked for. */
 export const FALL_T = 0.32;
-const FALL_LIE = [0.5, 0.95, 1.3];
+const FALL_F = [0.32, 0.6, 0.83];
 const FALL_DIRS = 16;
 const FALL_STARTS = 2; // deaths a frame whose fall may be baked past the budget (a shotgun blast drops several)
+const LAND_WAIT = 0.25; // s a body that has landed may hold its last frame while its decal is baked within the budget
+const FALL_KEEP = 96; // fall frames kept for the next death to use (each is wanted for a tenth of a second)
 // In the dark the rim light stays: what's left of its daylight strength in the darkened copies.
 const NIGHT_RIM = 1;
 // The parts, as numbered in a draw order.
@@ -96,6 +100,71 @@ const DEG = Math.PI / 180;
 // A lean stops here: from a camera this low the zombies already show their profiles.
 const MIN_BODY = 35 * DEG;
 const MIN_HEAD = 20 * DEG;
+const QUARTER = Math.PI / 2;
+/**
+ * The ways the dead lie (and fall): lie, tipped back onto its back (QUARTER) or forward onto its
+ * face (-QUARTER); roll, onto its left side (QUARTER) or its right (-QUARTER); arms, where they end
+ * up, [yaw, pitch] for the left and the right (yaw: radians out to its right; pitch: up from
+ * straight ahead, toward its head); head, how far its head is turned; eye, its eyes; face, which
+ * way it faces, from the way the blow threw it (its head goes that way); w, how often. The arms
+ * are long, so they go up past the head or out to the sides, never down by them. On its side,
+ * the arms' pitch fans them out on the ground (their yaw only tips them up or down).
+ */
+export const DEATHS = [
+  { name: 'back', lie: QUARTER, arms: [[-0.8, 1.45], [0.8, 1.45]], head: 0, eye: 'up', face: Math.PI, w: 2.5 },
+  { name: 'back, left arm out', lie: QUARTER, arms: [[-1.5, 0.1], [0.4, 1.35]], head: 0.5, eye: 'crossed', face: Math.PI, w: 2 },
+  { name: 'back, right arm out', lie: QUARTER, arms: [[-0.4, 1.35], [1.5, 0.1]], head: -0.5, eye: 'up', face: Math.PI, w: 2 },
+  { name: 'back, arms out', lie: QUARTER, arms: [[-1.4, 0.15], [1.4, 0.15]], head: 0.3, eye: 'shut', face: Math.PI, w: 1.5 },
+  { name: 'face down, reaching', lie: -QUARTER, arms: [[-0.45, 1.5], [0.45, 1.5]], head: 0, eye: 'shut', face: 0, w: 2 },
+  { name: 'face down, an arm out', lie: -QUARTER, arms: [[-1.45, 0.05], [0.3, 1.45]], head: -0.6, eye: 'shut', face: 0, w: 1.5 },
+  { name: 'left side', roll: QUARTER, arms: [[0, -0.15], [-0.2, 0.5]], head: 0.2, eye: 'crossed', face: QUARTER, w: 1.5 },
+  { name: 'right side', roll: -QUARTER, arms: [[0.2, 0.5], [0, -0.15]], head: -0.2, eye: 'shut', face: -QUARTER, w: 1.5 },
+];
+const DEATH_W = DEATHS.reduce((sum, d) => sum + d.w, 0);
+
+/** A way to lie (an index into DEATHS), by weight (r: a number in [0, 1)). */
+export function pickDeath(r) {
+  let x = r * DEATH_W;
+  for (let i = 0; i < DEATHS.length; i++) {
+    x -= DEATHS[i].w;
+    if (x < 0) return i;
+  }
+  return DEATHS.length - 1;
+}
+
+// How the dead on the ground are shaded: a little darker, no rim light (it's lit from the camera).
+const DECAL_SHADE = { dark: 0.66, lit: 0.9, rim: 0 };
+
+/**
+ * Blood on a torso (torso: its mesh), as splats [a, c, h, r] in its own axes: level 0, where a
+ * wounded one was shot, low on its front and back and on a side, the parts of it that show below
+ * its big head; 1, the dead, shot more (its chest, both sides); 2, that and its neck, headless.
+ * mirror: on the other side (every other colour block, so not every wound is on the same side).
+ */
+export function wounds(torso, level, mirror = false) {
+  const [a0, c0, h0, a1, c1, h1] = torso.box;
+  const w = c1 - c0;
+  const H = h1 - h0;
+  const D = a1 - a0;
+  const m = mirror ? -1 : 1;
+  const out = [
+    [a1 - 6, m * 0.12 * w, h0 + 0.42 * H, 0.27 * w], // in the belly
+    [a0 + 6, -m * 0.15 * w, h0 + 0.48 * H, 0.24 * w], // and out of the back
+    [a0 + 0.55 * D, mirror ? c1 - 6 : c0 + 6, h0 + 0.45 * H, 0.2 * w], // its side
+  ];
+  if (level >= 1) {
+    out.push([a1 - 6, m * 0.2 * w, h0 + 0.7 * H, 0.2 * w]); // the chest
+    out.push([a0 + 0.45 * D, mirror ? c0 + 6 : c1 - 6, h0 + 0.6 * H, 0.16 * w]); // the other side
+  }
+  if (level >= 2) {
+    // The neck: its stump, and running down the throat and the nape (which show on a body lying
+    // on its back or its face; the stump itself is edge-on from above).
+    out.push([(a0 + a1) / 2, 0, h1 - 4, 0.3 * w]);
+    out.push([a1 - 8, 0, h1 - 12, 0.22 * w]);
+    out.push([a0 + 8, 0, h1 - 12, 0.2 * w]);
+  }
+  return out;
+}
 
 /**
  * The camera tilts the zombies' bodies and heads are drawn for (radians above the horizon), for a
@@ -222,14 +291,17 @@ class Atlas {
 }
 
 /**
- * A part in one colour block: its sprites by facing and variant (an arm's poses, a head's eyes),
- * baked when first wanted. Silhouettes are shared by every colour of the shape; a head's are the
- * same whatever its eyes do, so it keeps one per facing.
+ * A part in one colour block: its sprites by facing and variant (an arm's poses, a head's eyes, a
+ * torso clean or bloodied), baked when first wanted. Silhouettes are shared by every colour of
+ * the shape; a head's are the same whatever its eyes do and a torso's whatever blood is on it, so
+ * those keep one per facing.
  */
 class Part {
-  constructor(m, shift, variants, sil, head, eyes) {
-    this.head = head; // baked at the head's tilt, variants are eyes
-    this.item = { mesh: m, shift, pitch: 0, eye: null, eyes };
+  constructor(kind, m, shift, variants, sil, eyes) {
+    this.kind = kind; // 'head' (its variants are eyes; baked at the head's tilt), 'torso' (blood), 'arm' (pitch), 'foot'
+    this.head = kind === 'head';
+    this.one = kind === 'head' || kind === 'torso'; // one silhouette per facing, whatever the variant
+    this.item = { mesh: m, shift, pitch: 0, eye: null, eyes, blood: null };
     this.variants = variants;
     this.n = variants.length;
     this.s = new Array(DIRS * this.n);
@@ -330,7 +402,9 @@ export class ZombieArt {
   /** opts.makePage(w, h): an atlas page (default: a canvas); opts.texture: a Texture (skips loading). */
   constructor(opts = {}) {
     this.makePage = opts.makePage || canvasPage;
-    this.atlas = new Atlas(this.makePage);
+    this.atlas = new Atlas(this.makePage); // the parts of the standing
+    this.deadAtlas = new Atlas(this.makePage); // the dead on the ground (fall frames have canvases of their own: _fallEntry)
+    this.fallKeys = []; // the fall frames kept, oldest first: [map, key, map, key, ...]
     this.tex = opts.texture || null;
     this.state = this.tex ? 'ready' : 'idle'; // 'loading' | 'ready' | 'failed'
     this.budget = opts.budget ?? BUDGET;
@@ -419,6 +493,8 @@ export class ZombieArt {
     Object.assign(this.o, { sp: c.sp, cp: c.cp, ppu });
     Object.assign(this.oH, { sp: c.spH, cp: c.cpH, ppu });
     this.atlas.clear();
+    this.deadAtlas.clear();
+    this.fallKeys.length = 0;
     this.looks.length = 0;
     this.parts.clear();
     this.sils.clear();
@@ -433,15 +509,15 @@ export class ZombieArt {
     return true;
   }
 
-  _part(key, shape, m, shift, variants, head = false, eyes = null) {
+  _part(key, shape, kind, m, shift, variants, eyes = null) {
     let p = this.parts.get(key);
     if (!p) {
       let sil = this.sils.get(shape);
       if (!sil) {
-        sil = new Array(DIRS * (head ? 1 : variants.length));
+        sil = new Array(DIRS * (kind === 'head' || kind === 'torso' ? 1 : variants.length));
         this.sils.set(shape, sil);
       }
-      p = new Part(m, shift, variants, sil, head, eyes);
+      p = new Part(kind, m, shift, variants, sil, eyes);
       this.parts.set(key, p);
     }
     return p;
@@ -461,18 +537,20 @@ export class ZombieArt {
       order = new Array(DIRS);
       this.orders.set(okey, order);
     }
+    const mirror = (lk.block.charCodeAt(0) - 65) % 2 === 1; // B and D have their wounds on the other side
     L = this.looks[i] = {
       look: lk,
       body,
       headDef: head,
-      head: this._part(`head ${lk.head} ${lk.block}`, `head ${lk.head}`, mesh(head.mesh), shift, EYES, true, head.eyes),
-      torso: this._part(`torso ${lk.body} ${lk.block}`, `torso ${lk.body}`, mesh(body.torso), shift, STILL),
-      arm: this._part(`arm ${lk.body} ${lk.block}`, `arm ${lk.body}`, mesh(body.arm), shift, ARM_PITCH),
-      foot: this._part(`foot ${lk.block}`, 'foot', mesh(FOOT), shift, STILL),
+      head: this._part(`head ${lk.head} ${lk.block}`, `head ${lk.head}`, 'head', mesh(head.mesh), shift, EYES, head.eyes),
+      // Clean, and bloodied once it's been shot.
+      torso: this._part(`torso ${lk.body} ${lk.block}`, `torso ${lk.body}`, 'torso', mesh(body.torso), shift, [null, wounds(body.torso, 0, mirror)]),
+      arm: this._part(`arm ${lk.body} ${lk.block}`, `arm ${lk.body}`, 'arm', mesh(body.arm), shift, ARM_PITCH),
+      foot: this._part(`foot ${lk.block}`, 'foot', 'foot', mesh(FOOT), shift, STILL),
+      blood: [wounds(body.torso, 1, mirror), wounds(body.torso, 2, mirror)], // on the dead: with a head, without
       order,
-      fall: new Map(), // falling frames: `${facing} ${frame} ${headless}` -> sprite
-      corpse: null,
-      headless: null,
+      fall: new Map(), // falling frames: `${pose} ${facing} ${frame} ${headless}` -> sprite
+      dead: new Map(), // lying on the ground: `${pose} ${headless}` -> decal
       headDecal: null,
     };
     return L;
@@ -486,6 +564,24 @@ export class ZombieArt {
     return e;
   }
 
+  /**
+   * A fall frame, with its silhouette and (at night) its darkened copy beside it, on a canvas of
+   * its own rather than in the atlas: it's wanted for a tenth of a second, and kept only until
+   * FALL_KEEP newer ones have been baked, so a long fight doesn't fill the atlas with them (every
+   * page the horde's sprites are spread over makes drawing them slower).
+   */
+  _fallEntry(s) {
+    const night = this.cam.b0 < 0.95;
+    const w = s.w;
+    const pg = this.makePage(night ? 3 * w + 2 : 2 * w + 1, s.h);
+    pg.put(s.rgba, w, s.h, 0, 0, 1, s.rim);
+    pg.put(s.rgba, w, s.h, w + 1, 0, 0, s.rim);
+    if (night) pg.put(s.rgba, w, s.h, 2 * w + 2, 0, this.cam.b0, s.rim);
+    pg.seal();
+    const c = pg.canvas;
+    return { canvas: c, x: 0, y: 0, w, h: s.h, ox: s.ox, oy: s.oy, k: { canvas: c, x: w + 1, y: 0 }, dk: night ? { canvas: c, x: 2 * w + 2, y: 0 } : null };
+  }
+
   _time(t0) {
     const ms = now() - t0;
     this.spent += ms;
@@ -497,11 +593,13 @@ export class ZombieArt {
     const t0 = now();
     const o = part.head ? this.oH : this.o;
     o.phi = d * STEP;
-    if (part.head) part.item.eye = part.variants[v];
-    else part.item.pitch = part.variants[v];
+    const va = part.variants[v];
+    if (part.kind === 'head') part.item.eye = va;
+    else if (part.kind === 'torso') part.item.blood = va;
+    else part.item.pitch = va;
     this.one[0] = part.item;
     const s = bake(this.one, this.tex, o);
-    const si = part.head ? d : d * part.n + v;
+    const si = part.one ? d : d * part.n + v;
     const e = this._entry(s, part.sil[si]);
     if (!part.sil[si]) part.sil[si] = e.k;
     part.s[d * part.n + v] = e;
@@ -518,9 +616,9 @@ export class ZombieArt {
     return this.fills < FILLS && this.spent < this.budget;
   }
 
-  /** Is the body (draw order, torso, feet, these arm poses) ready at facing d? */
+  /** Is the body (draw order, clean torso, feet, these arm poses) ready at facing d? */
   _body(L, d, iL, iR) {
-    return !!(L.order[d] && L.torso.s[d] && L.foot.s[d] && L.arm.s[d * NP + iL] && L.arm.s[d * NP + iR]);
+    return !!(L.order[d] && L.torso.s[d * L.torso.n] && L.foot.s[d] && L.arm.s[d * NP + iL] && L.arm.s[d * NP + iR]);
   }
 
   /** Bake what the body lacks at facing d while the frame's budget lasts (or regardless, when forced). */
@@ -561,11 +659,12 @@ export class ZombieArt {
   }
 
   /**
-   * The facings and eyes to draw a zombie of look L with: what it wants if that can be had this
-   * frame, else the nearest that is baked (the body first, then the head: its own facing with
-   * its eyes ahead, or the body's).
+   * The facings, eyes and shirt to draw a zombie of look L with: what it wants if that can be had
+   * this frame, else the nearest that is baked (the body first, then the head: its own facing
+   * with its eyes ahead, or the body's; then the blood on its shirt, w: 1 wanted, or a clean
+   * shirt for a frame or two).
    */
-  _pick(L, d, dh, e, iL, iR, out) {
+  _pick(L, d, dh, e, iL, iR, w, out) {
     let bd = d;
     if (!this._body(L, d, iL, iR) && !this._fillBody(L, d, iL, iR, false)) {
       bd = -1;
@@ -588,9 +687,20 @@ export class ZombieArt {
         this._fillHead(L, hd, 0, true);
       }
     }
+    let tw = 0;
+    if (w) {
+      if (L.torso.s[bd * L.torso.n + 1]) tw = 1;
+      else if (this._may()) {
+        this.fills++;
+        this._bake(L.torso, bd, 1);
+        this.atlas.flush();
+        tw = 1;
+      }
+    }
     out[0] = bd;
     out[1] = hd;
     out[2] = e;
+    out[3] = tw;
     return out;
   }
 
@@ -708,10 +818,12 @@ export class ZombieArt {
     if (dh < 0) dh += DIRS;
     // Eyes that face away from the camera don't show: no need for their poses.
     let e = Math.sin(dh * STEP) * this.cam.cpH < -0.12 ? EYE.ahead : gz[1];
-    const pick = this._pick(L, d, dh, e, iL, iR, PICK);
+    // Blood on its shirt once it's been shot (and bled: a shove or a fire doesn't show).
+    const pick = this._pick(L, d, dh, e, iL, iR, z.bloodied ? 1 : 0, PICK);
     d = pick[0];
     dh = pick[1];
     e = pick[2];
+    const tw = pick[3];
     // Parts are placed for the facing the sprites show, so they stay joined.
     const fq = v.yaw + d * STEP;
     const ca = Math.cos(fq);
@@ -773,7 +885,7 @@ export class ZombieArt {
       }
       for (let q = 0; q < 6; q++) {
         const i = order[at + q];
-        const s = i === HEAD ? L.head.s[dh * NE + e] : i === TORSO ? L.torso.s[d] : i <= FOOT_R ? L.foot.s[d] : L.arm.s[d * NP + (i === ARM_L ? iL : iR)];
+        const s = i === HEAD ? L.head.s[dh * NE + e] : i === TORSO ? L.torso.s[d * L.torso.n + tw] : i <= FOOT_R ? L.foot.s[d] : L.arm.s[d * NP + (i === ARM_L ? iL : iR)];
         const dx = exact ? Math.round(X[i] * dpr - s.ox) * F : X[i] - s.ox * F;
         const dy = exact ? Math.round(Y[i] * dpr - s.oy) * F : Y[i] - s.oy * F;
         if (pass) ctx.drawImage(s.canvas, s.x, s.y, s.w, s.h, dx, dy, s.w * F, s.h * F);
@@ -788,34 +900,51 @@ export class ZombieArt {
 
   // --- The dead ----------------------------------------------------------------------------
 
-  /** The items of a look's body, lying back `lie` radians with its arms flung up `fling` of the way (headless: without its head). */
-  _lying(L, lie, fling, headless, eye) {
+  /**
+   * The items of a look's body going down as DEATHS[p] has it, t of the way (1: lying there; the
+   * body's own tip, lie and roll, is the bake's), with its eyes eye, bloodied (headless: without
+   * its head, the stump of its neck bloodied too).
+   */
+  _lying(L, p, t, headless, eye) {
+    const P = DEATHS[p];
     const lk = L.look;
     const body = L.body;
     const shift = BLOCKS[lk.block];
+    const [[yl, pl], [yr, pr]] = P.arms;
     const items = [
       { mesh: mesh(FOOT), shift, at: body.feet[0] },
       { mesh: mesh(FOOT), shift, at: body.feet[1] },
-      { mesh: mesh(body.torso), shift },
-      { mesh: mesh(body.arm), shift, at: body.shoulders[0], yaw: -0.8 * fling, pitch: 0.2 + 1.25 * fling },
-      { mesh: mesh(body.arm), shift, at: body.shoulders[1], yaw: 0.8 * fling, pitch: 0.2 + 1.25 * fling },
+      { mesh: mesh(body.torso), shift, blood: L.blood[headless ? 1 : 0] },
+      // From reaching ahead, as they were, to where they end up.
+      { mesh: mesh(body.arm), shift, at: body.shoulders[0], yaw: yl * t, pitch: 0.2 + (pl - 0.2) * t },
+      { mesh: mesh(body.arm), shift, at: body.shoulders[1], yaw: yr * t, pitch: 0.2 + (pr - 0.2) * t },
     ];
-    if (!headless) items.push({ mesh: mesh(L.headDef.mesh), shift, at: [0, 0, body.neck], eye, eyes: L.headDef.eyes });
+    if (!headless) items.push({ mesh: mesh(L.headDef.mesh), shift, at: [0, 0, body.neck], yaw: P.head * t, eye, eyes: L.headDef.eyes });
     return items;
   }
 
-  _fallSprite(L, d, fr, headless, force) {
-    const key = `${d} ${fr} ${headless ? 1 : 0}`;
+  _fallSprite(L, p, d, fr, headless, force) {
+    const key = `${p} ${d} ${fr} ${headless ? 1 : 0}`;
     let s = L.fall.get(key);
     if (s || !this._go(force)) return s || null;
     const t0 = now();
+    const P = DEATHS[p];
+    const f = FALL_F[fr];
     // One sample a pixel: the frames are on screen for a tenth of a second each.
-    const o = { phi: (d * TAU) / FALL_DIRS, sp: this.cam.sp, cp: this.cam.cp, ppu: this.cam.ppu, ss: 1, lie: FALL_LIE[fr] };
-    s = this._entry(bake(this._lying(L, FALL_LIE[fr], (fr + 1) / (FALL_LIE.length + 1), headless, EYES[EYE.up]), this.tex, o));
+    const o = { phi: (d * TAU) / FALL_DIRS, sp: this.cam.sp, cp: this.cam.cp, ppu: this.cam.ppu, ss: 1, lie: (P.lie || 0) * f, roll: (P.roll || 0) * f };
+    s = this._fallEntry(bake(this._lying(L, p, (fr + 1) / (FALL_F.length + 1), headless, EYES[EYE.up]), this.tex, o));
     L.fall.set(key, s);
-    this.atlas.flush();
+    const kept = this.fallKeys;
+    kept.push(L.fall, key);
+    if (kept.length > 2 * FALL_KEEP) kept.shift().delete(kept.shift());
     this._time(t0);
     return s;
+  }
+
+  /** Which way corpse c lies (an index into DEATHS), decided once, from c.pose (effects.js). */
+  pose(c) {
+    if (c.poseI === undefined) c.poseI = pickDeath(c.pose ?? 0);
+    return c.poseI;
   }
 
   /**
@@ -826,34 +955,68 @@ export class ZombieArt {
   startFall(c) {
     if (c.fall !== undefined) return c.fall;
     const L = this.look(c.look);
-    // It faces whoever shot it and goes over backwards, its head toward where the shot threw it.
+    const hl = c.head ? 1 : 0;
+    let p = this.pose(c);
+    // It goes over facing the way its pose has it (on its back: toward whoever shot it), its
+    // head toward where the shot threw it.
     const yaw = this._yaw;
-    let d = Math.round(((c.ang + Math.PI - yaw) / TAU) * FALL_DIRS) % FALL_DIRS;
-    if (d < 0) d += FALL_DIRS;
-    c.fallDir = d;
-    c.angQ = yaw + (d * TAU) / FALL_DIRS - Math.PI; // the decal lies the same way
+    const dir = (p) => {
+      const d = Math.round(((c.ang + DEATHS[p].face - yaw) / TAU) * FALL_DIRS) % FALL_DIRS;
+      return d < 0 ? d + FALL_DIRS : d;
+    };
     const extra = this.spent >= this.budget && this.fallStarts < FALL_STARTS;
-    c.fall = !!this._fallSprite(L, d, 0, !!c.head, extra);
+    c.fall = !!this._fallSprite(L, p, dir(p), 0, hl, extra);
     if (c.fall && extra) {
       this.fallStarts++;
       c.fallForce = true; // and its other two frames, then
     }
+    if (!c.fall && !L.dead.has(`${p} ${hl}`)) {
+      // No time to bake its fall: it drops, and lies as one of its look's dead already do, if any.
+      for (let k = 1; k < DEATHS.length; k++) {
+        const q = (p + k) % DEATHS.length;
+        if (L.dead.has(`${q} ${hl}`)) {
+          p = c.poseI = q;
+          break;
+        }
+      }
+    }
+    const d = dir(p);
+    c.fallDir = d;
+    c.angQ = yaw + (d * TAU) / FALL_DIRS - DEATHS[p].face; // where its head goes: the decal lies the same way
     return c.fall;
+  }
+
+  /**
+   * Is corpse c going over (drawn standing, by drawFalling) rather than lying on the ground? Call
+   * for the dead on screen before the ground is drawn. A body that has landed holds its last
+   * frame a little longer while its decal is baked within the budget, so a crowd going down
+   * together doesn't bake all its decals in one frame.
+   */
+  falling(c) {
+    if (c.t < FALL_T) return this.startFall(c);
+    return c.fall === true && c.t < FALL_T + LAND_WAIT && !this.look(c.look).dead.has(`${this.pose(c)} ${c.head ? 1 : 0}`);
   }
 
   /** A dead zombie going over (corpse c, effects.js), drawn standing, as the world's bodies are, at brightness b. */
   drawFalling(R, c, b) {
     const L = this.look(c.look);
-    const { ctx, v } = R;
-    const headless = !!c.head;
-    let fr = Math.min(FALL_LIE.length - 1, Math.floor((c.t / FALL_T) * FALL_LIE.length));
-    let s = this._fallSprite(L, c.fallDir, fr, headless, !!c.fallForce);
-    while (!s && fr > 0) s = L.fall.get(`${c.fallDir} ${--fr} ${headless ? 1 : 0}`); // no time: the frame before
+    const v = R.v;
+    const hl = c.head ? 1 : 0;
+    const p = this.pose(c);
+    let fr = Math.min(FALL_F.length - 1, Math.floor((c.t / FALL_T) * FALL_F.length));
+    let s = this._fallSprite(L, p, c.fallDir, fr, hl, !!c.fallForce);
+    while (!s && fr > 0) s = L.fall.get(`${p} ${c.fallDir} ${--fr} ${hl}`); // no time: the frame before
     if (!s) {
       c.fall = false; // the camera changed under it: to the ground
       return;
     }
     this._put(R, s, v.px(c.x, c.y), v.py(c.x, c.y, 0), b);
+    // Its decal, ready for when it lands, if there's time for it now (once it's down, whatever
+    // else wants baking this frame).
+    if (!L.dead.has(`${p} ${hl}`) && (this._may() || (c.t >= FALL_T && this.spent < this.budget))) {
+      this.fills++;
+      this.corpse(c.look, !!hl, p);
+    }
   }
 
   /** A sprite with its origin at (x, y) CSS px, one to one on whole device pixels when the camera allows. */
@@ -874,34 +1037,57 @@ export class ZombieArt {
     const hd = c.head;
     let d = Math.round((hd.rot - v.yaw) / STEP) % DIRS;
     if (d < 0) d += DIRS;
-    const e = (hd.rot * 2) % TAU < Math.PI ? EYE.crossed : EYE.up;
+    let e = (hd.rot * 2) % TAU < Math.PI ? EYE.crossed : EYE.up;
     if (!L.head.s[d * NE + e]) {
-      this._bake(L.head, d, e);
-      this.atlas.flush();
+      if (this._may()) {
+        this.fills++;
+        this._bake(L.head, d, e);
+        this.atlas.flush();
+      } else {
+        // Spinning: a near facing (in either roll of the eyes) does for a frame.
+        const other = e === EYE.up ? EYE.crossed : EYE.up;
+        let found = false;
+        for (let k = 0; k <= DIRS / 2 && !found; k++) {
+          for (const dd of [(d + k) % DIRS, (d - k + DIRS) % DIRS]) {
+            if (L.head.s[dd * NE + e] || L.head.s[dd * NE + other]) {
+              e = L.head.s[dd * NE + e] ? e : other;
+              d = dd;
+              found = true;
+              break;
+            }
+          }
+        }
+        if (!found) {
+          this._bake(L.head, d, e);
+          this.atlas.flush();
+        }
+      }
     }
     // Its neck where it is, that high up (in the leaning frame, as the standing ones are).
     this._put(R, L.head.s[d * NE + e], v.px(hd.x, hd.y), v.py(hd.x, hd.y, 0) - hd.z * v.scale * this.cam.cp, b);
   }
 
-  _decal(items, cx) {
-    const s = bake(items, this.tex, { phi: 0, sp: 1, cp: 0, ppu: this.cam.ppu, ss: SS, lie: Math.PI / 2, shade: { dark: 0.66, lit: 0.9, rim: 0 } });
-    const e = this.atlas.add(s);
-    e.cx = cx === undefined ? s.ox : cx; // where on it the corpse's spot is: its feet
-    e.cy = s.oy;
-    this.atlas.flush();
-    return e;
-  }
-
-  /** The look's body lying on its back, arms flung up, seen from straight above: a ground decal with its head toward -x. */
-  corpse(i, headless = false) {
+  /**
+   * The look's body lying as DEATHS[p] has it (headless: without its head), seen from straight
+   * above: a ground decal, its feet at the corpse's spot, turned so that its head is toward -x.
+   */
+  corpse(i, headless = false, p = 0) {
     const L = this.look(i);
-    const k = headless ? 'headless' : 'corpse';
-    if (!L[k]) {
+    const key = `${p} ${headless ? 1 : 0}`;
+    let e = L.dead.get(key);
+    if (!e) {
       const t0 = now();
-      L[k] = this._decal(this._lying(L, Math.PI / 2, 1, headless, EYES[EYE.up]));
+      const P = DEATHS[p];
+      const items = this._lying(L, p, 1, headless, EYES[EYE[P.eye] ?? EYE.up]);
+      const s = bake(items, this.tex, { phi: P.face - Math.PI, sp: 1, cp: 0, ppu: this.cam.ppu, ss: SS, lie: P.lie || 0, roll: P.roll || 0, shade: DECAL_SHADE });
+      e = this.deadAtlas.add(s);
+      e.cx = s.ox;
+      e.cy = s.oy;
+      this.deadAtlas.flush();
+      L.dead.set(key, e);
       this._time(t0);
     }
-    return L[k];
+    return e;
   }
 
   /** A knocked-off head come to rest, face up: a ground decal (its middle at the spot). */
@@ -910,11 +1096,11 @@ export class ZombieArt {
     if (!L.headDecal) {
       const t0 = now();
       const items = [{ mesh: mesh(L.headDef.mesh), shift: BLOCKS[L.look.block], eye: EYES[EYE.crossed], eyes: L.headDef.eyes }];
-      const s = bake(items, this.tex, { phi: 0, sp: 1, cp: 0, ppu: this.cam.ppu, ss: SS, lie: Math.PI / 2, shade: { dark: 0.66, lit: 0.9, rim: 0 } });
-      L.headDecal = this.atlas.add(s);
+      const s = bake(items, this.tex, { phi: 0, sp: 1, cp: 0, ppu: this.cam.ppu, ss: SS, lie: Math.PI / 2, shade: DECAL_SHADE });
+      L.headDecal = this.deadAtlas.add(s);
       L.headDecal.cx = s.w / 2;
       L.headDecal.cy = s.h / 2;
-      this.atlas.flush();
+      this.deadAtlas.flush();
       this._time(t0);
     }
     return L.headDecal;
@@ -922,8 +1108,9 @@ export class ZombieArt {
 
   /**
    * The dead with a look, as decals on the ground (under the night, like the rest of the
-   * ground): the body from its feet, its head toward where it was thrown, and a knocked-off head
-   * where it came to rest. list: corpses with .look. Leaves the canvas on the ground transform.
+   * ground): the body lying its way from its feet, its head toward where it was thrown, and a
+   * knocked-off head where it came to rest. list: corpses with .look. Leaves the canvas on the
+   * ground transform.
    */
   drawCorpses(ctx, R, list) {
     const v = R.v;
@@ -943,8 +1130,9 @@ export class ZombieArt {
     };
     for (const c of list) {
       ctx.globalAlpha = c.t > 48 ? Math.max(0, (50 - c.t) / 2) : 1;
-      // Head toward where it was thrown (the sprite has it on the left).
-      at(this.corpse(c.look, !!c.head), c.x, c.y, (c.angQ ?? c.ang) + Math.PI, c.flip || 1);
+      // Head toward where it was thrown (the sprite has it on the left). Never mirrored: the
+      // poses come in both hands already, and the fall before it wasn't mirrored either.
+      at(this.corpse(c.look, !!c.head, this.pose(c)), c.x, c.y, (c.angQ ?? c.ang) + Math.PI, 1);
       if (c.head && c.head.rest) at(this.headDecal(c.look), c.head.x, c.head.y, c.head.rot, 1);
     }
     ctx.globalAlpha = 1;
@@ -973,9 +1161,11 @@ export class ZombieArt {
 
   /** For the debug read-out. */
   stats() {
-    return { pages: this.atlas.pages.length, px: this.atlas.px, ms: Math.round(this.bakeMs), bakes: this.bakes, looks: this.looks.filter(Boolean).length };
+    const a = this.atlas;
+    const d = this.deadAtlas;
+    return { pages: a.pages.length + d.pages.length, px: a.px + d.px, dead: d.px, falls: this.fallKeys.length / 2, ms: Math.round(this.bakeMs), bakes: this.bakes, looks: this.looks.filter(Boolean).length };
   }
 }
 
 const GAZE = [0, 0];
-const PICK = [0, 0, 0];
+const PICK = [0, 0, 0, 0];

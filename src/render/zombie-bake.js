@@ -132,13 +132,15 @@ function growBuf(n) {
  *            at: [a, c, h] where its pivot sits in the body, yaw: radians it is swung toward its
  *            right about the upright through its pivot, then pitch: radians it is raised about
  *            its pivot's side-to-side axis (arms), eye: a head's googly eyes as { pupils: [[dc, dh],
- *            [dc, dh]] (model units, left eye then right), shut: 0..1 } }]
+ *            [dc, dh]] (model units, left eye then right), shut: 0..1 }, blood: splats painted on
+ *            it, [[a, c, h, r], ...] in its own axes (model units) }]
  *   tex    Texture
  *   o      { phi: the body's facing relative to the camera (0: facing screen right, PI/2: facing
  *            the camera), lie: radians the whole body is tipped back about its side-to-side axis
- *            (PI/2: on its back, face up; corpses), sp, cp: sine and cosine of the camera's tilt,
- *            ppu: final pixels per model unit, ss: samples per pixel along each axis, shade: SHADE
- *            overrides }
+ *            (PI/2: on its back, face up; -PI/2: on its face; corpses), roll: radians it is first
+ *            rolled about its front-to-back axis (PI/2: onto its left side), sp, cp: sine and
+ *            cosine of the camera's tilt, ppu: final pixels per model unit, ss: samples per pixel
+ *            along each axis, shade: SHADE overrides }
  * Returns { w, h, ox, oy, rgba, depth, rim }: the body's origin is at (ox, oy) px; rgba is straight
  * (not premultiplied) alpha; depth (model units toward the camera, from the origin) is -Infinity
  * where the sprite is empty; rim (0..255) is how much of each pixel is rim light.
@@ -156,6 +158,9 @@ export function bake(items, tex, o) {
   const lie = o.lie || 0;
   const cl = Math.cos(lie);
   const sl = Math.sin(lie);
+  const roll = o.roll || 0;
+  const cr = Math.cos(roll);
+  const sr = Math.sin(roll);
   // The light in the body's axes (a forward, c right, h up).
   const L = o.light || LIGHT;
   const la = L[0] * cf + L[1] * sf;
@@ -226,6 +231,14 @@ export function bake(items, tex, o) {
       }
       a += at[0];
       h += at[2];
+      if (roll) {
+        const c2 = c * cr - h * sr;
+        h = c * sr + h * cr;
+        c = c2;
+        const n2 = nc * cr - nh * sr;
+        nh = nc * sr + nh * cr;
+        nc = n2;
+      }
       if (lie) {
         const a2 = a * cl - h * sl;
         h = a * sl + h * cl;
@@ -274,6 +287,8 @@ export function bake(items, tex, o) {
   for (const it of items) {
     const tri = it.mesh.tri;
     const pal = it.mesh.pal;
+    const P = it.mesh.pos; // its own axes, for the blood
+    const blood = it.blood && it.blood.length ? it.blood : null;
     // Texture level: about one texel per sample on the textured triangles.
     let tA = 0;
     let sA = 0;
@@ -325,8 +340,27 @@ export function bake(items, tex, o) {
       const n0 = VN[i0];
       const n1 = VN[i1];
       const n2 = VN[i2];
-      // The rim is for skin and clothes, not for the palette's black lines and white eyes.
-      const rim = pal[tri[t]] && pal[tri[t + 1]] && pal[tri[t + 2]] ? 0 : sh.rim;
+      // The rim (and blood) are for skin and clothes, not for the palette's black lines and white eyes.
+      const palette = pal[tri[t]] && pal[tri[t + 1]] && pal[tri[t + 2]];
+      const rim = palette ? 0 : sh.rim;
+      const q0 = tri[t] * 3;
+      const q1 = tri[t + 1] * 3;
+      const q2 = tri[t + 2] * 3;
+      // The splats that can reach this triangle (most triangles have none).
+      let nb = 0;
+      if (blood && !palette) {
+        const a0 = Math.min(P[q0], P[q1], P[q2]);
+        const a1 = Math.max(P[q0], P[q1], P[q2]);
+        const c0 = Math.min(P[q0 + 1], P[q1 + 1], P[q2 + 1]);
+        const c1 = Math.max(P[q0 + 1], P[q1 + 1], P[q2 + 1]);
+        const h0 = Math.min(P[q0 + 2], P[q1 + 2], P[q2 + 2]);
+        const h1 = Math.max(P[q0 + 2], P[q1 + 2], P[q2 + 2]);
+        for (let k = 0; k < blood.length && nb < NEAR.length; k++) {
+          const b = blood[k];
+          const r = b[3] * EDGE;
+          if (a1 >= b[0] - r && a0 <= b[0] + r && c1 >= b[1] - r && c0 <= b[1] + r && h1 >= b[2] - r * DRIP && h0 <= b[2] + r) NEAR[nb++] = k;
+        }
+      }
       const u0 = VU[i0];
       const v0 = VV[i0];
       const u1 = VU[i1];
@@ -377,11 +411,10 @@ export function bake(items, tex, o) {
             rr = rim * f * (1 - 0.75 * band);
           }
           RM[idx] = rr;
-          if (flat) {
-            CR[idx] = fr * k * (1 - rr) + RIM_COLOUR[0] * rr;
-            CG[idx] = fg * k * (1 - rr) + RIM_COLOUR[1] * rr;
-            CB[idx] = fb * k * (1 - rr) + RIM_COLOUR[2] * rr;
-          } else {
+          let r0 = fr;
+          let g0 = fg;
+          let b0 = fb;
+          if (!flat) {
             const u = w0 * u0 + w1 * u1 + w2 * u2;
             const v = w0 * v0 + w1 * v1 + w2 * v2;
             let sx = (u * tw) | 0;
@@ -391,10 +424,21 @@ export function bake(items, tex, o) {
             if (sy < 0) sy = 0;
             else if (sy >= th) sy = th - 1;
             const q = (sy * tw + sx) * 4;
-            CR[idx] = td[q] * k * (1 - rr) + RIM_COLOUR[0] * rr;
-            CG[idx] = td[q + 1] * k * (1 - rr) + RIM_COLOUR[1] * rr;
-            CB[idx] = td[q + 2] * k * (1 - rr) + RIM_COLOUR[2] * rr;
+            r0 = td[q];
+            g0 = td[q + 1];
+            b0 = td[q + 2];
           }
+          if (nb) {
+            const m = splat(blood, nb, w0 * P[q0] + w1 * P[q1] + w2 * P[q2], w0 * P[q0 + 1] + w1 * P[q1 + 1] + w2 * P[q2 + 1], w0 * P[q0 + 2] + w1 * P[q1 + 2] + w2 * P[q2 + 2]);
+            if (m > 0) {
+              r0 += (BLOOD[0] - r0) * m;
+              g0 += (BLOOD[1] - g0) * m;
+              b0 += (BLOOD[2] - b0) * m;
+            }
+          }
+          CR[idx] = r0 * k * (1 - rr) + RIM_COLOUR[0] * rr;
+          CG[idx] = g0 * k * (1 - rr) + RIM_COLOUR[1] * rr;
+          CB[idx] = b0 * k * (1 - rr) + RIM_COLOUR[2] * rr;
         }
         w0r += e0y;
         w1r += e1y;
@@ -443,6 +487,36 @@ export function bake(items, tex, o) {
 }
 
 const ZERO = [0, 0, 0];
+const BLOOD = [104, 14, 10];
+
+// A splat's reach: its ragged edge goes out to EDGE times its radius, and it runs down DRIP times as far.
+const EDGE = 1.22;
+const DRIP = 1 / 0.3;
+const NEAR = new Int32Array(64); // the splats near a triangle
+
+/**
+ * How much blood a point (a, c, h) in a part's own axes has on it, 0..0.9: the most of the splats
+ * [a, c, h, r] it is in (blood[NEAR[0..n - 1]]), with a ragged edge, running down in drips.
+ */
+function splat(blood, n, a, c, h) {
+  let m = 0;
+  for (let k = 0; k < n; k++) {
+    const s = blood[NEAR[k]];
+    const da = a - s[0];
+    const dc = c - s[1];
+    let dh = h - s[2];
+    const e = s[3] * EDGE;
+    if (da > e || da < -e || dc > e || dc < -e || dh > e) continue;
+    if (dh < 0) dh *= 0.52 - 0.22 * Math.max(0, Math.sin((a + c) * 0.17 + s[3])); // it runs, in drips
+    const r = s[3] * (1 + 0.22 * Math.sin(a * 0.23 + c * 0.31) * Math.sin(h * 0.27 - c * 0.13));
+    const q = (da * da + dc * dc + dh * dh) / (r * r);
+    if (q < 1) {
+      const v = q < 0.55 ? 0.9 : ((1 - q) / 0.45) * 0.9;
+      if (v > m) m = v;
+    }
+  }
+  return m;
+}
 
 /**
  * Which of two baked parts is nearer the camera where both cover a pixel. Each sits with its

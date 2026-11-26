@@ -2,6 +2,7 @@
 // built from the FBX, the looks, the sprite baker (src/render/zombie-bake.js) and the drawing
 // (src/render/zombie-art.js): draw order, darkness, the budget, corpses, and the renderer drawing
 // a horde with them on a mock canvas.
+// Also blood on them, the ways the dead lie and the shotgun's head pops.
 // (node --test runs each file in its own process, so the fake DOM globals stay here.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -40,9 +41,9 @@ globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null)
 
 const M = await import('../assets/zombies/meshes.js');
 const { decodeMesh, Texture, bake, overlap, SHADE } = await import('../src/render/zombie-bake.js');
-const { ZombieArt, orderFor, tiltPitches, DIRS, ARM_PITCH, FOOT_L, FOOT_R, TORSO, ARM_L, ARM_R, HEAD, EYES, EYE, FALL_T } = await import('../src/render/zombie-art.js');
+const { ZombieArt, orderFor, tiltPitches, DIRS, ARM_PITCH, FOOT_L, FOOT_R, TORSO, ARM_L, ARM_R, HEAD, EYES, EYE, FALL_T, DEATHS, pickDeath, wounds } = await import('../src/render/zombie-art.js');
 const { LOOKS, pickLook } = await import('../src/game/zombie-looks.js');
-const { Zombie, damageZombie, POP_BURST } = await import('../src/game/zombies.js');
+const { Zombie, damageZombie, POP_BURST, POP_CHANCE } = await import('../src/game/zombies.js');
 const { IsoView } = await import('../src/iso.js');
 const { DEFAULTS, SCHEMA } = await import('../src/settings.js');
 
@@ -634,4 +635,200 @@ test('death: the dead go over before they lie down; a few a frame may be baked p
   assert.equal(calls.length, 3, 'two bodies and a head');
   assert.notEqual(art.corpse(4, true), art.corpse(4), 'a headless body is its own decal');
   assert.equal(bad, null, bad);
+});
+
+
+// --- Blood, the ways the dead lie, the shotgun ----------------------------------------------
+
+/** Pixels of a baked sprite that are blood red (the test texture is grey). */
+function redPx(s) {
+  let n = 0;
+  for (let i = 0; i < s.rgba.length; i += 4) if (s.rgba[i + 3] > 200 && s.rgba[i] > s.rgba[i + 1] + 40) n++;
+  return n;
+}
+
+test('baker: blood goes where its splats are, on skin and clothes, never on the outlines; a roll tips the body onto its side', () => {
+  const torso = decodeMesh(M.BODIES.normal.torso);
+  const o = { phi: Math.PI / 2, sp: Math.sin(20 * DEG), cp: Math.cos(20 * DEG), ppu: 0.3, ss: 2 };
+  const clean = bake([{ mesh: torso }], TEX, o);
+  const wounded = bake([{ mesh: torso, blood: wounds(M.BODIES.normal.torso, 0) }], TEX, o);
+  const far = bake([{ mesh: torso, blood: [[0, 0, 900, 30]] }], TEX, o);
+  assert.equal(redPx(clean), 0);
+  assert.ok(redPx(wounded) > 60, `a bloodied belly, seen from the front (${redPx(wounded)} px)`);
+  assert.deepEqual(far.rgba, clean.rgba, 'a splat that reaches nothing paints nothing');
+  // Soaked through, it keeps its black outline and its silhouette (which it shares).
+  const soaked = bake([{ mesh: torso, blood: [[0, 0, 110, 400]] }], TEX, o);
+  const black = (s) => {
+    let n = 0;
+    for (let i = 0; i < s.rgba.length; i += 4) if (s.rgba[i + 3] > 200 && s.rgba[i] < 20) n++;
+    return n;
+  };
+  assert.ok(redPx(soaked) > redPx(wounded) * 3);
+  assert.ok(Math.abs(black(soaked) - black(clean)) <= black(clean) * 0.03, `the outline stays black (${black(soaked)} vs ${black(clean)})`);
+  for (let i = 3; i < clean.rgba.length; i += 4) assert.equal(soaked.rgba[i], clean.rgba[i], 'the same silhouette');
+  // Rolled onto its left side and seen from above, it lies off to its left of its feet (-y here);
+  // onto its right side, to its right.
+  const top = { phi: 0, sp: 1, cp: 0, ppu: 0.3, ss: 1 };
+  const left = bake([{ mesh: torso }], TEX, { ...top, roll: Math.PI / 2 });
+  const right = bake([{ mesh: torso }], TEX, { ...top, roll: -Math.PI / 2 });
+  assert.ok(left.oy > left.h * 0.8, `onto its left: its feet at ${left.oy} of ${left.h} px`);
+  assert.ok(right.oy < right.h * 0.2, `onto its right: its feet at ${right.oy} of ${right.h} px`);
+});
+
+test('art: a zombie that has bled wears a bloodied shirt, its torso\'s second sprite (same silhouette); a shove doesn\'t show', async () => {
+  const art = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
+  const v = view();
+  art.sync(v, 2, 0);
+  const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2 };
+  const L = art.look(1);
+  const z = common(1, Math.PI / 2); // facing 8 (the view has no yaw)
+  const drawn = (e) => calls.some((c) => c.a[0] === e.canvas && c.a[1] === e.x && c.a[2] === e.y);
+  calls.length = 0;
+  art.drawZombie(R, z, 1);
+  const clean = L.torso.s[8 * L.torso.n];
+  assert.ok(clean && drawn(clean), 'clean');
+  assert.equal(L.torso.s[8 * L.torso.n + 1], undefined, 'no bloodied shirt baked for it');
+  z.bloodied = true;
+  // Within a frame or two (one zombie's new sprites a frame).
+  for (let f = 1; f <= 3; f++) {
+    art.sync(v, 2, f / 60);
+    calls.length = 0;
+    art.drawZombie(R, z, 1);
+  }
+  const bloody = L.torso.s[8 * L.torso.n + 1];
+  assert.ok(bloody && drawn(bloody) && !drawn(clean), 'bloodied');
+  assert.equal(bloody.k, clean.k, 'one silhouette for both');
+  // Wounds sit low (below the big head, where they show), on one side or the other by colour.
+  const box = M.BODIES.normal.torso.box;
+  for (const [a, c, h] of wounds(M.BODIES.normal.torso, 0)) assert.ok(h < box[2] + (box[5] - box[2]) * 0.55, `low: ${a}, ${c}, ${h}`);
+  assert.ok(wounds(M.BODIES.normal.torso, 0, true)[0][1] === -wounds(M.BODIES.normal.torso, 0)[0][1], 'mirrored');
+  // In the game: a bullet bleeds it, a shove doesn't.
+  const { Game } = await import('../src/game/game.js');
+  const audio = new Proxy({ listener: { x: 0, y: 0 } }, { get: (o, k) => (k in o ? o[k] : () => {}) });
+  const game = new Game({ ...DEFAULTS, playtestPrompt: false, godMode: true }, audio, () => {});
+  const shoved = new Zombie(game.player.x + 40, game.player.y, true);
+  damageZombie(game, shoved, 8, 1, 0, 340, 0.8, false);
+  assert.ok(shoved.alive && !shoved.bloodied, 'shoved');
+  damageZombie(game, shoved, 17, 1, 0, 75, 0.2);
+  assert.ok(shoved.alive && shoved.bloodied, 'shot');
+  assert.equal(bad, null, bad);
+});
+
+test('death poses: eight ways to lie, picked by weight, each its own bloodied decal, head toward -x and feet at the spot', () => {
+  assert.equal(DEATHS.length, 8);
+  const seen = new Set();
+  for (let r = 0; r < 1; r += 0.002) seen.add(pickDeath(r));
+  assert.equal(seen.size, DEATHS.length, 'every pose turns up');
+  assert.equal(pickDeath(0), 0);
+  assert.equal(pickDeath(0.9999), DEATHS.length - 1);
+  assert.ok(DEATHS.some((d) => d.lie > 0) && DEATHS.some((d) => d.lie < 0) && DEATHS.some((d) => d.roll > 0) && DEATHS.some((d) => d.roll < 0), 'on its back, on its face, on either side');
+  for (const d of DEATHS) {
+    assert.ok(d.arms.every(([, pitch]) => pitch > -0.5), `${d.name}: the long arms never go down by its sides`);
+    assert.ok(EYE[d.eye] !== undefined, `${d.name}: its eyes`);
+  }
+  const art = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
+  art.sync(view(), 2, 0);
+  const decals = DEATHS.map((_, p) => art.corpse(0, false, p));
+  assert.equal(new Set(decals).size, DEATHS.length, 'a decal for each');
+  assert.equal(art.corpse(0, false, 3), decals[3], 'baked once');
+  assert.ok(new Set(decals.map((e) => `${e.w}x${e.h}`)).size >= 5, 'shaped differently');
+  for (const e of decals) assert.ok(e.cx > e.w * 0.9, 'its head toward -x, its feet at the spot');
+  // The dead are bloodied all over, and where the head was when it came off.
+  const L = art.look(0);
+  const whole = art._lying(L, 0, 1, false, EYES[EYE.up]);
+  const headless = art._lying(L, 0, 1, true, EYES[EYE.up]);
+  assert.equal(whole.length, 6);
+  assert.equal(headless.length, 5);
+  assert.ok(whole[2].blood.length > wounds(L.body.torso, 0).length, 'more blood than on the wounded');
+  assert.ok(headless[2].blood.length > whole[2].blood.length, 'and the neck');
+  const top = { phi: 0, sp: 1, cp: 0, ppu: 0.3, ss: 1, lie: Math.PI / 2 };
+  assert.ok(redPx(bake(headless, TEX, top)) > redPx(bake(whole, TEX, top)), 'the stump shows');
+});
+
+test('death: it goes over the way its pose has it, head where it was thrown; once down it holds its last frame until its decal is baked', () => {
+  const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+  const art = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
+  const v = view();
+  art.sync(v, 2, 0);
+  const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2 };
+  for (let p = 0; p < DEATHS.length; p++) {
+    const c = { x: 500, y: 500, r: 11, ang: 0.7 + p, t: 0, look: 3, poseI: p };
+    assert.equal(art.falling(c), true, DEATHS[p].name);
+    const facing = (c.fallDir * 2 * Math.PI) / 16; // the view has no yaw
+    assert.ok(Math.abs(wrap(c.angQ + DEATHS[p].face - facing)) < 1e-9, `${DEATHS[p].name}: the decal lies as it fell`);
+    assert.ok(Math.abs(wrap(c.angQ - c.ang)) <= Math.PI / 16 + 1e-9, `${DEATHS[p].name}: head the way it was thrown`);
+    c.t = FALL_T + 0.01;
+    assert.equal(art.falling(c), true, 'down, its decal not baked yet: it holds its last frame');
+    calls.length = 0;
+    art.drawFalling(R, c, 1);
+    assert.equal(calls.length, 1);
+    assert.equal(art.falling(c), false, 'its decal was baked while it held: on the ground');
+  }
+  // With no time to spare, it waits a moment at most.
+  const slow = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: 0 });
+  slow.sync(v, 2, 0);
+  const c = { x: 500, y: 500, r: 11, ang: 0, t: 0, look: 5, poseI: 3 };
+  assert.equal(slow.falling(c), true, 'past the budget: one of the first two a frame');
+  c.t = FALL_T + 0.01;
+  slow.drawFalling(R, c, 1);
+  assert.equal(slow.falling(c), true);
+  c.t = FALL_T + 0.3;
+  assert.equal(slow.falling(c), false, 'on the ground anyway');
+  // A body that drops straight to the ground lies as its look's dead already do, if any do.
+  const busy = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: 0 });
+  busy.sync(v, 2, 0);
+  busy.corpse(6, false, 4);
+  busy.fallStarts = 2;
+  const d = { x: 500, y: 500, r: 11, ang: 0, t: 0, look: 6, poseI: 1 };
+  assert.equal(busy.falling(d), false);
+  assert.equal(d.poseI, 4, 'the pose that was ready');
+  assert.equal(bad, null, bad);
+});
+
+test('the shotgun takes a head off one kill in five; a hunting rifle round, four in five', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { hitscan } = await import('../src/game/player.js');
+  const { WEAPONS } = await import('../src/game/weapons.js');
+  const shotgun = WEAPONS.find((w) => w.id === 'shotgun');
+  const hunting = WEAPONS.find((w) => w.id === 'hunting');
+  assert.equal(shotgun.pop, 0.2);
+  assert.equal(hunting.pop, undefined, 'the rest go by the default');
+  assert.equal(POP_CHANCE, 0.8);
+  const audio = new Proxy({ listener: { x: 0, y: 0 } }, { get: (o, k) => (k in o ? o[k] : () => {}) });
+  const kill = (def, roll) => {
+    const game = new Game({ ...DEFAULTS, playtestPrompt: false, godMode: true }, audio, () => {});
+    const p = game.player;
+    game.zombies.length = 0;
+    const z = new Zombie(p.x + 30, p.y, true);
+    game.zombies.push(z);
+    const random = Math.random;
+    try {
+      Math.random = () => roll;
+      for (let i = 0; i < def.pellets; i++) hitscan(game, p, p.x, p.y, 0, def);
+    } finally {
+      Math.random = random;
+    }
+    assert.ok(!z.alive, `${def.id}: dead`);
+    return !!game.effects.corpses.at(-1).head;
+  };
+  assert.equal(kill(shotgun, 0.5), false, 'a blast: whole, mostly');
+  assert.equal(kill(shotgun, 0.1), true, 'one in five');
+  assert.equal(kill(hunting, 0.5), true, 'a rifle round: off it comes');
+  assert.equal(kill(hunting, 0.9), false);
+});
+
+test('death: fall frames stay out of the atlas (each on a canvas of its own), and only the last few dozen are kept', () => {
+  const sizes = [];
+  const art = new ZombieArt({ texture: TEX, makePage: (w, h) => (sizes.push([w, h]), memoryPage()), budget: Infinity });
+  art.sync(view(), 2, 0, 0, 0, 0.4); // at night: with their darkened copies beside them
+  const L = art.look(2);
+  for (let i = 0; i < 150; i++) art._fallSprite(L, i % 8, (i >> 3) % 16, i % 3, false, true);
+  assert.equal(art.atlas.pages.length + art.deadAtlas.pages.length, 0, 'not in the atlas');
+  assert.equal(sizes.length, 150);
+  assert.ok(sizes.every(([w, h]) => w < 1024 && h < 1024), 'small canvases');
+  assert.equal(L.fall.size, 96, 'the newest kept');
+  assert.equal(art.stats().falls, 96);
+  const s = L.fall.get(`${149 % 8} ${(149 >> 3) % 16} ${149 % 3} 0`);
+  assert.ok(s && s.k.canvas === s.canvas && s.dk.canvas === s.canvas && s.k.x === s.w + 1 && s.dk.x === 2 * s.w + 2, 'its silhouette and night copy beside it');
+  assert.equal(L.fall.get('0 0 0 0'), undefined, 'the oldest let go');
 });
