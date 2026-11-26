@@ -3,7 +3,11 @@
 // 'classic': the dark is blue-black and the lights only take it away (what the game has always
 // done).
 //
-// 'purple', a prototype after a concept for Streets: the dark is a saturated violet, everything
+// 'noir', after the second concept for Streets (the default there): dark, desaturated
+// purple-grey streets so the zombies (kept bright: zombieFloor) pop out of them, warm amber
+// lamp pools and flashlight, faint warm shafts across the street.
+//
+// 'purple', the first prototype after a concept for Streets: the dark is a saturated violet, everything
 // in shadow leans purple, the warm lights (the flashlight, street lamps, fires, muzzle flashes)
 // glow amber, coral where it spills onto the violet, and every street lamp throws a diagonal
 // shaft of it across the ground, amber turning rose. The ground itself is violet where it was
@@ -15,6 +19,38 @@ import { forLevel } from '../settings.js';
 
 export const NIGHT_LOOKS = {
   classic: null,
+  noir: Object.freeze({
+    id: 'noir',
+    dark: '22,18,26', // the night laid over the ground (rgb), at the darkness setting's strength
+    deep: '10,8,14', // what's out of the survivor's sight (line-of-sight shadows)
+    shade: [40, 28, 52], // what everything standing leans toward in shadow
+    shadeMix: 0.35, // ...how far, where no light reaches at all
+    warm: [255, 150, 70], // the warm lights' colour
+    warmMix: 0.18, // how far fully lit things lean toward it
+    coral: [226, 112, 78], // ...toward the edges of their pools
+    beamColor: [255, 182, 104], // the flashlight, near the lens
+    pool: 0.72, // how much of a lamp's (or fire's) pool turns warm, at its core (times its strength)
+    beam: 0.5, // ...and of the flashlight's beam (three cones, one over another)
+    shafts: 0.16, // how strong a street lamp's diagonal shaft of light is (0: none)
+    rose: [214, 120, 92], // what a shaft turns as it goes
+    rim: [214, 198, 204], // the moonlit rim on the zombies in the dark
+    // The zombies (and the specials) are never darker than this: they pop out of the dark.
+    zombieFloor: 0.72,
+    roofs: Object.freeze(['#4d3b4e', '#544050', '#463a4c', '#4f4248', '#4a3d52', '#55464f', '#433848']),
+    ground: Object.freeze({
+      street: '#3c3442',
+      sidewalk: '#705360',
+      curb: '#86687a',
+      buildings: '#463a48',
+      start: '#463a48',
+      end: '#463a48',
+      parking: '#3e303a',
+      park: '#2e3a2c',
+      plaza: '#5a4a58',
+      construction: '#4e3c36',
+      station: '#463a48',
+    }),
+  }),
   purple: Object.freeze({
     id: 'purple',
     dark: '44,14,92', // the night laid over the ground (rgb), at the darkness setting's strength

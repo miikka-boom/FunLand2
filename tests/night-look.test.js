@@ -45,12 +45,14 @@ const { RIM_COLOUR } = await import('../src/render/zombie-bake.js');
 const { Lighting } = await import('../src/render/lighting.js');
 
 const PURPLE = NIGHT_LOOKS.purple;
+const NOIR = NIGHT_LOOKS.noir;
+const LOOKS = Object.values(NIGHT_LOOKS).filter(Boolean);
 const LEVELS = 10;
 const parse = (s) => s.match(/[\d.]+/g).map(Number);
 
-test('the night look is kept per map type: Streets purple and amber, everywhere else as it was', () => {
+test('the night look is kept per map type: Streets dark with warm lamps, everywhere else as it was', () => {
   assert.ok(LEVEL_KEYS.includes('nightLook'));
-  for (const id of LEVEL_IDS) assert.equal(forLevel(DEFAULTS, 'nightLook', id), id === 'city' ? 'purple' : 'classic', id);
+  for (const id of LEVEL_IDS) assert.equal(forLevel(DEFAULTS, 'nightLook', id), id === 'city' ? 'noir' : 'classic', id);
   const item = SCHEMA.flatMap((g) => g.items).find((i) => i.key === 'nightLook');
   assert.ok(item && item.perLevel && item.type === 'select', 'a per-map choice in the panel');
   assert.deepEqual(item.options.map((o) => o[0]).sort(), Object.keys(NIGHT_LOOKS).sort(), 'one option per look');
@@ -61,20 +63,30 @@ test('the night look is kept per map type: Streets purple and amber, everywhere 
   assert.equal(forLevel(back, 'nightLook', 'interior'), 'classic');
 });
 
-test('the look in play: purple on Streets at night; none by day, on the other maps, or for a look that does not exist', () => {
+test('the look in play: the dark-street one on Streets at night; none by day, on the other maps, or for a look that does not exist', () => {
   const S = (o) => ({ ...DEFAULTS, ...o });
-  assert.equal(nightLookFor(S({ level: 'city', night: true })), PURPLE);
+  assert.equal(nightLookFor(S({ level: 'city', night: true })), NOIR);
+  assert.equal(nightLookFor(S({ level: 'city', night: true, [levelKey('nightLook', 'city')]: 'purple' })), PURPLE);
   assert.equal(nightLookFor(S({ level: 'city', night: false })), null, 'by day');
   assert.equal(nightLookFor(S({ level: 'docks', night: true })), null, 'classic');
   for (const id of ['nope', 'toString', '__proto__', 'constructor']) assert.equal(nightLookFor(S({ level: 'city', night: true, [levelKey('nightLook', 'city')]: id })), null, id);
   // What a look holds.
-  for (const k of ['dark', 'deep']) assert.match(PURPLE[k], /^\d+,\d+,\d+$/);
-  for (const k of ['shade', 'warm', 'coral', 'beamColor', 'rose', 'rim']) assert.ok(PURPLE[k].length === 3 && PURPLE[k].every((c) => c >= 0 && c <= 255), k);
-  assert.ok(PURPLE.shade[2] > PURPLE.shade[0] && PURPLE.shade[0] > PURPLE.shade[1], 'the shade is a violet');
-  assert.ok(PURPLE.warm[0] > PURPLE.warm[1] && PURPLE.warm[1] > PURPLE.warm[2], 'the light an amber');
-  for (const k of ['shadeMix', 'warmMix', 'pool', 'beam', 'shafts']) assert.ok(PURPLE[k] >= 0 && PURPLE[k] <= 1, k);
-  for (const c of [...Object.values(PURPLE.ground), ...PURPLE.roofs]) assert.match(c, /^#[0-9a-f]{6}$/);
-  assert.ok(Object.isFrozen(PURPLE) && Object.isFrozen(PURPLE.ground) && Object.isFrozen(PURPLE.roofs));
+  for (const L of LOOKS) {
+    for (const k of ['dark', 'deep']) assert.match(L[k], /^\d+,\d+,\d+$/, `${L.id}.${k}`);
+    for (const k of ['shade', 'warm', 'coral', 'beamColor', 'rose', 'rim']) assert.ok(L[k].length === 3 && L[k].every((c) => c >= 0 && c <= 255), `${L.id}.${k}`);
+    assert.ok(L.shade[2] > L.shade[0] && L.shade[0] > L.shade[1], `${L.id}: the shade is a violet`);
+    assert.ok(L.warm[0] > L.warm[1] && L.warm[1] > L.warm[2], `${L.id}: the light an amber`);
+    for (const k of ['shadeMix', 'warmMix', 'pool', 'beam', 'shafts']) assert.ok(L[k] >= 0 && L[k] <= 1, `${L.id}.${k}`);
+    assert.ok(!L.zombieFloor || (L.zombieFloor > 0 && L.zombieFloor < 1), `${L.id}.zombieFloor`);
+    for (const c of [...Object.values(L.ground), ...L.roofs]) assert.match(c, /^#[0-9a-f]{6}$/, L.id);
+    for (const k of ['street', 'sidewalk', 'curb', 'buildings', 'parking', 'park', 'plaza']) assert.ok(L.ground[k], `${L.id}.ground.${k}`);
+    assert.ok(Object.isFrozen(L) && Object.isFrozen(L.ground) && Object.isFrozen(L.roofs), L.id);
+  }
+  // The dark streets: darker than the purple ones, and the zombies kept bright on them.
+  const lum = (hex) => [1, 3, 5].reduce((a, i) => a + parseInt(hex.slice(i, i + 2), 16), 0);
+  const dark = (L) => L.dark.split(',').reduce((a, c) => a + +c, 0);
+  assert.ok(dark(NOIR) < dark(PURPLE) && lum(NOIR.ground.street) < lum(PURPLE.ground.street));
+  assert.ok(NOIR.zombieFloor >= 0.6, 'the zombies pop');
 });
 
 test('tone(): under the purple look the shadows lean violet and the light amber; back to classic, the old tones exactly', () => {

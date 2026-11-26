@@ -221,7 +221,10 @@ export class Renderer {
     this.groundColors = look && look.ground ? look.ground : GROUND;
 
     L.collect(game, vrTall);
-    R.zart = S.zombieModels && this.zart.sync(v, dpr, undefined, S.zombieLean, S.zombieHeadTilt, L.night ? 1 - L.dark : 1, look) ? this.zart : null;
+    // (b0: how bright a zombie is where no light reaches; a night look may keep it brighter.)
+    const zf = (L.night && look && look.zombieFloor) || 0;
+    const b0 = L.night ? zf + (1 - zf) * (1 - L.dark) : 1;
+    R.zart = S.zombieModels && this.zart.sync(v, dpr, undefined, S.zombieLean, S.zombieHeadTilt, b0, look) ? this.zart : null;
 
     // --- Ground --------------------------------------------------------------------------
     R.reset();
@@ -764,11 +767,14 @@ export class Renderer {
       this._item((q.lo + 0.5) * SLOT + d + DEPTH0, T_PROP, q, 0, d);
     }
 
-    // The infected.
+    // The infected. (A night look can keep them from going darker than its zombieFloor, so they
+    // stand out of the dark; out of sight they're hidden all the same.)
+    const zf = (L.night && L.look && L.look.zombieFloor) || 0;
     for (const z of game.zombies) {
       if (!z.alive || !v.onScreen(z.x, z.y, 50, 80)) continue;
       const seen = this._seen(z, z.x, z.y, dt);
-      const b = L.sample(z.x, z.y) * (hid + (1 - hid) * seen);
+      const lit = L.sample(z.x, z.y);
+      const b = (z.type === 'terror' ? lit : zf + (1 - zf) * lit) * (hid + (1 - hid) * seen);
       if (z.type === 'common') {
         if (b < 0.032) continue;
         this._mover(T_ZOMBIE, z, z.x, z.y, z.r, b);

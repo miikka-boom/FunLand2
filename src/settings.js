@@ -28,14 +28,14 @@ const CAMERA_DEFAULTS = {
   cameraTilt: 25, // degrees above the horizon in the isometric view (35 = true isometric)
   cameraAlignedTilt: 75, // ...and with the streets along the screen: steep, so a wall doesn't hide the doorway in it
   viewSize: 470, // world units visible across the short screen axis
-  // How the night looks: 'classic' (blue-black) or 'purple' (purple shadows, amber light; a
-  // prototype after a concept for Streets: src/render/night-look.js).
+  // How the night looks: 'classic' (blue-black), 'noir' (dark streets, warm lamps, zombies that
+  // pop) or 'purple' (purple shadows, amber light): src/render/night-look.js.
   nightLook: 'classic',
 };
 const CAMERA_BY_LEVEL = {
   // Corridors and rooms read best turned 45° (walls both ways show a face), from as high as the slider goes.
   interior: { cameraAligned: false, cameraTilt: 70 },
-  city: { nightLook: 'purple' },
+  city: { nightLook: 'noir' },
 };
 /** The settings that are kept per map type. */
 export const LEVEL_KEYS = Object.keys(CAMERA_DEFAULTS);
@@ -314,7 +314,8 @@ export const SCHEMA = [
         type: 'select',
         options: [
           ['classic', 'Classic: blue-black'],
-          ['purple', 'Purple shadows, amber light (prototype)'],
+          ['noir', 'Dark streets, warm lamps'],
+          ['purple', 'Purple shadows, amber light'],
         ],
       },
       { key: 'los', label: 'Line-of-sight shadows', type: 'toggle' },
