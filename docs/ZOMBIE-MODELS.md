@@ -147,8 +147,8 @@ It can tip a whole body back (onto its back or its face) and roll it onto a side
   budget, so a crowd going down together doesn't bake every decal in one frame.
 - **Heads come off.** A common killed by one big blow (45 damage or more in one moment: a
   hunting rifle round, a shotgun blast up close, an explosion) loses its head four times
-  in five, or once in five to a shotgun (`pop` in `weapons.js`: a blast up close mostly
-  drops them whole). The head flies the way the blow went, tumbling, bounces off walls
+  in five, or three times in ten to a shotgun (`pop` in `weapons.js`: a blast up close
+  mostly drops them whole). The head flies the way the blow went, tumbling, bounces off walls
   and the ground (blood where it first lands; `effects.js`), and lies face up by the
   headless body, whose neck is bloodied.
 

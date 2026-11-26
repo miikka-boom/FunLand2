@@ -575,7 +575,7 @@ and no dependencies.
     a pale rim of light match the hand-inked texture and keep them readable
     at night. The dead fall the way they'll lie, and a big enough blow knocks
     the head clean off: four times in five for a hunting rifle round or a
-    blast, once in five for a shotgun (which drops them whole, mostly).
+    blast, three in ten for a shotgun (which drops them whole, mostly).
   - They lean toward the camera, and their heads tip further toward it, so
     even the steep street camera shows their faces, profiles and backs
     instead of the tops of their heads: **Zombie lean toward camera** and

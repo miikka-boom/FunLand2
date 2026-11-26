@@ -819,13 +819,13 @@ test('death: it goes over the way its pose has it, head where it was thrown; onc
   assert.equal(bad, null, bad);
 });
 
-test('the shotgun takes a head off one kill in five; a hunting rifle round, four in five', async () => {
+test('the shotgun takes a head off three kills in ten; a hunting rifle round, four in five', async () => {
   const { Game } = await import('../src/game/game.js');
   const { hitscan } = await import('../src/game/player.js');
   const { WEAPONS } = await import('../src/game/weapons.js');
   const shotgun = WEAPONS.find((w) => w.id === 'shotgun');
   const hunting = WEAPONS.find((w) => w.id === 'hunting');
-  assert.equal(shotgun.pop, 0.2);
+  assert.equal(shotgun.pop, 0.3);
   assert.equal(hunting.pop, undefined, 'the rest go by the default');
   assert.equal(POP_CHANCE, 0.8);
   const audio = new Proxy({ listener: { x: 0, y: 0 } }, { get: (o, k) => (k in o ? o[k] : () => {}) });
@@ -846,7 +846,8 @@ test('the shotgun takes a head off one kill in five; a hunting rifle round, four
     return !!game.effects.corpses.at(-1).head;
   };
   assert.equal(kill(shotgun, 0.5), false, 'a blast: whole, mostly');
-  assert.equal(kill(shotgun, 0.1), true, 'one in five');
+  assert.equal(kill(shotgun, 0.25), true, 'three in ten');
+  assert.equal(kill(shotgun, 0.35), false);
   assert.equal(kill(hunting, 0.5), true, 'a rifle round: off it comes');
   assert.equal(kill(hunting, 0.9), false);
 });
