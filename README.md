@@ -636,19 +636,20 @@ and no dependencies.
   dark it is where nothing is lit: 60% by default, up to 97%. **Line-of-sight
   shadows** (under Presentation, off by default) keep zombies behind
   buildings hidden until you round the corner.
-- **Night look (prototype, Streets)**: Streets has a purple-and-amber night by
-  default, after a concept for the level. The dark is a saturated violet and
-  shadows lean purple. Warm lights (the flashlight, lamps, fires, muzzle
-  flashes) turn amber at their cores and coral at the edges of their pools,
-  and every street lamp lays a diagonal shaft of light across the ground,
-  amber turning rose. The ground is violet and the roofs are lilac. **Night
-  look (this map)** under Presentation switches it per map type ("Classic" is
-  the old blue-black, still the default everywhere else). The palette lives in
-  [`src/render/night-look.js`](src/render/night-look.js). The walls, roofs,
-  props and survivors get it through `tone()` in `prims.js`, the ground
-  through the light overlay in `lighting.js`, and the zombies through their
-  darkened sprites in `zombie-art.js`. It costs nothing extra per frame: the
-  warm light is painted on the same overlay as the dark.
+- **Streets, after the level's concept art**: dark, desaturated streets so the
+  zombies pop out of them (they are kept from going darker than the night
+  look's floor), warm amber lamp pools and flashlight with faint warm shafts,
+  an amber centre line. The ground, roofs and brick facades are textured, the
+  roofs carry AC units, condensers, vents, skylights, chimneys and water tanks,
+  papers and trash are strewn about, and the parked cars are a real 3D model
+  baked for the camera. The art was made with Scenario and the ground and
+  roofs are painted once into caches, so it costs no more per frame than the
+  flat streets did: see [docs/STREETS-ART.md](docs/STREETS-ART.md).
+  **Night look (this map)** under Presentation switches the look per map type:
+  "Dark streets, warm lamps" (Streets' default), "Purple shadows, amber light"
+  (the first prototype) or "Classic" (the old blue-black, the default everywhere
+  else). The palettes live in
+  [`src/render/night-look.js`](src/render/night-look.js).
 - **Feedback**: recorded sound effects placed in the world (distance, walls in
   the way, a reverb per level; see [docs/SFX.md](docs/SFX.md)), a dynamic score
   ([docs/MUSIC.md](docs/MUSIC.md)), haptics on Android, blood decals that stay,
