@@ -26,6 +26,8 @@ import { Scene, boxHides } from './scene3d.js';
 import { CRANE_H, drawDoorPlans } from './models.js';
 import { tone, box, boxShadow, disc, ball, line3, setTonePalette } from './prims.js';
 import { nightLookFor } from './night-look.js';
+import { Textures } from './textures.js';
+import { GroundCache } from './ground-cache.js';
 import { Horde, drawSurvivor, drawLying, drawHunter, drawTank, drawTerror, drawWitch, witchEyes, drawRock, ghostPath, hunterLift, hunterEyes, PLAYER_LOOK, ALLY_LOOK } from './figures.js';
 import { WITCH } from '../game/witch.js';
 import { ZombieArt } from './zombie-art.js';
@@ -36,6 +38,19 @@ import { drawDocksGround, drawDocksDecor, drawCranes, drawFerry, drawDocksBright
 import { drawBenDecor, drawBenBright, drawBenLoose, benText, drawFort } from './ben-render.js';
 import { THEMES, drawThemeDecor } from './theme-render.js';
 import './theme-models.js'; // registers the graveyard / suburbia / junkyard models
+
+// The decor drawGround paints that never changes (so it can go into the ground cache).
+const STILL_DECOR = new Set(['puddle', 'crack', 'trash', 'manhole', 'leaves', 'papers', 'chair', 'blood', 'chalk']);
+// The texture the inside of a block of each type gets (the rest stay flat).
+const BLOCK_TEXTURE = { buildings: 'asphalt', start: 'asphalt', end: 'asphalt', parking: 'asphalt', plaza: 'sidewalk', station: 'asphalt' };
+// A number for each map (the ground cache keys on it).
+const mapIds = new WeakMap();
+let nextMapId = 1;
+function mapId(map) {
+  let id = mapIds.get(map);
+  if (!id) mapIds.set(map, (id = nextMapId++));
+  return id;
+}
 
 const GROUND = {
   street: '#24272b',
@@ -98,6 +113,8 @@ export class Renderer {
     this.lighting = new Lighting();
     this.horde = new Horde();
     this.zart = new ZombieArt(); // the artist's zombie models, baked into sprites for the camera
+    this.tex = new Textures(); // the streets' surface textures (Scenario), tinted per colour
+    this.groundCache = new GroundCache(); // the static ground, painted once into chunks
     this.scene = null;
     this.corpseVis = [];
     this.list = []; // this frame's painter's list
@@ -231,9 +248,22 @@ export class Renderer {
     ctx.globalAlpha = 1;
     ctx.fillStyle = '#060709';
     ctx.fillRect(0, 0, v.w, v.h);
+    // The static ground of the streets, textured, from chunks painted once (ground-cache.js);
+    // elsewhere, or for a turned camera, painted flat each frame.
+    const map = game.world.map;
+    const T = this.tex;
+    T.load();
+    const cached =
+      !THEMES[map.theme] &&
+      map.theme !== 'docks' &&
+      map.theme !== 'interior' &&
+      this.groundCache.draw(ctx, v, dpr, `${mapId(map)}|${look ? look.id : '-'}|${T.version}`, (c, x0, y0, x1, y1) => {
+        c.lineCap = 'round';
+        this.drawGround(c, game, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, 'static', T);
+      });
     v.applyGround(ctx, dpr, 0);
     ctx.lineCap = 'round';
-    this.drawGround(ctx, game, vr);
+    this.drawGround(ctx, game, vr, cached ? 'live' : 'all');
 
     // Blood decal layer (low-res world canvas, soft when upscaled): only the part of it that has stains.
     const fx = game.effects;
@@ -310,13 +340,33 @@ export class Renderer {
 
   // --- Ground -------------------------------------------------------------------
 
-  drawGround(ctx, game, vr) {
+  /**
+   * The ground of the view rect vr. part: 'all', or 'static' (all that never changes, for the
+   * ground cache: then T, the textures, fills the streets, sidewalks and lots) and 'live' (the
+   * decor that moves, drawn over the cached ground each frame).
+   */
+  drawGround(ctx, game, vr, part = 'all', T = null) {
     const map = game.world.map;
+    const tilted = !game.view.flat;
+    if (part === 'live') {
+      for (const d of map.decor) {
+        if (d.x < vr.x - 40 || d.x > vr.x + vr.w + 40 || d.y < vr.y - 40 || d.y > vr.y + vr.h + 40) continue;
+        if (STILL_DECOR.has(d.type)) continue;
+        if (tilted && d._3d) {
+          if (d.type === 'benfort') drawFort(ctx, d, 'floor');
+          continue;
+        }
+        if (!drawLoreDecor(ctx, d) && !drawBenDecor(ctx, d, game.time) && !drawDocksDecor(ctx, d, game.time, game.view) && !drawThemeDecor(ctx, d, game.time)) drawFeatureDecor(ctx, d);
+      }
+      return;
+    }
     const interior = map.theme === 'interior';
     // The graveyard, suburbia and the junkyard paint their own ground (theme-render.js).
     const theme = THEMES[map.theme];
     const G = this.groundColors || GROUND;
-    ctx.fillStyle = interior ? '#2b2c2f' : theme ? theme.base : G.street;
+    // A surface: its texture tinted to its colour (static part only), else the colour.
+    const fill = (name, hex) => (T ? T.fill(ctx, name, hex) : hex);
+    ctx.fillStyle = interior ? '#2b2c2f' : theme ? theme.base : fill('asphalt', G.street);
     ctx.fillRect(Math.max(0, vr.x), Math.max(0, vr.y), Math.min(map.w, vr.x + vr.w) - Math.max(0, vr.x), Math.min(map.h, vr.y + vr.h) - Math.max(0, vr.y));
     if (interior) this.drawInteriorFloors(ctx, map, vr);
     if (map.theme === 'docks') drawDocksGround(ctx, game, vr);
@@ -324,10 +374,11 @@ export class Renderer {
 
     for (const b of interior || theme ? [] : map.blocks) {
       if (!rectsOverlap(b, vr)) continue;
-      ctx.fillStyle = G.sidewalk;
+      ctx.fillStyle = fill('sidewalk', G.sidewalk);
       ctx.fillRect(b.x, b.y, b.w, b.h);
       const i = b.inner;
-      ctx.fillStyle = G[b.type] || G.buildings;
+      const inner = G[b.type] || G.buildings;
+      ctx.fillStyle = BLOCK_TEXTURE[b.type] ? fill(BLOCK_TEXTURE[b.type], inner) : inner;
       ctx.fillRect(i.x, i.y, i.w, i.h);
       ctx.strokeStyle = G.curb;
       ctx.lineWidth = 2;
@@ -405,7 +456,8 @@ export class Renderer {
     }
 
     const mk = map.markings;
-    ctx.strokeStyle = 'rgba(190,160,70,0.45)';
+    const look = this.R.look;
+    ctx.strokeStyle = (look && look.dashes) || 'rgba(190,160,70,0.45)';
     ctx.lineWidth = 3;
     ctx.setLineDash([26, 24]);
     ctx.beginPath();
@@ -432,9 +484,9 @@ export class Renderer {
     }
     ctx.stroke();
 
-    const tilted = !game.view.flat;
     for (const d of map.decor) {
       if (d.x < vr.x - 40 || d.x > vr.x + vr.w + 40 || d.y < vr.y - 40 || d.y > vr.y + vr.h + 40) continue;
+      if (part === 'static' && !STILL_DECOR.has(d.type)) continue;
       if (tilted && d._3d) {
         // It stands up (decor3d.js); only what lies on the floor of Ben's fort is painted here.
         if (d.type === 'benfort') drawFort(ctx, d, 'floor');

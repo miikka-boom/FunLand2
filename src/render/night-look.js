@@ -36,6 +36,7 @@ export const NIGHT_LOOKS = {
     rim: [214, 198, 204], // the moonlit rim on the zombies in the dark
     // The zombies (and the specials) are never darker than this: they pop out of the dark.
     zombieFloor: 0.72,
+    dashes: 'rgba(222,150,36,0.85)', // the road's centre line: amber
     roofs: Object.freeze(['#4d3b4e', '#544050', '#463a4c', '#4f4248', '#4a3d52', '#55464f', '#433848']),
     ground: Object.freeze({
       street: '#3c3442',
