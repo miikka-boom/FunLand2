@@ -99,11 +99,11 @@ const FALL_KEEP = 96; // fall frames kept for the next death to use (each is wan
 export const WALK = 8;
 /**
  * A hunter's arms wave as it comes at you, the way the stick figures' did: the arm pose
- * (ARM_PITCH: 1 low, 2 reaching, 3 raised) at each frame of its stride, the left arm half a
- * stride behind the right, so one goes up as the other comes down, the left up as the right foot
- * steps.
+ * (ARM_PITCH: 1 low, 2 reaching, 3 raised) at each frame of its stride, twice a stride (about
+ * four flaps a second) and a new pose every frame, the left arm half a flap behind the right, so
+ * one goes up as the other comes down.
  */
-const WAVE = [2, 3, 3, 3, 2, 1, 1, 1];
+const WAVE = [2, 3, 2, 1, 2, 3, 2, 1];
 const LEVELS = 10; // the partly lit are drawn darkened to one of these levels (no overlays)
 const COMP_PAGES = 6; // canvas pages of composites kept (when they're full, the oldest is cleared for new ones)
 const COMPOSE = 2; // ms of putting composites together a frame
@@ -948,7 +948,7 @@ export class ZombieArt {
       lean += w < 0.7 ? -4 : 10;
       mode = 2;
     } else if (chasing) {
-      iL = WAVE[(wf + WALK / 2) % WALK];
+      iL = WAVE[(wf + WALK / 4) % WALK];
       iR = WAVE[wf];
     }
     let f = z.face;
@@ -1012,7 +1012,7 @@ export class ZombieArt {
     put(FOOT_R, fR[0] - sn * stride, fR[1], cs < 0 ? -cs * lift : 0);
     put(TORSO, lean * 0.3, sway * 0.5, bob);
     const reach = chasing ? 6 : 0;
-    const swing = mode === 2 ? 0 : chasing ? -sn * 9 : sn * 7; // with the wave: the left arm up as the right foot steps
+    const swing = mode === 2 ? 0 : sn * (chasing ? 9 : 7);
     put(ARM_L, sL[0] + lean * 0.5 + reach, sL[1] + sway * 0.5, sL[2] + bob + swing);
     put(ARM_R, sR[0] + lean * 0.5 + reach, sR[1] + sway * 0.5, sR[2] + bob - swing);
     put(HEAD, lean, sway + idle * 0.5, body.neck + bob * 1.15 + nod - (chasing ? 5 : 0));

@@ -86,8 +86,9 @@ It can tip a whole body back (onto its back or its face) and roll it onto a side
 - **Posed every frame**: feet step, the body bobs and sways, the head nods, the arms
   hang, reach, go up for a swing and come down on you, and flail when it's hit. A
   hunter's arms wave as it comes at you, as the stick figures' did: one goes up as the
-  other comes down, with each stride (`WAVE`; standing still, it keeps waving). The arm
-  poses switch like drawn frames; the small motions are bobs. The walk is drawn in
+  other comes down, twice a stride, a new pose every frame of it (`WAVE`, about four
+  flaps a second; standing still, it keeps waving). The arm poses switch like drawn
+  frames; the small motions are bobs. The walk is drawn in
   eight frames a stride, the way a drawn walk cycle is (below); the head's nod and each
   zombie's own slow sway stay smooth.
 - **Two draws a zombie.** A shambling or hunting zombie's body (its feet, torso and arms

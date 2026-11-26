@@ -951,13 +951,15 @@ test('composites: kept in a few pages; when they are full the oldest is cleared 
 });
 
 
-test('a hunter\'s arms wave as it comes at you, one up as the other comes down, with its stride (and standing still); a shambler\'s hang', () => {
+test('a hunter\'s arms wave as it comes at you, one up as the other comes down, twice a stride (and standing still); a shambler\'s hang', () => {
   const art = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
   const v = view();
   const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2 };
   const arms = (z) => {
     const pairs = new Set();
     const bodies = new Set();
+    let changes = 0;
+    let last = null;
     for (let i = 0; i < 80; i++) {
       z.anim = i * 0.011; // a stride and a little
       art.sync(v, 2, z.anim);
@@ -966,12 +968,15 @@ test('a hunter\'s arms wave as it comes at you, one up as the other comes down, 
       assert.equal(P.iL + P.iR, 4, 'one up as the other comes down');
       pairs.add(`${P.iL}${P.iR}`);
       bodies.add(P.back);
+      if (last !== null && `${P.iL}${P.iR}` !== last) changes++;
+      last = `${P.iL}${P.iR}`;
     }
-    return { pairs, bodies };
+    return { pairs, bodies, changes };
   };
   const running = arms(common(4, 0.8, { vx: 70, vy: 30 }));
   assert.deepEqual([...running.pairs].sort(), ['13', '22', '31'], 'low, reaching and raised, each arm in turn');
   assert.equal(running.bodies.size, WALK, 'still a body for each frame of its stride');
+  assert.ok(running.changes >= WALK, `a new pose every frame of its stride (${running.changes} changes over a stride and a little)`);
   const standing = arms(common(4, 0.8, { vx: 0, vy: 0 }));
   assert.deepEqual([...standing.pairs].sort(), ['13', '22', '31'], 'standing, it still waves');
   // A shambler's arms hang low, both the same.
