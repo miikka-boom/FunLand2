@@ -9,6 +9,7 @@
 // drawn each frame.
 
 import { ROOFTOP_IMAGE } from '../../assets/streets/rooftop.js';
+import { LITTER_IMAGE } from '../../assets/streets/litter.js';
 
 const FILES = {
   asphalt: 'assets/streets/asphalt.webp',
@@ -73,13 +74,15 @@ export class Textures {
       };
       img.src = base + file;
     }
-    const sheet = new Image();
-    sheet.decoding = 'async';
-    sheet.onload = () => {
-      this.sheets.rooftop = sheet;
-      this.version++;
-    };
-    sheet.src = base + ROOFTOP_IMAGE;
+    for (const [name, file] of [['rooftop', ROOFTOP_IMAGE], ['litter', LITTER_IMAGE]]) {
+      const sheet = new Image();
+      sheet.decoding = 'async';
+      sheet.onload = () => {
+        this.sheets[name] = sheet;
+        this.version++;
+      };
+      sheet.src = base + file;
+    }
   }
 
   /**

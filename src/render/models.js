@@ -903,6 +903,15 @@ function drawCarModel(R, o, rec) {
   const { ctx, v } = R;
   const b = propLight(R, o);
   if (b < 0.032) return;
+  // A parked car: the 3D model (prop-art.js), once its sprite for this colour and side is baked.
+  if (!o.truck && !o.wreck && R.props && R.props.drawCar(R, o, b)) {
+    if (o.scrawl && R.alpha > 0.5) {
+      R.ground(29);
+      drawCarScrawl(ctx, o);
+      R.reset();
+    }
+    return;
+  }
   const vert = o.h > o.w;
   const len = vert ? o.h : o.w;
   const front = o.front || 1;

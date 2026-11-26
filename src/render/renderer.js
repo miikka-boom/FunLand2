@@ -29,6 +29,8 @@ import { nightLookFor } from './night-look.js';
 import { Textures } from './textures.js';
 import { GroundCache } from './ground-cache.js';
 import { RoofCache } from './roof-cache.js';
+import { LITTER } from '../../assets/streets/litter.js';
+import { PropArt } from './prop-art.js';
 import { Horde, drawSurvivor, drawLying, drawHunter, drawTank, drawTerror, drawWitch, witchEyes, drawRock, ghostPath, hunterLift, hunterEyes, PLAYER_LOOK, ALLY_LOOK } from './figures.js';
 import { WITCH } from '../game/witch.js';
 import { ZombieArt } from './zombie-art.js';
@@ -39,6 +41,43 @@ import { drawDocksGround, drawDocksDecor, drawCranes, drawFerry, drawDocksBright
 import { drawBenDecor, drawBenBright, drawBenLoose, benText, drawFort } from './ben-render.js';
 import { THEMES, drawThemeDecor } from './theme-render.js';
 import './theme-models.js'; // registers the graveyard / suburbia / junkyard models
+
+// The map's decor that the litter sprites (Scenario: assets/streets/litter.webp) stand in for.
+const LITTER_DECOR = { papers: ['papers', 'page', 'newspaper'], trash: ['newspaper', 'cans', 'cardboard', 'bags', 'papers'], manhole: ['manhole'] };
+const LITTER_CELL = 150; // the scatter's grid (world units): the same pieces whichever chunk paints them
+const SCATTER = ['papers', 'page', 'newspaper', 'newspaper', 'cans', 'papers'];
+
+/** One litter sprite, flat on the ground (ctx on a world transform), turned by a, scaled by s. */
+function litterAt(ctx, sheet, name, x, y, a, s) {
+  const q = LITTER[name];
+  const w = q.size * Math.max(0.7, Math.min(1.4, s));
+  const h = (w * q.h) / q.w;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(a);
+  ctx.drawImage(sheet, q.x, q.y, q.w, q.h, -w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
+/** Loose papers and cans strewn over the streets: from a grid over the map, the same every time. */
+function scatterLitter(ctx, sheet, vr, map) {
+  const C = LITTER_CELL;
+  const i0 = Math.floor((vr.x - 30) / C);
+  const i1 = Math.floor((vr.x + vr.w + 30) / C);
+  const j0 = Math.floor((vr.y - 30) / C);
+  const j1 = Math.floor((vr.y + vr.h + 30) / C);
+  for (let j = j0; j <= j1; j++) {
+    for (let i = i0; i <= i1; i++) {
+      const n = (hash01(i * 12.9898 + j * 78.233) * 3.2) | 0;
+      for (let k = 0; k < n; k++) {
+        const x = (i + hash01(i * 3.1 + j * 7.7 + k * 1.3)) * C;
+        const y = (j + hash01(i * 5.3 + j * 2.9 + k * 4.1)) * C;
+        if (x < 0 || y < 0 || x > map.w || y > map.h) continue;
+        litterAt(ctx, sheet, SCATTER[(hash01(x + y * 0.5) * SCATTER.length) | 0], x, y, hash01(x * 0.11 + y) * 6.28, 0.8 + hash01(y * 0.3) * 0.5);
+      }
+    }
+  }
+}
 
 // The decor drawGround paints that never changes (so it can go into the ground cache).
 const STILL_DECOR = new Set(['puddle', 'crack', 'trash', 'manhole', 'leaves', 'papers', 'chair', 'blood', 'chalk']);
@@ -117,6 +156,7 @@ export class Renderer {
     this.tex = new Textures(); // the streets' surface textures (Scenario), tinted per colour
     this.groundCache = new GroundCache(); // the static ground, painted once into chunks
     this.roofCache = new RoofCache(); // flat roofs, each painted once into a picture
+    this.props = new PropArt(); // the parked cars' 3D model, baked into sprites for the camera
     this.scene = null;
     this.corpseVis = [];
     this.list = []; // this frame's painter's list
@@ -240,6 +280,8 @@ export class Renderer {
     this.groundColors = look && look.ground ? look.ground : GROUND;
     // Roofs from pictures painted once (roof-cache.js), with the streets' textures and sprites.
     R.tex = this.tex;
+    R.props = this.props;
+    this.props.begin(v, dpr, look);
     R.roofs = RoofCache.fits(v) ? this.roofCache : null;
     if (R.roofs) this.roofCache.begin(`${v.scale.toFixed(5)}|${v.pitch.toFixed(5)}|${dpr}|${look ? look.id : '-'}|${S.night ? 1 : 0}|${this.tex.version}`);
 
@@ -490,9 +532,16 @@ export class Renderer {
     }
     ctx.stroke();
 
+    const litter = T && !interior && !theme ? T.sheets.litter : null;
+    if (litter) scatterLitter(ctx, litter, vr, map);
     for (const d of map.decor) {
       if (d.x < vr.x - 40 || d.x > vr.x + vr.w + 40 || d.y < vr.y - 40 || d.y > vr.y + vr.h + 40) continue;
       if (part === 'static' && !STILL_DECOR.has(d.type)) continue;
+      if (litter && LITTER_DECOR[d.type]) {
+        const pick = LITTER_DECOR[d.type];
+        litterAt(ctx, litter, pick[(hash01(d.x * 0.37 + d.y * 1.91) * pick.length) | 0], d.x, d.y, d.a || hash01(d.y) * 6.28, d.s || 1);
+        continue;
+      }
       if (tilted && d._3d) {
         // It stands up (decor3d.js); only what lies on the floor of Ben's fort is painted here.
         if (d.type === 'benfort') drawFort(ctx, d, 'floor');
