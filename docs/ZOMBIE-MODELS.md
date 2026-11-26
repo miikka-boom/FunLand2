@@ -85,7 +85,22 @@ It can tip a whole body back (onto its back or its face) and roll it onto a side
   camera that is already low leaves them be: bodies never go below 35°, heads below 20°.
 - **Posed every frame**: feet step, the body bobs and sways, the head nods, the arms
   hang, reach, go up for a swing and come down on you, and flail when it's hit. The arm
-  poses switch like drawn frames; the small motions are bobs.
+  poses switch like drawn frames; the small motions are bobs. The walk is drawn in
+  eight frames a stride, the way a drawn walk cycle is (below); the head's nod and each
+  zombie's own slow sway stay smooth.
+- **Two draws a zombie.** A shambling or hunting zombie's body (its feet, torso and arms
+  as posed for one frame of its walk) is put together from its parts into one sprite, a
+  *composite*, shared by every zombie of the same look, facing, frame, shirt and light,
+  and its head is drawn on its own over it (an arm in front of its head goes in a third).
+  So a horde is two draws a zombie, not six (or twelve, partly lit). A swing, a flail, a
+  hit's flash and a camera still settling are drawn part by part: they're brief.
+  Composites live in a few canvas pages; when those are full, the oldest is cleared and
+  what was on it is put together again when it's next wanted.
+- **Everything first, then the drawing.** Writing into a canvas the frame has already
+  drawn from makes the browser copy all of it, so each frame the renderer has every
+  zombie on screen (and every flying head) worked out and its sprites baked and
+  composites put together (`prepare`, `ready`) before it draws any of them. The dead's
+  decals are baked before the ground is drawn.
 - **A head with a mind of its own.** The head is drawn at its own facing: a hunter's
   turns to what it's after before its body does, and its eyes go the rest of the way; a
   shambler's glances about, holding each look a second or two, its eyes drooping; one
@@ -102,13 +117,17 @@ It can tip a whole body back (onto its back or its face) and roll it onto a side
   out of the back and on a side: the head is big and tipped toward the camera, so
   that's the part of the torso that shows. Every other colour block has its wounds
   on the other side. The blood doesn't change the shape, so both share a silhouette.
-- **Light**: sprites are baked fully lit. A zombie in the dark gets each part's black
-  silhouette over that part at `1 - brightness` (silhouettes depend only on the shape,
-  so all colours share them). A hit flashes it brighter.
+- **Light**: sprites are baked fully lit. A partly lit zombie's composite (and its
+  head) is darkened to one of ten levels as it's put together, so there's nothing
+  drawn over it: see-through draws cost a canvas about three times as much. Drawn part
+  by part, a zombie in the dark gets each part's black silhouette over that part at
+  `1 - brightness` (silhouettes depend only on the shape, so all colours share them). A
+  hit flashes it brighter.
 - **The night.** Where no light reaches, every zombie is exactly as bright (one less the
-  darkness), so every sprite also gets a copy darkened to that when it's baked: those
-  zombies are drawn with six sprites, not twelve. The copies keep the rim light at its
-  daylight strength, a moonlit edge that keeps a zombie readable on a dark street.
+  darkness), so every sprite also gets a copy darkened to that when it's baked, and the
+  composites of those zombies are put together from the copies. The copies keep the rim
+  light at its daylight strength, a moonlit edge that keeps a zombie readable on a dark
+  street.
 - **The dead fall, and lie eight ways** (`DEATHS`): on its back with its arms flung up
   in a V, out in a T, or one out and one up; on its face, reaching past its head or
   with an arm out; on its left side or its right, arms out in front. Each has its head
@@ -140,10 +159,15 @@ figures.
 once the slider stops.
 **Zombie models** (under Presentation in the tuning panel, on by default) switches the
 horde back to the stick figures (`src/render/figures.js`, batched by colour), which are
-cheaper for the biggest stress-test hordes: a model zombie is six sprites (twelve when
-it's partly lit; the dead are one, and a fall or a flying head one or two). The eyes,
-the toon shading, the rim, the blood and the dead cost no extra draws; what they cost
-is baking and memory. The dead are kept apart from the standing: the decals (one per
+drawn with very few calls for the biggest stress-test hordes: a model zombie is two
+draws (three with an arm in front of its head; six or twelve part by part; the dead
+are one, and a fall or a flying head one or two). The eyes, the toon shading, the rim,
+the blood and the dead cost no extra draws; what they cost is baking and memory. In a
+software-drawn Chromium, 200 model zombies on screen add about 5 ms to a frame by day
+and 8 to 9 ms at night, the same as the stick figures; drawn part by part, as before
+the composites, it was 8 and 17 to 22 ms. (Measure with the canvas made to finish
+drawing inside the frame being timed: the browser otherwise finishes it whenever it
+likes, inside the timing or after it, and the numbers mislead.) The dead are kept apart from the standing: the decals (one per
 look, pose and head or not, as they're needed) have their own atlas pages, and fall
 frames, each wanted for a tenth of a second, have small canvases of their own, only
 the last 96 kept. (When they went in with the rest, every fight spread the horde's
@@ -153,7 +177,8 @@ times slower afterwards.) New sprites are baked for one zombie a frame at most, 
 so a zombie may borrow a near facing, plain eyes or a clean shirt for a frame or two.
 **Debug read-out** shows how many sprites have been baked for this camera, how long
 that took, how much atlas it uses (about 2 to 4 Mpx once a horde has been around, the
-dead's decals a few tenths of that) and how many fall frames are kept.
+dead's decals a few tenths of that), how many bodies have been put together and how much
+room they take (about 3 Mpx for a horde of 200), and how many fall frames are kept.
 
 With no lean, a zombie seen from straight above is mostly the top of its head. The lean
 trades a little of the world's true perspective for their faces: they stand a little taller

@@ -246,6 +246,16 @@ export class Renderer {
 
     // Who and what stands where (needs the lights: things out of sight are left out).
     this.gather(game, vrTall, dt);
+    if (R.zart) {
+      // The zombie models' sprites and composites, all made before any is drawn from this frame.
+      const list = this.list;
+      for (let i = 0; i < list.length; i++) {
+        const it = list[i];
+        if (it.t === T_ZOMBIE) R.zart.prepare(R, it.o, it.b);
+        else if (it.t === T_HEAD) R.zart.prepareHead(R, it.o);
+      }
+      R.zart.ready(R);
+    }
     this.drawRings(ctx, game);
     R.reset();
     this.drawShadows(ctx, v, R);
@@ -263,7 +273,6 @@ export class Renderer {
     ctx.lineJoin = 'round';
     drawFerry(R, game, vrTall);
     this.drawStanding(game);
-    if (R.zart) R.zart.warm(); // leftover bake budget: the zombie looks' first sprites
     drawDoorPlans(R, this.eye);
     drawCanopies(R, game, vrTall);
     for (const p of this.over) p.draw(R, p);
@@ -556,7 +565,7 @@ export class Renderer {
     for (const c of game.effects.corpses) {
       if (!pointInRect(c.x, c.y, vr)) continue;
       if (zart && c.look !== undefined) {
-        if (!zart.falling(c)) dead.push(c);
+        if (!zart.falling(c, true)) dead.push(c);
       } else vis.push(c);
     }
     if (dead.length) zart.drawCorpses(ctx, this.R, dead);

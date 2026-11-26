@@ -858,7 +858,7 @@ function drawDebug(ctx, game, input, ui, L, renderer) {
   const za = renderer && renderer.zart;
   if (za && game.settings.zombieModels) {
     const st = za.stats();
-    lines.push(`zombie models ${za.state}  ·  ${st.bakes} sprites baked in ${st.ms}ms for this camera  ·  atlas ${st.pages} page${st.pages === 1 ? '' : 's'} (${(st.px / 1e6).toFixed(2)} Mpx, the dead ${(st.dead / 1e6).toFixed(2)})  ·  ${st.falls} falls kept`);
+    lines.push(`zombie models ${za.state}  ·  ${st.bakes} sprites baked in ${st.ms}ms for this camera  ·  atlas ${st.pages} page${st.pages === 1 ? '' : 's'} (${(st.px / 1e6).toFixed(2)} Mpx, the dead ${(st.dead / 1e6).toFixed(2)})  ·  ${st.comps} bodies put together (${(st.compPx / 1e6).toFixed(2)} Mpx)  ·  ${st.falls} falls kept`);
   }
   ctx.font = `600 11px ui-monospace, Menlo, monospace`;
   ctx.textAlign = 'left';

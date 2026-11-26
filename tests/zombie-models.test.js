@@ -19,7 +19,7 @@ function mockCtx(canvas) {
       if (k === 'getImageData' || k === 'createImageData') return (x, y, w, h) => ({ data: new Uint8ClampedArray(Math.max(1, (w ?? x) * (h ?? y) * 4)) });
       if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => ({ addColorStop() {} });
       return (...a) => {
-        if (k === 'drawImage') calls.push({ alpha: o.globalAlpha, op: o.globalCompositeOperation, a });
+        if (k === 'drawImage') calls.push({ alpha: o.globalAlpha, op: o.globalCompositeOperation, a, canvas: o.canvas });
         for (const v of a) if (typeof v === 'number' && !Number.isFinite(v)) bad = bad || `${String(k)}(${a.join(', ')})`;
       };
     },
@@ -41,7 +41,7 @@ globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null)
 
 const M = await import('../assets/zombies/meshes.js');
 const { decodeMesh, Texture, bake, overlap, SHADE } = await import('../src/render/zombie-bake.js');
-const { ZombieArt, orderFor, tiltPitches, DIRS, ARM_PITCH, FOOT_L, FOOT_R, TORSO, ARM_L, ARM_R, HEAD, EYES, EYE, FALL_T, DEATHS, pickDeath, wounds } = await import('../src/render/zombie-art.js');
+const { ZombieArt, orderFor, tiltPitches, DIRS, ARM_PITCH, FOOT_L, FOOT_R, TORSO, ARM_L, ARM_R, HEAD, EYES, EYE, FALL_T, DEATHS, pickDeath, wounds, WALK, Composites } = await import('../src/render/zombie-art.js');
 const { LOOKS, pickLook } = await import('../src/game/zombie-looks.js');
 const { Zombie, damageZombie, POP_BURST, POP_CHANCE } = await import('../src/game/zombies.js');
 const { IsoView } = await import('../src/iso.js');
@@ -72,6 +72,9 @@ const allMeshes = () => [
   ...Object.entries(M.BODIES).flatMap(([k, b]) => [[`${k} torso`, b.torso], [`${k} arm`, b.arm]]),
   ...Object.entries(M.HEADS).map(([k, h]) => [`head ${k}`, h.mesh]),
 ];
+
+/** The draws this test has made on ctx's canvas (rather than putting composites together). */
+const drawsOn = (ctx) => calls.filter((c) => c.canvas === ctx.canvas);
 
 /** A page that keeps the sprites it is given, for looking at them. */
 function memoryPage() {
@@ -253,10 +256,13 @@ test('lean: a leaning zombie stands taller on screen, its feet where they were; 
     art.sync(v, 2, 0, lean, head);
     const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2 };
     calls.length = 0;
-    art.drawZombie(R, common(0, Math.PI / 2, { state: 'idle', vx: 0, vy: 0 }), 1);
-    const ys = calls.map((c) => [c.a[6], c.a[6] + c.a[8]]);
-    // The feet go first (they are under everything): the bottom of the lower one.
-    return { art, top: Math.min(...ys.map((y) => y[0])), feet: Math.max(ys[0][1], ys[1][1]) };
+    const z = common(0, Math.PI / 2, { state: 'idle', vx: 0, vy: 0 });
+    art.drawZombie(R, z, 1);
+    const ys = drawsOn(R.ctx).map((c) => [c.a[6], c.a[6] + c.a[8]]);
+    // The bottom of the lower foot, where its body has it.
+    const P = z._zp;
+    const foot = (i) => (Math.round(P.Y[i] * 2 - art._sprite(P, i).oy) + art._sprite(P, i).h) / 2;
+    return { art, top: Math.min(...ys.map((y) => y[0])), feet: Math.max(foot(FOOT_L), foot(FOOT_R)) };
   };
   const upright = top(0, 0);
   const leaning = top(20, 20);
@@ -295,29 +301,45 @@ function common(look, face, extra = {}) {
   return Object.assign(z, extra);
 }
 
-test('art: a zombie is six sprites, one to one on whole device pixels; in the dark each gets its silhouette over it', () => {
+test('art: a zombie is its body and its head, two sprites one to one on whole device pixels; a swing or a hit, part by part', () => {
   const art = new ZombieArt({ texture: TEX, makePage: memoryPage });
   const v = view();
   assert.equal(art.sync(v, 2, 0), true);
-  const ctx = mockCanvas()._ctx || mockCanvas().getContext('2d');
+  const ctx = mockCanvas().getContext('2d');
   const R = { ctx, v, t: 1, dpr: 2 };
   calls.length = 0;
   art.drawZombie(R, common(0, 0.3), 1);
-  assert.equal(calls.length, 6, 'lit: six parts');
-  for (const c of calls) {
+  let screen = drawsOn(ctx);
+  assert.ok(screen.length === 2 || screen.length === 3, `lit: its body and its head (${screen.length})`);
+  assert.ok(calls.length > screen.length, 'its body put together first, from its parts');
+  for (const c of screen) {
     const [, sx, sy, sw, sh, dx, dy, dw, dh] = c.a;
     assert.ok(Math.abs(dw * 2 - sw) < 1e-9 && Math.abs(dh * 2 - sh) < 1e-9, 'one sprite pixel per device pixel');
     assert.ok(Math.abs(dx * 2 - Math.round(dx * 2)) < 1e-9 && Math.abs(dy * 2 - Math.round(dy * 2)) < 1e-9, 'on whole device pixels');
-    assert.ok(sx >= 0 && sy >= 0, 'from the atlas');
+    assert.ok(sx >= 0 && sy >= 0);
+    assert.equal(c.alpha, 1);
   }
+  // Another just like it, elsewhere: its body is put together already.
+  calls.length = 0;
+  art.drawZombie(R, common(0, 0.3, { x: 560, y: 470 }), 1);
+  assert.equal(calls.length, drawsOn(ctx).length, 'nothing new put together');
+  // Partly lit: darkened copies of its body and head, no overlays.
   calls.length = 0;
   art.drawZombie(R, common(3, 2), 0.4);
-  assert.equal(calls.length, 12, 'in the dark: six parts and six silhouettes');
-  for (let i = 1; i < 12; i += 2) assert.ok(Math.abs(calls[i].alpha - 0.6) < 1e-9, 'silhouettes at 1 - brightness');
+  screen = drawsOn(ctx);
+  assert.ok(screen.length <= 3 && screen.every((c) => c.alpha === 1), 'no overlays');
+  // A swing is drawn part by part: six parts, and partly lit, their silhouettes over them.
+  calls.length = 0;
+  art.drawZombie(R, common(3, 2, { windup: 0.2 }), 0.4);
+  screen = drawsOn(ctx);
+  assert.equal(screen.length, 12, 'six parts and six silhouettes');
+  for (let i = 1; i < 12; i += 2) assert.ok(Math.abs(screen[i].alpha - 0.6) < 1e-9, 'silhouettes at 1 - brightness');
+  // A hit flashes it: part by part, drawn again lighter.
   calls.length = 0;
   art.drawZombie(R, common(5, 4, { hitFlash: 0.05 }), 1);
-  assert.equal(calls.length, 12, 'hit: drawn again, lighter');
-  assert.ok(calls.slice(6).every((c) => c.op === 'lighter'));
+  screen = drawsOn(ctx);
+  assert.equal(screen.length, 12, 'hit: drawn again, lighter');
+  assert.ok(screen.slice(6).every((c) => c.op === 'lighter'));
   assert.equal(ctx.globalCompositeOperation, 'source-over', 'state restored');
   assert.equal(ctx.globalAlpha, 1);
   assert.equal(bad, null, bad);
@@ -342,7 +364,9 @@ test('art: every look draws in every state, at every facing, under every camera'
         for (const s of states) {
           calls.length = 0;
           art.drawZombie(R, common(look, face, { vx: 80, vy: 30, anim: k * 0.7, ...s }), 0.7);
-          assert.equal(calls.length, 12);
+          const n = drawsOn(R.ctx).length;
+          if (s.windup || s.stagger) assert.equal(n, 12, 'part by part, silhouettes over them');
+          else assert.ok(n === 2 || n === 3, `body and head (${n})`);
         }
       }
     }
@@ -384,7 +408,7 @@ test('art: a new tilt or zoom bakes again once it settles (a slider being dragge
   assert.equal(art.cam, cam);
   calls.length = 0;
   art.drawZombie(R, common(0, 0), 1);
-  assert.equal(calls.length, 6, 'scaled while it waits');
+  assert.ok(drawsOn(R.ctx).length >= 2, 'drawn while it waits');
   v.setAngles(0, 50 * DEG);
   art.sync(v, 2, 1.2);
   art.sync(v, 2, 1.3);
@@ -535,23 +559,31 @@ test('baker: toon shading puts the skin in two bands of light, with a rim of lig
   assert.ok(Math.max(...s.rim) > 60, 'a rim of light at the edges');
 });
 
-test('art: at night, a zombie where no light reaches is six pre-darkened sprites; in part light it gets silhouettes; by day none', () => {
+test('art: at night a zombie where no light reaches is put together from the darkened copies; partly lit, darkened to a level; never overlays', () => {
   const v = view();
   const night = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
   night.sync(v, 2, 0, 0, 0, 0.4);
   const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2 };
   calls.length = 0;
-  night.drawZombie(R, common(0, 1), 0.4);
-  assert.equal(calls.length, 6);
-  assert.ok(calls.every((c) => c.alpha === 1), 'no overlays');
+  const z = common(0, 1);
+  night.drawZombie(R, z, 0.4);
+  let screen = drawsOn(R.ctx);
+  assert.ok(screen.length === 2 || screen.length === 3);
+  assert.ok(screen.every((c) => c.alpha === 1), 'no overlays');
+  const torso = night._sprite(z._zp, TORSO);
+  assert.ok(calls.some((c) => c.a[0] === torso.dk.canvas && c.a[1] === torso.dk.x && c.a[2] === torso.dk.y), 'from the darkened copies (with their moonlit rim)');
+  const head = night._sprite(z._zp, HEAD);
+  assert.ok(screen.some((c) => c.a[1] === head.dk.x && c.a[2] === head.dk.y), 'its head too');
   calls.length = 0;
   night.drawZombie(R, common(0, 1), 0.7);
-  assert.equal(calls.length, 12, 'part lit (the flashlight\'s edge): sprites and silhouettes');
+  screen = drawsOn(R.ctx);
+  assert.ok(screen.length <= 3 && screen.every((c) => c.alpha === 1), 'part lit (the flashlight\'s edge): darkened to a level');
   const day = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
   day.sync(v, 2, 0, 0, 0, 1);
   calls.length = 0;
   day.drawZombie(R, common(0, 1), 0.4);
-  assert.equal(calls.length, 12, 'by day nothing is pre-darkened: a shadow gets silhouettes');
+  screen = drawsOn(R.ctx);
+  assert.ok(screen.length <= 3 && screen.every((c) => c.alpha === 1), 'by day, in a shadow: likewise');
   assert.equal(bad, null, bad);
 });
 
@@ -690,13 +722,14 @@ test('art: a zombie that has bled wears a bloodied shirt, its torso\'s second sp
   assert.equal(L.torso.s[8 * L.torso.n + 1], undefined, 'no bloodied shirt baked for it');
   z.bloodied = true;
   // Within a frame or two (one zombie's new sprites a frame).
+  calls.length = 0;
   for (let f = 1; f <= 3; f++) {
     art.sync(v, 2, f / 60);
-    calls.length = 0;
     art.drawZombie(R, z, 1);
   }
   const bloody = L.torso.s[8 * L.torso.n + 1];
-  assert.ok(bloody && drawn(bloody) && !drawn(clean), 'bloodied');
+  assert.ok(bloody && drawn(bloody) && !drawn(clean), 'bloodied (its body put together again with it)');
+  assert.equal(z._zp.tw, 1);
   assert.equal(bloody.k, clean.k, 'one silhouette for both');
   // Wounds sit low (below the big head, where they show), on one side or the other by colour.
   const box = M.BODIES.normal.torso.box;
@@ -762,7 +795,7 @@ test('death: it goes over the way its pose has it, head where it was thrown; onc
     calls.length = 0;
     art.drawFalling(R, c, 1);
     assert.equal(calls.length, 1);
-    assert.equal(art.falling(c), false, 'its decal was baked while it held: on the ground');
+    assert.equal(art.falling(c, true), false, 'its decal baked as soon as there\'s time, before the ground is drawn: on the ground');
   }
   // With no time to spare, it waits a moment at most.
   const slow = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: 0 });
@@ -771,7 +804,7 @@ test('death: it goes over the way its pose has it, head where it was thrown; onc
   assert.equal(slow.falling(c), true, 'past the budget: one of the first two a frame');
   c.t = FALL_T + 0.01;
   slow.drawFalling(R, c, 1);
-  assert.equal(slow.falling(c), true);
+  assert.equal(slow.falling(c, true), true);
   c.t = FALL_T + 0.3;
   assert.equal(slow.falling(c), false, 'on the ground anyway');
   // A body that drops straight to the ground lies as its look's dead already do, if any do.
@@ -831,4 +864,87 @@ test('death: fall frames stay out of the atlas (each on a canvas of its own), an
   const s = L.fall.get(`${149 % 8} ${(149 >> 3) % 16} ${149 % 3} 0`);
   assert.ok(s && s.k.canvas === s.canvas && s.dk.canvas === s.canvas && s.k.x === s.w + 1 && s.dk.x === 2 * s.w + 2, 'its silhouette and night copy beside it');
   assert.equal(L.fall.get('0 0 0 0'), undefined, 'the oldest let go');
+});
+
+
+// --- Composites: a zombie's body put together into one sprite -----------------------------
+
+test('composites: a walking body is put together once for each frame of its walk, and shared by every zombie that looks, faces and steps the same', () => {
+  const art = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
+  const v = view();
+  const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2 };
+  const z = common(2, 1.2, { vx: 60, vy: 40 });
+  const frames = new Set();
+  const bodies = new Set();
+  for (let i = 0; i < 80; i++) {
+    z.anim = i * 0.011; // a little over a stride of a hunter's
+    art.sync(v, 2, i / 60);
+    art.drawZombie(R, z, 1);
+    frames.add(z._zp.q);
+    bodies.add(z._zp.back);
+  }
+  assert.equal(frames.size, WALK, `the walk in ${WALK} frames`);
+  assert.equal(bodies.size, WALK, 'a body put together for each');
+  // Another zombie of the same look, facing the same way, in step: the same composite.
+  const twin = common(2, 1.2, { vx: 60, vy: 40, x: 620, y: 430, anim: z.anim });
+  art.drawZombie(R, twin, 1);
+  assert.equal(twin._zp.back, z._zp.back, 'shared');
+  // Standing still: one body, whatever the time.
+  const still = common(2, 1.2, { vx: 0, vy: 0 });
+  const seen = new Set();
+  for (let i = 0; i < 20; i++) {
+    still.anim = i * 0.1;
+    art.sync(v, 2, 2 + i / 60);
+    art.drawZombie(R, still, 1);
+    seen.add(still._zp.back);
+  }
+  assert.equal(seen.size, 1, 'standing: no walk');
+  assert.equal(bad, null, bad);
+});
+
+test('composites: prepared before anything is drawn, so drawing the horde neither bakes nor puts anything together', () => {
+  const art = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
+  const v = view();
+  const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2, game: null };
+  const zs = [];
+  for (let i = 0; i < 24; i++) zs.push(common(i % LOOKS.length, i * 0.7, { x: 400 + (i % 6) * 30, y: 420 + Math.floor(i / 6) * 40, vx: i % 3 ? 50 : 0, vy: 20, anim: i * 0.3 }));
+  for (let f = 0; f < 3; f++) {
+    art.sync(v, 2, f / 60, 0, 0, 0.4);
+    for (const [i, z] of zs.entries()) art.prepare(R, z, i % 4 ? 0.4 : 0.75); // most where no light reaches, some partly lit
+    art.ready(R);
+    const bakes = art.bakes;
+    const built = art.comp.built;
+    calls.length = 0;
+    for (const [i, z] of zs.entries()) art.drawZombie(R, z, i % 4 ? 0.4 : 0.75);
+    assert.equal(art.bakes, bakes, 'nothing baked while drawing');
+    assert.equal(art.comp.built, built, 'nothing put together while drawing');
+    assert.equal(calls.length, drawsOn(R.ctx).length, 'every draw on the screen');
+    assert.ok(calls.every((c) => c.alpha === 1), 'no overlays');
+    assert.ok(calls.length <= zs.length * 3, `two or three a zombie (${calls.length} for ${zs.length})`);
+  }
+  assert.ok(art.stats().comps > 0);
+  assert.equal(bad, null, bad);
+});
+
+test('composites: kept in a few pages; when they are full the oldest is cleared for new ones and what was on it is let go', () => {
+  const made = [];
+  const cache = new Composites((w, h) => {
+    const c = mockCanvas(w, h);
+    made.push(c);
+    return c;
+  }, 2, 64);
+  const keys = [];
+  for (let i = 0; i < 9; i++) {
+    const e = cache.add(`k${i}`, 30, 30);
+    assert.ok(e && e.x + 30 <= 64 && e.y + 30 <= 64, 'on its page');
+    keys.push(`k${i}`);
+  }
+  assert.equal(made.length, 2, 'two pages, used again');
+  assert.equal(cache.get('k0'), null, 'the oldest page was cleared');
+  assert.ok(cache.get('k8'), 'the newest is there');
+  assert.ok(cache.get('k4') && cache.get('k7'), 'and the page before it');
+  assert.equal(cache.add('big', 65, 10), null, 'too big for a page');
+  cache.clear();
+  assert.equal(cache.get('k8'), null);
+  assert.equal(cache.px, 0);
 });

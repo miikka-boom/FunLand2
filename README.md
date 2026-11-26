@@ -582,8 +582,10 @@ and no dependencies.
   - The parts are baked into sprites for the camera, per facing, as they are
     first needed, so it is still one 2D canvas with no build step. How it
     works, and how to update the art: [docs/ZOMBIE-MODELS.md](docs/ZOMBIE-MODELS.md).
-  - **Zombie models** (under Presentation) switches back to the stick figures,
-    which are cheaper for the biggest stress-test hordes.
+  - Each zombie's body is put together into one sprite per frame of its walk
+    and shared by every zombie that looks, faces and steps the same, so a horde
+    is two draws a zombie: about what the stick figures cost.
+  - **Zombie models** (under Presentation) switches back to the stick figures.
 - **Special infected** (the Hunter and the Tank are off by default: **Hunter +
   Tank** under **Specials**):
   - The **Hunter** tests shove timing. It screeches, then pounces: shove it
@@ -877,7 +879,7 @@ src/render/theme-models.js the newer maps' models, added to the table in models.
 src/render/theme-render.js the newer maps' ground (lawns and lots, grave plots and paths, the yard) and what lies on it
 src/render/decor3d.js      the small things that stand up (chairs, signs, the lemonade stand, Ben's fort and rabbit, boats)
 src/render/figures.js      survivors, the horde as stick figures (batched), Hunter, Tank, Night Terror, the Witch
-src/render/zombie-art.js   the horde as the artist's 3D zombie models: each part baked into sprites per facing (and arm pose, eyes, bloodied shirt) as they're needed, packed in atlas pages, posed and drawn far to near, darkened in the dark; the dead falling and lying in one of eight poses, as decals (docs/ZOMBIE-MODELS.md)
+src/render/zombie-art.js   the horde as the artist's 3D zombie models: each part baked into sprites per facing (and arm pose, eyes, bloodied shirt) as they're needed, packed in atlas pages, posed far to near and put together into one body sprite per walk frame, so a zombie is two draws (body and head); darkened in the dark; the dead falling and lying in one of eight poses, as decals (docs/ZOMBIE-MODELS.md)
 src/render/zombie-bake.js  the baker: a small z-buffered rasterizer for the models' parts through the game's camera, with toon shading and painted-on blood (pure, unit tested)
 src/game/zombie-looks.js   which model a common is: body, head and colour block
 src/render/*-render.js     what is painted flat (ground, graffiti, posters, chalk, Ben's crayon) and the big set pieces (docks: piers, cranes, the ferry; features: the canopy, fires, fireballs), hud.js

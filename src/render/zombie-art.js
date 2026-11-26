@@ -14,6 +14,12 @@
 // now and then, rolled up when it's hit, crossed while it reels. The pupils' poses are baked too,
 // only for the facings where the eyes show.
 //
+// A shambling or hunting zombie's body (feet, torso, arms) is then put together into one sprite
+// per frame of its walk (a composite, shared by every zombie that looks, faces and steps the
+// same), and its head drawn over it: two draws a zombie. Everything a frame needs is baked and
+// put together before any of it is drawn (prepare, ready): writing into a canvas the frame has
+// already drawn from makes the browser copy it.
+//
 // Sprites are baked when first wanted, a few milliseconds' worth per frame at most: a zombie
 // whose facing isn't baked yet borrows the nearest one that is, for a frame or two. The camera's
 // tilt and zoom are baked in; when either changes, the bakes start over, once the change has
@@ -21,11 +27,12 @@
 // scaled). Turning the camera changes nothing: a sprite is picked by how the zombie faces
 // relative to the camera.
 //
-// Light: sprites are baked fully lit. A zombie in the dark gets each part's black silhouette laid
-// over that part at (1 - brightness), which darkens exactly its own pixels, by any amount. A
-// silhouette only depends on the shape, so all the colours of a part share theirs. At night most
-// of a horde stands where no light reaches, all at the same brightness, so every sprite also
-// gets a copy darkened to it: those zombies are six draws, not twelve.
+// Light: sprites are baked fully lit. At night most of a horde stands where no light reaches, all
+// at the same brightness, so every sprite also gets a copy darkened to it, and their composites
+// are put together from those. A partly lit zombie's composite and head are darkened to one of
+// LEVELS as they're put together. Drawn part by part, a zombie in the dark gets each part's black
+// silhouette laid over that part at (1 - brightness), which darkens exactly its own pixels; a
+// silhouette only depends on the shape, so all the colours of a part share theirs.
 //
 // Lean: a steep camera would mostly see the tops of their heads, so the zombies lean toward the
 // camera, pivoting at their feet (the body's parts are baked and placed as if the camera were
@@ -85,6 +92,15 @@ const FALL_DIRS = 16;
 const FALL_STARTS = 2; // deaths a frame whose fall may be baked past the budget (a shotgun blast drops several)
 const LAND_WAIT = 0.25; // s a body that has landed may hold its last frame while its decal is baked within the budget
 const FALL_KEEP = 96; // fall frames kept for the next death to use (each is wanted for a tenth of a second)
+// A walking zombie's body (feet, torso, arms) is put together from its parts into one sprite, a
+// composite, shared by every zombie of that look, facing, pose and light: the horde is two draws
+// a zombie (body and head), not six (twelve partly lit). So the walk is drawn in WALK frames a
+// stride, the way a drawn walk cycle is.
+export const WALK = 8;
+const LEVELS = 10; // the partly lit are drawn darkened to one of these levels (no overlays)
+const COMP_PAGES = 6; // canvas pages of composites kept (when they're full, the oldest is cleared for new ones)
+const COMPOSE = 2; // ms of putting composites together a frame
+const DARKEN = Array.from({ length: LEVELS }, (_, i) => `rgba(0,0,0,${1 - i / LEVELS})`);
 // In the dark the rim light stays: what's left of its daylight strength in the darkened copies.
 const NIGHT_RIM = 1;
 // The parts, as numbered in a draw order.
@@ -240,6 +256,8 @@ export function canvasPage(w, h) {
   };
 }
 
+let spriteIds = 0; // a sprite's darkened copies are keyed by its id
+
 /** Sprites shelf-packed into pages. */
 class Atlas {
   constructor(makePage) {
@@ -281,12 +299,101 @@ class Atlas {
     this.x += w + 1;
     if (h > this.row) this.row = h;
     this.px += w * h;
-    return { canvas: this.cur.canvas, x, y, w, h, ox: s.ox, oy: s.oy, k: null, dk: null };
+    return { id: ++spriteIds, canvas: this.cur.canvas, x, y, w, h, ox: s.ox, oy: s.oy, k: null, dk: null };
   }
 
   /** Upload what's been added since the last flush. */
   flush() {
     if (this.cur) this.cur.flush();
+  }
+}
+
+/** A canvas to draw on (composites are drawn, not uploaded). */
+function makeCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  return c;
+}
+
+/**
+ * Composites (a zombie's body put together from its parts, a head darkened), shelf-packed into a
+ * few canvas pages, by key. When they're full the oldest page is cleared and used again: what was
+ * on it is put together again when it's next wanted.
+ */
+export class Composites {
+  constructor(make, n = COMP_PAGES, size = PAGE) {
+    this.make = make;
+    this.n = n;
+    this.size = size;
+    this.pages = []; // { canvas, ctx, gen, px }
+    this.cur = -1;
+    this.x = 0;
+    this.y = 0;
+    this.row = 0;
+    this.map = new Map();
+    this.built = 0; // put together since the camera changed
+  }
+
+  clear() {
+    this.map.clear();
+    for (const p of this.pages) {
+      p.ctx.clearRect(0, 0, this.size, this.size);
+      p.gen++;
+      p.px = 0;
+    }
+    this.cur = -1;
+    this.built = 0;
+  }
+
+  get px() {
+    return this.pages.reduce((n, p) => n + p.px, 0);
+  }
+
+  /** The composite for key, if it's still there. */
+  get(key) {
+    const e = this.map.get(key);
+    if (!e) return null;
+    if (e.gen === e.page.gen) return e;
+    this.map.delete(key);
+    return null;
+  }
+
+  /** Room for a w x h composite under key: { canvas, x, y, w, h, page, gen } (the caller draws it and sets ox, oy). */
+  add(key, w, h) {
+    const S = this.size;
+    if (w > S || h > S || w < 1 || h < 1) return null;
+    if (this.cur >= 0 && this.x + w > S) {
+      this.x = 0;
+      this.y += this.row + 1;
+      this.row = 0;
+    }
+    if (this.cur < 0 || this.y + h > S) this._next();
+    const p = this.pages[this.cur];
+    const e = { canvas: p.canvas, x: this.x, y: this.y, w, h, ox: 0, oy: 0, page: p, gen: p.gen };
+    this.x += w + 1;
+    if (h > this.row) this.row = h;
+    p.px += w * h;
+    this.map.set(key, e);
+    this.built++;
+    return e;
+  }
+
+  _next() {
+    this.cur = (this.cur + 1) % this.n;
+    let p = this.pages[this.cur];
+    if (!p) {
+      const canvas = this.make(this.size, this.size);
+      p = this.pages[this.cur] = { canvas, ctx: canvas.getContext('2d'), gen: 0, px: 0 };
+    } else {
+      p.ctx.clearRect(0, 0, this.size, this.size);
+      p.gen++;
+      p.px = 0;
+      for (const [k, e] of this.map) if (e.page === p) this.map.delete(k);
+    }
+    this.x = 0;
+    this.y = 0;
+    this.row = 0;
   }
 }
 
@@ -399,9 +506,16 @@ function sortParts(before, depth, out, at) {
 }
 
 export class ZombieArt {
-  /** opts.makePage(w, h): an atlas page (default: a canvas); opts.texture: a Texture (skips loading). */
+  /**
+   * opts.makePage(w, h): an atlas page (default: a canvas); opts.makeCanvas(w, h): a canvas for
+   * composites; opts.texture: a Texture (skips loading).
+   */
   constructor(opts = {}) {
     this.makePage = opts.makePage || canvasPage;
+    this.comp = new Composites(opts.makeCanvas || makeCanvas);
+    this.queue = []; // the zombies prepared this frame, wanting their composites (ready)
+    this.frameNo = 0;
+    this.composeMs = 0;
     this.atlas = new Atlas(this.makePage); // the parts of the standing
     this.deadAtlas = new Atlas(this.makePage); // the dead on the ground (fall frames have canvases of their own: _fallEntry)
     this.fallKeys = []; // the fall frames kept, oldest first: [map, key, map, key, ...]
@@ -420,8 +534,6 @@ export class ZombieArt {
     this.bakeMs = 0; // ms baked since the camera last changed
     this.bakes = 0;
     this.warmAt = 0; // how far warm() has got through every look's first facings
-    this.X = new Float64Array(6);
-    this.Y = new Float64Array(6);
     this.o = { phi: 0, sp: 1, cp: 0, ppu: 1, ss: SS }; // the body's parts
     this.oH = { phi: 0, sp: 1, cp: 0, ppu: 1, ss: SS }; // the head
     this.one = [null];
@@ -470,6 +582,9 @@ export class ZombieArt {
     this.spent = 0;
     this.fills = 0;
     this.fallStarts = 0;
+    this.frameNo++;
+    this.composeMs = 0;
+    this.queue.length = 0;
     this._yaw = v.yaw;
     const ppu = Math.min(SCALE * v.scale * dpr, MAX_PPU);
     const [pb, ph] = tiltPitches(v.pitch, lean * DEG, headTilt * DEG);
@@ -494,6 +609,7 @@ export class ZombieArt {
     Object.assign(this.oH, { sp: c.spH, cp: c.cpH, ppu });
     this.atlas.clear();
     this.deadAtlas.clear();
+    this.comp.clear();
     this.fallKeys.length = 0;
     this.looks.length = 0;
     this.parts.clear();
@@ -705,8 +821,9 @@ export class ZombieArt {
   }
 
   /**
-   * After the frame's zombies are drawn: spend what's left of its budget getting the looks'
-   * first facings ready (WARM_DIRS), one facing of every look before the next facing of any.
+   * Once the frame's zombies have what they need (ready()): spend what's left of its budget
+   * getting the looks' first facings ready (WARM_DIRS), one facing of every look before the next
+   * facing of any.
    */
   warm() {
     if (!this.cam || this.fills >= FILLS) return;
@@ -783,28 +900,39 @@ export class ZombieArt {
     return Math.hypot(a.x - z.x, a.y - z.y) < Math.hypot(p.x - z.x, p.y - z.y) ? a : p;
   }
 
-  /** Draw a common at brightness b (ctx at the device-pixel scale, CSS px coordinates). */
-  drawZombie(R, z, b) {
-    const L = this.look(z.look ?? 0);
-    const { ctx, v } = R;
+  /**
+   * How common z is drawn this frame at brightness b: its pose (the walk in WALK frames), the
+   * facings and sprites it has (baked now if there's time: _pick), where its parts go (CSS px),
+   * and how it's lit: 'f' fully, 'n' as dark as the night where no light reaches (the sprites'
+   * darkened copies), else to one of LEVELS. Kept on the zombie (z._zp).
+   */
+  _plan(R, z, b) {
+    const P = z._zp || (z._zp = { X: new Float64Array(6), Y: new Float64Array(6), frame: -1 });
+    const look = z.look ?? 0;
+    const L = this.look(look);
+    const v = R.v;
     const t = R.t;
     const st = z.stagger > 0;
     const chasing = z.state === 'chase' && z.alertDelay <= 0;
     // The arms, in key poses (they are baked, so they change pose the way drawn frames do): low
     // while it shambles, reaching while it hunts, raised, up and down on you for a swing, flailing
-    // when it's hit. Their smaller motions are bobs.
+    // when it's hit. Shambling and hunting are put together in composites (mode 0 and 1); a swing
+    // or a flail is drawn part by part (mode 2): they're brief.
     let iL = 1;
     let iR = 1;
+    let mode = chasing ? 1 : 0;
     let lean = chasing ? 12 : 3; // hunched toward what it wants
     if (st) {
       lean = -16;
       const fl = Math.sin(t * 12 + z.id) > 0;
       iL = fl ? 4 : 3;
       iR = fl ? 3 : 4;
+      mode = 2;
     } else if (z.windup > 0) {
       const w = 1 - z.windup / 0.3; // 0 -> 1 as the blow lands
       iL = iR = w < 0.35 ? 3 : w < 0.7 ? 4 : 1;
       lean += w < 0.7 ? -4 : 10;
+      mode = 2;
     } else if (chasing) {
       iL = iR = 2;
     }
@@ -828,32 +956,37 @@ export class ZombieArt {
     const fq = v.yaw + d * STEP;
     const ca = Math.cos(fq);
     const sa = Math.sin(fq);
-    const S = SCALE;
-    const spd = Math.min(1, Math.hypot(z.vx, z.vy) / (chasing ? 90 : 26));
-    const ph = z.anim * (chasing ? 13 : 4.5);
+    // The walk, in WALK frames a stride (-1: standing).
+    const moving = Math.hypot(z.vx, z.vy) > (chasing ? 27 : 8);
+    const q = moving ? Math.round((z.anim * (chasing ? 13 : 4.5) * WALK) / TAU) % WALK : -1;
+    const ph = (Math.max(0, q) * TAU) / WALK;
+    const spd = q < 0 ? 0 : chasing ? 1 : 0.75;
     const sn = Math.sin(ph);
     const cs = Math.cos(ph);
     // The rest of the pose, in model units.
     const stride = (chasing ? 46 : 30) * spd;
     const lift = (chasing ? 26 : 14) * spd;
     const bob = Math.abs(cs) * (chasing ? 12 : 8) * spd;
-    const sway = cs * (chasing ? 6 : 9) * spd + Math.sin(z.anim * 1.9 + z.id) * 4;
+    const sway = cs * (chasing ? 6 : 9) * spd;
+    const idle = Math.sin(z.anim * 1.9 + z.id) * 4; // its own slow sway: the whole body half of it, the head all
     const nod = Math.sin(z.anim * 2.6 + z.id * 0.7) * 5;
     const body = L.body;
     const fL = body.feet[0];
     const fR = body.feet[1];
     const sL = body.shoulders[0];
     const sR = body.shoulders[1];
-    const X = this.X;
-    const Y = this.Y;
+    const X = P.X;
+    const Y = P.Y;
     // Parts are placed in the leaning body's frame: on screen, the same as seen from its lower camera.
-    const X0 = v.px(z.x, z.y);
-    const Y0 = v.py(z.x, z.y, 0);
-    const k = S * v.scale;
+    const k = SCALE * v.scale;
     const spB = this.cam.sp;
     const cpB = this.cam.cp;
     const ex = v.cy; // screen right, on the ground
     const ey = v.sy;
+    const wx0 = -sa * idle * 0.5;
+    const wy0 = ca * idle * 0.5;
+    const X0 = (P.X0 = v.px(z.x, z.y) + k * (wx0 * ex + wy0 * ey));
+    const Y0 = (P.Y0 = v.py(z.x, z.y, 0) + k * (wy0 * ex - wx0 * ey) * spB);
     const put = (i, a, c, h) => {
       const wx = ca * a - sa * c;
       const wy = sa * a + ca * c;
@@ -864,35 +997,232 @@ export class ZombieArt {
     put(FOOT_R, fR[0] - sn * stride, fR[1], cs < 0 ? -cs * lift : 0);
     put(TORSO, lean * 0.3, sway * 0.5, bob);
     const reach = chasing ? 6 : 0;
-    const swing = st || z.windup > 0 ? 0 : chasing ? sn * 9 : Math.sin(z.anim * 2.3 + z.id * 1.7) * 7;
+    const swing = mode === 2 ? 0 : sn * (chasing ? 9 : 7);
     put(ARM_L, sL[0] + lean * 0.5 + reach, sL[1] + sway * 0.5, sL[2] + bob + swing);
     put(ARM_R, sR[0] + lean * 0.5 + reach, sR[1] + sway * 0.5, sR[2] + bob - swing);
-    put(HEAD, lean, sway, body.neck + bob * 1.15 + nod - (chasing ? 5 : 0));
+    put(HEAD, lean, sway + idle * 0.5, body.neck + bob * 1.15 + nod - (chasing ? 5 : 0));
+    P.frame = this.frameNo;
+    P.b = b;
+    P.L = L;
+    P.look = look;
+    P.d = d;
+    P.dh = dh;
+    P.e = e;
+    P.tw = tw;
+    P.iL = iL;
+    P.iR = iR;
+    P.mode = mode;
+    P.q = q;
+    P.flash = z.hitFlash > 0;
+    P.hs = L.head.s[dh * NE + e];
+    // How it's lit.
+    P.lv = 0;
+    if (b >= 0.95) P.dark = 'f';
+    else if (this.cam.b0 < 0.95 && Math.abs(b - this.cam.b0) < 0.012) P.dark = 'n';
+    else {
+      const lv = Math.max(1, Math.round(b * LEVELS));
+      if (lv >= LEVELS) P.dark = 'f';
+      else {
+        P.dark = 'l';
+        P.lv = lv;
+      }
+    }
+    // Is any of the body in front of its head? (Then the body is two composites, either side of it.)
+    P.hasFront = L.order[d][(iL * NP + iR) * 6 + 5] !== HEAD;
+    P.back = null;
+    P.front = null;
+    P.head = null;
+    return P;
+  }
 
-    const order = L.order[d];
-    const at = (iL * NP + iR) * 6;
+  /** The sprite of part i in plan P. */
+  _sprite(P, i) {
+    const L = P.L;
+    if (i === HEAD) return L.head.s[P.dh * NE + P.e];
+    if (i === TORSO) return L.torso.s[P.d * L.torso.n + P.tw];
+    if (i <= FOOT_R) return L.foot.s[P.d];
+    return L.arm.s[P.d * NP + (i === ARM_L ? P.iL : P.iR)];
+  }
+
+  /**
+   * Before anything is drawn this frame: plan common z at brightness b and bake what it needs
+   * (within the budget). Then ready(), then drawZombie. Baking into a page that's already been
+   * drawn from this frame makes the browser copy the whole page, so it all happens first.
+   */
+  prepare(R, z, b) {
+    const P = this._plan(R, z, b);
+    if (P.mode < 2 && !P.flash) this.queue.push(P);
+  }
+
+  /** After prepare: the looks' first sprites, then the composites the prepared zombies want (within their budget). */
+  ready(R) {
+    this.warm();
+    // (While a new zoom settles, sprites are drawn scaled, part by part: nothing to put together.)
+    if (this._exact(R)) for (const P of this.queue) this._comps(P, R.dpr, this.composeMs < COMPOSE);
+    this.queue.length = 0;
+  }
+
+  /** Are the sprites drawn one to one on device pixels (not scaled while a new zoom settles)? */
+  _exact(R) {
+    return Math.abs(this.cam.ppu - SCALE * R.v.scale * R.dpr) < 1e-9;
+  }
+
+  /** Find (or, build: put together now) plan P's composites: its body behind its head, in front of it, its head darkened. */
+  _comps(P, dpr, build) {
+    P.back = this._composite(P, 0, dpr, build);
+    P.front = P.hasFront ? this._composite(P, 1, dpr, build) : null;
+    P.head = P.lv ? this._level(P.hs, P.lv, build) : null;
+  }
+
+  /**
+   * The parts of plan P's body behind its head (g 0) or in front of it (g 1), put together into
+   * one sprite, as lit as the plan has it. Shared by every zombie of the same look, facing, pose,
+   * frame of its walk, shirt and light.
+   */
+  _composite(P, g, dpr, build) {
+    const key = `${P.look}|${P.d}|${P.mode}|${P.q}|${P.tw}|${P.dark}${P.lv}|${g}`;
+    let c = this.comp.get(key);
+    if (c || !build) return c;
+    const t0 = now();
+    const order = P.L.order[P.d];
+    const at = (P.iL * NP + P.iR) * 6;
+    let n = 0;
+    let behind = true;
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (let j = 0; j < 6; j++) {
+      const i = order[at + j];
+      if (i === HEAD) {
+        behind = false;
+        continue;
+      }
+      if (behind !== (g === 0)) continue;
+      const s = this._sprite(P, i);
+      // Where it goes from the body's origin, on whole device pixels (as drawn part by part).
+      const px = Math.round((P.X[i] - P.X0) * dpr - s.ox);
+      const py = Math.round((P.Y[i] - P.Y0) * dpr - s.oy);
+      CS[n] = s;
+      CX[n] = px;
+      CY[n] = py;
+      n++;
+      if (px < x0) x0 = px;
+      if (py < y0) y0 = py;
+      if (px + s.w > x1) x1 = px + s.w;
+      if (py + s.h > y1) y1 = py + s.h;
+    }
+    if (!n) return null;
+    c = this.comp.add(key, x1 - x0, y1 - y0);
+    if (!c) return null;
+    const ctx = c.page.ctx;
+    for (let j = 0; j < n; j++) {
+      const s = CS[j];
+      const src = P.dark === 'n' ? s.dk : s;
+      ctx.drawImage(src.canvas, src.x, src.y, s.w, s.h, c.x + CX[j] - x0, c.y + CY[j] - y0, s.w, s.h);
+      CS[j] = null;
+    }
+    if (P.lv) this._darken(ctx, c, P.lv);
+    c.ox = -x0;
+    c.oy = -y0;
+    this.composeMs += now() - t0;
+    return c;
+  }
+
+  /** Sprite s darkened to level lv (of LEVELS): its colours times lv / LEVELS, its shape as it was. */
+  _level(s, lv, build) {
+    const key = `h${s.id}|${lv}`;
+    let c = this.comp.get(key);
+    if (c || !build) return c;
+    const t0 = now();
+    c = this.comp.add(key, s.w, s.h);
+    if (!c) return null;
+    const ctx = c.page.ctx;
+    ctx.drawImage(s.canvas, s.x, s.y, s.w, s.h, c.x, c.y, s.w, s.h);
+    this._darken(ctx, c, lv);
+    c.ox = s.ox;
+    c.oy = s.oy;
+    this.composeMs += now() - t0;
+    return c;
+  }
+
+  _darken(ctx, c, lv) {
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.fillStyle = DARKEN[lv];
+    ctx.fillRect(c.x, c.y, c.w, c.h);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  /**
+   * Draw a common at brightness b (ctx at the device-pixel scale, CSS px coordinates): its body
+   * and its head, from composites, if it was prepared this frame and they're ready; part by part
+   * otherwise (a swing, a flail, a hit's flash, a camera still settling, a composite not put
+   * together yet).
+   */
+  drawZombie(R, z, b) {
+    let P = z._zp;
+    const dpr = R.dpr;
+    if (!P || P.frame !== this.frameNo || P.b !== b) {
+      // Not prepared (drawn on its own): plan it and put it together now.
+      P = this._plan(R, z, b);
+      if (P.mode < 2 && !P.flash && this._exact(R)) this._comps(P, dpr, true);
+    }
+    const { ctx, v } = R;
     // Sprites go down one to one on whole device pixels (no resampling, the cheapest draw there is),
     // unless the camera has just changed and they're waiting to be baked again: then they're scaled.
-    const dpr = R.dpr;
-    const exact = Math.abs(this.cam.ppu - S * v.scale * dpr) < 1e-9;
-    const F = exact ? 1 / dpr : (S * v.scale) / this.cam.ppu; // CSS px per sprite px
+    const exact = this._exact(R);
+    const F = exact ? 1 / dpr : (SCALE * v.scale) / this.cam.ppu; // CSS px per sprite px
     const b0 = this.cam.b0;
-    const flash = z.hitFlash > 0;
-    for (let pass = 0; pass < (flash ? 2 : 1); pass++) {
+    const X = P.X;
+    const Y = P.Y;
+    const bx = Math.round(P.X0 * dpr);
+    const by = Math.round(P.Y0 * dpr);
+    const live = (c) => c && c.gen === c.page.gen;
+    if (exact && P.mode < 2 && !P.flash && live(P.back) && (!P.hasFront || live(P.front))) {
+      const c = P.back;
+      ctx.drawImage(c.canvas, c.x, c.y, c.w, c.h, (bx - c.ox) * F, (by - c.oy) * F, c.w * F, c.h * F);
+      const hs = P.hs;
+      const hx = Math.round(X[HEAD] * dpr - hs.ox) * F;
+      const hy = Math.round(Y[HEAD] * dpr - hs.oy) * F;
+      const h = P.dark === 'n' ? hs.dk : P.dark === 'f' ? hs : live(P.head) ? P.head : null;
+      if (h) ctx.drawImage(h.canvas, h.x, h.y, hs.w, hs.h, hx, hy, hs.w * F, hs.h * F);
+      else this._draw(ctx, hs, hx, hy, hs.w * F, hs.h * F, b, b0);
+      if (P.hasFront) {
+        const c2 = P.front;
+        ctx.drawImage(c2.canvas, c2.x, c2.y, c2.w, c2.h, (bx - c2.ox) * F, (by - c2.oy) * F, c2.w * F, c2.h * F);
+      }
+      return;
+    }
+    // Part by part.
+    const L = P.L;
+    const order = L.order[P.d];
+    const at = (P.iL * NP + P.iR) * 6;
+    for (let pass = 0; pass < (P.flash ? 2 : 1); pass++) {
       if (pass) {
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = 0.45;
       }
-      for (let q = 0; q < 6; q++) {
-        const i = order[at + q];
-        const s = i === HEAD ? L.head.s[dh * NE + e] : i === TORSO ? L.torso.s[d * L.torso.n + tw] : i <= FOOT_R ? L.foot.s[d] : L.arm.s[d * NP + (i === ARM_L ? iL : iR)];
-        const dx = exact ? Math.round(X[i] * dpr - s.ox) * F : X[i] - s.ox * F;
-        const dy = exact ? Math.round(Y[i] * dpr - s.oy) * F : Y[i] - s.oy * F;
+      for (let j = 0; j < 6; j++) {
+        const i = order[at + j];
+        const s = this._sprite(P, i);
+        let dx;
+        let dy;
+        if (!exact) {
+          dx = X[i] - s.ox * F;
+          dy = Y[i] - s.oy * F;
+        } else if (i === HEAD) {
+          dx = Math.round(X[i] * dpr - s.ox) * F;
+          dy = Math.round(Y[i] * dpr - s.oy) * F;
+        } else {
+          // As a composite has them (so nothing jumps when a zombie goes from one to the other).
+          dx = (bx + Math.round((X[i] - P.X0) * dpr - s.ox)) * F;
+          dy = (by + Math.round((Y[i] - P.Y0) * dpr - s.oy)) * F;
+        }
         if (pass) ctx.drawImage(s.canvas, s.x, s.y, s.w, s.h, dx, dy, s.w * F, s.h * F);
         else this._draw(ctx, s, dx, dy, s.w * F, s.h * F, b, b0);
       }
     }
-    if (flash) {
+    if (P.flash) {
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
     }
@@ -988,13 +1318,32 @@ export class ZombieArt {
 
   /**
    * Is corpse c going over (drawn standing, by drawFalling) rather than lying on the ground? Call
-   * for the dead on screen before the ground is drawn. A body that has landed holds its last
-   * frame a little longer while its decal is baked within the budget, so a crowd going down
-   * together doesn't bake all its decals in one frame.
+   * for the dead on screen before the ground is drawn, with bake: its decal is baked then (before
+   * any are drawn) when there's time. A body that has landed holds its last frame a little longer
+   * while its decal is baked within the budget, so a crowd going down together doesn't bake all
+   * its decals in one frame.
    */
-  falling(c) {
-    if (c.t < FALL_T) return this.startFall(c);
-    return c.fall === true && c.t < FALL_T + LAND_WAIT && !this.look(c.look).dead.has(`${this.pose(c)} ${c.head ? 1 : 0}`);
+  falling(c, bake = false) {
+    const L = this.look(c.look);
+    const p = this.pose(c);
+    const key = `${p} ${c.head ? 1 : 0}`;
+    if (c.t < FALL_T) {
+      const f = this.startFall(c);
+      // Its decal, ready for when it lands, if there's time for it now.
+      if (bake && f && !L.dead.has(key) && this._may()) {
+        this.fills++;
+        this.corpse(c.look, !!c.head, this.pose(c));
+      }
+      return f;
+    }
+    if (c.fall !== true || c.t >= FALL_T + LAND_WAIT || L.dead.has(key)) return false;
+    // Down: its decal now, if there's time (whatever else wants baking this frame), else its last frame a little longer.
+    if (bake && this.spent < this.budget) {
+      this.fills++;
+      this.corpse(c.look, !!c.head, p);
+      return false;
+    }
+    return true;
   }
 
   /** A dead zombie going over (corpse c, effects.js), drawn standing, as the world's bodies are, at brightness b. */
@@ -1011,12 +1360,6 @@ export class ZombieArt {
       return;
     }
     this._put(R, s, v.px(c.x, c.y), v.py(c.x, c.y, 0), b);
-    // Its decal, ready for when it lands, if there's time for it now (once it's down, whatever
-    // else wants baking this frame).
-    if (!L.dead.has(`${p} ${hl}`) && (this._may() || (c.t >= FALL_T && this.spent < this.budget))) {
-      this.fills++;
-      this.corpse(c.look, !!hl, p);
-    }
   }
 
   /** A sprite with its origin at (x, y) CSS px, one to one on whole device pixels when the camera allows. */
@@ -1030,12 +1373,15 @@ export class ZombieArt {
     this._draw(ctx, s, dx, dy, s.w * F, s.h * F, b, this.cam.b0);
   }
 
-  /** A knocked-off head in the air (corpse c's head): tumbling, its facing turning as it spins, eyes rolling. */
-  drawHead(R, c, b) {
+  /**
+   * A knocked-off head in the air (corpse c's head): which of its sprites it's drawn with this
+   * frame, tumbling (its facing turning as it spins, eyes rolling), baked now if there's time, or
+   * a near facing that's ready (call with the zombies being prepared, before anything is drawn).
+   */
+  prepareHead(R, c) {
     const L = this.look(c.look);
-    const v = R.v;
     const hd = c.head;
-    let d = Math.round((hd.rot - v.yaw) / STEP) % DIRS;
+    let d = Math.round((hd.rot - R.v.yaw) / STEP) % DIRS;
     if (d < 0) d += DIRS;
     let e = (hd.rot * 2) % TAU < Math.PI ? EYE.crossed : EYE.up;
     if (!L.head.s[d * NE + e]) {
@@ -1063,8 +1409,17 @@ export class ZombieArt {
         }
       }
     }
+    hd.zs = L.head.s[d * NE + e];
+    hd.zf = this.frameNo;
+  }
+
+  /** A knocked-off head in the air (corpse c's head), at brightness b. */
+  drawHead(R, c, b) {
+    const hd = c.head;
+    if (hd.zf !== this.frameNo || !hd.zs) this.prepareHead(R, c);
+    const v = R.v;
     // Its neck where it is, that high up (in the leaning frame, as the standing ones are).
-    this._put(R, L.head.s[d * NE + e], v.px(hd.x, hd.y), v.py(hd.x, hd.y, 0) - hd.z * v.scale * this.cam.cp, b);
+    this._put(R, hd.zs, v.px(hd.x, hd.y), v.py(hd.x, hd.y, 0) - hd.z * v.scale * this.cam.cp, b);
   }
 
   /**
@@ -1128,6 +1483,11 @@ export class ZombieArt {
       ctx.setTransform(A * co + C * si, B * co + D * si, fl * (C * co - A * si), fl * (D * co - B * si), A * x + C * y + E, B * x + D * y + G);
       ctx.drawImage(s.canvas, s.x, s.y, s.w, s.h, -s.cx, -s.cy, s.w, s.h);
     };
+    // Every decal baked before any is drawn (baking into a page drawn from this frame copies it).
+    for (const c of list) {
+      this.corpse(c.look, !!c.head, this.pose(c));
+      if (c.head && c.head.rest) this.headDecal(c.look);
+    }
     for (const c of list) {
       ctx.globalAlpha = c.t > 48 ? Math.max(0, (50 - c.t) / 2) : 1;
       // Head toward where it was thrown (the sprite has it on the left). Never mirrored: the
@@ -1163,9 +1523,13 @@ export class ZombieArt {
   stats() {
     const a = this.atlas;
     const d = this.deadAtlas;
-    return { pages: a.pages.length + d.pages.length, px: a.px + d.px, dead: d.px, falls: this.fallKeys.length / 2, ms: Math.round(this.bakeMs), bakes: this.bakes, looks: this.looks.filter(Boolean).length };
+    const c = this.comp;
+    return { pages: a.pages.length + d.pages.length, px: a.px + d.px, dead: d.px, falls: this.fallKeys.length / 2, comps: c.map.size, compPages: c.pages.length, compPx: c.px, built: c.built, ms: Math.round(this.bakeMs), bakes: this.bakes, looks: this.looks.filter(Boolean).length };
   }
 }
 
 const GAZE = [0, 0];
 const PICK = [0, 0, 0, 0];
+const CS = new Array(6).fill(null); // a composite's parts: sprites, where they go
+const CX = new Int32Array(6);
+const CY = new Int32Array(6);
