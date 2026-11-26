@@ -28,6 +28,7 @@ import { tone, box, boxShadow, disc, ball, line3, setTonePalette } from './prims
 import { nightLookFor } from './night-look.js';
 import { Textures } from './textures.js';
 import { GroundCache } from './ground-cache.js';
+import { RoofCache } from './roof-cache.js';
 import { Horde, drawSurvivor, drawLying, drawHunter, drawTank, drawTerror, drawWitch, witchEyes, drawRock, ghostPath, hunterLift, hunterEyes, PLAYER_LOOK, ALLY_LOOK } from './figures.js';
 import { WITCH } from '../game/witch.js';
 import { ZombieArt } from './zombie-art.js';
@@ -115,6 +116,7 @@ export class Renderer {
     this.zart = new ZombieArt(); // the artist's zombie models, baked into sprites for the camera
     this.tex = new Textures(); // the streets' surface textures (Scenario), tinted per colour
     this.groundCache = new GroundCache(); // the static ground, painted once into chunks
+    this.roofCache = new RoofCache(); // flat roofs, each painted once into a picture
     this.scene = null;
     this.corpseVis = [];
     this.list = []; // this frame's painter's list
@@ -236,6 +238,10 @@ export class Renderer {
     R.look = look;
     setTonePalette(look);
     this.groundColors = look && look.ground ? look.ground : GROUND;
+    // Roofs from pictures painted once (roof-cache.js), with the streets' textures and sprites.
+    R.tex = this.tex;
+    R.roofs = RoofCache.fits(v) ? this.roofCache : null;
+    if (R.roofs) this.roofCache.begin(`${v.scale.toFixed(5)}|${v.pitch.toFixed(5)}|${dpr}|${look ? look.id : '-'}|${S.night ? 1 : 0}|${this.tex.version}`);
 
     L.collect(game, vrTall);
     // (b0: how bright a zombie is where no light reaches; a night look may keep it brighter.)

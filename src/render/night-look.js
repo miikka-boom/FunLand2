@@ -38,6 +38,8 @@ export const NIGHT_LOOKS = {
     zombieFloor: 0.72,
     dashes: 'rgba(222,150,36,0.85)', // the road's centre line: amber
     roofs: Object.freeze(['#4d3b4e', '#544050', '#463a4c', '#4f4248', '#4a3d52', '#55464f', '#433848']),
+    // Brick facades: reds and browns (the walls get the brick texture's detail over them).
+    facades: Object.freeze(['#8a3e2f', '#7a3a30', '#94503c', '#6e4038', '#84563f', '#7c3630', '#6a4c48', '#8e5a40']),
     ground: Object.freeze({
       street: '#3c3442',
       sidewalk: '#705360',

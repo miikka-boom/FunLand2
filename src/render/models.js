@@ -18,6 +18,9 @@ import { drawContainerTop, drawWarehouseRidges } from './docks-render.js';
 import { stripes } from './features-render.js';
 import { drawCarScrawl, drawPosterArt } from './lore-render.js';
 import { buildDecorProps } from './decor3d.js';
+import { RoofCache } from './roof-cache.js';
+import { darkenStyles } from './zombie-art.js';
+import { ROOFTOP } from '../../assets/streets/rooftop.js';
 
 const pts = new Float64Array(16);
 const samp = new Float32Array(12);
@@ -142,6 +145,12 @@ export function onFaceX(R, x0, y0, x1, y1, fn) {
 
 // --- Buildings ---------------------------------------------------------------------------------
 
+/** A wall's colour: its own, or under a night look with facades of its own (night-look.js), one of those (the same for every wall that had the same colour). */
+function wallColor(R, c) {
+  const f = R.look && R.look.facades;
+  return f ? f[strHash(c || '#444') % f.length] : c;
+}
+
 /** A roof's colour: its own, or under a night look with roofs of its own (night-look.js), one of those, the same for every roof that had the same colour. */
 function roofColor(R, c) {
   const roofs = R.look && R.look.roofs;
@@ -186,6 +195,22 @@ function windows(ctx, len, h, floors, seed, lit, t) {
     for (let k = 0; k < n; k++) if (hash01(seed + k * 7.31 + f * 3.17) > 0.12) ctx.rect(x0 + k * step, -z, ww, wh);
   }
   ctx.fill();
+  // A pale stone sill under each window and a dark lintel over it.
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.fillStyle = pass ? 'rgba(0,0,0,0.32)' : 'rgba(214,204,194,0.42)';
+    ctx.beginPath();
+    for (let f = 0; f < floors; f++) {
+      const z = 44 + f * 34;
+      if (z > h - 8) break;
+      for (let k = 0; k < n; k++) {
+        if (hash01(seed + k * 7.31 + f * 3.17) <= 0.12) continue;
+        const x = x0 + k * step;
+        if (pass) ctx.rect(x - 1, -z - 2.5, ww + 2, 2.5);
+        else ctx.rect(x - 1.5, -z + wh, ww + 3, 2.6);
+      }
+    }
+    ctx.fill();
+  }
   if (!lit) return;
   for (let f = 0; f < floors; f++) {
     const z = 44 + f * 34;
@@ -211,10 +236,21 @@ function drawBuilding(R, o, rec) {
   const y1 = o.y + o.h;
   const H = rec.h;
   const night = R.night;
-  litWalls(R, x0, y0, x1, y1, 0, H, d.wall);
+  litWalls(R, x0, y0, x1, y1, 0, H, wallColor(R, d.wall));
   if (!v.flat && R.alpha > 0.5) {
     const seed = (o.seed || 1) * 0.013;
+    const brick = !o.ware && !d.kiosk && R.tex && R.tex.has('brick');
     const face = (ctx2, len, k) => {
+      // Brick, over the wall's colour and light (the streets' texture's detail, multiplied in).
+      if (brick) {
+        const f = R.tex.detailFill(ctx2, 'brick');
+        if (f) {
+          ctx2.globalCompositeOperation = 'multiply';
+          ctx2.fillStyle = f;
+          ctx2.fillRect(0, -H, len, H);
+          ctx2.globalCompositeOperation = 'source-over';
+        }
+      }
       // A footing course, windows, and on longer walls a door or a shuttered shop front.
       ctx2.fillStyle = 'rgba(0,0,0,0.22)';
       ctx2.fillRect(0, -7, len, 7);
@@ -249,7 +285,23 @@ function drawBuilding(R, o, rec) {
     onFaceY(R, x0, y0, x1, y1, (c, len) => face(c, len, 2));
     wallPosters(R, o, rec);
   }
-  // Roof.
+  // Roof. A flat one (no lettering on it, which can change) is drawn from a picture of it,
+  // painted once, where the camera allows (roof-cache.js).
+  if (R.roofs && !d.gable && !rec.art && RoofCache.fits(v)) {
+    R.roofs.draw(R, o, x0, y0, x1, y1, H - 6, H + 2, (R2) => drawRoof(R2, o, rec));
+  } else drawRoof(R, o, rec);
+}
+
+/** A building's roof (its parapet, the roof inside it, what stands on it). */
+function drawRoof(R, o, rec) {
+  const { ctx, v } = R;
+  const d = rec.data;
+  const x0 = o.x;
+  const y0 = o.y;
+  const x1 = o.x + o.w;
+  const y1 = o.y + o.h;
+  const H = rec.h;
+  const night = R.night;
   const roofK = R.roofK;
   if (d.gable && !v.flat && !rec.art) {
     gableRoof(R, o, H, d.rise, roofK);
@@ -258,8 +310,18 @@ function drawBuilding(R, o, rec) {
   const P = Math.min(6, o.w * 0.12, o.h * 0.12); // parapet
   const drop = d.kiosk ? 0 : 5;
   const rc = roofColor(R, o.color);
+  const T = R.caching ? R.tex : null; // textures only where it's painted once
   topFill(R, x0, y0, x1, y1, H, tone(rc, roofK * 1.12));
-  if (!v.flat && drop && o.w > 40 && o.h > 40) {
+  if (T) {
+    // An inked edge round the parapet.
+    ctx.strokeStyle = 'rgba(12,10,16,0.85)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    boxTop(ctx, v, x0, y0, x1, y1, H);
+    ctx.stroke();
+  }
+  const inset = !v.flat && drop && o.w > 40 && o.h > 40;
+  if (inset) {
     // The roof sits a little below the parapet: its two far inner walls show.
     const xi = v.faceX < 0 ? x1 - P : x0 + P;
     const yi = v.faceY > 0 ? y0 + P : y1 - P;
@@ -268,18 +330,34 @@ function drawBuilding(R, o, rec) {
     if (v.faceY) quad3(ctx, v, x0 + P, yi, H - drop, x1 - P, yi, H - drop, x1 - P, yi, H, x0 + P, yi, H);
     if (v.faceX) quad3(ctx, v, xi, y0 + P, H - drop, xi, y1 - P, H - drop, xi, y1 - P, H, xi, y0 + P, H);
     ctx.fill();
-    topFill(R, x0 + P, y0 + P, x1 - P, y1 - P, H - drop, tone(rc, roofK * 0.9));
+    if (T && T.has('roof')) {
+      R.ground(H - drop);
+      ctx.fillStyle = T.fill(ctx, 'roof', tone(rc, roofK * 0.9));
+      ctx.fillRect(x0 + P, y0 + P, x1 - x0 - 2 * P, y1 - y0 - 2 * P);
+      R.reset();
+    } else topFill(R, x0 + P, y0 + P, x1 - P, y1 - P, H - drop, tone(rc, roofK * 0.9));
   }
-  // Rooftop clutter: AC units / vents placed from the building's seed.
-  const n = o.vents || 0;
-  for (let k = 0; k < n; k++) {
-    const hx = hash01(o.seed + k * 7.31);
-    const hy = hash01(o.seed + k * 3.17 + 11);
-    const w = 18 + hash01(o.seed + k) * 16;
-    const hh = 14 + hash01(o.seed + k + 5) * 12;
-    const x = o.x + 12 + hx * Math.max(1, o.w - 24 - w);
-    const y = o.y + 12 + hy * Math.max(1, o.h - 24 - hh);
-    pbox(R, x, y, x + w, y + hh, H - drop, H - drop + 9 + hash01(o.seed + k * 2.3) * 6, night ? '#5c6068' : '#6a6e75', roofK * 0.95);
+  // Rooftop clutter: AC units, vents, skylights... from the building's seed (sprites, where
+  // they've loaded; boxes otherwise).
+  const sheet = T && !d.kiosk ? T.sheet('rooftop', `${roofLevel(roofK)}|${R.look ? R.look.id : '-'}`, sheetStyle(R.look, roofK)) : null;
+  if (sheet && inset) {
+    R.ground(H - drop);
+    for (const q of rooftopProps(o, P)) {
+      const s = ROOFTOP[q.name];
+      ctx.drawImage(sheet, s.x, s.y, s.w, s.h, q.x, q.y, q.w, q.h);
+    }
+    R.reset();
+  } else {
+    const n = o.vents || 0;
+    for (let k = 0; k < n; k++) {
+      const hx = hash01(o.seed + k * 7.31);
+      const hy = hash01(o.seed + k * 3.17 + 11);
+      const w = 18 + hash01(o.seed + k) * 16;
+      const hh = 14 + hash01(o.seed + k + 5) * 12;
+      const x = o.x + 12 + hx * Math.max(1, o.w - 24 - w);
+      const y = o.y + 12 + hy * Math.max(1, o.h - 24 - hh);
+      pbox(R, x, y, x + w, y + hh, H - drop, H - drop + 9 + hash01(o.seed + k * 2.3) * 6, night ? '#5c6068' : '#6a6e75', roofK * 0.95);
+    }
   }
   if (rec.art || o.booth) {
     R.ground(H - drop);
@@ -287,6 +365,70 @@ function drawBuilding(R, o, rec) {
     if (rec.art) for (const fn of rec.art) fn(ctx, R);
     R.reset();
   }
+}
+
+// --- Rooftop clutter -------------------------------------------------------------------------
+
+/** How bright the clutter on a roof is drawn: one of ten levels of the roof's light. */
+const roofLevel = (k) => Math.max(1, Math.min(10, Math.round(k * 0.95 * 10)));
+const styleCache = new Map();
+/** The fill that darkens the rooftop sprites to the roof's light (and the night look's shade). */
+function sheetStyle(look, roofK) {
+  const key = look ? look.id : '-';
+  let st = styleCache.get(key);
+  if (!st) styleCache.set(key, (st = darkenStyles(look)));
+  return st[roofLevel(roofK)];
+}
+
+// What stands on roofs, and how often.
+const PROPS = [
+  ['ac', 5],
+  ['vent', 5],
+  ['skylight', 3],
+  ['condenser', 3],
+  ['hatch', 2],
+  ['mushroom', 3],
+  ['chimney', 1],
+  ['tank', 1],
+];
+const PROP_TOTAL = PROPS.reduce((a, p) => a + p[1], 0);
+const PROP_SCALE = 1.35; // how big they stand against the zombies (their sizes are in rooftop.js)
+
+/**
+ * Where the clutter on building o's roof stands (world units, on the roof inside its parapet P
+ * wide): from its seed, the same every time, none overlapping. Kept on the building.
+ */
+export function rooftopProps(o, P) {
+  if (o._roofProps) return o._roofProps;
+  const out = [];
+  const seed = (o.seed || 1) * 0.37;
+  const x0 = o.x + P + 6;
+  const y0 = o.y + P + 6;
+  const x1 = o.x + o.w - P - 6;
+  const y1 = o.y + o.h - P - 6;
+  const area = Math.max(0, (x1 - x0) * (y1 - y0));
+  const n = Math.min(8, Math.max(o.vents ? 1 : 0, Math.round(area / 6500)));
+  for (let k = 0, tries = 0; out.length < n && tries < n * 12; tries++, k++) {
+    let r = hash01(seed + k * 5.13) * PROP_TOTAL;
+    let name = PROPS[0][0];
+    for (const [nm, wgt] of PROPS) {
+      if ((r -= wgt) < 0) {
+        name = nm;
+        break;
+      }
+    }
+    const s = ROOFTOP[name];
+    const w = s.size * PROP_SCALE;
+    const h = (w * s.h) / s.w;
+    if (w > x1 - x0 || h > y1 - y0) continue;
+    if (name === 'tank' && area < 40000) continue;
+    const x = x0 + hash01(seed + k * 3.71 + 1) * (x1 - x0 - w);
+    const y = y0 + hash01(seed + k * 9.27 + 2) * (y1 - y0 - h);
+    if (out.some((q) => x < q.x + q.w + 6 && q.x < x + w + 6 && y < q.y + q.h + 6 && q.y < y + h + 6)) continue;
+    out.push({ name, x, y, w, h });
+  }
+  o._roofProps = out;
+  return out;
 }
 
 /** A low pitched roof with its ridge along the long side (warehouses). */
