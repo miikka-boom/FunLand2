@@ -293,29 +293,32 @@ def b64(arr):
     return base64.b64encode(np.ascontiguousarray(arr).tobytes()).decode("ascii")
 
 
-def encode(polys, pivot, block_shift):
+def encode(polys, pivot, block_shift, groups=None):
     """
     One mesh, relative to `pivot`. Corners are merged when position, normal and UV agree.
     Triangles are wound so that (b - a) x (c - a) points along the normals (outward for skin,
-    inward for a shell), which is what the baker culls by. UVs move to block B.
+    inward for a shell), which is what the baker culls by. UVs move to block B. groups: a tag
+    per polygon (id(polygon) -> small int), written per vertex as `grp`.
     """
     pivot = np.array(pivot, dtype=float)
     index = {}
-    pos, nrm, uvs, tri = [], [], [], []
+    pos, nrm, uvs, tri, grp = [], [], [], [], []
     for poly in polys:
         ids = []
+        g = groups.get(id(poly), 0) if groups else 0
         for p, n, uv in poly:
             q = tuple(int(round(x)) for x in (np.array(p) - pivot) * POS_Q)
             qn = tuple(int(max(-127, min(127, round(x * 127)))) for x in n)
             if not in_palette(uv):
                 uv = (uv[0] - block_shift[0], uv[1] - block_shift[1])
             qt = tuple(int(max(0, min(65535, round(x * 65535)))) for x in uv)
-            k = q + qn + qt
+            k = q + qn + qt + (g,)
             if k not in index:
                 index[k] = len(pos)
                 pos.append(q)
                 nrm.append(qn)
                 uvs.append(qt)
+                grp.append(g)
             ids.append(index[k])
         navg = np.sum([np.array(c[1]) for c in poly], axis=0)
         for j in range(1, len(ids) - 1):
@@ -327,7 +330,7 @@ def encode(polys, pivot, block_shift):
             tri += [a, b, c]
     lo, hi = np.array(pos).min(axis=0) / POS_Q, np.array(pos).max(axis=0) / POS_Q
     assert len(pos) < 65536
-    return {
+    out = {
         "n": len(pos),
         "tris": len(tri) // 3,
         "box": [round(float(x), 1) for x in (*lo, *hi)],
@@ -336,6 +339,48 @@ def encode(polys, pivot, block_shift):
         "uv": b64(np.array(uvs, dtype="<u2")),
         "tri": b64(np.array(tri, dtype="<u2")),
     }
+    if groups:
+        out["grp"] = b64(np.array(grp, dtype="u1"))
+    return out
+
+
+EYE_WHITE_V = 0.94  # the palette's eye white is its top swatch
+
+
+def eye_groups(polys, pivot):
+    """
+    A head's googly eyes, so the game can move the pupils and close the eyes: tags per polygon
+    (1, 2: the left and right eye's white and its outline; 3, 4: the left and right pupil; 0: the
+    rest, the mouth included) and each eye's middle and half-size (c, h), relative to `pivot`.
+    """
+    pieces = islands(polys)
+    whites = [i for i in pieces if not is_shell(i) and all(in_palette(c[2]) and c[2][1] > EYE_WHITE_V for poly in i for c in poly)]
+    assert len(whites) == 2, f"expected two eye whites, found {len(whites)}"
+    whites.sort(key=lambda isl: centre(isl)[1])  # the left eye (c < 0) first
+    eyes = []
+    for w in whites:
+        lo, hi = bbox(w)
+        eyes.append({"lo": lo, "hi": hi, "mid": (lo + hi) / 2})
+    tags = {}
+    for isl in pieces:
+        tag = 0
+        mid = (bbox(isl)[0] + bbox(isl)[1]) / 2
+        for e, eye in enumerate(eyes):
+            radius = (eye["hi"][1] - eye["lo"][1]) / 2
+            if any(isl is w for w in whites[e:e + 1]):
+                tag = 1 + e
+            elif is_shell(isl) and np.linalg.norm(mid - eye["mid"]) < radius * 0.6:
+                tag = 1 + e  # the eye's outline
+            elif not is_shell(isl) and all(in_palette(c[2]) and c[2][1] < EYE_WHITE_V for poly in isl for c in poly) \
+                    and eye["lo"][1] <= mid[1] <= eye["hi"][1] and eye["lo"][2] <= mid[2] <= eye["hi"][2]:
+                tag = 3 + e  # the pupil in front of it
+        for poly in isl:
+            tags[id(poly)] = tag
+    pivot = np.array(pivot, dtype=float)
+    info = [{"mid": [round(float(x), 2) for x in eye["mid"] - pivot], "half": [round(float((eye["hi"][i] - eye["lo"][i]) / 2), 2) for i in (1, 2)]} for eye in eyes]
+    counts = [sum(1 for t in tags.values() if t == k) for k in range(5)]
+    assert counts[3] > 0 and counts[4] > 0, f"pupils not found: {counts}"
+    return tags, info
 
 
 def centre(polys, axes=(0, 1, 2)):
@@ -442,9 +487,12 @@ def main():
     heads = {}
     for prefix, head_id, blk in AUTHORED:
         body_name = "big" if prefix == BIG else "normal"
-        mesh = encode(models[prefix + "_head"], (0, 0, bodies[body_name]["neck"]), blocks[blk])
-        heads[head_id] = {"body": body_name, "mesh": mesh}
-        print(f"head {head_id} ({prefix}, {body_name} body): {mesh['n']} verts, {mesh['tris']} tris, box {mesh['box']}")
+        polys = models[prefix + "_head"]
+        pivot = (0, 0, bodies[body_name]["neck"])
+        tags, eyes = eye_groups(polys, pivot)
+        mesh = encode(polys, pivot, blocks[blk], tags)
+        heads[head_id] = {"body": body_name, "mesh": mesh, "eyes": eyes}
+        print(f"head {head_id} ({prefix}, {body_name} body): {mesh['n']} verts, {mesh['tris']} tris, box {mesh['box']}, eyes {eyes}")
 
     tex = build_texture()
     print(f"texture: {tex.size[0]} px -> {OUT / 'zombies.png'} ({(OUT / 'zombies.png').stat().st_size // 1024} KB)")
@@ -481,7 +529,8 @@ def main():
         f"export const BODIES = {js(bodies)};",
         "/** One foot (pivot: under its middle), shared by every body. */",
         f"export const FOOT = {js(foot)};",
-        "/** The heads, each made for one body (pivot: that body's neck). */",
+        "/** The heads, each made for one body (pivot: that body's neck). mesh.grp tags the googly eyes per vertex (1, 2:",
+        " *  the left and right eye's white and outline; 3, 4: the pupils); eyes: each eye's middle (a, c, h) and half-size (c, h). */",
         f"export const HEADS = {js(heads)};",
         "/** The six zombies as the artist made them: body, head and colour block. */",
         "export const AUTHORED = " + js([{"body": "big" if p == BIG else "normal", "head": h, "block": b} for p, h, b in AUTHORED], None) + ";",

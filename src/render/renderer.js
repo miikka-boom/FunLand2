@@ -27,7 +27,7 @@ import { CRANE_H, drawDoorPlans } from './models.js';
 import { tone, box, boxShadow, disc, ball, line3 } from './prims.js';
 import { Horde, drawSurvivor, drawLying, drawHunter, drawTank, drawTerror, drawWitch, witchEyes, drawRock, ghostPath, hunterLift, hunterEyes, PLAYER_LOOK, ALLY_LOOK } from './figures.js';
 import { WITCH } from '../game/witch.js';
-import { ZombieArt } from './zombie-art.js';
+import { ZombieArt, FALL_T } from './zombie-art.js';
 import { drawFloors, drawChalk, drawLoot, drawStash, drawLootBright } from './loot-render.js';
 import { drawCanopies, drawFeatureDecor, drawFeaturesBright } from './features-render.js';
 import { drawLoreDecor, drawPosters, roofText, drawLoreBright } from './lore-render.js';
@@ -75,6 +75,8 @@ const T_PICKUP = 5;
 const T_STASH = 6;
 const T_PROP = 7;
 const T_ROCK = 8;
+const T_FALL = 9; // a dead model zombie going over
+const T_HEAD = 10; // a knocked-off head in the air
 // Sort key: a static's rank, or (the rank a mover goes after + 1/2) and then its depth.
 const SLOT = 65536;
 const DEPTH0 = 12000;
@@ -195,7 +197,6 @@ export class Renderer {
     R.game = game;
     R.t = game.time;
     R.night = !!S.night;
-    R.zart = S.zombieModels && this.zart.sync(v, dpr, undefined, S.zombieLean, S.zombieHeadTilt) ? this.zart : null;
     // The key light comes from the right of the screen, a little toward the camera:
     // the wall on that side is the bright one, shadows fall to the left.
     const lx = v.cy + 0.2 * v.gx;
@@ -211,6 +212,7 @@ export class Renderer {
     this.eye = game.player.alive ? game.player : null;
 
     L.collect(game, vrTall);
+    R.zart = S.zombieModels && this.zart.sync(v, dpr, undefined, S.zombieLean, S.zombieHeadTilt, L.night ? 1 - L.dark : 1) ? this.zart : null;
 
     // --- Ground --------------------------------------------------------------------------
     R.reset();
@@ -553,8 +555,9 @@ export class Renderer {
     dead.length = 0;
     for (const c of game.effects.corpses) {
       if (!pointInRect(c.x, c.y, vr)) continue;
-      if (zart && c.look !== undefined) dead.push(c);
-      else vis.push(c);
+      if (zart && c.look !== undefined) {
+        if (!(c.t < FALL_T && zart.startFall(c))) dead.push(c);
+      } else vis.push(c);
     }
     if (dead.length) zart.drawCorpses(ctx, this.R, dead);
     if (!vis.length) return;
@@ -799,6 +802,22 @@ export class Renderer {
       this._mover(T_ROCK, r, r.x, r.y, r.r, Math.max(0.2, L.lit(r.x, r.y)));
       sh.push(r.x, r.y, r.r * 0.8);
     }
+    // The model zombies' dead going over, and heads knocked off them still in the air.
+    if (this.R.zart) {
+      for (const c of game.effects.corpses) {
+        if (c.look === undefined) continue;
+        if (c.fall === true && c.t < FALL_T && v.onScreen(c.x, c.y, 60, 60)) {
+          const b = L.sample(c.x, c.y);
+          if (b >= 0.032) this._mover(T_FALL, c, c.x, c.y, 12, b);
+        }
+        const h = c.head;
+        if (h && !h.rest && v.onScreen(h.x, h.y, 40, 60)) {
+          const b = L.sample(h.x, h.y);
+          if (b >= 0.032) this._mover(T_HEAD, c, h.x, h.y, 6, b);
+          sh.push(h.x, h.y, 6 * Math.max(0.4, 1 - h.z / 60));
+        }
+      }
+    }
   }
 
   /** What things cast on the ground: every static away from the key light, a blob under everything that walks. */
@@ -879,6 +898,12 @@ export class Renderer {
           drawRock(R, o.x, o.y, h, o.r, o.rot, it.b);
           break;
         }
+        case T_FALL:
+          if (R.zart) R.zart.drawFalling(R, o, it.b);
+          break;
+        case T_HEAD:
+          if (R.zart) R.zart.drawHead(R, o, it.b);
+          break;
         default:
           break;
       }

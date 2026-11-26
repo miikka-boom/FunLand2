@@ -566,6 +566,12 @@ and no dependencies.
     feet step, the body bobs and sways, the head nods, the arms hang, reach for
     you, go up for a swing and come down on you, and flail when it's hit. The
     dead lie on their backs, arms flung up, heads where the shot threw them.
+  - Their heads have a mind of their own: a hunter's turns to you before its
+    body does, a shambler's glances about, and the googly eyes roll (toward
+    you, drooping, rolled up or crossed when hit) and blink. Toon shading and
+    a pale rim of light match the hand-inked texture and keep them readable
+    at night. The dead fall over backwards, and a big enough blow (a hunting
+    rifle, a shotgun up close, a blast) knocks the head clean off.
   - They lean toward the camera, and their heads tip further toward it, so
     even the steep street camera shows their faces, profiles and backs
     instead of the tops of their heads: **Zombie lean toward camera** and

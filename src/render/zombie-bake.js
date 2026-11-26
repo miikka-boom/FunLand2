@@ -7,6 +7,9 @@
 // depends on the camera's tilt, on the zoom and on how the part is turned relative to the camera,
 // so a set baked for 32 facings serves every zombie on screen until the camera changes.
 //
+// Shading is toon-style, to go with the hand-inked texture: two bands of light with a soft edge,
+// and a pale rim on the shadow side of the skin, which keeps a zombie readable on a dark street.
+//
 // Outlines come with the meshes: every piece has a shell (the same shape a little bigger, faces
 // turned inward, coloured black), and culling its near side leaves a black rim around the piece.
 // The triangles are wound so that (b - a) x (c - a) points along the normals, outward for skin and
@@ -42,7 +45,8 @@ export function decodeMesh(m) {
     const v = (uv[i * 2 + 1] = t[i * 2 + 1] / 65535);
     pal[i] = u >= PALETTE[0] && u <= PALETTE[2] && v >= PALETTE[1] && v <= PALETTE[3] ? 1 : 0;
   }
-  return { n: m.n, pos, nrm, uv, pal, tri: new Uint16Array(b64(m.tri)), box: m.box };
+  const grp = m.grp ? new Uint8Array(b64(m.grp)) : null; // a head's googly eyes (meshes.js: HEADS)
+  return { n: m.n, pos, nrm, uv, pal, grp, tri: new Uint16Array(b64(m.tri)), box: m.box };
 }
 
 /** RGBA pixels with box-filtered mip levels (level 0 first). */
@@ -73,8 +77,11 @@ export class Texture {
 // world's own lighting is: tops brightest, then the walls that face the camera).
 // [screen right, along the ground toward the camera, up]
 export const LIGHT = unit([-0.42, 0.34, 0.84]);
-export const AMBIENT = 0.62;
-export const DIFFUSE = 0.46;
+/** Toon shading: the shadow band, the lit band (multiples of the texture's colour), where the edge between them falls (n . light), and the rim. */
+export const SHADE = { dark: 0.74, lit: 1.03, edge0: 0.06, edge1: 0.2, rim: 0.32 };
+export const RIM_COLOUR = [210, 236, 222];
+const RIM0 = 0.42; // the rim fades in from here (1 - n . view: 0 facing the camera, 1 edge-on)...
+const RIM1 = 0.82; // ...to full here
 
 function unit(v) {
   const l = Math.hypot(v[0], v[1], v[2]);
@@ -86,7 +93,8 @@ let cap = 0;
 let VX;
 let VY;
 let VD;
-let VK;
+let VL;
+let VN;
 let VU;
 let VV;
 let bufCap = 0;
@@ -94,6 +102,7 @@ let ZB;
 let CR;
 let CG;
 let CB;
+let RM;
 
 function grow(n) {
   if (n <= cap) return;
@@ -101,7 +110,8 @@ function grow(n) {
   VX = new Float32Array(cap);
   VY = new Float32Array(cap);
   VD = new Float32Array(cap);
-  VK = new Float32Array(cap);
+  VL = new Float32Array(cap);
+  VN = new Float32Array(cap);
   VU = new Float32Array(cap);
   VV = new Float32Array(cap);
 }
@@ -113,6 +123,7 @@ function growBuf(n) {
   CR = new Float32Array(bufCap);
   CG = new Float32Array(bufCap);
   CB = new Float32Array(bufCap);
+  RM = new Float32Array(bufCap);
 }
 
 /**
@@ -120,15 +131,17 @@ function growBuf(n) {
  *   items  [{ mesh (decodeMesh), shift: [du, dv] (its colour block; palette UVs don't move),
  *            at: [a, c, h] where its pivot sits in the body, yaw: radians it is swung toward its
  *            right about the upright through its pivot, then pitch: radians it is raised about
- *            its pivot's side-to-side axis (arms) }]
+ *            its pivot's side-to-side axis (arms), eye: a head's googly eyes as { pupils: [[dc, dh],
+ *            [dc, dh]] (model units, left eye then right), shut: 0..1 } }]
  *   tex    Texture
  *   o      { phi: the body's facing relative to the camera (0: facing screen right, PI/2: facing
  *            the camera), lie: radians the whole body is tipped back about its side-to-side axis
  *            (PI/2: on its back, face up; corpses), sp, cp: sine and cosine of the camera's tilt,
- *            ppu: final pixels per model unit, ss: samples per pixel along each axis }
- * Returns { w, h, ox, oy, rgba, depth }: the body's origin is at (ox, oy) px; rgba is straight (not
- * premultiplied) alpha; depth (model units toward the camera, from the origin) is -Infinity where
- * the sprite is empty.
+ *            ppu: final pixels per model unit, ss: samples per pixel along each axis, shade: SHADE
+ *            overrides }
+ * Returns { w, h, ox, oy, rgba, depth, rim }: the body's origin is at (ox, oy) px; rgba is straight
+ * (not premultiplied) alpha; depth (model units toward the camera, from the origin) is -Infinity
+ * where the sprite is empty; rim (0..255) is how much of each pixel is rim light.
  */
 export function bake(items, tex, o) {
   let total = 0;
@@ -148,8 +161,11 @@ export function bake(items, tex, o) {
   const la = L[0] * cf + L[1] * sf;
   const lc = -L[0] * sf + L[1] * cf;
   const lh = L[2];
-  const amb = o.ambient ?? AMBIENT;
-  const dif = o.diffuse ?? DIFFUSE;
+  // Toward the camera, in the same axes.
+  const va = sf * cp;
+  const vc = cf * cp;
+  const vh = sp;
+  const sh = o.shade ? { ...SHADE, ...o.shade } : SHADE;
 
   let x0 = Infinity;
   let x1 = -Infinity;
@@ -167,6 +183,8 @@ export function bake(items, tex, o) {
     const sy = Math.sin(yaw);
     const du = it.shift ? it.shift[0] : 0;
     const dv = it.shift ? it.shift[1] : 0;
+    const grp = it.eye && it.mesh.grp;
+    const eyes = it.eyes;
     for (let i = 0; i < n; i++) {
       let a = pos[i * 3];
       let c = pos[i * 3 + 1];
@@ -174,6 +192,21 @@ export function bake(items, tex, o) {
       let na = nrm[i * 3];
       let nc = nrm[i * 3 + 1];
       let nh = nrm[i * 3 + 2];
+      if (grp && grp[i]) {
+        // Googly eyes: the pupils roll about in front of the whites; a shut eye is squashed flat.
+        const g = grp[i];
+        const e = g === 1 || g === 3 ? 0 : 1;
+        if (g >= 3) {
+          const off = it.eye.pupils[e];
+          c += off[0];
+          h += off[1];
+          a += 3; // a little proud of the white, so it stays in front wherever it rolls
+        }
+        if (it.eye.shut) {
+          const mid = eyes[e].mid[2];
+          h = mid + (h - mid) * (1 - 0.88 * it.eye.shut);
+        }
+      }
       if (yaw) {
         const a2 = a * cy - c * sy;
         c = a * sy + c * cy;
@@ -206,8 +239,8 @@ export function bake(items, tex, o) {
       const x = (VX[j] = ppu * (a * cf - c * sf));
       const y = (VY[j] = ppu * (g * sp - h * cp));
       VD[j] = g * cp + h * sp;
-      const l = na * la + nc * lc + nh * lh;
-      VK[j] = amb + dif * (l > 0 ? l : 0);
+      VL[j] = na * la + nc * lc + nh * lh;
+      VN[j] = na * va + nc * vc + nh * vh;
       if (pal[i]) {
         VU[j] = uv[i * 2];
         VV[j] = uv[i * 2 + 1];
@@ -240,6 +273,7 @@ export function bake(items, tex, o) {
   base = 0;
   for (const it of items) {
     const tri = it.mesh.tri;
+    const pal = it.mesh.pal;
     // Texture level: about one texel per sample on the textured triangles.
     let tA = 0;
     let sA = 0;
@@ -285,9 +319,14 @@ export function bake(items, tex, o) {
       const d0 = VD[i0];
       const d1 = VD[i1];
       const d2 = VD[i2];
-      const k0 = VK[i0];
-      const k1 = VK[i1];
-      const k2 = VK[i2];
+      const l0 = VL[i0];
+      const l1 = VL[i1];
+      const l2 = VL[i2];
+      const n0 = VN[i0];
+      const n1 = VN[i1];
+      const n2 = VN[i2];
+      // The rim is for skin and clothes, not for the palette's black lines and white eyes.
+      const rim = pal[tri[t]] && pal[tri[t + 1]] && pal[tri[t + 2]] ? 0 : sh.rim;
       const u0 = VU[i0];
       const v0 = VV[i0];
       const u1 = VU[i1];
@@ -327,11 +366,21 @@ export function bake(items, tex, o) {
           const d = w0 * d0 + w1 * d1 + w2 * d2;
           if (d <= ZB[idx]) continue;
           ZB[idx] = d;
-          const k = w0 * k0 + w1 * k1 + w2 * k2;
+          const l = w0 * l0 + w1 * l1 + w2 * l2;
+          let band = (l - sh.edge0) / (sh.edge1 - sh.edge0);
+          band = band <= 0 ? 0 : band >= 1 ? 1 : band * band * (3 - 2 * band);
+          const k = sh.dark + (sh.lit - sh.dark) * band;
+          let rr = 0;
+          if (rim) {
+            let f = (1 - (w0 * n0 + w1 * n1 + w2 * n2) - RIM0) / (RIM1 - RIM0);
+            f = f <= 0 ? 0 : f >= 1 ? 1 : f * f * (3 - 2 * f);
+            rr = rim * f * (1 - 0.75 * band);
+          }
+          RM[idx] = rr;
           if (flat) {
-            CR[idx] = fr * k;
-            CG[idx] = fg * k;
-            CB[idx] = fb * k;
+            CR[idx] = fr * k * (1 - rr) + RIM_COLOUR[0] * rr;
+            CG[idx] = fg * k * (1 - rr) + RIM_COLOUR[1] * rr;
+            CB[idx] = fb * k * (1 - rr) + RIM_COLOUR[2] * rr;
           } else {
             const u = w0 * u0 + w1 * u1 + w2 * u2;
             const v = w0 * v0 + w1 * v1 + w2 * v2;
@@ -342,9 +391,9 @@ export function bake(items, tex, o) {
             if (sy < 0) sy = 0;
             else if (sy >= th) sy = th - 1;
             const q = (sy * tw + sx) * 4;
-            CR[idx] = td[q] * k;
-            CG[idx] = td[q + 1] * k;
-            CB[idx] = td[q + 2] * k;
+            CR[idx] = td[q] * k * (1 - rr) + RIM_COLOUR[0] * rr;
+            CG[idx] = td[q + 1] * k * (1 - rr) + RIM_COLOUR[1] * rr;
+            CB[idx] = td[q + 2] * k * (1 - rr) + RIM_COLOUR[2] * rr;
           }
         }
         w0r += e0y;
@@ -357,12 +406,14 @@ export function bake(items, tex, o) {
   // Down to final pixels: colour = mean of the covered samples, alpha = coverage.
   const rgba = new Uint8ClampedArray(fw * fh * 4);
   const depth = new Float32Array(fw * fh).fill(-Infinity);
+  const rimOut = new Uint8ClampedArray(fw * fh);
   const per = ss * ss;
   for (let fy = 0; fy < fh; fy++) {
     for (let fx = 0; fx < fw; fx++) {
       let r = 0;
       let g = 0;
       let b = 0;
+      let rm = 0;
       let c = 0;
       let dm = -Infinity;
       for (let sy = 0; sy < ss; sy++) {
@@ -374,6 +425,7 @@ export function bake(items, tex, o) {
           r += CR[idx];
           g += CG[idx];
           b += CB[idx];
+          rm += RM[idx];
           if (d > dm) dm = d;
         }
       }
@@ -384,9 +436,10 @@ export function bake(items, tex, o) {
       rgba[q + 2] = b / c;
       rgba[q + 3] = (c * 255) / per;
       depth[fy * fw + fx] = dm;
+      rimOut[fy * fw + fx] = (rm / c) * 255;
     }
   }
-  return { w: fw, h: fh, ox: -fx0, oy: -fy0, rgba, depth };
+  return { w: fw, h: fh, ox: -fx0, oy: -fy0, rgba, depth, rim: rimOut };
 }
 
 const ZERO = [0, 0, 0];

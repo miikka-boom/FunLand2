@@ -1,12 +1,18 @@
 // The horde in the artist's 3D models (assets/zombies/, built by tools/zombies/).
 //
 // Each part of a look (its head, torso, arm and foot, in its colours) is drawn from sprites baked
-// for the camera by zombie-bake.js: one per facing (32 of them), and for the arm one per facing
-// and pose. Every frame a zombie is put together from them, posed (feet stepping, body bobbing
-// and swaying, arms hanging, reaching, raised for a swing or thrown up when it's hit, head
-// bobbing), and drawn part by part from the farthest to the nearest. Which part is in front of
-// which depends on how it's turned and on its arms, so that order is worked out per facing and
-// arm pose from where the parts really overlap (orderFor).
+// for the camera by zombie-bake.js: one per facing (32 of them), for the arm one per facing and
+// pose, for the head one per facing and look in its googly eyes. Every frame a zombie is put
+// together from them, posed (feet stepping, body bobbing and swaying, arms hanging, reaching,
+// raised for a swing or thrown up when it's hit, head nodding), and drawn part by part from the
+// farthest to the nearest. Which part is in front of which depends on how it's turned and on its
+// arms, so that order is worked out per facing and arm pose from where the parts really overlap
+// (orderFor).
+//
+// The head has a mind of its own: a shambler's looks about, a hunter's turns to what it wants
+// before its body does, and the eyes in it roll: toward you, drooping while it shuffles, blinking
+// now and then, rolled up when it's hit, crossed while it reels. The pupils' poses are baked too,
+// only for the facings where the eyes show.
 //
 // Sprites are baked when first wanted, a few milliseconds' worth per frame at most: a zombie
 // whose facing isn't baked yet borrows the nearest one that is, for a frame or two. The camera's
@@ -17,17 +23,21 @@
 //
 // Light: sprites are baked fully lit. A zombie in the dark gets each part's black silhouette laid
 // over that part at (1 - brightness), which darkens exactly its own pixels, by any amount. A
-// silhouette only depends on the shape, so all the colours of a part share theirs.
+// silhouette only depends on the shape, so all the colours of a part share theirs. At night most
+// of a horde stands where no light reaches, all at the same brightness, so every sprite also
+// gets a copy darkened to it: those zombies are six draws, not twelve.
 //
 // Lean: a steep camera would mostly see the tops of their heads, so the zombies lean toward the
 // camera, pivoting at their feet (the body's parts are baked and placed as if the camera were
 // lower: tiltPitches), and their heads tip further toward it about the neck, whichever way they
 // face. The draw order is worked out for the same angles.
 //
-// The dead lie on the ground as decals of their models, on their backs with their arms flung up.
+// The dead fall: a few frames of the body going over backwards (16 facings, baked as deaths
+// happen), then a decal of the model on the ground, on its back with its arms flung up. A big
+// enough hit takes the head off: it flies, tumbling, bounces (effects.js) and lies by the body.
 
 import { BODIES, FOOT, HEADS, BLOCKS } from '../../assets/zombies/meshes.js';
-import { decodeMesh, Texture, bake, overlap } from './zombie-bake.js';
+import { decodeMesh, Texture, bake, overlap, RIM_COLOUR } from './zombie-bake.js';
 import { LOOKS } from '../game/zombie-looks.js';
 import { TAU } from '../util.js';
 
@@ -37,6 +47,19 @@ const STEP = TAU / DIRS;
 export const ARM_PITCH = [-0.5, -0.25, 0, 0.35, 0.75];
 const NP = ARM_PITCH.length;
 const STILL = [0];
+const P = 14; // how far a pupil rolls, model units (an eye's white is about 43 across its middle)
+/** The googly eyes' poses: where the pupils are (left eye, right eye: across and up, model units) and how shut the eyes are. */
+export const EYES = [
+  { name: 'ahead', pupils: [[0, -3], [0, -3]], shut: 0 },
+  { name: 'left', pupils: [[-P, -4], [-P, -4]], shut: 0 },
+  { name: 'right', pupils: [[P, -4], [P, -4]], shut: 0 },
+  { name: 'up', pupils: [[0, P], [0, P]], shut: 0 },
+  { name: 'down', pupils: [[0, -P], [0, -P]], shut: 0 },
+  { name: 'shut', pupils: [[0, -3], [0, -3]], shut: 1 },
+  { name: 'crossed', pupils: [[-0.7 * P, 0.7 * P], [0.7 * P, -0.7 * P]], shut: 0 },
+];
+export const EYE = Object.fromEntries(EYES.map((e, i) => [e.name, i]));
+const NE = EYES.length;
 /** World units per model unit: a model zombie's head is about as wide as its body circle (radius 10 to 12). */
 export const SCALE = 0.1;
 const SS = 2; // samples per pixel each way when baking
@@ -44,12 +67,22 @@ const MAX_PPU = 0.9; // px per model unit at most (a huge screen zoomed right in
 const PAGE = 1024;
 const SETTLE = 0.25; // s a new camera has to hold before the bakes start over
 const BUDGET = 4; // ms of baking per frame, once a look has its first sprites
+// ...and for one zombie a frame at most: every batch of new sprites is an upload that makes the
+// browser copy an atlas page, so the rest borrow a near facing for a frame or two.
+const FILLS = 1;
 // Facings every look gets ready ahead of need (toward the camera, away, sideways), with the arm
 // poses of a shambler and a hunter, so a look's first zombie on screen borrows a near facing
 // instead of baking everything at once.
 const WARM_DIRS = [8, 24, 0, 16];
 const WARM_POSES = [1, 2];
 const ORDER_PPU = 0.08; // px per model unit for the small bakes that work out the draw order
+/** How long the dead take to fall (s), the frames of it (how far over: radians), and the facings those are baked for. */
+export const FALL_T = 0.32;
+const FALL_LIE = [0.5, 0.95, 1.3];
+const FALL_DIRS = 16;
+const FALL_STARTS = 2; // deaths a frame whose fall may be baked past the budget (a shotgun blast drops several)
+// In the dark the rim light stays: what's left of its daylight strength in the darkened copies.
+const NIGHT_RIM = 1;
 // The parts, as numbered in a draw order.
 export const FOOT_L = 0;
 export const FOOT_R = 1;
@@ -74,6 +107,8 @@ export function tiltPitches(pitch, lean, headTilt) {
   return [body, head];
 }
 
+const wrap = (a) => a - TAU * Math.floor((a + Math.PI) / TAU);
+
 const meshes = new Map();
 function mesh(m) {
   let d = meshes.get(m);
@@ -89,6 +124,8 @@ const now = () => (typeof performance !== 'undefined' ? performance.now() : Date
 /**
  * An atlas page on a canvas. Sprites are written into a pixel buffer and uploaded together
  * (flush), since every upload makes the browser copy the page; a full page lets its buffer go.
+ * put(..., k, rim): the sprite's colours times k (1 as baked, 0 its black silhouette, between:
+ * dimmed, keeping a moonlit rim where the sprite's rim light was).
  */
 export function canvasPage(w, h) {
   const canvas = document.createElement('canvas');
@@ -102,15 +139,18 @@ export function canvasPage(w, h) {
   let y1 = -Infinity;
   return {
     canvas,
-    put(rgba, sw, sh, x, y, black) {
+    put(rgba, sw, sh, x, y, k = 1, rim = null) {
       const d = img.data;
+      const moon = rim && k > 0 && k < 1 ? ((1 - k) * NIGHT_RIM) / 255 : 0;
       for (let j = 0; j < sh; j++) {
         let o = ((y + j) * w + x) * 4;
         let q = j * sw * 4;
-        for (let i = 0; i < sw; i++, o += 4, q += 4) {
-          d[o] = black ? 0 : rgba[q];
-          d[o + 1] = black ? 0 : rgba[q + 1];
-          d[o + 2] = black ? 0 : rgba[q + 2];
+        let r = j * sw;
+        for (let i = 0; i < sw; i++, o += 4, q += 4, r++) {
+          const m = moon ? rim[r] * moon : 0;
+          d[o] = rgba[q] * k + RIM_COLOUR[0] * m;
+          d[o + 1] = rgba[q + 1] * k + RIM_COLOUR[1] * m;
+          d[o + 2] = rgba[q + 2] * k + RIM_COLOUR[2] * m;
           d[o + 3] = rgba[q + 3];
         }
       }
@@ -149,8 +189,8 @@ class Atlas {
     this.px = 0;
   }
 
-  /** A baked sprite (black: only its silhouette) -> { canvas, x, y, w, h, ox, oy }. */
-  add(s, black = false) {
+  /** A baked sprite, its colours times k (0: its black silhouette) -> { canvas, x, y, w, h, ox, oy }. */
+  add(s, k = 1) {
     const w = s.w;
     const h = s.h;
     if (this.cur && this.x + w > PAGE) {
@@ -168,11 +208,11 @@ class Atlas {
     }
     const x = this.x;
     const y = this.y;
-    this.cur.put(s.rgba, w, h, x, y, black);
+    this.cur.put(s.rgba, w, h, x, y, k, s.rim);
     this.x += w + 1;
     if (h > this.row) this.row = h;
     this.px += w * h;
-    return { canvas: this.cur.canvas, x, y, w, h, ox: s.ox, oy: s.oy, k: null };
+    return { canvas: this.cur.canvas, x, y, w, h, ox: s.ox, oy: s.oy, k: null, dk: null };
   }
 
   /** Upload what's been added since the last flush. */
@@ -181,15 +221,19 @@ class Atlas {
   }
 }
 
-/** A part in one colour block: its sprites by facing and pose, baked when first wanted. */
+/**
+ * A part in one colour block: its sprites by facing and variant (an arm's poses, a head's eyes),
+ * baked when first wanted. Silhouettes are shared by every colour of the shape; a head's are the
+ * same whatever its eyes do, so it keeps one per facing.
+ */
 class Part {
-  constructor(m, shift, poses, sil, head) {
-    this.head = head; // baked at the head's tilt
-    this.item = { mesh: m, shift, pitch: 0 };
-    this.poses = poses;
-    this.n = poses.length;
+  constructor(m, shift, variants, sil, head, eyes) {
+    this.head = head; // baked at the head's tilt, variants are eyes
+    this.item = { mesh: m, shift, pitch: 0, eye: null, eyes };
+    this.variants = variants;
+    this.n = variants.length;
     this.s = new Array(DIRS * this.n);
-    this.sil = sil; // the silhouettes, shared by every colour of this shape
+    this.sil = sil;
   }
 }
 
@@ -290,7 +334,7 @@ export class ZombieArt {
     this.tex = opts.texture || null;
     this.state = this.tex ? 'ready' : 'idle'; // 'loading' | 'ready' | 'failed'
     this.budget = opts.budget ?? BUDGET;
-    this.cam = null; // what the sprites are baked for: { pitch, ppu, sp, cp }
+    this.cam = null; // what the sprites are baked for: { pitch, pb, ph, ppu, sp, cp, spH, cpH, b0 }
     this.want = null;
     this.wantT = 0;
     this.looks = [];
@@ -307,6 +351,8 @@ export class ZombieArt {
     this.o = { phi: 0, sp: 1, cp: 0, ppu: 1, ss: SS }; // the body's parts
     this.oH = { phi: 0, sp: 1, cp: 0, ppu: 1, ss: SS }; // the head
     this.one = [null];
+    this._yaw = 0;
+    this.fallStarts = 0;
   }
 
   /** Fetch and decode the texture (in a browser; anywhere else the stick figures stay). */
@@ -340,16 +386,21 @@ export class ZombieArt {
 
   /**
    * Keep the sprites in step with the camera (once a frame, before drawing). lean and headTilt:
-   * degrees the zombies and their heads lean toward the camera. Returns true when the horde can be
-   * drawn with the models this frame. t: seconds, any clock.
+   * degrees the zombies and their heads lean toward the camera; b0: how bright it is where no
+   * light reaches (1 by day). Returns true when the horde can be drawn with the models this
+   * frame. t: seconds, any clock.
    */
-  sync(v, dpr, t = now() / 1000, lean = 0, headTilt = 0) {
+  sync(v, dpr, t = now() / 1000, lean = 0, headTilt = 0, b0 = 1) {
     if (this.state === 'idle') this.load();
     if (this.state !== 'ready') return false;
     this.spent = 0;
+    this.fills = 0;
+    this.fallStarts = 0;
+    this._yaw = v.yaw;
     const ppu = Math.min(SCALE * v.scale * dpr, MAX_PPU);
     const [pb, ph] = tiltPitches(v.pitch, lean * DEG, headTilt * DEG);
-    const same = (c) => c && Math.abs(c.pb - pb) < 1e-4 && Math.abs(c.ph - ph) < 1e-4 && Math.abs(c.ppu / ppu - 1) < 0.01;
+    const dim = Math.round(Math.min(1, b0) * 200) / 200;
+    const same = (c) => c && Math.abs(c.pb - pb) < 1e-4 && Math.abs(c.ph - ph) < 1e-4 && Math.abs(c.ppu / ppu - 1) < 0.01 && c.b0 === dim;
     if (same(this.cam)) {
       this.want = null;
       return true;
@@ -357,14 +408,14 @@ export class ZombieArt {
     if (this.cam) {
       // A new camera: wait until it holds still, drawing with the sprites there are.
       if (!same(this.want)) {
-        this.want = { pb, ph, ppu };
+        this.want = { pb, ph, ppu, b0: dim };
         this.wantT = t;
         return true;
       }
       if (t - this.wantT < SETTLE) return true;
     }
     this.want = null;
-    const c = (this.cam = { pitch: v.pitch, pb, ph, ppu, sp: Math.sin(pb), cp: Math.cos(pb), spH: Math.sin(ph), cpH: Math.cos(ph) });
+    const c = (this.cam = { pitch: v.pitch, pb, ph, ppu, sp: Math.sin(pb), cp: Math.cos(pb), spH: Math.sin(ph), cpH: Math.cos(ph), b0: dim });
     Object.assign(this.o, { sp: c.sp, cp: c.cp, ppu });
     Object.assign(this.oH, { sp: c.spH, cp: c.cpH, ppu });
     this.atlas.clear();
@@ -382,15 +433,15 @@ export class ZombieArt {
     return true;
   }
 
-  _part(key, shape, m, shift, poses, head = false) {
+  _part(key, shape, m, shift, variants, head = false, eyes = null) {
     let p = this.parts.get(key);
     if (!p) {
       let sil = this.sils.get(shape);
       if (!sil) {
-        sil = new Array(DIRS * poses.length);
+        sil = new Array(DIRS * (head ? 1 : variants.length));
         this.sils.set(shape, sil);
       }
-      p = new Part(m, shift, poses, sil, head);
+      p = new Part(m, shift, variants, sil, head, eyes);
       this.parts.set(key, p);
     }
     return p;
@@ -414,77 +465,133 @@ export class ZombieArt {
       look: lk,
       body,
       headDef: head,
-      head: this._part(`head ${lk.head} ${lk.block}`, `head ${lk.head}`, mesh(head.mesh), shift, STILL, true),
+      head: this._part(`head ${lk.head} ${lk.block}`, `head ${lk.head}`, mesh(head.mesh), shift, EYES, true, head.eyes),
       torso: this._part(`torso ${lk.body} ${lk.block}`, `torso ${lk.body}`, mesh(body.torso), shift, STILL),
       arm: this._part(`arm ${lk.body} ${lk.block}`, `arm ${lk.body}`, mesh(body.arm), shift, ARM_PITCH),
       foot: this._part(`foot ${lk.block}`, 'foot', mesh(FOOT), shift, STILL),
       order,
+      fall: new Map(), // falling frames: `${facing} ${frame} ${headless}` -> sprite
       corpse: null,
+      headless: null,
+      headDecal: null,
     };
     return L;
   }
 
-  /** Bake a part's sprite for facing d and pose p (and its shape's silhouette, if that's new). */
-  _bake(part, d, p) {
-    const t0 = now();
-    const o = part.head ? this.oH : this.o;
-    o.phi = d * STEP;
-    part.item.pitch = part.poses[p];
-    this.one[0] = part.item;
-    const s = bake(this.one, this.tex, o);
-    const i = d * part.n + p;
+  /** Put a baked sprite in the atlas with what darkening it needs: sil, its silhouette if shared already. */
+  _entry(s, sil) {
     const e = this.atlas.add(s);
-    if (!part.sil[i]) part.sil[i] = this.atlas.add(s, true);
-    e.k = part.sil[i];
-    part.s[i] = e;
+    e.k = sil || this.atlas.add(s, 0);
+    if (this.cam.b0 < 0.95) e.dk = this.atlas.add(s, this.cam.b0);
+    return e;
+  }
+
+  _time(t0) {
     const ms = now() - t0;
     this.spent += ms;
     this.bakeMs += ms;
+  }
+
+  /** Bake a part's sprite for facing d and variant v (and its shape's silhouette, if that's new). */
+  _bake(part, d, v) {
+    const t0 = now();
+    const o = part.head ? this.oH : this.o;
+    o.phi = d * STEP;
+    if (part.head) part.item.eye = part.variants[v];
+    else part.item.pitch = part.variants[v];
+    this.one[0] = part.item;
+    const s = bake(this.one, this.tex, o);
+    const si = part.head ? d : d * part.n + v;
+    const e = this._entry(s, part.sil[si]);
+    if (!part.sil[si]) part.sil[si] = e.k;
+    part.s[d * part.n + v] = e;
     this.bakes++;
+    this._time(t0);
   }
 
-  /** Has everything a zombie of look L needs at facing d with these arm poses been baked? */
-  _has(L, d, iL, iR) {
-    return !!(L.order[d] && L.head.s[d] && L.torso.s[d] && L.foot.s[d] && L.arm.s[d * NP + iL] && L.arm.s[d * NP + iR]);
+  _go(force) {
+    return force || this.spent < this.budget;
   }
 
-  /** Bake what's missing for facing d while the frame's budget lasts (or regardless, when forced). */
-  _fill(L, d, iL, iR, force) {
-    const go = () => force || this.spent < this.budget;
+  /** May a zombie have new sprites baked this frame? (One a frame, within the budget.) */
+  _may() {
+    return this.fills < FILLS && this.spent < this.budget;
+  }
+
+  /** Is the body (draw order, torso, feet, these arm poses) ready at facing d? */
+  _body(L, d, iL, iR) {
+    return !!(L.order[d] && L.torso.s[d] && L.foot.s[d] && L.arm.s[d * NP + iL] && L.arm.s[d * NP + iR]);
+  }
+
+  /** Bake what the body lacks at facing d while the frame's budget lasts (or regardless, when forced). */
+  _fillBody(L, d, iL, iR, force) {
+    if (!force) {
+      if (!this._may()) return false;
+      this.fills++;
+    }
+    let ok = true;
     if (!L.order[d]) {
-      if (!go()) return false;
-      const t0 = now();
-      L.order[d] = orderFor(L.body, L.headDef, this.tex, this.o, this.oH, d);
-      const ms = now() - t0;
-      this.spent += ms;
-      this.bakeMs += ms;
+      if (this._go(force)) {
+        const t0 = now();
+        L.order[d] = orderFor(L.body, L.headDef, this.tex, this.o, this.oH, d);
+        this._time(t0);
+      } else ok = false;
     }
-    const need = [L.head, 0, L.torso, 0, L.foot, 0, L.arm, iL, L.arm, iR];
-    for (let k = 0; k < need.length; k += 2) {
+    const need = [L.torso, 0, L.foot, 0, L.arm, iL, L.arm, iR];
+    for (let k = 0; ok && k < need.length; k += 2) {
       const part = need[k];
-      const p = need[k + 1];
-      if (part.s[d * part.n + p]) continue;
-      if (!go()) {
-        this.atlas.flush();
-        return false;
-      }
-      this._bake(part, d, p);
+      const v = need[k + 1];
+      if (part.s[d * part.n + v]) continue;
+      if (!this._go(force)) ok = false;
+      else this._bake(part, d, v);
     }
+    this.atlas.flush();
+    return ok;
+  }
+
+  _fillHead(L, d, e, force) {
+    if (L.head.s[d * NE + e]) return true;
+    if (!force) {
+      if (!this._may()) return false;
+      this.fills++;
+    }
+    this._bake(L.head, d, e);
     this.atlas.flush();
     return true;
   }
 
-  /** The facing to draw a zombie of look L with: d if it can be had this frame, else the nearest baked one. */
-  _dir(L, d, iL, iR) {
-    if (this._has(L, d, iL, iR) || this._fill(L, d, iL, iR, false)) return d;
-    for (let k = 1; k <= DIRS / 2; k++) {
-      const a = (d + k) % DIRS;
-      if (this._has(L, a, iL, iR)) return a;
-      const b = (d - k + DIRS) % DIRS;
-      if (this._has(L, b, iL, iR)) return b;
+  /**
+   * The facings and eyes to draw a zombie of look L with: what it wants if that can be had this
+   * frame, else the nearest that is baked (the body first, then the head: its own facing with
+   * its eyes ahead, or the body's).
+   */
+  _pick(L, d, dh, e, iL, iR, out) {
+    let bd = d;
+    if (!this._body(L, d, iL, iR) && !this._fillBody(L, d, iL, iR, false)) {
+      bd = -1;
+      for (let k = 1; k <= DIRS / 2 && bd < 0; k++) {
+        if (this._body(L, (d + k) % DIRS, iL, iR)) bd = (d + k) % DIRS;
+        else if (this._body(L, (d - k + DIRS) % DIRS, iL, iR)) bd = (d - k + DIRS) % DIRS;
+      }
+      if (bd < 0) {
+        this._fillBody(L, d, iL, iR, true); // the look's first sprites: no waiting
+        bd = d;
+      }
     }
-    this._fill(L, d, iL, iR, true); // the look's first sprites: no waiting
-    return d;
+    let hd = (((dh + bd - d) % DIRS) + DIRS) % DIRS;
+    if (!this._fillHead(L, hd, e, false)) {
+      if (L.head.s[hd * NE]) e = 0;
+      else if (L.head.s[bd * NE + e]) hd = bd;
+      else {
+        hd = bd;
+        e = 0;
+        this._fillHead(L, hd, 0, true);
+      }
+    }
+    out[0] = bd;
+    out[1] = hd;
+    out[2] = e;
+    return out;
   }
 
   /**
@@ -492,43 +599,78 @@ export class ZombieArt {
    * first facings ready (WARM_DIRS), one facing of every look before the next facing of any.
    */
   warm() {
-    if (!this.cam) return;
+    if (!this.cam || this.fills >= FILLS) return;
     const n = LOOKS.length;
-    while (this.warmAt < n * WARM_DIRS.length && this.spent < this.budget) {
+    while (this.warmAt < n * WARM_DIRS.length) {
       const L = this.look(this.warmAt % n);
       const d = WARM_DIRS[(this.warmAt / n) | 0];
-      if (!this._has(L, d, WARM_POSES[0], WARM_POSES[1]) && !this._fill(L, d, WARM_POSES[0], WARM_POSES[1], false)) break;
+      if (!this._body(L, d, WARM_POSES[0], WARM_POSES[1]) || !L.head.s[d * NE + EYE.down]) {
+        if (this.spent >= this.budget) return;
+        // This frame's one batch of new sprites: a look's body and head at one facing.
+        this.fills = FILLS;
+        this._fillBody(L, d, WARM_POSES[0], WARM_POSES[1], true);
+        this._fillHead(L, d, EYE.down, true);
+        this.warmAt++;
+        return;
+      }
       this.warmAt++;
     }
   }
 
-  /** The look's body lying on its back, arms flung up, seen from straight above: a ground decal with its head toward -x. */
-  corpse(i) {
-    const L = this.look(i);
-    if (L.corpse) return L.corpse;
-    const t0 = now();
-    const lk = L.look;
-    const body = L.body;
-    const shift = BLOCKS[lk.block];
-    const items = [
-      { mesh: mesh(FOOT), shift, at: body.feet[0] },
-      { mesh: mesh(FOOT), shift, at: body.feet[1] },
-      { mesh: mesh(body.torso), shift },
-      { mesh: mesh(body.arm), shift, at: body.shoulders[0], yaw: -0.8, pitch: 1.45 },
-      { mesh: mesh(body.arm), shift, at: body.shoulders[1], yaw: 0.8, pitch: 1.45 },
-      { mesh: mesh(L.headDef.mesh), shift, at: [0, 0, body.neck] },
-    ];
-    // Facing screen right and tipped onto its back, its head ends up on the left.
-    const s = bake(items, this.tex, { phi: 0, sp: 1, cp: 0, ppu: this.cam.ppu, ss: SS, lie: Math.PI / 2, ambient: 0.52, diffuse: 0.4 });
-    const e = this.atlas.add(s);
-    e.cx = s.w / 2; // the middle of the body, between its feet and the top of its head and hands
-    e.cy = s.oy;
-    L.corpse = e;
-    this.atlas.flush();
-    const ms = now() - t0;
-    this.spent += ms;
-    this.bakeMs += ms;
-    return e;
+  /** Draw one sprite: as baked, its darkened copy (exactly the brightness asked for), or as baked with its silhouette over it. */
+  _draw(ctx, s, dx, dy, dw, dh, b, b0) {
+    if (s.dk && Math.abs(b - b0) < 0.012) {
+      ctx.drawImage(s.dk.canvas, s.dk.x, s.dk.y, s.w, s.h, dx, dy, dw, dh);
+      return;
+    }
+    ctx.drawImage(s.canvas, s.x, s.y, s.w, s.h, dx, dy, dw, dh);
+    if (b < 0.95) {
+      ctx.globalAlpha = 1 - Math.max(0, b);
+      ctx.drawImage(s.k.canvas, s.k.x, s.k.y, s.w, s.h, dx, dy, dw, dh);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  /** Where a zombie's eyes look, and whether its head turns from its body: [head turn (radians), eyes]. */
+  _gaze(R, z, f, chasing, st, t, out) {
+    let turn;
+    let e;
+    const tgt = this._target(R, z);
+    const toward = tgt ? wrap(Math.atan2(tgt.y - z.y, tgt.x - z.x) - f) : 0;
+    if (st) {
+      turn = Math.sin(t * 20 + z.id) * 0.45; // reeling
+      e = Math.sin(t * 9 + z.id) > 0 ? EYE.crossed : EYE.up;
+    } else if (z.hitFlash > 0) {
+      turn = 0;
+      e = EYE.up;
+    } else if (tgt && (chasing || z.alertDelay > 0 || z.windup > 0)) {
+      // The head turns to what it wants before the body does; the eyes go the rest of the way.
+      turn = Math.max(-0.9, Math.min(0.9, toward));
+      const rest = toward - turn;
+      e = rest > 0.12 ? EYE.right : rest < -0.12 ? EYE.left : EYE.ahead;
+    } else {
+      // A shambler glances about, holding each look a second or two, its eyes drooping.
+      const k = Math.floor(z.anim / 1.7 + z.id * 0.37);
+      const r = Math.sin(k * 12.9898 + z.id * 78.233) * 43758.5453;
+      turn = (Math.floor((r - Math.floor(r)) * 5) - 2) * STEP * 1.5;
+      e = EYE.down;
+    }
+    // A blink every few seconds.
+    if (!st && (z.anim + z.id * 1.37) % 4.3 < 0.13) e = EYE.shut;
+    out[0] = turn;
+    out[1] = e;
+    return out;
+  }
+
+  /** The survivor a zombie is after: the nearer of you and the teammate. */
+  _target(R, z) {
+    const g = R.game;
+    if (!g) return null;
+    const p = g.player && g.player.alive ? g.player : null;
+    const a = g.ally && g.ally.alive && !g.ally.down ? g.ally : null;
+    if (!p) return a;
+    if (!a) return p;
+    return Math.hypot(a.x - z.x, a.y - z.y) < Math.hypot(p.x - z.x, p.y - z.y) ? a : p;
   }
 
   /** Draw a common at brightness b (ctx at the device-pixel scale, CSS px coordinates). */
@@ -558,9 +700,18 @@ export class ZombieArt {
     }
     let f = z.face;
     if (st) f += Math.sin(t * 30 + z.id) * 0.35;
-    let d = Math.round((f - v.yaw) / STEP) % DIRS;
+    const gz = this._gaze(R, z, f, chasing, st, t, GAZE);
+    const rel = (f - v.yaw) / STEP;
+    let d = Math.round(rel) % DIRS;
     if (d < 0) d += DIRS;
-    d = this._dir(L, d, iL, iR);
+    let dh = Math.round(rel + gz[0] / STEP) % DIRS;
+    if (dh < 0) dh += DIRS;
+    // Eyes that face away from the camera don't show: no need for their poses.
+    let e = Math.sin(dh * STEP) * this.cam.cpH < -0.12 ? EYE.ahead : gz[1];
+    const pick = this._pick(L, d, dh, e, iL, iR, PICK);
+    d = pick[0];
+    dh = pick[1];
+    e = pick[2];
     // Parts are placed for the facing the sprites show, so they stay joined.
     const fq = v.yaw + d * STEP;
     const ca = Math.cos(fq);
@@ -613,27 +764,20 @@ export class ZombieArt {
     const dpr = R.dpr;
     const exact = Math.abs(this.cam.ppu - S * v.scale * dpr) < 1e-9;
     const F = exact ? 1 / dpr : (S * v.scale) / this.cam.ppu; // CSS px per sprite px
-    const dark = b < 0.95 ? 1 - Math.max(0, b) : 0;
+    const b0 = this.cam.b0;
     const flash = z.hitFlash > 0;
     for (let pass = 0; pass < (flash ? 2 : 1); pass++) {
       if (pass) {
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = 0.45;
       }
-      for (let k = 0; k < 6; k++) {
-        const i = order[at + k];
-        const s = i === HEAD ? L.head.s[d] : i === TORSO ? L.torso.s[d] : i <= FOOT_R ? L.foot.s[d] : L.arm.s[d * NP + (i === ARM_L ? iL : iR)];
+      for (let q = 0; q < 6; q++) {
+        const i = order[at + q];
+        const s = i === HEAD ? L.head.s[dh * NE + e] : i === TORSO ? L.torso.s[d] : i <= FOOT_R ? L.foot.s[d] : L.arm.s[d * NP + (i === ARM_L ? iL : iR)];
         const dx = exact ? Math.round(X[i] * dpr - s.ox) * F : X[i] - s.ox * F;
         const dy = exact ? Math.round(Y[i] * dpr - s.oy) * F : Y[i] - s.oy * F;
-        const dw = s.w * F;
-        const dh = s.h * F;
-        ctx.drawImage(s.canvas, s.x, s.y, s.w, s.h, dx, dy, dw, dh);
-        if (dark && !pass) {
-          const k2 = s.k;
-          ctx.globalAlpha = dark;
-          ctx.drawImage(k2.canvas, k2.x, k2.y, s.w, s.h, dx, dy, dw, dh);
-          ctx.globalAlpha = 1;
-        }
+        if (pass) ctx.drawImage(s.canvas, s.x, s.y, s.w, s.h, dx, dy, s.w * F, s.h * F);
+        else this._draw(ctx, s, dx, dy, s.w * F, s.h * F, b, b0);
       }
     }
     if (flash) {
@@ -642,9 +786,144 @@ export class ZombieArt {
     }
   }
 
+  // --- The dead ----------------------------------------------------------------------------
+
+  /** The items of a look's body, lying back `lie` radians with its arms flung up `fling` of the way (headless: without its head). */
+  _lying(L, lie, fling, headless, eye) {
+    const lk = L.look;
+    const body = L.body;
+    const shift = BLOCKS[lk.block];
+    const items = [
+      { mesh: mesh(FOOT), shift, at: body.feet[0] },
+      { mesh: mesh(FOOT), shift, at: body.feet[1] },
+      { mesh: mesh(body.torso), shift },
+      { mesh: mesh(body.arm), shift, at: body.shoulders[0], yaw: -0.8 * fling, pitch: 0.2 + 1.25 * fling },
+      { mesh: mesh(body.arm), shift, at: body.shoulders[1], yaw: 0.8 * fling, pitch: 0.2 + 1.25 * fling },
+    ];
+    if (!headless) items.push({ mesh: mesh(L.headDef.mesh), shift, at: [0, 0, body.neck], eye, eyes: L.headDef.eyes });
+    return items;
+  }
+
+  _fallSprite(L, d, fr, headless, force) {
+    const key = `${d} ${fr} ${headless ? 1 : 0}`;
+    let s = L.fall.get(key);
+    if (s || !this._go(force)) return s || null;
+    const t0 = now();
+    // One sample a pixel: the frames are on screen for a tenth of a second each.
+    const o = { phi: (d * TAU) / FALL_DIRS, sp: this.cam.sp, cp: this.cam.cp, ppu: this.cam.ppu, ss: 1, lie: FALL_LIE[fr] };
+    s = this._entry(bake(this._lying(L, FALL_LIE[fr], (fr + 1) / (FALL_LIE.length + 1), headless, EYES[EYE.up]), this.tex, o));
+    L.fall.set(key, s);
+    this.atlas.flush();
+    this._time(t0);
+    return s;
+  }
+
+  /**
+   * A dead zombie is about to go over (call on its first frames, before the ground is drawn):
+   * true if it will be drawn falling (drawFalling) until FALL_T, false if there's no time to bake
+   * its fall this frame and it goes straight to the ground. Decided once per corpse.
+   */
+  startFall(c) {
+    if (c.fall !== undefined) return c.fall;
+    const L = this.look(c.look);
+    // It faces whoever shot it and goes over backwards, its head toward where the shot threw it.
+    const yaw = this._yaw;
+    let d = Math.round(((c.ang + Math.PI - yaw) / TAU) * FALL_DIRS) % FALL_DIRS;
+    if (d < 0) d += FALL_DIRS;
+    c.fallDir = d;
+    c.angQ = yaw + (d * TAU) / FALL_DIRS - Math.PI; // the decal lies the same way
+    const extra = this.spent >= this.budget && this.fallStarts < FALL_STARTS;
+    c.fall = !!this._fallSprite(L, d, 0, !!c.head, extra);
+    if (c.fall && extra) {
+      this.fallStarts++;
+      c.fallForce = true; // and its other two frames, then
+    }
+    return c.fall;
+  }
+
+  /** A dead zombie going over (corpse c, effects.js), drawn standing, as the world's bodies are, at brightness b. */
+  drawFalling(R, c, b) {
+    const L = this.look(c.look);
+    const { ctx, v } = R;
+    const headless = !!c.head;
+    let fr = Math.min(FALL_LIE.length - 1, Math.floor((c.t / FALL_T) * FALL_LIE.length));
+    let s = this._fallSprite(L, c.fallDir, fr, headless, !!c.fallForce);
+    while (!s && fr > 0) s = L.fall.get(`${c.fallDir} ${--fr} ${headless ? 1 : 0}`); // no time: the frame before
+    if (!s) {
+      c.fall = false; // the camera changed under it: to the ground
+      return;
+    }
+    this._put(R, s, v.px(c.x, c.y), v.py(c.x, c.y, 0), b);
+  }
+
+  /** A sprite with its origin at (x, y) CSS px, one to one on whole device pixels when the camera allows. */
+  _put(R, s, x, y, b) {
+    const { ctx, v } = R;
+    const dpr = R.dpr;
+    const exact = Math.abs(this.cam.ppu - SCALE * v.scale * dpr) < 1e-9;
+    const F = exact ? 1 / dpr : (SCALE * v.scale) / this.cam.ppu;
+    const dx = exact ? Math.round(x * dpr - s.ox) * F : x - s.ox * F;
+    const dy = exact ? Math.round(y * dpr - s.oy) * F : y - s.oy * F;
+    this._draw(ctx, s, dx, dy, s.w * F, s.h * F, b, this.cam.b0);
+  }
+
+  /** A knocked-off head in the air (corpse c's head): tumbling, its facing turning as it spins, eyes rolling. */
+  drawHead(R, c, b) {
+    const L = this.look(c.look);
+    const v = R.v;
+    const hd = c.head;
+    let d = Math.round((hd.rot - v.yaw) / STEP) % DIRS;
+    if (d < 0) d += DIRS;
+    const e = (hd.rot * 2) % TAU < Math.PI ? EYE.crossed : EYE.up;
+    if (!L.head.s[d * NE + e]) {
+      this._bake(L.head, d, e);
+      this.atlas.flush();
+    }
+    // Its neck where it is, that high up (in the leaning frame, as the standing ones are).
+    this._put(R, L.head.s[d * NE + e], v.px(hd.x, hd.y), v.py(hd.x, hd.y, 0) - hd.z * v.scale * this.cam.cp, b);
+  }
+
+  _decal(items, cx) {
+    const s = bake(items, this.tex, { phi: 0, sp: 1, cp: 0, ppu: this.cam.ppu, ss: SS, lie: Math.PI / 2, shade: { dark: 0.66, lit: 0.9, rim: 0 } });
+    const e = this.atlas.add(s);
+    e.cx = cx === undefined ? s.ox : cx; // where on it the corpse's spot is: its feet
+    e.cy = s.oy;
+    this.atlas.flush();
+    return e;
+  }
+
+  /** The look's body lying on its back, arms flung up, seen from straight above: a ground decal with its head toward -x. */
+  corpse(i, headless = false) {
+    const L = this.look(i);
+    const k = headless ? 'headless' : 'corpse';
+    if (!L[k]) {
+      const t0 = now();
+      L[k] = this._decal(this._lying(L, Math.PI / 2, 1, headless, EYES[EYE.up]));
+      this._time(t0);
+    }
+    return L[k];
+  }
+
+  /** A knocked-off head come to rest, face up: a ground decal (its middle at the spot). */
+  headDecal(i) {
+    const L = this.look(i);
+    if (!L.headDecal) {
+      const t0 = now();
+      const items = [{ mesh: mesh(L.headDef.mesh), shift: BLOCKS[L.look.block], eye: EYES[EYE.crossed], eyes: L.headDef.eyes }];
+      const s = bake(items, this.tex, { phi: 0, sp: 1, cp: 0, ppu: this.cam.ppu, ss: SS, lie: Math.PI / 2, shade: { dark: 0.66, lit: 0.9, rim: 0 } });
+      L.headDecal = this.atlas.add(s);
+      L.headDecal.cx = s.w / 2;
+      L.headDecal.cy = s.h / 2;
+      this.atlas.flush();
+      this._time(t0);
+    }
+    return L.headDecal;
+  }
+
   /**
    * The dead with a look, as decals on the ground (under the night, like the rest of the
-   * ground). list: corpses with .look. Leaves the canvas on the ground transform.
+   * ground): the body from its feet, its head toward where it was thrown, and a knocked-off head
+   * where it came to rest. list: corpses with .look. Leaves the canvas on the ground transform.
    */
   drawCorpses(ctx, R, list) {
     const v = R.v;
@@ -655,17 +934,18 @@ export class ZombieArt {
     const D = dpr * v.by;
     const E = dpr * v.ox;
     const G = dpr * v.oy;
-    for (const c of list) {
-      const s = this.corpse(c.look);
-      const k = SCALE / this.cam.ppu; // world units per sprite px
-      // Head toward where it was thrown (the sprite has it on the left).
-      const th = c.ang + Math.PI;
+    const k = SCALE / this.cam.ppu; // world units per sprite px
+    const at = (s, x, y, th, fl) => {
       const co = Math.cos(th) * k;
       const si = Math.sin(th) * k;
-      const fl = c.flip || 1;
-      ctx.globalAlpha = c.t > 48 ? Math.max(0, (50 - c.t) / 2) : 1;
-      ctx.setTransform(A * co + C * si, B * co + D * si, fl * (C * co - A * si), fl * (D * co - B * si), A * c.x + C * c.y + E, B * c.x + D * c.y + G);
+      ctx.setTransform(A * co + C * si, B * co + D * si, fl * (C * co - A * si), fl * (D * co - B * si), A * x + C * y + E, B * x + D * y + G);
       ctx.drawImage(s.canvas, s.x, s.y, s.w, s.h, -s.cx, -s.cy, s.w, s.h);
+    };
+    for (const c of list) {
+      ctx.globalAlpha = c.t > 48 ? Math.max(0, (50 - c.t) / 2) : 1;
+      // Head toward where it was thrown (the sprite has it on the left).
+      at(this.corpse(c.look, !!c.head), c.x, c.y, (c.angQ ?? c.ang) + Math.PI, c.flip || 1);
+      if (c.head && c.head.rest) at(this.headDecal(c.look), c.head.x, c.head.y, c.head.rot, 1);
     }
     ctx.globalAlpha = 1;
     v.applyGround(ctx, dpr, 0);
@@ -696,3 +976,6 @@ export class ZombieArt {
     return { pages: this.atlas.pages.length, px: this.atlas.px, ms: Math.round(this.bakeMs), bakes: this.bakes, looks: this.looks.filter(Boolean).length };
   }
 }
+
+const GAZE = [0, 0];
+const PICK = [0, 0, 0];

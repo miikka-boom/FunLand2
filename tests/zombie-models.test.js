@@ -39,10 +39,10 @@ globalThis.window = { devicePixelRatio: 2 };
 globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
 
 const M = await import('../assets/zombies/meshes.js');
-const { decodeMesh, Texture, bake, overlap } = await import('../src/render/zombie-bake.js');
-const { ZombieArt, orderFor, tiltPitches, DIRS, ARM_PITCH, FOOT_L, FOOT_R, TORSO, ARM_L, ARM_R, HEAD } = await import('../src/render/zombie-art.js');
+const { decodeMesh, Texture, bake, overlap, SHADE } = await import('../src/render/zombie-bake.js');
+const { ZombieArt, orderFor, tiltPitches, DIRS, ARM_PITCH, FOOT_L, FOOT_R, TORSO, ARM_L, ARM_R, HEAD, EYES, EYE, FALL_T } = await import('../src/render/zombie-art.js');
 const { LOOKS, pickLook } = await import('../src/game/zombie-looks.js');
-const { Zombie } = await import('../src/game/zombies.js');
+const { Zombie, damageZombie, POP_BURST } = await import('../src/game/zombies.js');
 const { IsoView } = await import('../src/iso.js');
 const { DEFAULTS, SCHEMA } = await import('../src/settings.js');
 
@@ -459,4 +459,179 @@ test('the renderer draws a horde and its dead with the models', async () => {
     assert.ok(game.effects.corpses.some((c) => c.look !== undefined), 'the dead keep their look');
     assert.equal(bad, null, bad);
   }
+});
+
+
+// --- Toon shading, googly eyes, heads with a mind of their own, the night, the dead ----------
+
+/** The test texture with the palette's eye-white swatch white (the rest as testTexture). */
+function eyeTexture() {
+  const N = 64;
+  const px = new Uint8ClampedArray(N * N * 4);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const u = (x + 0.5) / N;
+      const v = 1 - (y + 0.5) / N;
+      const pal = u >= M.PALETTE[0] && u <= M.PALETTE[2] && v >= M.PALETTE[1] && v <= M.PALETTE[3];
+      const o = (y * N + x) * 4;
+      px[o] = px[o + 1] = px[o + 2] = pal ? (v > 0.94 ? 255 : 0) : 120;
+      px[o + 3] = 255;
+    }
+  }
+  return new Texture(N, N, px);
+}
+
+test('googly eyes: every head has both eyes and both pupils tagged, the left eye on its left', () => {
+  for (const [id, h] of Object.entries(M.HEADS)) {
+    const d = decodeMesh(h.mesh);
+    assert.ok(d.grp, id);
+    const n = [0, 0, 0, 0, 0];
+    for (const g of d.grp) n[g]++;
+    assert.ok(n[1] > 20 && n[2] > 20 && n[3] > 5 && n[4] > 5, `${id}: ${n}`);
+    assert.equal(h.eyes.length, 2);
+    assert.ok(h.eyes[0].mid[1] < 0 && h.eyes[1].mid[1] > 0, `${id}: left then right`);
+    assert.ok(h.eyes[0].mid[0] > 50, `${id}: the eyes are on the front of the face`);
+  }
+});
+
+test('baker: the pupils roll inside the whites and the eyes shut (the outline stays)', () => {
+  const tex = eyeTexture();
+  const head = decodeMesh(M.HEADS.bald.mesh);
+  const eyes = M.HEADS.bald.eyes;
+  const o = { phi: Math.PI / 2, sp: Math.sin(35 * DEG), cp: Math.cos(35 * DEG), ppu: 0.3, ss: 2 };
+  const look = (e) => bake([{ mesh: head, eye: EYES[e], eyes }], tex, o);
+  const whites = (s) => {
+    let n = 0;
+    for (let i = 0; i < s.rgba.length; i += 4) if (s.rgba[i + 3] > 200 && s.rgba[i] > 220) n++;
+    return n;
+  };
+  const ahead = look(EYE.ahead);
+  const right = look(EYE.right);
+  const shut = look(EYE.shut);
+  let moved = 0;
+  for (let i = 0; i < ahead.rgba.length; i += 4) if (Math.abs(ahead.rgba[i] - right.rgba[i]) > 100) moved++;
+  assert.ok(moved > 30, `the pupils moved (${moved} px)`);
+  assert.equal(ahead.w, right.w, 'inside the whites: the head is the same size');
+  assert.ok(whites(shut) < whites(ahead) * 0.5, `shut: ${whites(shut)} white px, open: ${whites(ahead)}`);
+  const alpha = (s) => s.rgba.reduce((n, x, i) => n + (i % 4 === 3 && x > 128 ? 1 : 0), 0);
+  assert.ok(Math.abs(alpha(shut) - alpha(ahead)) < alpha(ahead) * 0.02, 'the silhouette is the same (it is shared)');
+});
+
+test('baker: toon shading puts the skin in two bands of light, with a rim of light at the edges', () => {
+  const arm = decodeMesh(M.BODIES.normal.arm);
+  const s = bake([{ mesh: arm }], TEX, { phi: 0.6, sp: Math.sin(55 * DEG), cp: Math.cos(55 * DEG), ppu: 0.3, ss: 2 });
+  // Skin pixels (the test texture's skin is 200 grey): the shadow band, the lit band, or a rimmed edge.
+  const dark = 200 * SHADE.dark;
+  const lit = Math.min(255, 200 * SHADE.lit);
+  let skin = 0;
+  let banded = 0;
+  for (let i = 0; i < s.rgba.length; i += 4) {
+    if (s.rgba[i + 3] < 250 || s.rgba[i] < 90 || s.rim[i / 4] > 10) continue;
+    skin++;
+    if (Math.abs(s.rgba[i] - dark) < 12 || Math.abs(s.rgba[i] - lit) < 12) banded++;
+  }
+  assert.ok(skin > 100 && banded / skin > 0.7, `${banded} of ${skin} skin px in the two bands`);
+  assert.ok(Math.max(...s.rim) > 60, 'a rim of light at the edges');
+});
+
+test('art: at night, a zombie where no light reaches is six pre-darkened sprites; in part light it gets silhouettes; by day none', () => {
+  const v = view();
+  const night = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
+  night.sync(v, 2, 0, 0, 0, 0.4);
+  const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2 };
+  calls.length = 0;
+  night.drawZombie(R, common(0, 1), 0.4);
+  assert.equal(calls.length, 6);
+  assert.ok(calls.every((c) => c.alpha === 1), 'no overlays');
+  calls.length = 0;
+  night.drawZombie(R, common(0, 1), 0.7);
+  assert.equal(calls.length, 12, 'part lit (the flashlight\'s edge): sprites and silhouettes');
+  const day = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
+  day.sync(v, 2, 0, 0, 0, 1);
+  calls.length = 0;
+  day.drawZombie(R, common(0, 1), 0.4);
+  assert.equal(calls.length, 12, 'by day nothing is pre-darkened: a shadow gets silhouettes');
+  assert.equal(bad, null, bad);
+});
+
+test('art: a hunter\'s head turns to what it is after before its body does; a shambler\'s glances about, eyes drooping', () => {
+  const art = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
+  const v = view();
+  art.sync(v, 2, 0);
+  const z = common(0, 0, { x: 500, y: 500 });
+  const out = [0, 0];
+  const R = (px, py) => ({ v, t: 1, dpr: 2, game: { player: { x: px, y: py, alive: true }, ally: null } });
+  art._gaze(R(500, 700), z, 0, true, false, 1, out); // you, off to its right (y is down the map)
+  assert.ok(out[0] > 0.5, `turns right: ${out[0]}`);
+  assert.ok(out[1] === EYE.right || out[1] === EYE.shut, 'and looks the rest of the way');
+  art._gaze(R(500, 300), z, 0, true, false, 1, out);
+  assert.ok(out[0] < -0.5, `turns left: ${out[0]}`);
+  art._gaze(R(700, 500), z, 0, true, false, 1, out);
+  assert.ok(Math.abs(out[0]) < 0.05, 'straight ahead');
+  const idle = common(0, 0, { state: 'idle' });
+  const turns = new Set();
+  for (let t = 0; t < 30; t += 0.25) {
+    idle.anim = t;
+    art._gaze(R(900, 900), idle, 0, false, false, t, out);
+    turns.add(out[0].toFixed(3));
+    assert.ok(out[1] === EYE.down || out[1] === EYE.shut);
+  }
+  assert.ok(turns.size >= 3 && turns.size <= 5, `a few held glances: ${[...turns]}`);
+  art._gaze(R(900, 900), common(0, 0, { stagger: 0.4 }), 0, false, true, 1, out);
+  assert.ok(out[1] === EYE.up || out[1] === EYE.crossed, 'hit: eyes rolled');
+});
+
+test('death: one big blow can take a head off; it flies, bounces and lies still. Two SMG hits never do', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const audio = new Proxy({ listener: { x: 0, y: 0 } }, { get: (o, k) => (k in o ? o[k] : () => {}) });
+  const game = new Game({ ...DEFAULTS, playtestPrompt: false, godMode: true }, audio, () => {});
+  const p = game.player;
+  const random = Math.random;
+  try {
+    Math.random = () => 0.1;
+    const big = new Zombie(p.x + 60, p.y, true);
+    game.zombies.push(big);
+    damageZombie(game, big, 95, 1, 0, 120, 0.5);
+    const c = game.effects.corpses.at(-1);
+    assert.ok(!big.alive && c.head, 'a hunting rifle round: off it comes');
+    const x0 = c.head.x;
+    for (let i = 0; i < 240 && !c.head.rest; i++) game.effects.update(1 / 60, game.world);
+    assert.ok(c.head.rest && c.head.z === 0, 'it comes to rest on the ground');
+    assert.ok(c.head.x > x0 + 20, 'the way the blow went');
+    const small = new Zombie(p.x - 60, p.y, true);
+    game.zombies.push(small);
+    damageZombie(game, small, 26, -1, 0, 55, 0.3);
+    game.time += 0.1;
+    damageZombie(game, small, 26, -1, 0, 55, 0.3);
+    assert.ok(!small.alive && !game.effects.corpses.at(-1).head, `${26} < ${POP_BURST}: it keeps its head`);
+  } finally {
+    Math.random = random;
+  }
+});
+
+test('death: the dead go over before they lie down; a few a frame may be baked past the budget, the rest drop at once', () => {
+  const art = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: 0 });
+  const v = view();
+  art.sync(v, 2, 0);
+  const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2 };
+  const dead = [0, 1, 2].map((i) => ({ x: 500 + i * 40, y: 500, r: 11, ang: 0.4 * i, flip: 1, t: 0, look: i }));
+  const started = dead.map((c) => art.startFall(c));
+  assert.deepEqual(started, [true, true, false], 'two past the budget, the third straight to the ground');
+  for (const c of dead.slice(0, 2)) {
+    const off = Math.atan2(Math.sin(c.angQ - c.ang), Math.cos(c.angQ - c.ang));
+    assert.ok(Math.abs(off) <= Math.PI / 16 + 1e-9, `it lies within half a fall facing of the way it was thrown (${off.toFixed(3)})`);
+    for (const t of [0.01, FALL_T * 0.5, FALL_T * 0.9]) {
+      c.t = t;
+      calls.length = 0;
+      art.drawFalling(R, c, 1);
+      assert.equal(calls.length, 1, `falling, t = ${t}`);
+    }
+  }
+  // On the ground: the body, and a knocked-off head where it came to rest.
+  const headless = { x: 600, y: 520, r: 11, ang: 1, flip: 1, t: 5, look: 4, head: { x: 640, y: 540, z: 0, rot: 2, rest: true } };
+  calls.length = 0;
+  art.drawCorpses(R.ctx, R, [dead[2], headless]);
+  assert.equal(calls.length, 3, 'two bodies and a head');
+  assert.notEqual(art.corpse(4, true), art.corpse(4), 'a headless body is its own decal');
+  assert.equal(bad, null, bad);
 });

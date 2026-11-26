@@ -10,6 +10,7 @@ const DECAL_CELL = 160; // world units
 const BLOOD = ['#4d0a0a', '#5c0c0c', '#6a1010', '#3f0808', '#561109'];
 const MAX_PARTICLES = 900;
 const MAX_CORPSES = 160;
+const HEAD_GRAVITY = 640; // world units / s², a knocked-off head's fall
 
 export class Effects {
   constructor(w, h) {
@@ -202,17 +203,61 @@ export class Effects {
     this.arcs.push({ x, y, ang, reach, life: 0.16, max: 0.16 });
   }
 
-  corpse(z, dx, dy, force) {
+  /** A body on the ground (pop: its head was knocked off, and flies: corpse.head, see update). */
+  corpse(z, dx, dy, force, pop = false) {
     if (this.corpses.length >= MAX_CORPSES) {
       // Oldest corpse becomes a stain.
       const old = this.corpses.shift();
       this.stain(old.x, old.y, old.r * 1.4);
     }
     const s = Math.min(force, 260);
-    this.corpses.push({
+    const c = {
       x: z.x, y: z.y, r: z.r, ang: Math.atan2(dy, dx) + randSpread() * 0.6,
       vx: dx * s, vy: dy * s, t: 0, skin: z.skin, shirt: z.shirt, look: z.look, flip: Math.random() < 0.5 ? -1 : 1,
-    });
+    };
+    if (pop) {
+      // Off it flies, the way the blow went, up, tumbling.
+      const a = Math.atan2(dy, dx) + randSpread() * 0.5;
+      const v = rand(150, 240);
+      c.head = { x: z.x, y: z.y, z: 20 * (z.r / 11), vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: rand(170, 230), rot: rand(0, TAU), spin: rand(9, 15) * (Math.random() < 0.5 ? -1 : 1), rest: false, bounced: false };
+    }
+    this.corpses.push(c);
+  }
+
+  /** A knocked-off head: flies, bounces off walls and the ground (a splash of blood where it first lands), rolls to a stop. */
+  _head(h, dt, world) {
+    h.vz -= HEAD_GRAVITY * dt;
+    const nx = h.x + h.vx * dt;
+    const ny = h.y + h.vy * dt;
+    if (world && !world.isFree(nx, ny, 4)) {
+      h.vx *= -0.4;
+      h.vy *= -0.4;
+    } else {
+      h.x = nx;
+      h.y = ny;
+    }
+    h.z += h.vz * dt;
+    h.rot += h.spin * dt;
+    if (h.z <= 0) {
+      h.z = 0;
+      if (!h.bounced) {
+        h.bounced = true;
+        this.splat(h.x, h.y, 5, 0.7);
+      }
+      if (h.vz < -70) {
+        h.vz = -h.vz * 0.36;
+        h.vx *= 0.55;
+        h.vy *= 0.55;
+        h.spin *= 0.5;
+      } else {
+        h.vz = 0;
+        const f = Math.exp(-6 * dt);
+        h.vx *= f;
+        h.vy *= f;
+        h.spin *= f;
+        if (h.vx * h.vx + h.vy * h.vy < 25) h.rest = true;
+      }
+    }
   }
 
   // --- Decals ----------------------------------------------------------------
@@ -259,7 +304,8 @@ export class Effects {
 
   // --- Update ------------------------------------------------------------------
 
-  update(dt) {
+  /** world (optional): what a flying head bounces off. */
+  update(dt, world = null) {
     const ps = this.particles;
     for (let i = ps.length - 1; i >= 0; i--) {
       const p = ps[i];
@@ -371,6 +417,7 @@ export class Effects {
         c.x += c.vx * dt;
         c.y += c.vy * dt;
       }
+      if (c.head && !c.head.rest) this._head(c.head, dt, world);
       if (c.t > 50) {
         this.stain(c.x, c.y, c.r * 1.4);
         cs.splice(i, 1);

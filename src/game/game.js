@@ -375,7 +375,7 @@ export class Game {
       }
     }
 
-    this.effects.update(dt);
+    this.effects.update(dt, this.world);
     this.hurtFlash = Math.max(0, this.hurtFlash - dt * 1.6);
 
     // Win: reach the end safe room (Pier 9: the gangway, once the ferry is alongside).

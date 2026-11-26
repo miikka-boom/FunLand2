@@ -9,6 +9,10 @@ import { pickLook } from './zombie-looks.js';
 export const SKINS = ['#8d9a7e', '#9a917c', '#7f8c84', '#a39a86', '#86907a', '#958a7c'];
 export const SHIRTS = ['#4a4f63', '#5c3b33', '#3e5241', '#6b6252', '#2f3540', '#6a4a5a', '#7b6a3a', '#3a3a3a', '#8a8378', '#4b2f2f'];
 const HIT_DAMAGE = 5;
+// A common's head comes off when one blow (everything that hits it at the same moment) of at least
+// this much kills it, this often. Commons have 50 HP: the SMG and the rifle take two hits.
+export const POP_BURST = 45;
+export const POP_CHANCE = 0.8;
 let nextId = 1;
 export const newId = () => nextId++;
 
@@ -348,6 +352,9 @@ export function resolveCrowd(game, dt) {
 export function damageZombie(game, z, dmg, dx, dy, knock, stagger, bleed = true) {
   if (!z.alive) return false;
   z.hp -= dmg;
+  // What it took in this one moment (a shotgun's pellets land together): a big enough blow takes its head off.
+  z.burst = z.burstT === game.time ? z.burst + dmg : dmg;
+  z.burstT = game.time;
   z.hitFlash = 0.08;
   z.vx += dx * knock * z.knockScale;
   z.vy += dy * knock * z.knockScale;
@@ -371,7 +378,10 @@ export function killZombie(game, z, dx, dy, force) {
   fx.blood(z.x, z.y, dx, dy, 9, 220);
   if (force > 300 || Math.random() < 0.35) fx.gibs(z.x, z.y, dx, dy, force > 300 ? 4 : 2);
   fx.pool(z.x + dx * 10, z.y + dy * 10, z.r * 1.1);
-  fx.corpse(z, dx, dy, force);
+  // Killed by one big blow (a hunting rifle, a shotgun up close, a blast): sometimes the head comes off.
+  const pop = z.type === 'common' && z.look !== undefined && (z.burst || 0) >= POP_BURST && Math.random() < POP_CHANCE;
+  if (pop) fx.blood(z.x, z.y, dx, dy, 6, 260);
+  fx.corpse(z, dx, dy, force, pop);
   game.audio.splat(z.x, z.y);
   const p = game.player;
   if (Math.hypot(p.x - z.x, p.y - z.y) < 240) game.director.addIntensity(0.02);
