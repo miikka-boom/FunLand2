@@ -636,6 +636,19 @@ and no dependencies.
   dark it is where nothing is lit: 60% by default, up to 97%. **Line-of-sight
   shadows** (under Presentation, off by default) keep zombies behind
   buildings hidden until you round the corner.
+- **Night look (prototype, Streets)**: Streets has a purple-and-amber night by
+  default, after a concept for the level. The dark is a saturated violet and
+  shadows lean purple. Warm lights (the flashlight, lamps, fires, muzzle
+  flashes) turn amber at their cores and coral at the edges of their pools,
+  and every street lamp lays a diagonal shaft of light across the ground,
+  amber turning rose. The ground is violet and the roofs are lilac. **Night
+  look (this map)** under Presentation switches it per map type ("Classic" is
+  the old blue-black, still the default everywhere else). The palette lives in
+  [`src/render/night-look.js`](src/render/night-look.js). The walls, roofs,
+  props and survivors get it through `tone()` in `prims.js`, the ground
+  through the light overlay in `lighting.js`, and the zombies through their
+  darkened sprites in `zombie-art.js`. It costs nothing extra per frame: the
+  warm light is painted on the same overlay as the dark.
 - **Feedback**: recorded sound effects placed in the world (distance, walls in
   the way, a reverb per level; see [docs/SFX.md](docs/SFX.md)), a dynamic score
   ([docs/MUSIC.md](docs/MUSIC.md)), haptics on Android, blood decals that stay,

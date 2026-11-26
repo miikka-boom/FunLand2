@@ -14,11 +14,21 @@ import { TAU } from '../util.js';
 // --- Colour tones ------------------------------------------------------------------------
 // tone(colour, k) is the colour at brightness k (0 = black, 1 = as given, a
 // little over 1 = highlight), from a small table per colour so nothing is
-// built per frame.
+// built per frame. A night look (night-look.js, setTonePalette) split-tones
+// the tables: shadows lean toward its shade colour, well-lit tones toward its
+// warm light.
 
 const STEPS = 32; // tones per unit of brightness
 const MAX = 44; // up to k = 1.375
 const cache = new Map();
+let PAL = null;
+
+/** The night look the tones are split-toned for (null: plain). Clears the tables when it changes. */
+export function setTonePalette(look) {
+  if (look === PAL) return;
+  PAL = look;
+  cache.clear();
+}
 
 function parse(color) {
   if (color[0] === '#') {
@@ -42,9 +52,24 @@ export function tones(color) {
       continue;
     }
     const k = i / STEPS;
-    const r = Math.min(255, Math.round(c[0] * k));
-    const g = Math.min(255, Math.round(c[1] * k));
-    const b = Math.min(255, Math.round(c[2] * k));
+    let r = c[0] * k;
+    let g = c[1] * k;
+    let b = c[2] * k;
+    if (PAL) {
+      // Into the shadows, toward the shade colour; into the light, toward the warm one.
+      const d = (k < 1 ? 1 - k : 0) * PAL.shadeMix;
+      r += (PAL.shade[0] - r) * d;
+      g += (PAL.shade[1] - g) * d;
+      b += (PAL.shade[2] - b) * d;
+      const w = (k > 0.55 ? Math.min(1, (k - 0.55) / 0.45) : 0) * PAL.warmMix;
+      const kw = k < 1 ? k : 1;
+      r += (PAL.warm[0] * kw - r) * w;
+      g += (PAL.warm[1] * kw - g) * w;
+      b += (PAL.warm[2] * kw - b) * w;
+    }
+    r = Math.min(255, Math.round(r));
+    g = Math.min(255, Math.round(g));
+    b = Math.min(255, Math.round(b));
     t[i] = c[3] < 1 ? `rgba(${r},${g},${b},${c[3]})` : `rgb(${r},${g},${b})`;
   }
   cache.set(color, t);

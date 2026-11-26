@@ -48,6 +48,7 @@
 import { BODIES, FOOT, HEADS, BLOCKS } from '../../assets/zombies/meshes.js';
 import { decodeMesh, Texture, bake, overlap, RIM_COLOUR } from './zombie-bake.js';
 import { LOOKS } from '../game/zombie-looks.js';
+import { rgb } from './night-look.js';
 import { TAU } from '../util.js';
 
 export const DIRS = 32;
@@ -107,7 +108,29 @@ const WAVE = [2, 3, 2, 1, 2, 3, 2, 1];
 const LEVELS = 10; // the partly lit are drawn darkened to one of these levels (no overlays)
 const COMP_PAGES = 6; // canvas pages of composites kept (when they're full, the oldest is cleared for new ones)
 const COMPOSE = 2; // ms of putting composites together a frame
-const DARKEN = Array.from({ length: LEVELS }, (_, i) => `rgba(0,0,0,${1 - i / LEVELS})`);
+
+/**
+ * How a sprite is darkened to each of LEVELS (put together by _darken): a fill laid over its
+ * pixels (source-atop) that takes away (1 - k) of its colour and, under a night look
+ * (night-look.js), adds that much of the look's shade, the way prims.js tone() does; and, for
+ * the well lit, a little of the look's warm light.
+ */
+export function darkenStyles(look) {
+  const out = [];
+  for (let lv = 0; lv <= LEVELS; lv++) {
+    const k = lv / LEVELS;
+    if (!look) {
+      out.push({ fill: lv < LEVELS ? `rgba(0,0,0,${1 - k})` : null, warm: null });
+      continue;
+    }
+    const d = (1 - k) * look.shadeMix;
+    const a = 1 - k * (1 - d); // how much of the sprite's own colour goes
+    const fill = a > 0.001 ? `rgba(${rgb(look.shade.map((c) => (c * d) / a))},${a})` : null;
+    const w = k > 0.55 ? Math.min(1, (k - 0.55) / 0.45) * look.warmMix : 0;
+    out.push({ fill, warm: w > 0.001 ? `rgba(${rgb(look.warm.map((c) => c * k))},${w})` : null });
+  }
+  return out;
+}
 // In the dark the rim light stays: what's left of its daylight strength in the darkened copies.
 const NIGHT_RIM = 1;
 // The parts, as numbered in a draw order.
@@ -214,10 +237,37 @@ function mesh(m) {
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 /**
- * An atlas page on a canvas. Sprites are written into a pixel buffer and uploaded together
- * (flush), since every upload makes the browser copy the page; a full page lets its buffer go.
- * put(..., k, rim): the sprite's colours times k (1 as baked, 0 its black silhouette, between:
- * dimmed, keeping a moonlit rim where the sprite's rim light was).
+ * Sprite (rgba, sw x sh, its rim light rim) written into pixels d (a page w wide) at x, y, its
+ * colours times k: 1 as baked, 0 its black silhouette, between: dimmed, keeping a moonlit rim
+ * where its rim light was. Under a night look (night-look.js) what's taken away leans toward
+ * the look's shade, as prims.js tone() has the walls do, and the rim is the look's own.
+ */
+export function putSprite(d, w, rgba, sw, sh, x, y, k = 1, rim = null, look = null) {
+  const moon = rim && k > 0 && k < 1 ? ((1 - k) * NIGHT_RIM) / 255 : 0;
+  const rc = look ? look.rim : RIM_COLOUR;
+  const sm = look && k < 1 ? (1 - k) * look.shadeMix : 0; // toward the look's shade
+  const kk = k * (1 - sm);
+  const s0 = sm ? look.shade[0] * sm : 0;
+  const s1 = sm ? look.shade[1] * sm : 0;
+  const s2 = sm ? look.shade[2] * sm : 0;
+  for (let j = 0; j < sh; j++) {
+    let o = ((y + j) * w + x) * 4;
+    let q = j * sw * 4;
+    let r = j * sw;
+    for (let i = 0; i < sw; i++, o += 4, q += 4, r++) {
+      const m = moon ? rim[r] * moon : 0;
+      d[o] = rgba[q] * kk + s0 + rc[0] * m;
+      d[o + 1] = rgba[q + 1] * kk + s1 + rc[1] * m;
+      d[o + 2] = rgba[q + 2] * kk + s2 + rc[2] * m;
+      d[o + 3] = rgba[q + 3];
+    }
+  }
+}
+
+/**
+ * An atlas page on a canvas. Sprites are written into a pixel buffer (putSprite) and uploaded
+ * together (flush), since every upload makes the browser copy the page; a full page lets its
+ * buffer go.
  */
 export function canvasPage(w, h) {
   const canvas = document.createElement('canvas');
@@ -231,21 +281,8 @@ export function canvasPage(w, h) {
   let y1 = -Infinity;
   return {
     canvas,
-    put(rgba, sw, sh, x, y, k = 1, rim = null) {
-      const d = img.data;
-      const moon = rim && k > 0 && k < 1 ? ((1 - k) * NIGHT_RIM) / 255 : 0;
-      for (let j = 0; j < sh; j++) {
-        let o = ((y + j) * w + x) * 4;
-        let q = j * sw * 4;
-        let r = j * sw;
-        for (let i = 0; i < sw; i++, o += 4, q += 4, r++) {
-          const m = moon ? rim[r] * moon : 0;
-          d[o] = rgba[q] * k + RIM_COLOUR[0] * m;
-          d[o + 1] = rgba[q + 1] * k + RIM_COLOUR[1] * m;
-          d[o + 2] = rgba[q + 2] * k + RIM_COLOUR[2] * m;
-          d[o + 3] = rgba[q + 3];
-        }
-      }
+    put(rgba, sw, sh, x, y, k = 1, rim = null, look = null) {
+      putSprite(img.data, w, rgba, sw, sh, x, y, k, rim, look);
       if (x < x0) x0 = x;
       if (y < y0) y0 = y;
       if (x + sw > x1) x1 = x + sw;
@@ -275,6 +312,7 @@ class Atlas {
     this.y = 0;
     this.row = 0;
     this.px = 0; // pixels used, for the debug read-out
+    this.nightLook = null; // the night look its darkened copies are made for
   }
 
   clear() {
@@ -302,7 +340,7 @@ class Atlas {
     }
     const x = this.x;
     const y = this.y;
-    this.cur.put(s.rgba, w, h, x, y, k, s.rim);
+    this.cur.put(s.rgba, w, h, x, y, k, s.rim, this.nightLook);
     this.x += w + 1;
     if (h > this.row) this.row = h;
     this.px += w * h;
@@ -524,6 +562,8 @@ export class ZombieArt {
     this.queue = []; // the zombies prepared this frame, wanting their composites (ready)
     this.frameNo = 0;
     this.composeMs = 0;
+    this.nightLook = null; // the night look (night-look.js) the sprites are made for
+    this.darkens = darkenStyles(null);
     this.atlas = new Atlas(this.makePage); // the parts of the standing
     this.deadAtlas = new Atlas(this.makePage); // the dead on the ground (fall frames have canvases of their own: _fallEntry)
     this.fallKeys = []; // the fall frames kept, oldest first: [map, key, map, key, ...]
@@ -582,10 +622,10 @@ export class ZombieArt {
   /**
    * Keep the sprites in step with the camera (once a frame, before drawing). lean and headTilt:
    * degrees the zombies and their heads lean toward the camera; b0: how bright it is where no
-   * light reaches (1 by day). Returns true when the horde can be drawn with the models this
-   * frame. t: seconds, any clock.
+   * light reaches (1 by day); look: the night look (night-look.js) or null. Returns true when the
+   * horde can be drawn with the models this frame. t: seconds, any clock.
    */
-  sync(v, dpr, t = now() / 1000, lean = 0, headTilt = 0, b0 = 1) {
+  sync(v, dpr, t = now() / 1000, lean = 0, headTilt = 0, b0 = 1, look = null) {
     if (this.state === 'idle') this.load();
     if (this.state !== 'ready') return false;
     this.spent = 0;
@@ -598,7 +638,8 @@ export class ZombieArt {
     const ppu = Math.min(SCALE * v.scale * dpr, MAX_PPU);
     const [pb, ph] = tiltPitches(v.pitch, lean * DEG, headTilt * DEG);
     const dim = Math.round(Math.min(1, b0) * 200) / 200;
-    const same = (c) => c && Math.abs(c.pb - pb) < 1e-4 && Math.abs(c.ph - ph) < 1e-4 && Math.abs(c.ppu / ppu - 1) < 0.01 && c.b0 === dim;
+    const lid = look ? look.id : null;
+    const same = (c) => c && Math.abs(c.pb - pb) < 1e-4 && Math.abs(c.ph - ph) < 1e-4 && Math.abs(c.ppu / ppu - 1) < 0.01 && c.b0 === dim && c.look === lid;
     if (same(this.cam)) {
       this.want = null;
       return true;
@@ -606,14 +647,17 @@ export class ZombieArt {
     if (this.cam) {
       // A new camera: wait until it holds still, drawing with the sprites there are.
       if (!same(this.want)) {
-        this.want = { pb, ph, ppu, b0: dim };
+        this.want = { pb, ph, ppu, b0: dim, look: lid };
         this.wantT = t;
         return true;
       }
       if (t - this.wantT < SETTLE) return true;
     }
     this.want = null;
-    const c = (this.cam = { pitch: v.pitch, pb, ph, ppu, sp: Math.sin(pb), cp: Math.cos(pb), spH: Math.sin(ph), cpH: Math.cos(ph), b0: dim });
+    const c = (this.cam = { pitch: v.pitch, pb, ph, ppu, sp: Math.sin(pb), cp: Math.cos(pb), spH: Math.sin(ph), cpH: Math.cos(ph), b0: dim, look: lid });
+    this.nightLook = look;
+    this.atlas.nightLook = look;
+    this.darkens = darkenStyles(look);
     Object.assign(this.o, { sp: c.sp, cp: c.cp, ppu });
     Object.assign(this.oH, { sp: c.spH, cp: c.cpH, ppu });
     this.atlas.clear();
@@ -699,9 +743,9 @@ export class ZombieArt {
     const night = this.cam.b0 < 0.95;
     const w = s.w;
     const pg = this.makePage(night ? 3 * w + 2 : 2 * w + 1, s.h);
-    pg.put(s.rgba, w, s.h, 0, 0, 1, s.rim);
-    pg.put(s.rgba, w, s.h, w + 1, 0, 0, s.rim);
-    if (night) pg.put(s.rgba, w, s.h, 2 * w + 2, 0, this.cam.b0, s.rim);
+    pg.put(s.rgba, w, s.h, 0, 0, 1, s.rim, this.nightLook);
+    pg.put(s.rgba, w, s.h, w + 1, 0, 0, s.rim, this.nightLook);
+    if (night) pg.put(s.rgba, w, s.h, 2 * w + 2, 0, this.cam.b0, s.rim, this.nightLook);
     pg.seal();
     const c = pg.canvas;
     return { canvas: c, x: 0, y: 0, w, h: s.h, ox: s.ox, oy: s.oy, k: { canvas: c, x: w + 1, y: 0 }, dk: night ? { canvas: c, x: 2 * w + 2, y: 0 } : null };
@@ -1030,13 +1074,14 @@ export class ZombieArt {
     P.q = q;
     P.flash = z.hitFlash > 0;
     P.hs = L.head.s[dh * NE + e];
-    // How it's lit.
+    // How it's lit. (Under a night look the fully lit are a level too: they take its warm light.)
     P.lv = 0;
-    if (b >= 0.95) P.dark = 'f';
+    const night = this.nightLook;
+    if (b >= 0.95 && !night) P.dark = 'f';
     else if (this.cam.b0 < 0.95 && Math.abs(b - this.cam.b0) < 0.012) P.dark = 'n';
     else {
-      const lv = Math.max(1, Math.round(b * LEVELS));
-      if (lv >= LEVELS) P.dark = 'f';
+      const lv = Math.max(1, Math.min(LEVELS, Math.round(b * LEVELS)));
+      if (lv >= LEVELS && !night) P.dark = 'f';
       else {
         P.dark = 'l';
         P.lv = lv;
@@ -1144,7 +1189,7 @@ export class ZombieArt {
     return c;
   }
 
-  /** Sprite s darkened to level lv (of LEVELS): its colours times lv / LEVELS, its shape as it was. */
+  /** Sprite s darkened to level lv (of LEVELS): its colours times lv / LEVELS (and the night look's tint), its shape as it was. */
   _level(s, lv, build) {
     const key = `h${s.id}|${lv}`;
     let c = this.comp.get(key);
@@ -1162,9 +1207,17 @@ export class ZombieArt {
   }
 
   _darken(ctx, c, lv) {
+    const dz = this.darkens[lv];
+    if (!dz.fill && !dz.warm) return;
     ctx.globalCompositeOperation = 'source-atop';
-    ctx.fillStyle = DARKEN[lv];
-    ctx.fillRect(c.x, c.y, c.w, c.h);
+    if (dz.fill) {
+      ctx.fillStyle = dz.fill;
+      ctx.fillRect(c.x, c.y, c.w, c.h);
+    }
+    if (dz.warm) {
+      ctx.fillStyle = dz.warm;
+      ctx.fillRect(c.x, c.y, c.w, c.h);
+    }
     ctx.globalCompositeOperation = 'source-over';
   }
 

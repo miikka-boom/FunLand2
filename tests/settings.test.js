@@ -35,7 +35,7 @@ test('out of the box: specials and line-of-sight shadows are opt-in, night is on
 test('the camera is kept per map type: streets along the screen and steep outdoors, isometric and high in the Building', () => {
   // Every map type has the whole set, stored as key@level.
   for (const id of LEVEL_IDS) for (const k of LEVEL_KEYS) assert.ok(levelKey(k, id) in DEFAULTS, `${k}@${id}`);
-  assert.deepEqual(LEVEL_KEYS, ['camera', 'cameraAligned', 'cameraTilt', 'cameraAlignedTilt', 'viewSize']);
+  assert.deepEqual(LEVEL_KEYS, ['camera', 'cameraAligned', 'cameraTilt', 'cameraAlignedTilt', 'viewSize', 'nightLook']);
   for (const k of LEVEL_KEYS) assert.equal(k in DEFAULTS, false, `${k} is no longer one global setting`);
   for (const id of LEVEL_IDS) {
     assert.equal(forLevel(DEFAULTS, 'camera', id), 'iso', `${id}: the 3D view`);

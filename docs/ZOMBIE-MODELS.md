@@ -131,6 +131,11 @@ It can tip a whole body back (onto its back or its face) and roll it onto a side
   composites of those zombies are put together from the copies. The copies keep the rim
   light at its daylight strength, a moonlit edge that keeps a zombie readable on a dark
   street.
+- **A night look** (`src/render/night-look.js`, purple and amber on Streets) darkens them
+  its way. What the darkening takes away leans toward the look's shade (`putSprite` for
+  the copies and silhouettes, `darkenStyles` for the ten levels), the same as `tone()` does
+  for the walls. The fully lit get a level of their own with a little of its amber, and
+  the moonlit rim turns lavender. A new look makes the sprites again, like a new camera.
 - **The dead fall, and lie eight ways** (`DEATHS`): on its back with its arms flung up
   in a V, out in a T, or one out and one up; on its face, reaching past its head or
   with an arm out; on its left side or its right, arms out in front. Each has its head

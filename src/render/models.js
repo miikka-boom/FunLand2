@@ -142,6 +142,12 @@ export function onFaceX(R, x0, y0, x1, y1, fn) {
 
 // --- Buildings ---------------------------------------------------------------------------------
 
+/** A roof's colour: its own, or under a night look with roofs of its own (night-look.js), one of those, the same for every roof that had the same colour. */
+function roofColor(R, c) {
+  const roofs = R.look && R.look.roofs;
+  return roofs ? roofs[strHash(c || '#444') % roofs.length] : c;
+}
+
 const FACADES = ['#77604f', '#62656b', '#7b735f', '#664f47', '#686d5d', '#7c766d', '#5c6672', '#716253'];
 const WAREHOUSE = ['#5e6468', '#6a6258', '#566068', '#6b5a4c'];
 
@@ -251,17 +257,18 @@ function drawBuilding(R, o, rec) {
   }
   const P = Math.min(6, o.w * 0.12, o.h * 0.12); // parapet
   const drop = d.kiosk ? 0 : 5;
-  topFill(R, x0, y0, x1, y1, H, tone(o.color, roofK * 1.12));
+  const rc = roofColor(R, o.color);
+  topFill(R, x0, y0, x1, y1, H, tone(rc, roofK * 1.12));
   if (!v.flat && drop && o.w > 40 && o.h > 40) {
     // The roof sits a little below the parapet: its two far inner walls show.
     const xi = v.faceX < 0 ? x1 - P : x0 + P;
     const yi = v.faceY > 0 ? y0 + P : y1 - P;
-    ctx.fillStyle = tone(o.color, roofK * 0.66);
+    ctx.fillStyle = tone(rc, roofK * 0.66);
     ctx.beginPath();
     if (v.faceY) quad3(ctx, v, x0 + P, yi, H - drop, x1 - P, yi, H - drop, x1 - P, yi, H, x0 + P, yi, H);
     if (v.faceX) quad3(ctx, v, xi, y0 + P, H - drop, xi, y1 - P, H - drop, xi, y1 - P, H, xi, y0 + P, H);
     ctx.fill();
-    topFill(R, x0 + P, y0 + P, x1 - P, y1 - P, H - drop, tone(o.color, roofK * 0.9));
+    topFill(R, x0 + P, y0 + P, x1 - P, y1 - P, H - drop, tone(rc, roofK * 0.9));
   }
   // Rooftop clutter: AC units / vents placed from the building's seed.
   const n = o.vents || 0;
@@ -290,7 +297,7 @@ function gableRoof(R, o, H, rise, k) {
   const x1 = o.x + o.w;
   const y1 = o.y + o.h;
   const top = H + rise;
-  const c = o.color;
+  const c = roofColor(R, o.color);
   ctx.lineWidth = 1;
   if (o.w >= o.h) {
     const ym = (y0 + y1) / 2;

@@ -990,3 +990,35 @@ test('a hunter\'s arms wave as it comes at you, one up as the other comes down, 
   }
   assert.equal(bad, null, bad);
 });
+
+test('art: under a night look the darkened copies are made for it, the fully lit take its warm light, and a new look makes them again', async () => {
+  const { NIGHT_LOOKS } = await import('../src/render/night-look.js');
+  const purple = NIGHT_LOOKS.purple;
+  const made = [];
+  const page = () => ({ canvas: mockCanvas(), put(rgba, sw, sh, x, y, k, rim, look) { made.push([k, look]); }, flush() {}, seal() {} });
+  const art = new ZombieArt({ texture: TEX, makePage: page, budget: Infinity });
+  const v = view();
+  const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2 };
+  art.sync(v, 2, 0, 0, 0, 0.4, purple);
+  const lit = common(0, 1);
+  art.drawZombie(R, lit, 1);
+  assert.equal(lit._zp.dark, 'l', 'fully lit, under the look: a level of its own');
+  assert.equal(lit._zp.lv, 10);
+  assert.ok(art.darkens[10].warm && !art.darkens[10].fill, 'with the amber laid over it');
+  const dark = common(1, 2);
+  art.drawZombie(R, dark, 0.4);
+  assert.equal(dark._zp.dark, 'n', 'where no light reaches: the darkened copies');
+  assert.ok(made.length > 0 && made.every(([, look]) => look === purple), 'every sprite and copy made for the look');
+  assert.ok(made.some(([k]) => k === 0) && made.some(([k]) => k > 0 && k < 1), 'silhouettes and night copies among them');
+  // Back to the classic look (another map): once it holds, everything is made again, without it.
+  made.length = 0;
+  art.sync(v, 2, 1, 0, 0, 0.4, null);
+  art.sync(v, 2, 2, 0, 0, 0.4, null);
+  assert.equal(art.cam.look, null);
+  const z = common(0, 1);
+  art.drawZombie(R, z, 1);
+  assert.equal(z._zp.dark, 'f', 'fully lit, classic: as baked');
+  assert.ok(made.length > 0 && made.every(([, look]) => look === null));
+  assert.equal(art.darkens[10].warm, null);
+  assert.equal(bad, null, bad);
+});

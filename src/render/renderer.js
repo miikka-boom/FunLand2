@@ -24,7 +24,8 @@ import { GUN_Z } from '../game/player.js';
 import { TAU, rectsOverlap, pointInRect, lampLit, clamp } from '../util.js';
 import { Scene, boxHides } from './scene3d.js';
 import { CRANE_H, drawDoorPlans } from './models.js';
-import { tone, box, boxShadow, disc, ball, line3 } from './prims.js';
+import { tone, box, boxShadow, disc, ball, line3, setTonePalette } from './prims.js';
+import { nightLookFor } from './night-look.js';
 import { Horde, drawSurvivor, drawLying, drawHunter, drawTank, drawTerror, drawWitch, witchEyes, drawRock, ghostPath, hunterLift, hunterEyes, PLAYER_LOOK, ALLY_LOOK } from './figures.js';
 import { WITCH } from '../game/witch.js';
 import { ZombieArt } from './zombie-art.js';
@@ -211,8 +212,16 @@ export class Renderer {
     R.alpha = 1;
     this.eye = game.player.alive ? game.player : null;
 
+    // The night's look on this map (night-look.js): its colours go to the lighting, the tones of
+    // everything standing, the ground and the zombies' sprites.
+    const look = nightLookFor(S);
+    L.look = look;
+    R.look = look;
+    setTonePalette(look);
+    this.groundColors = look && look.ground ? look.ground : GROUND;
+
     L.collect(game, vrTall);
-    R.zart = S.zombieModels && this.zart.sync(v, dpr, undefined, S.zombieLean, S.zombieHeadTilt, L.night ? 1 - L.dark : 1) ? this.zart : null;
+    R.zart = S.zombieModels && this.zart.sync(v, dpr, undefined, S.zombieLean, S.zombieHeadTilt, L.night ? 1 - L.dark : 1, look) ? this.zart : null;
 
     // --- Ground --------------------------------------------------------------------------
     R.reset();
@@ -303,7 +312,8 @@ export class Renderer {
     const interior = map.theme === 'interior';
     // The graveyard, suburbia and the junkyard paint their own ground (theme-render.js).
     const theme = THEMES[map.theme];
-    ctx.fillStyle = interior ? '#2b2c2f' : theme ? theme.base : GROUND.street;
+    const G = this.groundColors || GROUND;
+    ctx.fillStyle = interior ? '#2b2c2f' : theme ? theme.base : G.street;
     ctx.fillRect(Math.max(0, vr.x), Math.max(0, vr.y), Math.min(map.w, vr.x + vr.w) - Math.max(0, vr.x), Math.min(map.h, vr.y + vr.h) - Math.max(0, vr.y));
     if (interior) this.drawInteriorFloors(ctx, map, vr);
     if (map.theme === 'docks') drawDocksGround(ctx, game, vr);
@@ -311,12 +321,12 @@ export class Renderer {
 
     for (const b of interior || theme ? [] : map.blocks) {
       if (!rectsOverlap(b, vr)) continue;
-      ctx.fillStyle = GROUND.sidewalk;
+      ctx.fillStyle = G.sidewalk;
       ctx.fillRect(b.x, b.y, b.w, b.h);
       const i = b.inner;
-      ctx.fillStyle = GROUND[b.type] || GROUND.buildings;
+      ctx.fillStyle = G[b.type] || G.buildings;
       ctx.fillRect(i.x, i.y, i.w, i.h);
-      ctx.strokeStyle = GROUND.curb;
+      ctx.strokeStyle = G.curb;
       ctx.lineWidth = 2;
       ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
       if (b.type === 'plaza') {

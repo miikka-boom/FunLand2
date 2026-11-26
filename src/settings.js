@@ -19,7 +19,7 @@ export const LEVELS = [
 export const LEVEL_IDS = LEVELS.map((l) => l.id);
 export const LEVEL_NAMES = Object.fromEntries(LEVELS.map((l) => [l.id, l.name]));
 
-// --- The camera, per map type ---------------------------------------------------------------
+// --- The camera (and the night's look), per map type ---------------------------------------
 // Each map type keeps its own camera: the settings are stored as
 // 'cameraTilt@interior', 'viewSize@docks' and so on (see levelKey / forLevel).
 const CAMERA_DEFAULTS = {
@@ -28,10 +28,14 @@ const CAMERA_DEFAULTS = {
   cameraTilt: 25, // degrees above the horizon in the isometric view (35 = true isometric)
   cameraAlignedTilt: 75, // ...and with the streets along the screen: steep, so a wall doesn't hide the doorway in it
   viewSize: 470, // world units visible across the short screen axis
+  // How the night looks: 'classic' (blue-black) or 'purple' (purple shadows, amber light; a
+  // prototype after a concept for Streets: src/render/night-look.js).
+  nightLook: 'classic',
 };
 const CAMERA_BY_LEVEL = {
   // Corridors and rooms read best turned 45° (walls both ways show a face), from as high as the slider goes.
   interior: { cameraAligned: false, cameraTilt: 70 },
+  city: { nightLook: 'purple' },
 };
 /** The settings that are kept per map type. */
 export const LEVEL_KEYS = Object.keys(CAMERA_DEFAULTS);
@@ -303,6 +307,16 @@ export const SCHEMA = [
     items: [
       { key: 'night', label: 'Night + flashlight', type: 'toggle' },
       { key: 'darkness', label: 'Darkness', type: 'range', min: 0.4, max: 0.97, step: 0.01, fmt: pct },
+      {
+        key: 'nightLook',
+        perLevel: true,
+        label: 'Night look (this map)',
+        type: 'select',
+        options: [
+          ['classic', 'Classic: blue-black'],
+          ['purple', 'Purple shadows, amber light (prototype)'],
+        ],
+      },
       { key: 'los', label: 'Line-of-sight shadows', type: 'toggle' },
       { key: 'threatIndicators', label: 'Off-screen threat arrows', type: 'toggle' },
       { key: 'zombieModels', label: 'Zombie models (off: stick figures)', type: 'toggle' },
