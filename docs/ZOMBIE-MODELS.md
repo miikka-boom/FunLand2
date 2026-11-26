@@ -84,7 +84,9 @@ It can tip a whole body back (onto its back or its face) and roll it onto a side
   placed as if seen from 10° lower and the head from 35° lower again (`tiltPitches`). A
   camera that is already low leaves them be: bodies never go below 35°, heads below 20°.
 - **Posed every frame**: feet step, the body bobs and sways, the head nods, the arms
-  hang, reach, go up for a swing and come down on you, and flail when it's hit. The arm
+  hang, reach, go up for a swing and come down on you, and flail when it's hit. A
+  hunter's arms wave as it comes at you, as the stick figures' did: one goes up as the
+  other comes down, with each stride (`WAVE`; standing still, it keeps waving). The arm
   poses switch like drawn frames; the small motions are bobs. The walk is drawn in
   eight frames a stride, the way a drawn walk cycle is (below); the head's nod and each
   zombie's own slow sway stay smooth.

@@ -564,10 +564,11 @@ and no dependencies.
     wider skull, a big heavy one) in four sets of clothes and skin make twelve
     looks for the crowd. Each is put together from its parts every frame:
     feet step, the body bobs and sways, the head nods, the arms hang, reach for
-    you, go up for a swing and come down on you, and flail when it's hit. One
-    that's been shot has blood on its shirt. The dead go down bloodied, eight
-    ways: on their backs with their arms flung up or out, on their faces
-    reaching, on either side, their heads where the shot threw them.
+    you and wave as they rush you, go up for a swing and come down on you, and
+    flail when it's hit. One that's been shot has blood on its shirt. The dead
+    go down bloodied, eight ways: on their backs with their arms flung up or
+    out, on their faces reaching, on either side, their heads where the shot
+    threw them.
   - Their heads have a mind of their own: a hunter's turns to you before its
     body does, a shambler's glances about, and the googly eyes roll (toward
     you, drooping, rolled up or crossed when hit) and blink. Toon shading and

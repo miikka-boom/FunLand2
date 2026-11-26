@@ -308,7 +308,7 @@ test('art: a zombie is its body and its head, two sprites one to one on whole de
   const ctx = mockCanvas().getContext('2d');
   const R = { ctx, v, t: 1, dpr: 2 };
   calls.length = 0;
-  art.drawZombie(R, common(0, 0.3), 1);
+  art.drawZombie(R, common(0, 0.3, { anim: 1 }), 1);
   let screen = drawsOn(ctx);
   assert.ok(screen.length === 2 || screen.length === 3, `lit: its body and its head (${screen.length})`);
   assert.ok(calls.length > screen.length, 'its body put together first, from its parts');
@@ -319,9 +319,9 @@ test('art: a zombie is its body and its head, two sprites one to one on whole de
     assert.ok(sx >= 0 && sy >= 0);
     assert.equal(c.alpha, 1);
   }
-  // Another just like it, elsewhere: its body is put together already.
+  // Another just like it (in step with it), elsewhere: its body is put together already.
   calls.length = 0;
-  art.drawZombie(R, common(0, 0.3, { x: 560, y: 470 }), 1);
+  art.drawZombie(R, common(0, 0.3, { x: 560, y: 470, anim: 1 }), 1);
   assert.equal(calls.length, drawsOn(ctx).length, 'nothing new put together');
   // Partly lit: darkened copies of its body and head, no overlays.
   calls.length = 0;
@@ -379,11 +379,12 @@ test('art: sprites are baked when first wanted, within a budget; until then a zo
   const v = view();
   art.sync(v, 2, 0);
   const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2 };
-  art.drawZombie(R, common(1, 0), 1);
+  art.drawZombie(R, common(1, 0, { anim: 2 }), 1);
   const first = art.bakes;
   assert.ok(first >= 4, 'a look\'s first zombie gets its sprites at once (head, torso, foot, the arm pose)');
-  // No budget left: another facing is drawn with the one there is, nothing new is baked.
-  art.drawZombie(R, common(1, 1.5), 1);
+  // No budget left: another facing is drawn with the one there is, nothing new is baked (in step,
+  // its arms in the same pose).
+  art.drawZombie(R, common(1, 1.5, { anim: 2 }), 1);
   assert.equal(art.bakes, first);
   // With a budget, warm() gets every look's first facings ready over the coming frames.
   art.budget = 4;
@@ -889,8 +890,8 @@ test('composites: a walking body is put together once for each frame of its walk
   const twin = common(2, 1.2, { vx: 60, vy: 40, x: 620, y: 430, anim: z.anim });
   art.drawZombie(R, twin, 1);
   assert.equal(twin._zp.back, z._zp.back, 'shared');
-  // Standing still: one body, whatever the time.
-  const still = common(2, 1.2, { vx: 0, vy: 0 });
+  // A shambler standing still: one body, whatever the time.
+  const still = common(2, 1.2, { vx: 0, vy: 0, state: 'idle' });
   const seen = new Set();
   for (let i = 0; i < 20; i++) {
     still.anim = i * 0.1;
@@ -903,7 +904,7 @@ test('composites: a walking body is put together once for each frame of its walk
 });
 
 test('composites: prepared before anything is drawn, so drawing the horde neither bakes nor puts anything together', () => {
-  const art = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
+  const art = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity, composeBudget: Infinity });
   const v = view();
   const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2, game: null };
   const zs = [];
@@ -947,4 +948,39 @@ test('composites: kept in a few pages; when they are full the oldest is cleared 
   cache.clear();
   assert.equal(cache.get('k8'), null);
   assert.equal(cache.px, 0);
+});
+
+
+test('a hunter\'s arms wave as it comes at you, one up as the other comes down, with its stride (and standing still); a shambler\'s hang', () => {
+  const art = new ZombieArt({ texture: TEX, makePage: memoryPage, budget: Infinity });
+  const v = view();
+  const R = { ctx: mockCanvas().getContext('2d'), v, t: 1, dpr: 2 };
+  const arms = (z) => {
+    const pairs = new Set();
+    const bodies = new Set();
+    for (let i = 0; i < 80; i++) {
+      z.anim = i * 0.011; // a stride and a little
+      art.sync(v, 2, z.anim);
+      art.drawZombie(R, z, 1);
+      const P = z._zp;
+      assert.equal(P.iL + P.iR, 4, 'one up as the other comes down');
+      pairs.add(`${P.iL}${P.iR}`);
+      bodies.add(P.back);
+    }
+    return { pairs, bodies };
+  };
+  const running = arms(common(4, 0.8, { vx: 70, vy: 30 }));
+  assert.deepEqual([...running.pairs].sort(), ['13', '22', '31'], 'low, reaching and raised, each arm in turn');
+  assert.equal(running.bodies.size, WALK, 'still a body for each frame of its stride');
+  const standing = arms(common(4, 0.8, { vx: 0, vy: 0 }));
+  assert.deepEqual([...standing.pairs].sort(), ['13', '22', '31'], 'standing, it still waves');
+  // A shambler's arms hang low, both the same.
+  const shambler = common(4, 0.8, { vx: 20, vy: 5, state: 'idle' });
+  for (let i = 0; i < 40; i++) {
+    shambler.anim = i * 0.04;
+    art.sync(v, 2, 3 + i / 60);
+    art.drawZombie(R, shambler, 1);
+    assert.ok(shambler._zp.iL === 1 && shambler._zp.iR === 1);
+  }
+  assert.equal(bad, null, bad);
 });

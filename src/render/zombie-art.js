@@ -83,7 +83,7 @@ const FILLS = 1;
 // poses of a shambler and a hunter, so a look's first zombie on screen borrows a near facing
 // instead of baking everything at once.
 const WARM_DIRS = [8, 24, 0, 16];
-const WARM_POSES = [1, 2];
+const WARM_POSES = [1, 2, 3]; // a shambler's arms, and a hunter's as they wave
 const ORDER_PPU = 0.08; // px per model unit for the small bakes that work out the draw order
 /** How long the dead take to fall (s), the frames of it (how far over, of the way down), and the facings those are baked for. */
 export const FALL_T = 0.32;
@@ -97,6 +97,13 @@ const FALL_KEEP = 96; // fall frames kept for the next death to use (each is wan
 // a zombie (body and head), not six (twelve partly lit). So the walk is drawn in WALK frames a
 // stride, the way a drawn walk cycle is.
 export const WALK = 8;
+/**
+ * A hunter's arms wave as it comes at you, the way the stick figures' did: the arm pose
+ * (ARM_PITCH: 1 low, 2 reaching, 3 raised) at each frame of its stride, the left arm half a
+ * stride behind the right, so one goes up as the other comes down, the left up as the right foot
+ * steps.
+ */
+const WAVE = [2, 3, 3, 3, 2, 1, 1, 1];
 const LEVELS = 10; // the partly lit are drawn darkened to one of these levels (no overlays)
 const COMP_PAGES = 6; // canvas pages of composites kept (when they're full, the oldest is cleared for new ones)
 const COMPOSE = 2; // ms of putting composites together a frame
@@ -508,7 +515,8 @@ function sortParts(before, depth, out, at) {
 export class ZombieArt {
   /**
    * opts.makePage(w, h): an atlas page (default: a canvas); opts.makeCanvas(w, h): a canvas for
-   * composites; opts.texture: a Texture (skips loading).
+   * composites; opts.texture: a Texture (skips loading); opts.budget, opts.composeBudget: ms a
+   * frame of baking and of putting composites together.
    */
   constructor(opts = {}) {
     this.makePage = opts.makePage || canvasPage;
@@ -522,6 +530,7 @@ export class ZombieArt {
     this.tex = opts.texture || null;
     this.state = this.tex ? 'ready' : 'idle'; // 'loading' | 'ready' | 'failed'
     this.budget = opts.budget ?? BUDGET;
+    this.composeBudget = opts.composeBudget ?? COMPOSE;
     this.cam = null; // what the sprites are baked for: { pitch, pb, ph, ppu, sp, cp, spH, cpH, b0 }
     this.want = null;
     this.wantT = 0;
@@ -831,11 +840,13 @@ export class ZombieArt {
     while (this.warmAt < n * WARM_DIRS.length) {
       const L = this.look(this.warmAt % n);
       const d = WARM_DIRS[(this.warmAt / n) | 0];
-      if (!this._body(L, d, WARM_POSES[0], WARM_POSES[1]) || !L.head.s[d * NE + EYE.down]) {
+      if (!this._body(L, d, WARM_POSES[0], WARM_POSES[0]) || WARM_POSES.some((p) => !L.arm.s[d * NP + p]) || !L.head.s[d * NE + EYE.down]) {
         if (this.spent >= this.budget) return;
         // This frame's one batch of new sprites: a look's body and head at one facing.
         this.fills = FILLS;
         this._fillBody(L, d, WARM_POSES[0], WARM_POSES[1], true);
+        for (const p of WARM_POSES) if (!L.arm.s[d * NP + p]) this._bake(L.arm, d, p);
+        this.atlas.flush();
         this._fillHead(L, d, EYE.down, true);
         this.warmAt++;
         return;
@@ -914,10 +925,13 @@ export class ZombieArt {
     const t = R.t;
     const st = z.stagger > 0;
     const chasing = z.state === 'chase' && z.alertDelay <= 0;
+    // The frame of its stride (the walk is drawn in WALK frames a stride).
+    const moving = Math.hypot(z.vx, z.vy) > (chasing ? 27 : 8);
+    const wf = Math.round((z.anim * (chasing ? 13 : 4.5) * WALK) / TAU) % WALK;
     // The arms, in key poses (they are baked, so they change pose the way drawn frames do): low
-    // while it shambles, reaching while it hunts, raised, up and down on you for a swing, flailing
-    // when it's hit. Shambling and hunting are put together in composites (mode 0 and 1); a swing
-    // or a flail is drawn part by part (mode 2): they're brief.
+    // while it shambles, reaching and waving while it hunts (WAVE, standing still too), raised, up
+    // and down on you for a swing, flailing when it's hit. Shambling and hunting are put together
+    // in composites (mode 0 and 1); a swing or a flail is drawn part by part (mode 2): they're brief.
     let iL = 1;
     let iR = 1;
     let mode = chasing ? 1 : 0;
@@ -934,7 +948,8 @@ export class ZombieArt {
       lean += w < 0.7 ? -4 : 10;
       mode = 2;
     } else if (chasing) {
-      iL = iR = 2;
+      iL = WAVE[(wf + WALK / 2) % WALK];
+      iR = WAVE[wf];
     }
     let f = z.face;
     if (st) f += Math.sin(t * 30 + z.id) * 0.35;
@@ -956,11 +971,11 @@ export class ZombieArt {
     const fq = v.yaw + d * STEP;
     const ca = Math.cos(fq);
     const sa = Math.sin(fq);
-    // The walk, in WALK frames a stride (-1: standing).
-    const moving = Math.hypot(z.vx, z.vy) > (chasing ? 27 : 8);
-    const q = moving ? Math.round((z.anim * (chasing ? 13 : 4.5) * WALK) / TAU) % WALK : -1;
-    const ph = (Math.max(0, q) * TAU) / WALK;
-    const spd = q < 0 ? 0 : chasing ? 1 : 0.75;
+    // The pose's frame, for its composite: its stride's; a hunter standing still waves in frames
+    // of its own; -1, standing.
+    const q = moving ? wf : mode === 1 ? WALK + wf : -1;
+    const ph = moving ? (wf * TAU) / WALK : 0;
+    const spd = moving ? (chasing ? 1 : 0.75) : 0;
     const sn = Math.sin(ph);
     const cs = Math.cos(ph);
     // The rest of the pose, in model units.
@@ -997,7 +1012,7 @@ export class ZombieArt {
     put(FOOT_R, fR[0] - sn * stride, fR[1], cs < 0 ? -cs * lift : 0);
     put(TORSO, lean * 0.3, sway * 0.5, bob);
     const reach = chasing ? 6 : 0;
-    const swing = mode === 2 ? 0 : sn * (chasing ? 9 : 7);
+    const swing = mode === 2 ? 0 : chasing ? -sn * 9 : sn * 7; // with the wave: the left arm up as the right foot steps
     put(ARM_L, sL[0] + lean * 0.5 + reach, sL[1] + sway * 0.5, sL[2] + bob + swing);
     put(ARM_R, sR[0] + lean * 0.5 + reach, sR[1] + sway * 0.5, sR[2] + bob - swing);
     put(HEAD, lean, sway + idle * 0.5, body.neck + bob * 1.15 + nod - (chasing ? 5 : 0));
@@ -1058,7 +1073,7 @@ export class ZombieArt {
   ready(R) {
     this.warm();
     // (While a new zoom settles, sprites are drawn scaled, part by part: nothing to put together.)
-    if (this._exact(R)) for (const P of this.queue) this._comps(P, R.dpr, this.composeMs < COMPOSE);
+    if (this._exact(R)) for (const P of this.queue) this._comps(P, R.dpr, this.composeMs < this.composeBudget);
     this.queue.length = 0;
   }
 
