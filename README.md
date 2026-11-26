@@ -569,7 +569,7 @@ and no dependencies.
   - They lean toward the camera, and their heads tip further toward it, so
     even the steep street camera shows their faces, profiles and backs
     instead of the tops of their heads: **Zombie lean toward camera** and
-    **Zombie head tilt toward camera** (20° each) under Presentation.
+    **Zombie head tilt toward camera** (10° and 35°) under Presentation.
   - The parts are baked into sprites for the camera, per facing, as they are
     first needed, so it is still one 2D canvas with no build step. How it
     works, and how to update the art: [docs/ZOMBIE-MODELS.md](docs/ZOMBIE-MODELS.md).

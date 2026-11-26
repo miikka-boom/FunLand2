@@ -206,7 +206,7 @@ test('baker: a colour block moves the painted UVs, never the palette (eyes stay 
 
 test('draw order: feet first, the torso before the head, arms in front when they reach at you and behind when it turns away', () => {
   // Upright, and leaning toward the camera with the head tipped further (as the settings have it).
-  for (const [tilt, headTilt] of [[75, 75], [45, 45], [55, 35]]) {
+  for (const [tilt, headTilt] of [[75, 75], [45, 45], [55, 35], [65, 30]]) {
     const b = { sp: Math.sin(tilt * DEG), cp: Math.cos(tilt * DEG) };
     const h = { sp: Math.sin(headTilt * DEG), cp: Math.cos(headTilt * DEG) };
     for (const [bodyId, headId] of [['normal', 'bald'], ['normal', 'ponytail'], ['big', 'wideBig']]) {
