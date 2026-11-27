@@ -6,7 +6,8 @@ import { addWorldFeatures } from '../src/world/features-gen.js';
 import { addScavenging } from '../src/world/scavenge-gen.js';
 import { addLore } from '../src/world/lore-gen.js';
 import { World } from '../src/world/world.js';
-import { POSTERS, NOTES, CITY_GRAFFITI, BUILDING_GRAFFITI } from '../src/world/lore-content.js';
+import { POSTERS, NOTES, CITY_GRAFFITI, BUILDING_GRAFFITI, TAGS } from '../src/world/lore-content.js';
+import { TAG_ATLAS } from '../assets/tags/atlas.js';
 import { pointInRect, rectsOverlap } from '../src/util.js';
 
 const LEVELS = [
@@ -70,7 +71,7 @@ for (const [name, gen] of LEVELS) {
     for (const seed of SEEDS) {
       const map = addLore(full(gen, seed, true), seed);
       const world = new World({ ...map, sealed: [] });
-      for (const d of map.decor.filter((q) => q.type === 'graffiti' || q.type === 'doodle')) {
+      for (const d of map.decor.filter((q) => q.type === 'graffiti' || q.type === 'doodle' || q.type === 'tag')) {
         assert.ok(world.isFree(d.x, d.y, 3) || map.obstacles.some((o) => o.boards && pointInRect(d.x, d.y, o, 6)), `seed ${seed}: "${d.text || d.art}" is inside an obstacle`);
       }
       for (const p of map.posters) {
@@ -81,6 +82,26 @@ for (const [name, gen] of LEVELS) {
     }
   });
 }
+
+for (const [name, gen] of LEVELS) {
+  test(`${name}: the sketchbook tags go down, each at most once, an arrow or two pointing on`, () => {
+    for (const seed of SEEDS) {
+      const map = addLore(full(gen, seed, true), seed);
+      const tags = map.decor.filter((d) => d.type === 'tag');
+      assert.ok(tags.length >= 3, `seed ${seed}: ${tags.length} tags`);
+      assert.equal(new Set(tags.map((t) => t.art)).size, tags.length, `seed ${seed}: a tag repeated`);
+      assert.ok(tags.some((t) => TAGS[t.art].dir !== undefined), `seed ${seed}: no arrow on the way`);
+      for (const t of tags) {
+        assert.ok(TAG_ATLAS[t.art] && t.w > 20 && t.h > 10 && t.color, `seed ${seed}: bad tag ${JSON.stringify(t)}`);
+        for (const o of tags) if (o !== t) assert.ok(Math.hypot(o.x - t.x, o.y - t.y) >= 130, `seed ${seed}: ${t.art} on top of ${o.art}`);
+      }
+    }
+  });
+}
+
+test('every tag has its art cut, and every cut has a tag', () => {
+  assert.deepEqual(Object.keys(TAGS).sort(), Object.keys(TAG_ATLAS).sort());
+});
 
 test('content: plenty to go round, nothing referenced that does not exist', () => {
   assert.ok(CITY_GRAFFITI.length >= 30 && BUILDING_GRAFFITI.length >= 15);

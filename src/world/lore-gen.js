@@ -11,8 +11,9 @@ import { analyse, detour } from './scavenge-gen.js';
 import {
   CITY_GRAFFITI, BUILDING_GRAFFITI, DOCKS_GRAFFITI, SUBURBIA_GRAFFITI, GRAVEYARD_GRAFFITI, JUNKYARD_GRAFFITI,
   ROOF_MESSAGES, SAFE_ROOM, POSTERS, NOTES, DEN_SCRIBBLES, DEN_JOKES, VIGNETTES, SPRAY, MARKER,
-  WITCH_GRAFFITI,
+  WITCH_GRAFFITI, TAGS,
 } from './lore-content.js';
+import { TAG_ATLAS } from '../../assets/tags/atlas.js';
 
 /** A map type's own lines (they go first; the rest of the ground is filled from town). */
 const THEME_GRAFFITI = { docks: DOCKS_GRAFFITI, suburbia: SUBURBIA_GRAFFITI, graveyard: GRAVEYARD_GRAFFITI, junkyard: JUNKYARD_GRAFFITI };
@@ -208,7 +209,68 @@ export function addLore(map, seed) {
 
   // --- Little scenes --------------------------------------------------------------------------------
   vignettes(map, world, A, rnd, interior, cells, clearOf, busy, ink);
+
+  // --- Hand-drawn tags ------------------------------------------------------------------------------
+  // Last, on their own seed, so every other piece of writing stays where it was.
+  tags(map, world, A, seed, interior, cells, clearOf, placed, ink);
   return map;
+}
+
+/** Ground size of a tag (unrotated), from its art's proportions. */
+export function tagSize(art) {
+  const r = TAG_ATLAS[art];
+  const len = TAGS[art].len;
+  const k = len / Math.max(r[2], r[3]);
+  return { w: Math.round(r[2] * k), h: Math.round(r[3] * k) };
+}
+
+/**
+ * The sketchbook tags: a couple of hand-drawn arrows on the way, pointing
+ * along the walk to the safe room, and a handful of the rest wherever you
+ * wander (never the same one twice on a map). Spray outdoors, marker inside.
+ */
+function tags(map, world, A, seed, interior, cells, clearOf, placed, ink) {
+  const rnd = mulberry32((Math.imul(seed | 0, 0x2c1b3c6d) ^ 0x7a6b1f39) >>> 0);
+  for (let k = 0; k < 4; k++) rnd(); // nearby seeds start out alike
+  const { written, boxOf, crowded, fits } = ink;
+  const inks = interior ? MARKER : SPRAY;
+  const names = Object.keys(TAGS);
+  const arrows = shuffle(names.filter((n) => TAGS[n].dir !== undefined), rnd);
+  const rest = shuffle(names.filter((n) => TAGS[n].dir === undefined), rnd);
+  const put = (art, q, a, s) => {
+    const { w, h } = tagSize(art);
+    const sw = w * s;
+    const sh = h * s;
+    if (!clearOf(q.x, q.y, 10) || placed.some((p) => Math.hypot(p.x - q.x, p.y - q.y) < 130)) return false;
+    if (!fits(q.x, q.y, sw, sh) || !world.isFree(q.x, q.y, Math.min(sw, sh) / 2)) return false;
+    const box = boxOf(q.x, q.y, sw, sh, a);
+    if (crowded(box, 8)) return false;
+    written.push(box);
+    placed.push(q);
+    map.decor.push({ type: 'tag', art, x: q.x, y: q.y, w: Math.round(sw), h: Math.round(sh), a, color: inks[Math.floor(rnd() * inks.length)], marker: interior });
+    return true;
+  };
+  // Arrows on the way, turned to point where the walk goes.
+  const onWay = cells.filter((q) => q.det < 200);
+  for (let k = 0, made = 0; k < onWay.length && made < (interior ? 1 : 2) && arrows.length; k++) {
+    const q = onWay[k];
+    const along = alongPath(world, A.fg, q.i);
+    if (along === null) continue;
+    if (put(arrows[0], q, along - TAGS[arrows[0]].dir, interior ? 0.85 : 1)) {
+      arrows.shift();
+      made++;
+    }
+  }
+  // The rest, anywhere that isn't a dead end miles off.
+  const pool = cells.filter((q) => q.det < 900);
+  const want = interior ? 4 : 7;
+  for (let k = 0, made = 0; k < pool.length && made < want && rest.length; k++) {
+    const art = rest[0];
+    if (put(art, pool[k], (rnd() - 0.5) * 0.5, (interior ? 0.8 : 1) * (0.85 + rnd() * 0.35))) {
+      rest.shift();
+      made++;
+    }
+  }
 }
 
 // --- Helpers --------------------------------------------------------------------------------------

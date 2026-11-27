@@ -384,3 +384,27 @@ export const MARKER = ['#1d1d1d', '#2a4fa0', '#b3261e', '#2e7d32'];
 
 /** A whiteboard is as long as its words need (10 px marker); placement and drawing share this. */
 export const whiteboardLen = (text) => (text ? text.length * 10 * 0.6 + 14 : 70);
+
+/**
+ * Hand-drawn spray tags (art: assets/tags/tags.png, cut from the sketchbook page
+ * by tools/cut-tags.py). len: the longest side on the ground, in world units.
+ * dir: an arrow's heading as drawn (radians, 0 = east, y down), so it can be
+ * turned to point along the walk.
+ */
+export const TAGS = {
+  catarrow: { len: 72 },
+  bonesplat: { len: 58 },
+  helpus: { len: 64 },
+  hope: { len: 70 },
+  catskull: { len: 62 },
+  deadbunny: { len: 62 },
+  helloworld: { len: 80 },
+  eyeslash: { len: 66 },
+  cross: { len: 52 },
+  bonesplat2: { len: 70 },
+  plus: { len: 50 },
+  bigarrow: { len: 74, dir: 0 },
+  thinarrow: { len: 66, dir: Math.PI },
+  diagarrow: { len: 60, dir: -Math.PI / 4 },
+  housearrow: { len: 60, dir: -Math.PI * 0.28 },
+};

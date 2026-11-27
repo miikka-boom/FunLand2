@@ -68,7 +68,7 @@ export function addBen(map, seed, opts = {}) {
   for (const d of map.decor) {
     if (CLUTTER.has(d.type) || d.x === undefined || d.y === undefined) continue;
     // Writing takes its length (half of it either side): sprayed lines, painted words, a ledger's slab.
-    const w = d.type === 'epitaph' ? d.w / 2 : d.type === 'graffiti' || (d.type === 'paint' && d.text) ? (d.text || '').length * (d.size || 12) * 0.32 : 0;
+    const w = d.type === 'epitaph' || d.type === 'tag' ? d.w / 2 : d.type === 'graffiti' || (d.type === 'paint' && d.text) ? (d.text || '').length * (d.size || 12) * 0.32 : 0;
     busy.push({ x: d.x, y: d.y, r: Math.max(26, w + 14) });
   }
   for (const s of map.stashes || []) busy.push({ x: s.x, y: s.y, r: 60 });
@@ -753,6 +753,7 @@ function textBoxes(decor, rect) {
       const w = (d.text || '').length * s * 0.58;
       out.push({ x: d.x - w / 2, y: d.y - s / 2, w, h: s });
     } else if (d.type === 'doodle') out.push({ x: d.x - 13, y: d.y - 12, w: 26, h: 24 });
+    else if (d.type === 'tag') out.push({ x: d.x - d.w / 2, y: d.y - d.h / 2, w: d.w, h: d.h });
   }
   return out;
 }

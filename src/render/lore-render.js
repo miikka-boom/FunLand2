@@ -6,6 +6,7 @@
 import { TAU, pointInRect } from '../util.js';
 import { rrect, circle, hash01 } from './draw-utils.js';
 import { POSTERS, whiteboardLen } from '../world/lore-content.js';
+import { TAG_ATLAS } from '../../assets/tags/atlas.js';
 
 const SPRAY_FONT = 'Impact, "Arial Black", "Helvetica Neue", system-ui, sans-serif';
 const MARKER_FONT = '"Marker Felt", "Chalkboard SE", "Comic Sans MS", "Segoe Print", system-ui, sans-serif';
@@ -21,6 +22,9 @@ export function drawLoreDecor(ctx, d) {
       return true;
     case 'doodle':
       drawDoodle(ctx, d);
+      return true;
+    case 'tag':
+      drawTag(ctx, d);
       return true;
     case 'note':
       ctx.save();
@@ -226,6 +230,64 @@ function drawGraffiti(ctx, d) {
       ctx.fillRect(hx, size * 0.32, 1.4, len);
     }
   }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+// --- Hand-drawn tags (assets/tags, cut by tools/cut-tags.py) ------------------------------------
+// One sheet of white ink; each tag is tinted once per colour and kept. Until the
+// sheet has loaded a tag just isn't drawn (the ground is painted every frame).
+
+const TAG_SHEET_URL = new URL('../../assets/tags/tags.png', import.meta.url).href;
+let tagSheet = null;
+const tintedTags = new Map();
+
+function tagSheetReady() {
+  if (!tagSheet) {
+    if (typeof Image === 'undefined') return false;
+    tagSheet = new Image();
+    tagSheet.decoding = 'async';
+    tagSheet.src = TAG_SHEET_URL;
+  }
+  return tagSheet.complete && tagSheet.naturalWidth > 0;
+}
+tagSheetReady(); // start loading with the module, not on the first tag in view
+
+function tintedTag(art, color) {
+  const key = `${art}|${color}`;
+  let c = tintedTags.get(key);
+  if (c) return c;
+  const r = TAG_ATLAS[art];
+  if (!r || typeof document === 'undefined') return null;
+  c = document.createElement('canvas');
+  c.width = r[2];
+  c.height = r[3];
+  const g = c.getContext('2d');
+  g.drawImage(tagSheet, r[0], r[1], r[2], r[3], 0, 0, r[2], r[3]);
+  g.globalCompositeOperation = 'source-in';
+  g.fillStyle = color;
+  g.fillRect(0, 0, r[2], r[3]);
+  tintedTags.set(key, c);
+  return c;
+}
+
+function drawTag(ctx, d) {
+  if (!tagSheetReady()) return;
+  const img = tintedTag(d.art, d.color);
+  if (!img) return;
+  ctx.save();
+  ctx.translate(d.x, d.y);
+  if (d.a) ctx.rotate(d.a);
+  const x = -d.w / 2;
+  const y = -d.h / 2;
+  if (!d.marker) {
+    // Overspray halo, like the sprayed words.
+    ctx.globalAlpha = 0.2;
+    ctx.drawImage(img, x + 1.3, y + 1.1, d.w, d.h);
+    ctx.drawImage(img, x - 1, y - 0.9, d.w, d.h);
+  }
+  ctx.globalAlpha = d.marker ? 0.8 : 0.85;
+  ctx.drawImage(img, x, y, d.w, d.h);
   ctx.restore();
   ctx.globalAlpha = 1;
 }
