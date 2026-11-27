@@ -1,5 +1,5 @@
 // Props as baked 3D models: the streets' parked cars, newspaper boxes, bus shelters and lamp
-// posts, and the parks' benches and fountains.
+// posts, the parks' benches and fountains, and the Building's furniture.
 //
 // Each is a real mesh (made with Scenario: a concept image after the level's concept art, then
 // image-to-3D; tools/props/build_props.py turns it into the zombies' mesh format), rendered into
@@ -24,6 +24,16 @@ import { SHELTER, SHELTER_TEXTURE } from '../../assets/props/shelter.js';
 import { LAMP, LAMP_TEXTURE } from '../../assets/props/lamp.js';
 import { BENCH, BENCH_TEXTURE } from '../../assets/props/bench.js';
 import { FOUNTAIN, FOUNTAIN_TEXTURE } from '../../assets/props/fountain.js';
+import { DESK, DESK_TEXTURE } from '../../assets/props/desk.js';
+import { CHAIR, CHAIR_TEXTURE } from '../../assets/props/chair.js';
+import { CABINET, CABINET_TEXTURE } from '../../assets/props/cabinet.js';
+import { BED, BED_TEXTURE } from '../../assets/props/bed.js';
+import { SHELF, SHELF_TEXTURE } from '../../assets/props/shelf.js';
+import { PLANT, PLANT_TEXTURE } from '../../assets/props/plant.js';
+import { VENDING, VENDING_TEXTURE } from '../../assets/props/vending.js';
+import { COUCH, COUCH_TEXTURE } from '../../assets/props/couch.js';
+import { TABLE, TABLE_TEXTURE } from '../../assets/props/table.js';
+import { ARMCHAIR, ARMCHAIR_TEXTURE } from '../../assets/props/armchair.js';
 
 const LEVELS = 10;
 const DEG = Math.PI / 180;
@@ -35,7 +45,10 @@ const now = () => (typeof performance !== 'undefined' ? performance.now() : Date
  * The props: each one's mesh and texture, whether its paint is swapped for each one's colour,
  * how far it leans toward the camera (degrees), whether it is fitted to its footprint by its
  * width across its front alone (a bench's length: set at a slant, it overhangs its footprint a
- * little), and where its light is (a lamp's lantern, model units: a forward, c right, h up).
+ * little), how much bigger than its footprint it is drawn (a plant's leaves spread past its pot,
+ * a cafeteria table's chairs past the table), and where its light is (a lamp's lantern, model
+ * units: a forward, c right, h up). The Building's furniture (desk to table) is the Dollhouse
+ * look's: no outline.
  */
 export const PROPS = {
   car: { mesh: CAR, texture: CAR_TEXTURE, paint: true },
@@ -44,6 +57,16 @@ export const PROPS = {
   lamp: { mesh: LAMP, texture: LAMP_TEXTURE, paint: false, tilt: 15, light: [219, 0, 735] },
   bench: { mesh: BENCH, texture: BENCH_TEXTURE, paint: false, tilt: 12, fit: 'across' },
   fountain: { mesh: FOUNTAIN, texture: FOUNTAIN_TEXTURE, paint: false, tilt: 22 },
+  desk: { mesh: DESK, texture: DESK_TEXTURE, paint: false, tilt: 10 },
+  chair: { mesh: CHAIR, texture: CHAIR_TEXTURE, paint: false, tilt: 10 },
+  cabinet: { mesh: CABINET, texture: CABINET_TEXTURE, paint: false, tilt: 14 },
+  bed: { mesh: BED, texture: BED_TEXTURE, paint: false, tilt: 8 },
+  shelf: { mesh: SHELF, texture: SHELF_TEXTURE, paint: false, tilt: 12 },
+  plant: { mesh: PLANT, texture: PLANT_TEXTURE, paint: false, tilt: 10, grow: 1.5 },
+  vending: { mesh: VENDING, texture: VENDING_TEXTURE, paint: false, tilt: 16 },
+  couch: { mesh: COUCH, texture: COUCH_TEXTURE, paint: false, tilt: 10 },
+  table: { mesh: TABLE, texture: TABLE_TEXTURE, paint: false, tilt: 6, grow: 1.25 },
+  armchair: { mesh: ARMCHAIR, texture: ARMCHAIR_TEXTURE, paint: false, tilt: 10 },
 };
 /** The camera tilt (radians above the horizon) prop name is baked for, under a camera at pitch. */
 export function propPitch(name, pitch) {
@@ -233,7 +256,8 @@ export class PropArt {
     const len = along ? o.w : o.h;
     const wid = along ? o.h : o.w;
     const [pl, pw] = propSize(name);
-    const fit = PROPS[name].fit === 'across' ? (wid * 0.96) / pw : Math.min((len * 0.96) / pl, (wid * 0.96) / pw);
+    const def = PROPS[name];
+    const fit = (def.fit === 'across' ? (wid * 0.96) / pw : Math.min((len * 0.96) / pl, (wid * 0.96) / pw)) * (def.grow || 1);
     const s = Math.round(fit * 100) / 100;
     return this.drawAt(R, name, o.x + o.w / 2, o.y + o.h / 2, 0, heading + turn, b, s, color);
   }

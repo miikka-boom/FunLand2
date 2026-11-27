@@ -361,7 +361,9 @@ and no dependencies.
     (bottom left) to the green safe room across town.
   - **Building:** one dark floor of an office/hospital-style building on
     Market Street: corridors, offices, wards, cafeterias, lobbies, warehouse aisles and
-    restrooms, all furnished. Hallways are blocked by barricades of piled
+    restrooms, all furnished, drawn like a dollhouse cut open at waist height
+    (light floors per kind of room, black wall tops, 3D furniture: see
+    [docs/BUILDING-ART.md](docs/BUILDING-ART.md)). Hallways are blocked by barricades of piled
     furniture, so the route winds through rooms and doorways. Some offices
     have glass fronts, so you see the horde before it reaches the door, and
     some rooms are pitch dark. A shootable fire alarm is the indoor version

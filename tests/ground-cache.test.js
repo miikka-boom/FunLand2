@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const { tintPixels, hexRgb, TEXTURE_SPAN } = await import('../src/render/textures.js');
-const { GroundCache, CHUNK } = await import('../src/render/ground-cache.js');
+const { GroundCache, CHUNK, TURNED_CHUNK } = await import('../src/render/ground-cache.js');
 
 test('a texture tinted to a colour keeps its light and dark around that colour', () => {
   const lum = Float32Array.from([40, 80, 120, 160]); // mean 100
@@ -30,7 +30,7 @@ test('a texture tinted to a colour keeps its light and dark around that colour',
 // A canvas that writes down what is painted on it and drawn from it.
 function fakeCanvas() {
   const c = { width: 0, height: 0, paints: 0 };
-  c.getContext = () => ({ canvas: c, setTransform() {}, clearRect() {}, drawImage: (src, x, y) => draws.push({ to: c, src, x, y }) });
+  c.getContext = () => ({ canvas: c, setTransform: (...a) => (c.tf = a), clearRect() {}, drawImage: (src, x, y) => draws.push({ to: c, src, x, y }) });
   return c;
 }
 let draws = [];
@@ -92,15 +92,70 @@ test('the ground cache: chunks meet on whole pixels and cover the screen, painte
   assert.ok(painted.length - k1 >= 12);
 });
 
-test('the ground cache: only for a camera that looks along the streets; it keeps what is on screen', () => {
+test('the ground cache: a turned camera gets squares of the screen, each painted with the world under it', () => {
+  const gc = new GroundCache(fakeCanvas);
+  const screen = fakeCanvas();
+  screen.width = 1688;
+  screen.height = 780;
+  const ctx = screen.getContext();
+  // The Building's camera: turned 45 degrees, 70 degrees above the horizon.
+  const yaw = Math.PI / 4;
+  const sp = Math.sin((70 * Math.PI) / 180);
+  const turned = (s, ox, oy) => ({ ax: s * Math.cos(yaw), ay: s * Math.sin(yaw), bx: -s * sp * Math.sin(yaw), by: s * sp * Math.cos(yaw), ox, oy });
+  const painted = [];
+  const paint = (x, x0, y0, x1, y1) => painted.push({ tf: x.canvas.tf, rect: [x0, y0, x1, y1] });
+  draws = [];
+  const dpr = 2;
+  const v = turned(1.3, 456.7, -321.9);
+  assert.equal(gc.draw(ctx, v, dpr, 'b', paint, 0), true);
+  const onScreen = draws.filter((d) => d.to === screen);
+  // Squares TURNED_CHUNK a side on whole pixels, meeting exactly, covering the screen.
+  for (const d of onScreen) {
+    assert.ok(Number.isInteger(d.x) && Number.isInteger(d.y));
+    assert.equal(d.src.width, TURNED_CHUNK);
+    assert.equal(d.src.height, TURNED_CHUNK);
+  }
+  const xs = [...new Set(onScreen.map((d) => d.x))].sort((a, b) => a - b);
+  const ys = [...new Set(onScreen.map((d) => d.y))].sort((a, b) => a - b);
+  for (let k = 0; k + 1 < xs.length; k++) assert.equal(xs[k] + TURNED_CHUNK, xs[k + 1]);
+  for (let k = 0; k + 1 < ys.length; k++) assert.equal(ys[k] + TURNED_CHUNK, ys[k + 1]);
+  assert.ok(xs[0] <= 0 && ys[0] <= 0);
+  assert.ok(xs[xs.length - 1] + TURNED_CHUNK >= screen.width && ys[ys.length - 1] + TURNED_CHUNK >= screen.height);
+  assert.equal(onScreen.length, xs.length * ys.length);
+  // Each is painted through the camera's own turn, given a world rect that covers every point
+  // landing on it.
+  const A = dpr * v.ax;
+  const B = dpr * v.bx;
+  const C = dpr * v.ay;
+  const D = dpr * v.by;
+  const det = A * D - B * C;
+  assert.equal(painted.length, onScreen.length);
+  for (const { tf, rect } of painted) {
+    assert.deepEqual(tf.slice(0, 4), [A, B, C, D]);
+    for (const [p, q] of [[0, 0], [TURNED_CHUNK, 0], [0, TURNED_CHUNK], [TURNED_CHUNK, TURNED_CHUNK]]) {
+      const P = p - tf[4];
+      const Q = q - tf[5];
+      const wx = (D * P - C * Q) / det;
+      const wy = (A * Q - B * P) / det;
+      assert.ok(wx >= rect[0] && wx <= rect[2] && wy >= rect[1] && wy <= rect[3], 'covered');
+    }
+  }
+  // Moving on: only what came into view is painted.
+  const n = painted.length;
+  gc.draw(ctx, turned(1.3, 440, -321.9), dpr, 'b', paint, 0);
+  assert.ok(painted.length - n <= ys.length + 1, `${painted.length - n} new chunks`);
+  // Edge-on to the ground: nothing to cache (the renderer paints it itself).
+  assert.equal(gc.draw(ctx, { ax: 1, ay: 1, bx: 1, by: 1, ox: 0, oy: 0 }, 1, 'b', paint), false);
+  assert.equal(GroundCache.fits(v), false);
+  assert.equal(GroundCache.fits(view(1, 0, 0)), true);
+});
+
+test('the ground cache: it keeps what is on screen and lets the oldest go', () => {
   const gc = new GroundCache(fakeCanvas);
   const screen = fakeCanvas();
   screen.width = 800;
   screen.height = 400;
   const ctx = screen.getContext();
-  const turned = { ax: 0.6, ay: 0.6, bx: -0.3, by: 0.3, ox: 0, oy: 0 };
-  assert.equal(gc.draw(ctx, turned, 2, 'k', () => {}), false, 'turned 45 degrees: the renderer paints it itself');
-  assert.equal(GroundCache.fits(view(1, 0, 0)), true);
   // Past its limit it lets the oldest go, never one on screen.
   gc.max = 4;
   for (let x = 0; x < 20; x++) gc.draw(ctx, view(1, -x * 300, 0), 1, 'k', () => {}, 0);

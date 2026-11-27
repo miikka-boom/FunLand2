@@ -28,6 +28,8 @@ const sideOf = (R, color, b) => (nx, ny) => tone(color, b * (0.6 + 0.32 * Math.m
 function chair(R, p) {
   const b = lit(R, p);
   if (b < 0.032) return;
+  // The Building's office chair: its baked model (prop-art.js), turned the way it was left.
+  if (R.props && !R.v.flat && R.props.ready('chair') && R.props.drawAt(R, 'chair', p.x, p.y, 0, p.turn, b, 1.25)) return;
   const { ctx, v } = R;
   const { x, y } = p;
   // An office chair: a post, the seat, the back toward wherever it was pushed.
@@ -424,7 +426,7 @@ export function buildDecorProps(scene, view) {
     d._3d = false;
     switch (d.type) {
       case 'chair':
-        add(d, 6, 26, chair, { side: hash01(d.x * 0.7 + d.y) < 0.5 });
+        add(d, 6, 26, chair, { side: hash01(d.x * 0.7 + d.y) < 0.5, turn: Math.round(hash01(d.x * 1.3 + d.y * 0.7) * 16) * (TAU / 16) });
         break;
       case 'fridge':
         add(d, 12, 46, fridge);

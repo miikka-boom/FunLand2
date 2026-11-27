@@ -26,7 +26,7 @@ import { Scene, boxHides, billHides } from './scene3d.js';
 import { CRANE_H, drawDoorPlans } from './models.js';
 import { tone, box, boxShadow, groundEllipse, disc, ball, line3, setTonePalette } from './prims.js';
 import { nightLookFor } from './night-look.js';
-import { Textures } from './textures.js';
+import { Textures, TEXTURE_SPAN } from './textures.js';
 import { GroundCache } from './ground-cache.js';
 import { RoofCache } from './roof-cache.js';
 import { LITTER } from '../../assets/streets/litter.js';
@@ -86,6 +86,31 @@ const BLOCK_TEXTURE = { buildings: 'asphalt', start: 'asphalt', end: 'asphalt', 
 // A number for each map (the ground cache keys on it).
 const mapIds = new WeakMap();
 let nextMapId = 1;
+/**
+ * Every other square of the grid s world units a side (from the world's origin: a tiles
+ * texture's own grid) inside rect r, where it meets vr, in style.
+ */
+function checkerTiles(ctx, r, vr, s, style) {
+  const x0 = Math.max(r.x, vr.x);
+  const y0 = Math.max(r.y, vr.y);
+  const x1 = Math.min(r.x + r.w, vr.x + vr.w);
+  const y1 = Math.min(r.y + r.h, vr.y + vr.h);
+  if (x1 <= x0 || y1 <= y0) return;
+  ctx.fillStyle = style;
+  ctx.beginPath();
+  for (let j = Math.floor(y0 / s); j * s < y1; j++) {
+    for (let i = Math.floor(x0 / s); i * s < x1; i++) {
+      if ((i + j) & 1) continue;
+      const ax = Math.max(i * s, r.x);
+      const ay = Math.max(j * s, r.y);
+      const bx = Math.min((i + 1) * s, r.x + r.w);
+      const by = Math.min((j + 1) * s, r.y + r.h);
+      if (bx > ax && by > ay) ctx.rect(ax, ay, bx - ax, by - ay);
+    }
+  }
+  ctx.fill();
+}
+
 function mapId(map) {
   let id = mapIds.get(map);
   if (!id) mapIds.set(map, (id = nextMapId++));
@@ -106,20 +131,24 @@ const GROUND = {
   station: '#2b2d31',
 };
 
-// Interior floors by room type: base colour + optional pattern.
-const FLOORS = {
-  office: { color: '#2f3239' },
-  openoffice: { color: '#30333a', grid: 96, alpha: 0.04 },
-  conference: { color: '#2d2f36' },
-  ward: { color: '#3a3e3e', grid: 40, alpha: 0.06 },
-  lab: { color: '#3b3f40', grid: 40, alpha: 0.06 },
-  cafeteria: { color: '#3a3a37', checker: 40, color2: '#323230' },
-  lobby: { color: '#3d3a36', grid: 80, alpha: 0.07 },
-  warehouse: { color: '#363430', grid: 128, alpha: 0.05 },
-  storage: { color: '#34322e' },
-  restroom: { color: '#384042', grid: 20, alpha: 0.08 },
-  closet: { color: '#302e2b' },
+// The Building's floors by room type (the Dollhouse look: light, clean floors, a different one
+// for each kind of room): the texture, its colour, and for the cafeteria a second colour every
+// other tile. Lit by the game's lights like everything else.
+export const FLOORS = {
+  office: { tex: 'tiles', color: '#b0a797' },
+  openoffice: { tex: 'carpet', color: '#5d6576' },
+  conference: { tex: 'carpet', color: '#6a6378' },
+  ward: { tex: 'lino', color: '#5f8c86' },
+  lab: { tex: 'lino', color: '#b3c0bd' },
+  cafeteria: { tex: 'tiles', color: '#c9bfac', color2: '#8e8574' },
+  lobby: { tex: 'bigtiles', color: '#b8a789' },
+  warehouse: { tex: 'concrete', color: '#9a9488' },
+  storage: { tex: 'concrete', color: '#a1998b' },
+  restroom: { tex: 'smalltiles', color: '#a8bcc1' },
+  closet: { tex: 'concrete', color: '#938c80' },
 };
+export const CORRIDOR_FLOOR = { tex: 'tiles', color: '#9ca1a8' };
+const SAFE_FLOOR = { tex: 'tiles', color: '#94a492', color2: '#82927f' };
 
 // What's in the painter's list.
 const T_STATIC = 0;
@@ -296,15 +325,14 @@ export class Renderer {
     ctx.globalAlpha = 1;
     ctx.fillStyle = '#060709';
     ctx.fillRect(0, 0, v.w, v.h);
-    // The static ground of the streets, textured, from chunks painted once (ground-cache.js);
-    // elsewhere, or for a turned camera, painted flat each frame.
+    // The static ground of the streets and the Building, textured, from chunks painted once
+    // (ground-cache.js); elsewhere painted flat each frame.
     const map = game.world.map;
     const T = this.tex;
     T.load();
     const cached =
       !THEMES[map.theme] &&
       map.theme !== 'docks' &&
-      map.theme !== 'interior' &&
       this.groundCache.draw(ctx, v, dpr, `${mapId(map)}|${look ? look.id : '-'}|${T.version}`, (c, x0, y0, x1, y1) => {
         c.lineCap = 'round';
         this.drawGround(c, game, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, 'static', T);
@@ -416,7 +444,7 @@ export class Renderer {
     const fill = (name, hex) => (T ? T.fill(ctx, name, hex) : hex);
     ctx.fillStyle = interior ? '#2b2c2f' : theme ? theme.base : fill('asphalt', G.street);
     ctx.fillRect(Math.max(0, vr.x), Math.max(0, vr.y), Math.min(map.w, vr.x + vr.w) - Math.max(0, vr.x), Math.min(map.h, vr.y + vr.h) - Math.max(0, vr.y));
-    if (interior) this.drawInteriorFloors(ctx, map, vr);
+    if (interior) this.drawInteriorFloors(ctx, map, vr, T);
     if (map.theme === 'docks') drawDocksGround(ctx, game, vr);
     if (theme) theme.ground(ctx, game, vr, game.view);
 
@@ -479,10 +507,16 @@ export class Renderer {
 
     drawFloors(ctx, map, vr);
 
-    // Safe room floors.
+    // Safe room floors (the Building's in its tiles, green, every other one darker).
     for (const room of [map.startRoom, map.endRoom]) {
       const r = room.interior;
       if (room.gangway || !rectsOverlap(r, vr)) continue; // Pier 9: the "end room" is the gangway's foot
+      if (interior) {
+        ctx.fillStyle = fill(SAFE_FLOOR.tex, SAFE_FLOOR.color);
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        checkerTiles(ctx, r, vr, TEXTURE_SPAN[SAFE_FLOOR.tex] / 4, fill(SAFE_FLOOR.tex, SAFE_FLOOR.color2));
+        continue;
+      }
       ctx.fillStyle = '#3b3f3b';
       ctx.fillRect(r.x, r.y, r.w, r.h);
       ctx.fillStyle = '#333733';
@@ -613,65 +647,22 @@ export class Renderer {
     }
   }
 
-  drawInteriorFloors(ctx, map, vr) {
-    for (const b of map.blocks) {
-      if (!rectsOverlap(b, vr)) continue;
-      ctx.fillStyle = '#2b2c2f';
-      ctx.fillRect(b.x, b.y, b.w, b.h);
-    }
-    for (const c of map.corridors) {
-      if (!rectsOverlap(c, vr)) continue;
-      ctx.fillStyle = '#35383b';
-      ctx.fillRect(c.x, c.y, c.w, c.h);
-      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let x = c.x + 64; x < c.x + c.w; x += 64) {
-        ctx.moveTo(x, c.y);
-        ctx.lineTo(x, c.y + c.h);
-      }
-      for (let y = c.y + 64; y < c.y + c.h; y += 64) {
-        ctx.moveTo(c.x, y);
-        ctx.lineTo(c.x + c.w, y);
-      }
-      ctx.stroke();
-    }
+  drawInteriorFloors(ctx, map, vr, T) {
+    const fill = (f, color = f.color) => (T ? T.fill(ctx, f.tex, color) : color);
+    // (Under the walls.)
+    ctx.fillStyle = '#3a3a3d';
+    for (const b of map.blocks) if (rectsOverlap(b, vr)) ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = fill(CORRIDOR_FLOOR);
+    for (const c of map.corridors) if (rectsOverlap(c, vr)) ctx.fillRect(c.x, c.y, c.w, c.h);
     for (const rm of map.rooms) {
       if (!rectsOverlap(rm, vr)) continue;
       const f = FLOORS[rm.type] || FLOORS.office;
-      ctx.fillStyle = f.color;
+      ctx.fillStyle = fill(f);
       ctx.fillRect(rm.x, rm.y, rm.w, rm.h);
-      // Only pattern what's on screen.
-      const x0 = Math.max(rm.x, vr.x);
-      const y0 = Math.max(rm.y, vr.y);
-      const x1 = Math.min(rm.x + rm.w, vr.x + vr.w);
-      const y1 = Math.min(rm.y + rm.h, vr.y + vr.h);
-      if (f.checker) {
-        const s = f.checker;
-        ctx.fillStyle = f.color2;
-        for (let y = rm.y + Math.floor((y0 - rm.y) / s) * s; y < y1; y += s) {
-          for (let x = rm.x + Math.floor((x0 - rm.x) / s) * s; x < x1; x += s) {
-            if ((Math.round((x - rm.x) / s) + Math.round((y - rm.y) / s)) % 2) ctx.fillRect(x, y, Math.min(s, rm.x + rm.w - x), Math.min(s, rm.y + rm.h - y));
-          }
-        }
-      } else if (f.grid) {
-        const s = f.grid;
-        ctx.strokeStyle = `rgba(255,255,255,${f.alpha})`;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        for (let x = rm.x + Math.ceil((x0 - rm.x) / s) * s; x < x1; x += s) {
-          ctx.moveTo(x, y0);
-          ctx.lineTo(x, y1);
-        }
-        for (let y = rm.y + Math.ceil((y0 - rm.y) / s) * s; y < y1; y += s) {
-          ctx.moveTo(x0, y);
-          ctx.lineTo(x1, y);
-        }
-        ctx.stroke();
-      }
+      if (f.color2) checkerTiles(ctx, rm, vr, TEXTURE_SPAN[f.tex] / 4, fill(f, f.color2));
     }
-    // Thresholds so doorways show floor, not the void under the wall line.
-    ctx.fillStyle = '#323437';
+    // Thresholds: the corridor's floor through every doorway.
+    ctx.fillStyle = fill(CORRIDOR_FLOOR);
     for (const d of map.doors) if (rectsOverlap(d, vr)) ctx.fillRect(d.x, d.y, d.w, d.h);
   }
 

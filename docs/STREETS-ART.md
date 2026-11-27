@@ -43,9 +43,10 @@ painted once into 160-unit chunks of the map at the camera's scale and copied to
 to one on whole device pixels each frame. Chunks start at rounded pixels of the whole map, so
 neighbours meet exactly; each is painted a little past its edges so no half-covered pixel shows
 as a seam; one off-screen chunk is painted ahead each frame; 56 are kept (about 16 MB on a
-phone). It needs a camera that looks along the streets (the ground maps to the screen by a scale
-and a shift); a turned camera, and the other maps, paint the ground as before. Moving decor
-(lore, Ben, docks, themes) is drawn over it each frame.
+phone). A turned camera (the 45-degree view) gets chunks that are squares of the screen instead,
+each painted with the world under it (the Building's floors use the same: docs/BUILDING-ART.md);
+the themed maps and the docks paint the ground as before. Moving decor (lore, Ben, docks,
+themes) is drawn over it each frame.
 
 ## Roofs (roof-cache.js)
 

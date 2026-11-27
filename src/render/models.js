@@ -602,9 +602,18 @@ export function wallPosters(R, o, rec) {
 
 // --- Walls and other structures ----------------------------------------------------------------
 
+// The Building is drawn like a dollhouse cut open at waist height: light walls with a skirting
+// board, every cut top solid black (walls, glass, pillars), so the floor plan reads at a glance.
+// The light still falls on them as it does on everything else.
+const DOLLHOUSE_WALLS = { '#5a5650': '#bdb5a9', '#46433e': '#a39b8f', '#3d5a45': '#86ab8f', '#6b6a66': '#cbc6bd' };
+export const CUT_TOP = '#141416';
+const SKIRTING = '#57524b';
+
 function wallModel(o, map) {
   let h = map.theme === 'interior' ? 44 : 52;
   let wall = o.color || '#5a5650';
+  const cut = map.theme === 'interior';
+  if (cut) wall = DOLLHOUSE_WALLS[wall] || wall;
   if (o.safe) h = 46;
   else if (o.stall) h = 32;
   else if (o.exterior) h = 54;
@@ -620,7 +629,7 @@ function wallModel(o, map) {
       }
     }
   }
-  return { h, draw: drawWall, data: { wall } };
+  return { h, draw: drawWall, data: { wall, cut } };
 }
 
 function drawWall(R, o, rec) {
@@ -630,8 +639,9 @@ function drawWall(R, o, rec) {
   const y1 = o.y + o.h;
   const c = rec.data.wall;
   litWalls(R, x0, y0, x1, y1, 0, rec.h, c);
+  if (rec.data.cut) litWalls(R, x0, y0, x1, y1, 0, 3, SKIRTING);
   if (R.alpha > 0.5) wallPosters(R, o, rec);
-  topFill(R, x0, y0, x1, y1, rec.h, tone(c, R.roofK * (o.facade ? 1.0 : 1.12)));
+  topFill(R, x0, y0, x1, y1, rec.h, rec.data.cut ? CUT_TOP : tone(c, R.roofK * (o.facade ? 1.0 : 1.12)));
   if (rec.art) {
     R.ground(rec.h);
     for (const fn of rec.art) fn(R.ctx, R);
@@ -640,10 +650,10 @@ function drawWall(R, o, rec) {
 }
 
 function drawPillar(R, o, rec) {
-  const c = '#6a665f';
+  const c = '#c9c2b7';
   litWalls(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, rec.h, c);
-  topFill(R, o.x, o.y, o.x + o.w, o.y + o.h, rec.h, tone(c, R.roofK * 1.1));
-  topFill(R, o.x + 6, o.y + 6, o.x + o.w - 6, o.y + o.h - 6, rec.h, tone(c, R.roofK * 0.82));
+  litWalls(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 3, SKIRTING);
+  topFill(R, o.x, o.y, o.x + o.w, o.y + o.h, rec.h, CUT_TOP);
   if (rec.art) {
     R.ground(rec.h);
     for (const fn of rec.art) fn(R.ctx, R);
@@ -653,6 +663,14 @@ function drawPillar(R, o, rec) {
 
 function drawShelf(R, o, rec) {
   const { ctx } = R;
+  if (furnish(R, 'shelf', o, propLight(R, o), rec.data.heading, 110)) {
+    if (rec.art) {
+      R.ground(rec.h);
+      for (const fn of rec.art) fn(ctx, R);
+      R.reset();
+    }
+    return;
+  }
   const c = '#43474d';
   const x0 = o.x;
   const y0 = o.y;
@@ -696,15 +714,16 @@ function drawGlass(R, o, rec) {
   const y1 = o.y + o.h;
   const H = rec.h;
   const b = R.struct(R.L.sample(o.x + o.w / 2, o.y + o.h / 2));
-  // A low sill, the pane, a bright top edge.
-  pbox(R, x0, y0, x1, y1, 0, 9, '#4d4a45', b);
+  const cut = rec.data && rec.data.cut;
+  // A low sill, the pane, a bright top edge (the Building's: its wall colour, the cut in black).
+  pbox(R, x0, y0, x1, y1, 0, 9, cut ? '#bdb5a9' : '#4d4a45', b);
   if (!v.flat) {
-    ctx.fillStyle = `rgba(150,205,235,${(0.1 + 0.1 * b).toFixed(3)})`;
+    ctx.fillStyle = `rgba(150,205,235,${(0.1 + (cut ? 0.16 : 0.1) * b).toFixed(3)})`;
     ctx.beginPath();
     boxHull(ctx, v, x0, y0, x1, y1, 9, H);
     ctx.fill();
     // Mullions.
-    ctx.strokeStyle = `rgba(190,225,245,${(0.2 + 0.25 * b).toFixed(3)})`;
+    ctx.strokeStyle = cut ? `rgba(20,22,26,${(0.35 + 0.3 * b).toFixed(3)})` : `rgba(190,225,245,${(0.2 + 0.25 * b).toFixed(3)})`;
     ctx.lineWidth = 1;
     ctx.beginPath();
     const horiz = o.w >= o.h;
@@ -717,7 +736,7 @@ function drawGlass(R, o, rec) {
     }
     ctx.stroke();
   }
-  topFill(R, x0, y0, x1, y1, H, `rgba(200,235,250,${(0.25 + 0.3 * b).toFixed(3)})`);
+  topFill(R, x0, y0, x1, y1, H, cut ? CUT_TOP : `rgba(200,235,250,${(0.25 + 0.3 * b).toFixed(3)})`);
 }
 
 /** The quarantine wall: concrete outdoors, welded steel shutters indoors. */
@@ -1583,10 +1602,64 @@ function drawFlarePost(R, o) {
 }
 
 // --- Indoor furniture --------------------------------------------------------------------------
+//
+// The Building's furniture is baked 3D models (prop-art.js, made with Scenario after the Dollhouse
+// concept): each faces into its room, away from the room's nearest wall (a desk's knee space, a
+// cabinet's drawers, a shelf's open side), a long desk is two desks side by side and a run of
+// shelving one bay after another. Until a model has loaded it is drawn as it was, in boxes.
 
-function drawDesk(R, o) {
+/**
+ * Which way furniture faces in its room: away from the nearest wall, across its short side (or,
+ * with along, its long side: a filing cabinet is deeper than it is wide), radians, 0: +x.
+ */
+export function faceIntoRoom(o, map, along = false) {
+  const cx = o.x + o.w / 2;
+  const cy = o.y + o.h / 2;
+  const rm = map && map.rooms ? map.rooms.find((r) => cx > r.x && cx < r.x + r.w && cy > r.y && cy < r.y + r.h) : null;
+  const horiz = (o.w >= o.h) !== along;
+  if (!rm) return horiz ? Math.PI / 2 : 0;
+  if (horiz) return cy - rm.y < rm.y + rm.h - cy ? Math.PI / 2 : -Math.PI / 2;
+  return cx - rm.x < rm.x + rm.w - cx ? 0 : Math.PI;
+}
+
+/** A bed lies along its long side, its foot toward the middle of its room. */
+function bedHeading(o, map) {
+  const cx = o.x + o.w / 2;
+  const cy = o.y + o.h / 2;
+  const rm = map && map.rooms ? map.rooms.find((r) => cx > r.x && cx < r.x + r.w && cy > r.y && cy < r.y + r.h) : null;
+  if (o.w >= o.h) return !rm || cx < rm.x + rm.w / 2 ? 0 : Math.PI;
+  return !rm || cy < rm.y + rm.h / 2 ? Math.PI / 2 : -Math.PI / 2;
+}
+
+const pieces = [];
+/**
+ * Draw prop name on footprint o facing heading at brightness b: one model fitted to it, or with
+ * unit, as many as fit along its long side, unit world units each (far ones first). False if the
+ * model can't be drawn yet (the caller draws its boxes).
+ */
+function furnish(R, name, o, b, heading, unit = 0) {
+  const props = R.props;
+  if (!props || !props.ready(name)) return false;
+  const horiz = o.w >= o.h;
+  const len = horiz ? o.w : o.h;
+  const n = unit ? Math.max(1, Math.round(len / unit)) : 1;
+  if (n === 1) return props.drawProp(R, name, o, b, heading);
+  pieces.length = 0;
+  for (let k = 0; k < n; k++) {
+    const q = horiz ? { x: o.x + (k * len) / n, y: o.y, w: len / n, h: o.h } : { x: o.x, y: o.y + (k * len) / n, w: o.w, h: len / n };
+    q.d = R.v.depth(q.x + q.w / 2, q.y + q.h / 2);
+    pieces.push(q);
+  }
+  pieces.sort((p, q) => p.d - q.d);
+  for (const q of pieces) if (!props.drawProp(R, name, q, b, heading)) return false;
+  return true;
+}
+
+
+function drawDesk(R, o, rec) {
   const b = propLight(R, o);
   if (b < 0.032) return;
+  if (furnish(R, 'desk', o, b, rec.data.heading, 64)) return;
   const c = '#5b4a3a';
   const horiz = o.w >= o.h;
   // Two pedestals, the top, monitors.
@@ -1612,9 +1685,11 @@ function drawDesk(R, o) {
   }
 }
 
-function drawTable(R, o) {
+function drawTable(R, o, rec) {
   const b = propLight(R, o);
   if (b < 0.032) return;
+  // A cafeteria table and its four chairs (a conference table, as long as its room, stays drawn).
+  if (rec.data.set && furnish(R, 'table', o, b, rec.data.heading)) return;
   const { ctx, v } = R;
   if (!v.flat) {
     ctx.strokeStyle = tone('#3a3c40', b);
@@ -1625,13 +1700,14 @@ function drawTable(R, o) {
     ctx.stroke();
     ctx.lineCap = 'round';
   }
-  pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 22, 25, '#5a5d61', b);
-  topFill(R, o.x + 2, o.y + 2, o.x + o.w - 2, o.y + 5, 25, tone('#6c7075', b));
+  pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 22, 25, '#9c7553', b);
+  topFill(R, o.x + 2, o.y + 2, o.x + o.w - 2, o.y + 5, 25, tone('#b08a65', b));
 }
 
-function drawBed(R, o) {
+function drawBed(R, o, rec) {
   const b = propLight(R, o);
   if (b < 0.032) return;
+  if (furnish(R, 'bed', o, b, rec.data.heading)) return;
   const { ctx } = R;
   const horiz = o.w >= o.h;
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 11, '#6d7376', b);
@@ -1656,13 +1732,15 @@ function drawBed(R, o) {
 function drawCounter(R, o) {
   const b = propLight(R, o);
   if (b < 0.032) return;
-  pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 28, '#4a3d33', b);
-  pbox(R, o.x - 1, o.y - 1, o.x + o.w + 1, o.y + o.h + 1, 28, 31, '#6a5a4c', b);
+  pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 3, SKIRTING, b);
+  pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 3, 28, '#8a6a4c', b);
+  pbox(R, o.x - 1, o.y - 1, o.x + o.w + 1, o.y + o.h + 1, 28, 31, '#d9d2c3', b);
 }
 
-function drawCouch(R, o) {
+function drawCouch(R, o, rec) {
   const b = propLight(R, o);
   if (b < 0.032) return;
+  if (lobbySeats(R, o, b, rec.data.heading)) return;
   const c = '#4a2e2e';
   const horiz = o.w >= o.h;
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 13, c, b);
@@ -1679,9 +1757,26 @@ function drawCouch(R, o) {
   }
 }
 
-function drawPlant(R, o) {
+/**
+ * A lobby couch by its footprint: a sofa on a long one, an armchair on a small square, and on a
+ * big square two sofas back to back, facing out.
+ */
+function lobbySeats(R, o, b, heading) {
+  if (Math.abs(o.w - o.h) > 20) return furnish(R, 'couch', o, b, heading);
+  if (o.w < 60) return furnish(R, 'armchair', o, b, heading);
+  if (!R.props || !R.props.ready('couch')) return false;
+  const half = o.h / 2;
+  const back = { x: o.x, y: o.y, w: o.w, h: half };
+  const front = { x: o.x, y: o.y + half, w: o.w, h: half };
+  const far = R.v.depth(o.x + o.w / 2, o.y + half / 2) < R.v.depth(o.x + o.w / 2, o.y + half * 1.5);
+  const [p, q] = far ? [back, front] : [front, back];
+  return furnish(R, 'couch', p, b, p === back ? -Math.PI / 2 : Math.PI / 2) && furnish(R, 'couch', q, b, q === back ? -Math.PI / 2 : Math.PI / 2);
+}
+
+function drawPlant(R, o, rec) {
   const b = propLight(R, o);
   if (b < 0.032) return;
+  if (furnish(R, 'plant', o, b, rec.data.heading)) return;
   const { ctx, v } = R;
   const cx = o.x + o.w / 2;
   const cy = o.y + o.h / 2;
@@ -1696,9 +1791,10 @@ function drawPlant(R, o) {
   ctx.fill();
 }
 
-function drawCabinet(R, o) {
+function drawCabinet(R, o, rec) {
   const b = propLight(R, o);
   if (b < 0.032) return;
+  if (furnish(R, 'cabinet', o, b, rec.data.heading)) return;
   const H = 42;
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, H, '#6a6e72', b);
   const drawers = (ctx2, len) => {
@@ -1716,8 +1812,9 @@ function drawCabinet(R, o) {
   }
 }
 
-function drawVending(R, o) {
+function drawVending(R, o, rec) {
   const b = Math.max(0.3, propLight(R, o));
+  if (furnish(R, 'vending', o, b, rec.data.heading)) return;
   const H = 56;
   const c = o.color || '#7a2a2a';
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, H, c, b);
@@ -1747,7 +1844,7 @@ function drawAlarmBox(R, o) {
   ctx.fill();
 }
 
-const JUNK = ['#5b4a3a', '#6a6e72', '#4a3d33', '#5a5d61', '#6b5233'];
+const JUNK = ['#8a6a4c', '#9aa0a6', '#7a5c40', '#8c9196', '#a07850'];
 const junkOrder = [];
 
 function drawBarricade(R, o) {
@@ -1907,8 +2004,8 @@ const MODELS = {
   building: buildingModel,
   wall: wallModel,
   pillar: simple(58, drawPillar),
-  shelf: simple(50, drawShelf),
-  glass: (o, map) => ({ h: map.theme === 'interior' ? 44 : 48, draw: drawGlass, fades: false }),
+  shelf: (o, map) => ({ h: 50, draw: drawShelf, data: { heading: faceIntoRoom(o, map) } }),
+  glass: (o, map) => ({ h: map.theme === 'interior' ? 44 : 48, draw: drawGlass, fades: false, data: { cut: map.theme === 'interior' } }),
   qwall: (o) => ({ h: o.indoor ? 48 : 86, draw: drawQwall }),
   gate: (o) => ({ h: o.indoor ? 46 : 72, draw: drawGate, fades: false }),
   boards: (o, map) => {
@@ -1954,14 +2051,14 @@ const MODELS = {
     return { h: CRANE_H, draw: drawCraneLeg, data: { color: best ? best.color : '#c6862c' } };
   },
   flarepost: simple(46, drawFlarePost),
-  desk: simple(38, drawDesk),
-  table: simple(25, drawTable),
-  bed: simple(27, drawBed),
+  desk: (o, map) => ({ h: 38, draw: drawDesk, data: { heading: faceIntoRoom(o, map) } }),
+  table: (o) => ({ h: 25, draw: drawTable, data: { heading: o.w >= o.h ? 0 : Math.PI / 2, set: o.w * o.h <= 90 * 60 } }),
+  bed: (o, map) => ({ h: 27, draw: drawBed, data: { heading: bedHeading(o, map) } }),
   counter: simple(31, drawCounter),
-  couch: simple(27, drawCouch),
-  plant: simple(40, drawPlant),
-  cabinet: simple(42, drawCabinet),
-  vending: simple(56, drawVending),
+  couch: (o, map) => ({ h: 27, draw: drawCouch, data: { heading: faceIntoRoom(o, map) } }),
+  plant: (o) => ({ h: 40, draw: drawPlant, data: { heading: (Math.floor(hash01(o.x * 0.31 + o.y * 0.77) * 4) * Math.PI) / 2 } }),
+  cabinet: (o, map) => ({ h: 42, draw: drawCabinet, data: { heading: faceIntoRoom(o, map, true) } }),
+  vending: (o, map) => ({ h: 56, draw: drawVending, data: { heading: faceIntoRoom(o, map) } }),
   alarmbox: simple(40, drawAlarmBox, { fades: false }),
   barricade: simple(46, drawBarricade),
   switchbox: simple(42, drawSwitchBox, { fades: false }),

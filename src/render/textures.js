@@ -1,5 +1,6 @@
-// Surface textures for the streets (assets/streets/*.webp, made with Scenario from crops of the
-// level's concept art): asphalt, sidewalk slabs, roofs, brick, the parks' grass. They are used for their detail
+// Surface textures (made with Scenario from crops of each level's concept art): the streets'
+// asphalt, sidewalk slabs, roofs, brick and the parks' grass (assets/streets), the Building's
+// floors (assets/building). They are used for their detail
 // only: each is tinted to whatever colour the surface has (the map's, or a night look's), so
 // every look keeps its palette. A tinted copy keeps the texture's light and dark around the
 // colour: base * (1 + (lum / mean - 1) * contrast).
@@ -18,10 +19,18 @@ const FILES = {
   roof: 'assets/streets/roof.webp',
   brick: 'assets/streets/brick.webp',
   grass: 'assets/streets/grass.webp',
+  // The Building's floors (assets/building): square tiles four by four (as they are, small in
+  // the restrooms, big in the lobby), office carpet, the wards' linoleum, storeroom concrete.
+  tiles: 'assets/building/tiles.webp',
+  smalltiles: 'assets/building/tiles.webp',
+  bigtiles: 'assets/building/tiles.webp',
+  carpet: 'assets/building/carpet.webp',
+  lino: 'assets/building/lino.webp',
+  concrete: 'assets/building/concrete.webp',
 };
 
 /** World units one repeat of each texture spans (it is square). */
-export const TEXTURE_SPAN = { asphalt: 256, sidewalk: 120, roof: 200, brick: 96, grass: 160 };
+export const TEXTURE_SPAN = { asphalt: 256, sidewalk: 120, roof: 200, brick: 96, grass: 160, tiles: 192, smalltiles: 80, bigtiles: 320, carpet: 256, lino: 288, concrete: 320 };
 
 /** '#rrggbb' or 'rgb(r,g,b)' -> [r, g, b] (null for anything else) */
 export function hexRgb(c) {
