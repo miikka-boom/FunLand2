@@ -66,6 +66,13 @@ test('every sound the engine asks for is in the bank', () => {
   // The ids built from a gun's name.
   for (const g of ['smg', 'rifle', 'hunting']) for (const part of ['magout', 'magin', 'cock']) assert.ok(known(`${g}.${part}`), `${g}.${part}`);
   for (const g of ['smg', 'rifle', 'shotgun', 'hunting']) assert.ok(known(`swap.${g}`), `swap.${g}`);
+  // ...and the bank carries nothing the engine never plays (every byte of it is downloaded).
+  const built = /^(smg|rifle|hunting)\.(magout|magin|cock)$|^swap\./;
+  const scape = readFileSync(new URL('../src/game/soundscape.js', import.meta.url), 'utf8');
+  for (const id of [...Object.keys(SOUNDS), ...Object.keys(LOOPS)]) {
+    const named = src.includes(`'${id}'`) || scape.includes(`'${id}'`);
+    assert.ok(named || built.test(id), `${id} is in the bank but nothing plays it`);
+  }
   for (const s of SURFACES) assert.ok(src.includes(`${s}: [`), `no footsteps for ${s}`);
   // And the level ambience only uses loops that ship.
   for (const level of LEVEL_IDS) {

@@ -1,2 +1,4 @@
 # Purchased sound libraries (about 1.2 GB): the game ships only the sounds tools/sfx/build_sfx.py takes from them.
 AudioPacks/
+# The original files the game uses, by pack (tools/sfx/build_sfx.py --export): purchased too, never in git.
+AudioPicks/

@@ -16,6 +16,9 @@ delay (Safari) and ones that trim it (Chrome, Firefox) line up the same.
 Run it with a Python that has numpy, scipy and soundfile (libsndfile 1.1 or newer, for MP3):
     <python> tools/sfx/build_sfx.py            build everything
     <python> tools/sfx/build_sfx.py --check    only check that every source file is there
+    <python> tools/sfx/build_sfx.py --export [DIR]   copy the original picks into DIR (default
+        AudioPicks/), a folder per pack, with the loops made from them and an index of what each is
+        in the game: for taking the same sounds to another engine
 
 The PICKS section below is the whole sound list: change a pick there and run the script again.
 """
@@ -175,7 +178,6 @@ S("step.wood.run", [F(n) for n in nums("footstep_wood_run_{:02d}", 1, 4, 7, 10, 
 S("step.wood.walk", [F(n) for n in nums("footstep_wood_walk_{:02d}", 2, 6, 10, 14)], max=0.28, fade=0.06, excite=0.5)
 S("step.metal", [F(n) for n in nums("footstep_metal_high_run_{:02d}", 1, 5, 9, 13)], max=0.32, fade=0.08, excite=0.4)
 S("step.heavy", [F("footstep_concrete_land_v2_01"), F("footstep_concrete_land_v2_04"), F("footstep_dirt_land_v2_02")], max=0.5, fade=0.2, excite=0.6)
-S("step.land", [F("footstep_dirt_land_02"), F("footstep_dirt_land_05")], max=0.3, fade=0.08)
 
 # Foley, props, the world (mono).
 S("foley.cloth", [F(n) for n in nums("foley_cloth_light_fast_movement_{:02d}", 3, 6, 9, 13, 14)], max=0.35, fade=0.1)
@@ -565,7 +567,217 @@ def build():
     print(f"{len(sounds)} sounds ({nvar} variants), {len(loops)} loops, {total / 1024 / 1024:.2f} MB in all")
 
 
+# --- Export (for other engines: --export) ----------------------------------------------------------
+# Copies the original files the picks use, untouched, into a folder per pack (with each pack's own
+# subfolders), plus the loops and reversed breaths this script makes from them, and an index of
+# what each one is in the game. For taking the same sounds to another engine (the Unity version).
+
+PACK_ROOTS = [
+    (ZOMB.parent, "344 Audio - Zombie Specimens Vol. 2"),
+    (GUNS, "Gamemaster Audio - Guns, Bullets and Explosions"),
+    (FOLEY, "Gamemaster Audio - Footstep and Foley Sounds"),
+    (GORE, "Gore SFX Pack (VADI)"),
+]
+PACK_DOCS = [  # licence and setup notes that belong with the files
+    ZOMB.parent / "Documentation" / "344-Audio-EULA.pdf",
+    GUNS / "Guns" / "00_How To Setup Automatic Guns Sounds in Games.pdf",
+]
+MADE = "_Made from the picks"
+EXPORT_MARK = ".exported-by-build_sfx"
+
+# What each sound is in the web game (src/audio.js plays them; the export index shows this).
+ABOUT = {
+    "smg.first": "SMG: the first shot of a burst", "smg.shot": "SMG: every shot after the first (a random take each time)",
+    "smg.tail": "SMG: tail, restarted with each shot and faded under the next one, so it rings out after the burst",
+    "rifle.first": "Assault rifle: the first shot of a burst", "rifle.shot": "Assault rifle: every shot after the first",
+    "rifle.tail": "Assault rifle: tail (as the SMG's)", "shotgun.shot": "Pump shotgun: a shot, tail included",
+    "hunting.shot": "Hunting rifle: a shot, tail included", "explosion": "Explosions (gas pumps, gas cylinders); far off: pitched down and dulled",
+    "explosion.small": "The Tank's rock shattering (pitched up, under the rock impacts)",
+    "smg.magout": "SMG reload: magazine out", "smg.magin": "SMG reload: magazine in (a little past halfway)", "smg.cock": "SMG reload: charging handle at the end",
+    "rifle.magout": "Assault rifle reload: magazine out", "rifle.magin": "Assault rifle reload: magazine in; also picking up ammo", "rifle.cock": "Assault rifle reload: charging handle",
+    "hunting.magout": "Hunting rifle reload: magazine out", "hunting.magin": "Hunting rifle reload: magazine in", "hunting.cock": "Hunting rifle reload: the bolt",
+    "shotgun.shell": "Shotgun: each shell loaded", "shotgun.pump": "Shotgun: the pump after the last shell", "gun.dry": "Empty gun: the click",
+    "swap.smg": "Swapping to the SMG", "swap.rifle": "Swapping to the assault rifle", "swap.shotgun": "Swapping to the shotgun", "swap.hunting": "Swapping to the hunting rifle",
+    "imp.flesh": "A bullet into one of the infected; under your own hurt sound", "imp.thump": "A bullet into the Tank or the Witch",
+    "imp.concrete": "A bullet on walls and buildings (anything not listed)", "imp.metal": "A bullet on cars, dumpsters, containers, wrecks, the crusher",
+    "imp.metallight": "A bullet on barrels, vending machines, cabinets; armor soaking a hit (pitched up)",
+    "imp.wood": "A bullet on crates, boards, barricades; shoving or breaking boards", "imp.dirt": "A bullet on tyres, mounds, sandbags",
+    "imp.rock": "A bullet on headstones and statues; the Tank's rock breaking", "imp.glass": "Glass breaking far off (ambience)",
+    "debris": "Debris after impacts, explosions, broken boards",
+    "gore.splat": "One of the infected dies (a body fall follows)", "gore.bone": "A bone on some kills; boards splintering; your death",
+    "gore.slash": "Claws and nails: the Hunter, the Witch, the Night Terror", "gore.squish": "The Hunter landing on you",
+    "body.punch": "Body blows: a shove landing, you getting hit, the Tank's punch, the Tank's steps (pitched down)",
+    "body.wet": "The wet layer of a shove landing and the Tank's punch", "body.fall": "Bodies hitting the ground; boards falling; the Hunter's missed pounce",
+    "whoosh": "Swings: the shove, pounces and lunges, the Tank's rock in the air, the flare going up (pitched down)",
+    "step.concrete.run": "Footsteps on concrete, running (you, the teammate; Ben's footsteps pitched up)", "step.concrete.walk": "Footsteps on concrete, walking",
+    "step.grass.run": "Footsteps on grass, running", "step.grass.walk": "Footsteps on grass, walking", "step.gravel.run": "Footsteps on gravel, running",
+    "step.gravel.walk": "Footsteps on gravel, walking", "step.dirt": "Footsteps on dirt", "step.wood.run": "Footsteps on wood (the piers), running",
+    "step.wood.walk": "Footsteps on wood, walking", "step.metal": "Footsteps on metal (the junkyard scale)", "step.heavy": "The Tank's footsteps (pitched down to about 0.65)",
+    "foley.cloth": "Clothing: shoves, reloads, getting hit, struggling", "foley.rattle": "Gear rattling now and then as you run",
+    "foley.grab": "Grabbing gear: swapping guns, picking up ammo", "foley.bag": "Picking up a medkit", "foley.zip": "A zip: medkits, stashes",
+    "foley.search": "Rummaging through a stash", "metal.lid": "A stash's lid (the secret's heavy hatch: pitched down); far off: a hull or crane groaning",
+    "metal.clank": "Metal clanks: the gate, debris, far off in the junkyard", "door.slam": "The safe-room door slamming shut; the holdout gate",
+    "door.lock": "The safe-room door's bolt", "door.creak": "Creaks: the holdout gate, the secret's hatch; far off: a door, a swing set",
+    "switch": "The holdout control box switching on", "zap": "The control box sparking", "wood.creak": "Creaking wood: boards under shoves; far off: trees, houses",
+    "fire.whoomp": "The fireball of an explosion", "fire.ignite": "The flare's pop", "flare.sparks": "Lighting the flare", "radio": "Static around the ferry's radio messages",
+    "thunder": "Thunder far off (ambience)", "rumble": "A low hit: the mob coming, the Tank, the Witch, your death", "riser": "The swell before a mob's screams",
+    "crow": "A crow in the cemetery (ambience)", "ui.click": "Title card buttons",
+    "z.groan": "The infected groaning while they wander", "z.snarl": "The infected noticing you, chasing", "z.attack": "One of them winding up a swipe at you",
+    "z.death": "A last sound from one that dies (some of the time)", "z.scream": "A mob's screams; far off (ambience)",
+    "hunter.growl": "Hunter: its rattling growl", "hunter.screech": "Hunter: the scream before it pounces (the cue to shove)",
+    "hunter.pounce": "Hunter: in the air", "hunter.die": "Hunter: death", "tank.roar": "Tank: the roar (played at about 0.8: deeper)",
+    "tank.grunt": "Tank: grunts, throwing the rock", "tank.die": "Tank: death", "terror.whisper": "Night Terror: whispering in the dark (pitched up)",
+    "terror.inhale": "Night Terror: the sharp in-breath before it lunges (a breath out, reversed)", "terror.shriek": "Night Terror: caught in the light (pitched up)",
+    "terror.die": "Night Terror: death", "witch.growl": "Witch: the rattle as her patience runs out", "witch.scream": "Witch: startled", "witch.die": "Witch: death",
+    "loop.fire": "Fires burning in the world (loop)", "loop.generator": "Generators under the floodlight towers (loop)", "loop.engine": "The ferry's engine (played at 0.55)",
+    "loop.flare": "The flare burning (loop)", "loop.horde": "The horde bed: voices (a mix of many takes, made by this script)",
+    "loop.feet": "The horde bed: running feet (a mix of many footsteps, made by this script)",
+    "amb.wind": "Ambience: wind (streets, docks, cemetery, junkyard)", "amb.night": "Ambience: crickets and frogs (suburbia, cemetery, junkyard)",
+    "amb.water": "Ambience: water at the docks", "amb.room": "Ambience: the office floor's hum (the Building)",
+}
+
+
+def _pack_path(p):
+    p = Path(p)
+    for root, name in PACK_ROOTS:
+        try:
+            return Path(name) / p.relative_to(root)
+        except ValueError:
+            continue
+    raise ValueError(f"{p} is not in a known pack")
+
+
+def _notes(s):
+    n = []
+    if s.get("start"):
+        n.append(f"from {s['start']} s")
+    if s.get("max"):
+        n.append(f"cut to {s['max']} s")
+    if s.get("rev"):
+        n.append("reversed")
+    if s.get("hp"):
+        n.append(f"high-pass {s['hp']} Hz")
+    if s.get("lp"):
+        n.append(f"low-pass {s['lp']} Hz")
+    if s.get("excite"):
+        n.append("bass harmonics added")
+    n.append("stereo" if s.get("ch", 1) == 2 else "mono")
+    return ", ".join(n)
+
+
+def export(dest):
+    import csv
+    import shutil
+
+    if not check():
+        sys.exit(1)
+    dest = Path(dest)
+    if dest.exists() and any(dest.iterdir()):
+        if not (dest / EXPORT_MARK).exists():
+            sys.exit(f"{dest} has other things in it: export somewhere new (it won't overwrite a folder it didn't make)")
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+    (dest / EXPORT_MARK).write_text("Made by tools/sfx/build_sfx.py --export; it may delete and rewrite this folder.\n", encoding="utf-8")
+
+    uses = {}  # source path -> [(sound id, note)]
+    for s in SOUNDS:
+        for p in s["src"]:
+            uses.setdefault(Path(p), []).append((s["id"], _notes(s)))
+    for lp in LOOPS:
+        if not str(lp["src"]).startswith("gen:"):
+            uses.setdefault(Path(lp["src"]), []).append((lp["id"], f"seamless loop of {lp['seconds']} s, " + ("stereo" if lp.get("ch", 1) == 2 else "mono")))
+    for name, g in GEN.items():
+        for p in g["src"]:
+            uses.setdefault(Path(p), []).append((f"loop.{name}", "one of many takes mixed into the loop"))
+
+    total = 0
+    for p in sorted(uses, key=str):
+        out = dest / _pack_path(p)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(p, out)
+        total += out.stat().st_size
+    for doc in PACK_DOCS:
+        if doc.exists():
+            out = dest / _pack_path(doc)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(doc, out)
+
+    # What this script makes from the picks: the seamless loops and the reversed breaths (24-bit WAV).
+    made = dest / MADE
+    made.mkdir()
+    made_rows = []
+    for lp in LOOPS:
+        ch = lp.get("ch", 1)
+        if str(lp["src"]).startswith("gen:"):
+            body = generate(str(lp["src"])[4:], lp["seconds"])
+        else:
+            x = load(lp["src"], ch)[int(lp.get("start", 0) * SR):]
+            if lp.get("lp"):
+                x = filt(x, "low", lp["lp"])
+            x = excite(x, lp.get("excite", 0))
+            body = make_loop(x, lp["seconds"], lp.get("xfade", 1.0))
+        body = body * rms_gain(body, lp.get("rms", -20))
+        f = made / f"{lp['id']}.wav"
+        sf.write(str(f), body.astype(np.float32), SR, subtype="PCM_24")
+        made_rows.append((f, lp["id"], f"seamless loop, {lp['seconds']} s, {SR} Hz"))
+    for s in SOUNDS:
+        if not s.get("rev"):
+            continue
+        for i, p in enumerate(s["src"], 1):
+            y = process(s, p)
+            y = y * level_gain(y, s.get("loud", -16))
+            f = made / f"{s['id']}_{i}.wav"
+            sf.write(str(f), y.astype(np.float32), SR, subtype="PCM_24")
+            made_rows.append((f, s["id"], f"{Path(p).name}, reversed and cut to {s['max']} s"))
+
+    # The index: one CSV row per file and use, and a readable list by sound.
+    rows = []
+    for p, us in uses.items():
+        for sid, note in us:
+            rows.append((str(_pack_path(p)).replace("\\", "/"), sid, ABOUT.get(sid, ""), note))
+    for f, sid, note in made_rows:
+        rows.append((f"{MADE}/{f.name}", sid, ABOUT.get(sid, ""), note))
+    order = {s["id"]: i for i, s in enumerate(SOUNDS)}
+    order.update({lp["id"]: len(SOUNDS) + i for i, lp in enumerate(LOOPS)})
+    rows.sort(key=lambda r: (order.get(r[1], 999), r[0]))
+    with open(dest / "picks.csv", "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["file", "sound", "in the game", "how the web game cuts it"])
+        w.writerows(rows)
+    md = [
+        "# The sound picks for We Left Ben",
+        "",
+        "The original files the web version of the game uses (FunLand2: `tools/sfx/build_sfx.py`), copied",
+        "untouched into a folder per pack, keeping each pack's own subfolders. `_Made from the picks` has",
+        "what the build script makes from them: seamless loops and the reversed breaths. The web game trims",
+        "and levels everything itself; how is in the last column, for matching it elsewhere.",
+        "",
+        "These are purchased sounds: use them inside the game, don't redistribute them on their own",
+        "(the 344 Audio EULA is in its folder; check the Gamemaster and Gore SFX Pack store licences).",
+        "",
+        f"{len(uses)} files from the packs ({total / 1024 / 1024:.0f} MB), {len(made_rows)} made from them. `picks.csv` has the same list.",
+        "",
+        "| Sound | In the game | Files | How the web game cuts it |",
+        "|---|---|---|---|",
+    ]
+    by_sound = {}
+    for f, sid, about, note in rows:
+        by_sound.setdefault(sid, {"about": about, "notes": [], "files": []})
+        by_sound[sid]["files"].append(f)
+        if note not in by_sound[sid]["notes"]:
+            by_sound[sid]["notes"].append(note)
+    for sid, v in by_sound.items():
+        files = "<br>".join(f"`{f}`" for f in v["files"])
+        md.append(f"| `{sid}` | {v['about']} | {files} | {'; '.join(v['notes'])} |")
+    (dest / "INDEX.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+    print(f"exported {len(uses)} files ({total / 1024 / 1024:.0f} MB) by pack and {len(made_rows)} made from them to {dest}")
+
+
 if __name__ == "__main__":
     if "--check" in sys.argv:
         sys.exit(0 if check() else 1)
+    if "--export" in sys.argv:
+        i = sys.argv.index("--export")
+        export(sys.argv[i + 1] if i + 1 < len(sys.argv) else ROOT / "AudioPicks")
+        sys.exit(0)
     build()

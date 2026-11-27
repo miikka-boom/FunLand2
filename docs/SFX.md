@@ -26,7 +26,7 @@ Everything is cut from four purchased sound libraries; only the sounds the game 
 - **Rooms:** a reverb shaped like the level: short slapback in the streets, a tight room in the
   Building, a long thin tail on open ground (docks, suburbia, cemetery), something in between in
   the junkyard.
-- **Variation:** every sound has several takes (293 in all); a take never plays twice in a row,
+- **Variation:** every sound has several takes (291 in all); a take never plays twice in a row,
   and pitch and level vary a little each time.
 - **Voice limits:** each kind of sound has a cap (zombie voices 7, impacts 6, ...); past it, a new
   sound only plays if it is louder than the quietest one playing. 64 voices at most.
@@ -97,7 +97,18 @@ engine. The six nearest play. **Ambience** in the settings panel sets all of it 
    (`--check` only checks the sources are there). It rewrites `assets/sfx/` in about 10 seconds.
 3. How loud each sound plays, and how it is layered, is in `src/audio.js` (one method per game
    event). Level ambience is `AMBIENCE` in `src/game/soundscape.js`.
-4. `npm test` checks that every sound `src/audio.js` asks for is in the bank.
+4. `npm test` checks that every sound `src/audio.js` asks for is in the bank, and that the bank
+   carries nothing the game never plays.
+
+## Taking the sounds to another engine
+
+`tools\sfx\build_sfx.py --export` (same Python) copies the original files the picks use, untouched,
+into `AudioPicks/` (also kept out of git): a folder per pack with each pack's own subfolders, the
+344 Audio EULA and the library's note on setting up automatic guns, plus `_Made from the picks`
+(the seamless loops and the crowd beds this script makes, and the reversed breaths, as 24-bit
+WAV). `INDEX.md` and `picks.csv` say what each file is in the game and how the web version cuts
+it. That is the set the Unity version starts from. Run it again after changing the picks; it
+rewrites the folder (and refuses to touch a folder it didn't make).
 
 Every variant is levelled to the same loudness at build time, so the mix lives in one place.
 Bass-heavy sounds (explosions, the Tank, wood steps, body falls) get added harmonics of their
