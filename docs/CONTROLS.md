@@ -313,8 +313,8 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
 
 **Tutorial 2** on the title card, next to the first. Won Day 1 and its end
 card leads here (**Play Tutorial 2**), and the next time the game opens it
-is picked, with a "next" badge, until Day 2 is done too; after Day 2 comes
-Tutorial 3. The course (`src/world/tutorial2-gen.js`) shares Day 1's
+is picked; it wears a "next" badge (picked or not) until Day 2 is done too.
+After Day 2 comes Tutorial 3. The course (`src/world/tutorial2-gen.js`) shares Day 1's
 helpers and frame, on a wider plan: every street is walked left to right,
 each ending in a connector up to the next, which carries on to the right
 (start room bottom left, safe room top right). The lessons are in
@@ -355,7 +355,8 @@ by default).
 ### Tutorial 3: Day 3, the Hunter
 
 **Tutorial 3** on the title card, after the other two. Won Day 2 and its end
-card leads here, and it's picked (with "next") until Day 3 is done; after
+card leads here, and it's picked; it wears "next" until Day 3 is done (so a
+device that finished Day 2 before there was a Day 3 sees it too). After
 Day 3 comes the Streets. The course (`src/world/tutorial3-gen.js`) is Day 2's
 plan (start room bottom left, three streets walked left to right, gated
 connectors, safe room top right) with the streets kept clear for leaping and
@@ -390,8 +391,17 @@ The Hunter is the game's own (game/specials.js), spawned on cue.
   the green arrow.").
 - **Nothing on the walls**, no cars: Ben's one crayon line is in the safe
   room at the end ("they scream before they jump.").
+- **The camera** keeps you and the Hunter both in view in the first and the
+  last lesson (a step's `frame`): it looks halfway to it (at most 260 units
+  from you), panning in real time while the world is slowed or stopped. As it
+  screams it's then clear of the buttons on the right, and one coming down
+  the street at you isn't off the top of a phone held sideways.
 - **Done** is remembered per day (Day 3's key is
   `funland2.p0.tutorial3.v1`). The report's line says "Tutorial 3".
+- **The title card** keeps the three tutorials on one row wherever height is
+  short (their second lines go, as the maps' do), and phones up to 440 px
+  tall get the compact card, so TAP TO START stays on screen from 640x360 to
+  a 960x540 embed (and on a Pro Max held sideways, 932x430).
 
 ## Special infected: stress tests for the controls
 

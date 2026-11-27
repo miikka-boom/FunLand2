@@ -364,8 +364,8 @@ and no dependencies.
   [docs/CONTROLS.md](docs/CONTROLS.md#the-tutorial-teaching-the-thumbs) has
   the details.
 - **Tutorial 2, the level after it** (**Tutorial 2** on the title card, next
-  to the first; once Day 1 is done it's picked for you, with a "next"
-  badge, and Day 1's end card leads to it). Day 2, the supply run: six
+  to the first; once Day 1 is done it wears a "next" badge, and Day 1's end
+  card leads to it). Day 2, the supply run: six
   lessons, about two minutes, and every street walked left to right (the
   start room bottom left, each street ending in a connector up to the next,
   which carries on to the right, the safe room top right). It teaches
@@ -399,7 +399,8 @@ and no dependencies.
     screams (a red line to you) and leaps. From the scream the world slows,
     slower in the leap, and stops with it in the air in reach of a shove,
     SHOVE lit: one tap knocks it out of the air (a tap pressed early waits
-    for the moment). Then you shoot it.
+    for the moment). Then you shoot it. Until it's down the camera keeps
+    you both in view (and it clear of the buttons).
   - **Break free**: one jumps you from a doorway as you pass, at full
     speed. Pinned, SHOVE lights up with five dots over it; tap them full.
     Then you shoot it.

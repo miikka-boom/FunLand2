@@ -21,6 +21,12 @@ import { LOST } from './tutorial-day2.js';
 
 const near = (p, q, r) => Math.hypot(p.x - q.x, p.y - q.y) < r;
 const gap = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+/** Halfway from you to it, but never more than FRAME_MAX from you. */
+const FRAME_MAX = 260;
+function halfway(p, h) {
+  const k = Math.min(0.5, FRAME_MAX / Math.max(1, gap(p, h)));
+  return { x: p.x + (h.x - p.x) * k, y: p.y + (h.y - p.y) * k };
+}
 
 const WATCH = { touch: 'Hunter! It screams, then leaps.' };
 const AIR = { touch: 'Shove it out of the air!', mouse: 'Space: shove it out of the air!', pad: 'RB: shove it out of the air!' };
@@ -76,6 +82,9 @@ export const DAY3_STEPS = [
     },
     // Along the street (it finds you before you're there).
     target: (t) => (t.h ? null : { ...t.L.hunter1Walk }),
+    // Until it's down, the camera keeps you both in view: it looks halfway to it,
+    // which keeps it off the buttons on the right as it screams.
+    frame: (t, g) => (t.h && t.h.alive && !t.knocked && !g.player.pinnedBy ? halfway(g.player, t.h) : null),
     update: (t, g, dt) => {
       const p = g.player;
       if (!t.h) {
@@ -182,6 +191,9 @@ export const DAY3_STEPS = [
     title: 'ON YOUR OWN',
     text: (t, g) => (g && g.player.pinnedBy ? PINNED : t && t.h && t.h.alive ? ALONE : null),
     nudges: [NOT_MASHING],
+    // No slowing down, but the camera still keeps it in view (it comes down the
+    // street at you, and a phone held sideways doesn't show far up or down).
+    frame: (t, g) => (t.h && t.h.alive && !g.player.pinnedBy ? halfway(g.player, t.h) : null),
     enter: (t, g) => {
       const s = t.L.hunter3;
       t.h = spawnHunter(g, s.x, s.y);

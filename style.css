@@ -180,12 +180,14 @@ html.is-ios .ios-only {
   }
 }
 
-/* Not much height (a 960 x 540 embed): the six names in one row, no second line. */
+/* Not much height (a 960 x 540 embed): the six names in one row, the three
+   tutorials in another, no second lines. */
 @media (max-height: 640px) and (min-width: 700px) {
   .levels {
     grid-template-columns: repeat(6, auto);
   }
-  .levels .level span {
+  .levels .level span,
+  .tutorial-row .level.tutorial span {
     display: none;
   }
 }
@@ -222,7 +224,7 @@ html.is-ios .ios-only {
   box-shadow: 0 0 0 1px var(--accent) inset;
 }
 
-/* The tutorials (day 1, day 2): their own row above the six maps, in the safe room's green. */
+/* The tutorials (days 1 to 3): their own row above the six maps, in the safe room's green. */
 .tutorial-row {
   display: flex;
   justify-content: center;
@@ -753,8 +755,8 @@ html.is-ios .ios-only {
   pointer-events: none;
 }
 
-/* Short landscape phones (e.g. 568x320): keep the start button on screen. */
-@media (max-height: 420px) {
+/* Short landscape phones (568x320 up to the big ones, 932x430): keep the start button on screen. */
+@media (max-height: 440px) {
   h1 {
     font-size: 34px;
   }

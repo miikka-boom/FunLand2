@@ -344,8 +344,12 @@ export class Game {
       else if (ev === 'swap') swapWeapon(this, p);
     }
     if (dt <= 0) {
-      // Stopped: nothing moves and nothing counts down; the tutorial alone keeps time.
-      T.update(0, real);
+      // Stopped: nothing moves and nothing counts down; the tutorial alone keeps time
+      // (and the camera, if a lesson is framing something: it pans on in real time).
+      if (T) {
+        T.update(0, real);
+        if (T.frame()) this.updateCamera(real, input);
+      }
       return;
     }
     this.time += dt;
@@ -429,7 +433,7 @@ export class Game {
     for (const m of this.messages) m.t += dt;
     this.messages = this.messages.filter((m) => m.t < m.dur);
 
-    this.updateCamera(dt, input);
+    this.updateCamera(T && T.frame() ? real : dt, input);
   }
 
   updateCamera(dt, input) {
@@ -454,6 +458,12 @@ export class Game {
     } else {
       const sp = Math.hypot(p.vx, p.vy);
       if (sp > 1) lead(p.vx / sp, p.vy / sp, S.lookAhead * viewWorld * 0.45 * Math.min(1, sp / S.moveSpeed));
+    }
+    // A tutorial lesson framing something (Day 3: you and the Hunter) looks there instead.
+    const F = this.tutorial && this.tutorial.frame();
+    if (F) {
+      lx = F.x - p.x;
+      ly = F.y - p.y;
     }
     const kl = dampFactor(3.2, dt);
     c.lookX += (lx - c.lookX) * kl;

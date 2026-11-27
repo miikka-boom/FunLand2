@@ -313,18 +313,21 @@ function drawPrompt(ctx, game, L, touch) {
     const d = Math.hypot(zs.x - ps.x, zs.y - ps.y);
     you = { x: (ps.x + zs.x) / 2, y: (ps.y + zs.y) / 2, r: Math.max(58, d / 2 + 42) };
   }
-  const holes = [{ x: b.x, y: b.y, r: b.r + 16 }];
-  if (Math.hypot(you.x - b.x, you.y - b.y) > you.r + b.r + 16) holes.push(you);
   ctx.save();
   ctx.globalAlpha = a;
-  ctx.fillStyle = 'rgba(0,0,0,0.62)';
-  ctx.beginPath();
-  ctx.rect(0, 0, L.w, L.h);
-  for (const h of holes) {
+  // The dark everywhere but the two holes. Each is cut as a clip of its own (the clips
+  // intersect), so where they overlap (you right by the button) both stay lit.
+  ctx.save();
+  for (const h of [{ x: b.x, y: b.y, r: b.r + 16 }, you]) {
+    ctx.beginPath();
+    ctx.rect(0, 0, L.w, L.h);
     ctx.moveTo(h.x + h.r, h.y);
     ctx.arc(h.x, h.y, h.r, 0, TAU);
+    ctx.clip('evenodd');
   }
-  ctx.fill('evenodd');
+  ctx.fillStyle = 'rgba(0,0,0,0.62)';
+  ctx.fillRect(0, 0, L.w, L.h);
+  ctx.restore();
   const c = T.clock;
   const k = 0.5 + 0.5 * Math.sin(c * 8);
   ctx.strokeStyle = `rgba(${AMBER},${0.65 + 0.35 * k})`;

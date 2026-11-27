@@ -481,6 +481,17 @@ export class Tutorial {
     this.prompt = { kind, stop, threat, ready, slow, pin, t: 0, out: 0, answered: false, held: false, beat: 0 };
   }
 
+  /**
+   * Where the camera should look, instead of ahead of you, while a lesson frames
+   * something for you (a step's `frame(t, g)`: Day 3 keeps you and the Hunter
+   * both in view); null the rest of the time. The camera pans to it in real
+   * time, slowed world or stopped.
+   */
+  frame() {
+    const f = this.step && this.step.frame;
+    return f ? f(this, this.game) : null;
+  }
+
   /** It's been pressed (or isn't needed any more): the dark lifts and the world speeds up again. */
   answer() {
     if (this.prompt && !this.prompt.answered) this.prompt.answered = true;

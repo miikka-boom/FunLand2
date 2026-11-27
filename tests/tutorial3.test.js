@@ -286,6 +286,49 @@ test('a shove pressed while it screams waits, and knocks it out of the air the m
   assert.equal(game.stats.pins, 0);
 });
 
+test('the camera keeps you and the Hunter in view: halfway to it, clear of SHOVE as it screams, panning on while the world is stopped; not once it is down, nor while it has you', () => {
+  const game = make();
+  const T = game.tutorial;
+  const p = game.player;
+  assert.equal(T.frame(), null, 'nothing to frame before it comes');
+  Object.assign(p, { x: T.L.hunter1Walk.x, y: T.L.hunter1Walk.y });
+  run(game, 1 / 60);
+  const h = T.h;
+  const f = T.frame();
+  const d = gap(p, h);
+  assert.ok(f, 'framed from the moment it is out');
+  assert.ok(Math.abs(gap(p, f) - Math.min(d / 2, 260)) < 1e-6, 'halfway to it, and never more than 260 from you');
+  assert.ok(Math.abs(gap(p, f) + gap(f, h) - d) < 1e-6, 'on the line to it');
+  // As it screams: both on screen, and it well clear of the SHOVE button (and its rings).
+  for (let i = 0; i < 60 * 20 && h.mode !== 'crouch'; i++) game.update(1 / 60, idle());
+  assert.equal(h.mode, 'crouch');
+  const L = computeLayout(844, 390, { l: 0, r: 0, t: 0, b: 0 }, game.settings);
+  const b = L.byId.shove;
+  const hs = game.worldToScreen(h.x, h.y, 14);
+  const ps = game.worldToScreen(p.x, p.y, 14);
+  for (const q of [hs, ps]) assert.ok(q.x > 20 && q.x < 824 && q.y > 20 && q.y < 370, `on screen: ${Math.round(q.x)},${Math.round(q.y)}`);
+  assert.ok(Math.hypot(hs.x - b.x, hs.y - b.y) > b.r + 40, `clear of SHOVE: ${Math.round(Math.hypot(hs.x - b.x, hs.y - b.y))} px`);
+  // Stopped with it in the air: nothing moves, but the camera still pans to the framing (real time).
+  for (let i = 0; i < 60 * 20 && !(T.prompt && T.timeScale() === 0); i++) game.update(1 / 60, idle());
+  assert.equal(T.timeScale(), 0);
+  const F = T.frame();
+  Object.assign(game.camera, { x: p.x, y: p.y, lookX: 0, lookY: 0 });
+  const at = { x: h.x, y: h.y, t: game.time };
+  run(game, 1.5);
+  assert.deepEqual({ x: h.x, y: h.y, t: game.time }, at, 'the world waits');
+  assert.ok(gap(game.camera, F) < 3, `the camera panned there: ${gap(game.camera, F).toFixed(1)} off`);
+  // Knocked down: back to the camera's own ways (it leads your aim as you shoot).
+  game.update(1 / 60, idle(['shove']));
+  assert.equal(T.knocked, true);
+  assert.equal(T.frame(), null);
+  // On your own: framed too (no slowing down), but not while it has you.
+  skipTo(game, 'alone');
+  assert.ok(T.frame(), 'the last one framed too');
+  for (let i = 0; i < 60 * 30 && !p.pinnedBy; i++) game.update(1 / 60, idle());
+  assert.ok(p.pinnedBy);
+  assert.equal(T.frame(), null, 'pinned: the camera is on you');
+});
+
 test('break free: it jumps you from the doorway at full speed, the rest of the HUD comes in, SHOVE lit with its dots, five taps and you are free, then you shoot it', () => {
   const game = make();
   const T = game.tutorial;
