@@ -314,7 +314,7 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
 **Tutorial 2** on the title card, next to the first. Won Day 1 and its end
 card leads here (**Play Tutorial 2**), and the next time the game opens it
 is picked, with a "next" badge, until Day 2 is done too; after Day 2 comes
-the Streets. The course (`src/world/tutorial2-gen.js`) shares Day 1's
+Tutorial 3. The course (`src/world/tutorial2-gen.js`) shares Day 1's
 helpers and frame, on a wider plan: every street is walked left to right,
 each ending in a connector up to the next, which carries on to the right
 (start room bottom left, safe room top right). The lessons are in
@@ -351,6 +351,47 @@ by default).
   room at the end.
 - **Done** is remembered per day (`tutorialDone(day)`; Day 2's key is
   `funland2.p0.tutorial2.v1`). The report's line says "Tutorial 2".
+
+### Tutorial 3: Day 3, the Hunter
+
+**Tutorial 3** on the title card, after the other two. Won Day 2 and its end
+card leads here, and it's picked (with "next") until Day 3 is done; after
+Day 3 comes the Streets. The course (`src/world/tutorial3-gen.js`) is Day 2's
+plan (start room bottom left, three streets walked left to right, gated
+connectors, safe room top right) with the streets kept clear for leaping and
+circling, and three places they come from: a dark alley on row 1, a doorway on
+row 2, an alley near the far end of row 3. The lessons are in
+`src/game/tutorial-day3.js`, with Day 1's coaching (one short line at the top
+or none, the arrows, the photo thumbs, the HUD a part at a time: the sticks
+alone, SHOVE when it's first asked for, the rest once one has you pinned).
+The Hunter is the game's own (game/specials.js), spawned on cue.
+
+| Lesson | What you do | Done when |
+|---|---|---|
+| Knock it down | Step out onto the street and one comes out of the alley. When it screams (the red line) the world slows to 0.35, to 0.25 in the leap, and stops with it in the air within a shove's reach of you (`HUNTER.deadstopReach`), SHOVE lit: tap it. Then shoot it | Knocked out of the air, then down: gate 1 opens |
+| Break free | Walk by the doorway on row 2: one jumps you from it at full speed (no slowing down). Pinned: SHOVE lit with five dots over it, tap them full (`hunterBreakTaps`); then shoot it | Down: gate 2 opens |
+| On your own | One more out of the alley at the far end of row 3, and no slowing down: knock it out of the air, step aside as it screams, or shoot it first | Down: gate 3 opens |
+| Patch up | Hurt? A ring on the medkit past the last gate (skipped at full health) | It's taken |
+| Safe room | Get in | The run is won |
+
+- **The stop is the prompt's own** (`Tutorial.ask` with `ready` and
+  `slow`): it waits until a shove would knock it out of the air, and a shove
+  pressed before that (during the scream) is held and goes the moment it
+  can. Until it's been knocked down, the first one's bullets don't put it
+  down (it keeps its health), so the shove is what works.
+- **Pinned**, in any of the lessons: SHOVE lights up (the world going on:
+  it's clawing you) with the five break-free dots over it, filling as you
+  tap and draining if you stop. The game's own "TAP TO BREAK FREE!" in the
+  middle of the screen is left out in the tutorials.
+- **Nudges:** 5 s stopped for SHOVE and no tap ("Tap the SHOVE button."),
+  2.5 s pinned without tapping your way out ("Keep tapping SHOVE!"), 4 s
+  without shooting one you've knocked down or got free of ("Push past the
+  ring to shoot."), 8 s standing about where there are no words ("Follow
+  the green arrow.").
+- **Nothing on the walls**, no cars: Ben's one crayon line is in the safe
+  room at the end ("they scream before they jump.").
+- **Done** is remembered per day (Day 3's key is
+  `funland2.p0.tutorial3.v1`). The report's line says "Tutorial 3".
 
 ## Special infected: stress tests for the controls
 

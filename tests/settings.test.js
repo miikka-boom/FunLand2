@@ -82,8 +82,8 @@ test('camera choices are saved per map type; the one-for-all camera of older sav
   assert.equal(forLevel(now, 'cameraAligned', 'interior'), false);
 });
 
-test('the map types: the two tutorials, then six maps, each with a name and a line for the title card', () => {
-  assert.deepEqual(LEVEL_IDS, ['tutorial', 'tutorial2', 'city', 'interior', 'docks', 'suburbia', 'graveyard', 'junkyard']);
+test('the map types: the three tutorials, then six maps, each with a name and a line for the title card', () => {
+  assert.deepEqual(LEVEL_IDS, ['tutorial', 'tutorial2', 'tutorial3', 'city', 'interior', 'docks', 'suburbia', 'graveyard', 'junkyard']);
   for (const l of LEVELS) assert.ok(l.name && l.sub && l.about, l.id);
   assert.equal(DEFAULTS.level, 'city', 'a run starts on the Streets unless you pick something else');
   const level = SCHEMA.flatMap((g) => g.items).find((i) => i.key === 'level');

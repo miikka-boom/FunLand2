@@ -115,7 +115,8 @@ function clearLane(W, x0, y0, x1, y1, r) {
   );
 }
 
-function launch(game, h, d) {
+/** Off it goes, at you (d: how far you are). Exported for Tutorial 3's ambush from a doorway. */
+export function launch(game, h, d) {
   const p = game.player;
   const t = d / HUNTER.leapSpeed;
   // Half lead: it predicts you, but changing direction during the screech dodges.

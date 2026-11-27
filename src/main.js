@@ -254,9 +254,10 @@ function syncLevelPicker() {
   for (const b of levelButtons) {
     b.classList.toggle('active', b.dataset.level === settings.level);
     // "start here" on the tutorial, for as long as it's the one picked for a newcomer;
-    // "next" on Tutorial 2 once Day 1 is done (and Day 2 isn't) and it's the one picked.
-    const day2 = b.dataset.level === 'tutorial2' && settings.level === 'tutorial2' && tutorialDone(1) && !tutorialDone(2);
-    b.classList.toggle('suggest', (suggestTutorial && b.dataset.level === 'tutorial' && settings.level === 'tutorial') || day2);
+    // "next" on a later day's once the day before is done (and it isn't) and it's the one picked.
+    const day = TUTORIAL_LEVELS.indexOf(b.dataset.level) + 1;
+    const next = day > 1 && settings.level === b.dataset.level && tutorialDone(day - 1) && !tutorialDone(day);
+    b.classList.toggle('suggest', (suggestTutorial && b.dataset.level === 'tutorial' && settings.level === 'tutorial') || next);
   }
 }
 for (const b of levelButtons) {

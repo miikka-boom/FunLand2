@@ -338,9 +338,31 @@ function drawPrompt(ctx, game, L, touch) {
   ctx.beginPath();
   circle(ctx, b.x, b.y, b.r + 8 + 34 * ph);
   ctx.stroke();
+  if (P.pin) {
+    // Pinned: the break-free dots over the button (clear of the thumb tapping it), filling as you tap
+    // (and draining if you stop).
+    const n = game.settings.hunterBreakTaps;
+    const k = game.player.struggle || 0;
+    const gap = 16;
+    const y = b.y - b.r - 18;
+    for (let i = 0; i < n; i++) {
+      const x = b.x - ((n - 1) * gap) / 2 + i * gap;
+      const f = clamp(k - i, 0, 1);
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.beginPath();
+      circle(ctx, x, y, 6);
+      ctx.fill();
+      if (f > 0) {
+        ctx.fillStyle = `rgba(${AMBER},${0.4 + 0.6 * f})`;
+        ctx.beginPath();
+        circle(ctx, x, y, 6 * f);
+        ctx.fill();
+      }
+    }
+  }
   if (touch) {
-    // Resting off to the side (the button's label in plain view), then down on it.
-    const tp = (c * 1.2) % 1;
+    // Resting off to the side (the button's label in plain view), then down on it: quick taps while pinned.
+    const tp = (c * (P.pin ? 3.2 : 1.2)) % 1;
     const down = tp > 0.3 && tp < 0.55;
     thumb(ctx, b.x + (down ? 3 : 16), b.y + (down ? 8 : b.r + 12), 1, 1, down ? 1 : 0, 1.15);
   }

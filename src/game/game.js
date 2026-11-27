@@ -8,6 +8,7 @@ import { generateSuburbia } from '../world/suburbia-gen.js';
 import { generateJunkyard } from '../world/junkyard-gen.js';
 import { generateTutorial } from '../world/tutorial-gen.js';
 import { generateTutorial2 } from '../world/tutorial2-gen.js';
+import { generateTutorial3 } from '../world/tutorial3-gen.js';
 import { Tutorial, TUTORIAL_LEVELS } from './tutorial.js';
 import { finaleOpen } from './finale.js';
 import { addScavenging } from '../world/scavenge-gen.js';
@@ -43,6 +44,7 @@ const kickTmp = { x: 0, y: 0 };
 export const GENERATORS = {
   tutorial: generateTutorial,
   tutorial2: generateTutorial2,
+  tutorial3: generateTutorial3,
   city: generateCity,
   interior: generateBuilding,
   docks: generateDocks,

@@ -71,7 +71,7 @@ export function drawHud(ctx, game, input, ui, renderer) {
   drawBossBar(ctx, game, L);
   drawHoldoutBar(ctx, game, L);
   drawFerryBar(ctx, game, L);
-  if (p.pinnedBy && p.alive) drawPinned(ctx, game, L);
+  if (p.pinnedBy && p.alive && !game.tutorial) drawPinned(ctx, game, L); // (the tutorials light SHOVE with the dots over it)
   if (game.tutorial) drawTutorialHud(ctx, game, input, ui, L); // its line at the top, arrows, ghost thumbs, prompts
   drawMessages(ctx, game, L);
   if (game.won || game.lost) drawEnd(ctx, game, L, ui);
@@ -727,8 +727,8 @@ function drawEnd(ctx, game, L, ui) {
     if (tut.alarmed) parts.push('you set off the alarm (now you know)');
     if (tut.rescues) parts.push(`close calls ${tut.rescues}`);
     if (parts.length) lines.push(parts.join('   ·   '));
-    // Day 1 leads to Day 2; after Day 2, the real thing.
-    if (game.won) lines.unshift(tut.day > 1 ? "you're ready for the streets" : 'next: day 2, the supply run');
+    // Each day leads to the next; after the last, the real thing.
+    if (game.won) lines.unshift(NEXT_DAY[tut.day] || "you're ready for the streets");
   }
   if (game.ally) {
     const a = game.ally;
@@ -748,10 +748,13 @@ function drawEnd(ctx, game, L, ui) {
   if (game.endT > 1.4 && !card) {
     ctx.font = `700 15px ${FONT}`;
     ctx.fillStyle = `rgba(255,255,255,${0.6 + Math.sin(game.time * 4) * 0.3})`;
-    ctx.fillText(tut && game.won ? (tut.day > 1 ? 'tap to play the Streets' : 'tap for Tutorial 2') : 'tap to play again', cx, y0 + lines.length * lh + 18);
+    ctx.fillText(tut && game.won ? (NEXT_DAY[tut.day] ? `tap for Tutorial ${tut.day + 1}` : 'tap to play the Streets') : 'tap to play again', cx, y0 + lines.length * lh + 18);
   }
   ctx.globalAlpha = 1;
 }
+
+/** What a won tutorial day leads to (the last one leads to the Streets). */
+const NEXT_DAY = { 1: 'next: day 2, the supply run', 2: 'next: day 3, the hunter' };
 
 /** The end card's line about the Witch (null if there was none, or you never came near her). */
 export function witchLine(game) {

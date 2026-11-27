@@ -17,17 +17,19 @@
 // minutes for a first-timer. Everything the player reads is in STEPS, at the
 // top, for editing.
 //
-// Tutorial 2 (Day 2: supplies, a boarded room, the secret) runs on the same
-// runner with its own lessons (tutorial-day2.js) and map (map.tutorial.day).
+// Tutorial 2 (Day 2: supplies, a boarded room, the secret) and Tutorial 3 (Day
+// 3: the Hunter) run on the same runner with their own lessons
+// (tutorial-day2.js, tutorial-day3.js) and maps (map.tutorial.day).
 
 import { startFlee } from './witch.js';
 import { releasePin } from './specials.js';
 import { SHOVE_REACH } from './player.js';
 import { DAY2_STEPS, LOST } from './tutorial-day2.js';
+import { DAY3_STEPS } from './tutorial-day3.js';
 import { DEG, wrapAngle, clamp, pointInRect } from '../util.js';
 
 /** Done on this device, per day (Day 1's key is the one it always had). */
-const KEYS = { 1: 'funland2.p0.tutorial.v1', 2: 'funland2.p0.tutorial2.v1' };
+const KEYS = { 1: 'funland2.p0.tutorial.v1', 2: 'funland2.p0.tutorial2.v1', 3: 'funland2.p0.tutorial3.v1' };
 const GATE_OPEN = 1.1; // s for the bars to slide back into the wall
 const PAUSE = 0.6; // s between a lesson done (✓) and the next one
 const AIM_HOLD = 0.45; // s of laser on a target that counts as "aimed"
@@ -317,10 +319,10 @@ export const STEPS = [
 export const LESSONS = STEPS.filter((s) => s.dot).length;
 
 /** Each day's lessons, by map.tutorial.day. */
-export const COURSES = { 1: STEPS, 2: DAY2_STEPS };
+export const COURSES = { 1: STEPS, 2: DAY2_STEPS, 3: DAY3_STEPS };
 
 /** The tutorial level ids, in order (each one, won, leads to the next; after the last, the Streets). */
-export const TUTORIAL_LEVELS = ['tutorial', 'tutorial2'];
+export const TUTORIAL_LEVELS = ['tutorial', 'tutorial2', 'tutorial3'];
 
 /** A step's (or a nudge's) line for an input source: touch | mouse | gamepad; null for none. */
 export function stepText(step, source, t = null, g = null) {
@@ -470,10 +472,13 @@ export class Tutorial {
    * you, and `threat` if there's one on you) and a thumb taps it. stop: the
    * world slows to a stop while it's up (with a threat, as that closes in:
    * stopped once it's in reach) and only that button works; without, it's a
-   * pointer and nothing more.
+   * pointer and nothing more. ready: when a press can land (a press before
+   * then waits for it; by default, the threat within a shove's reach); slow:
+   * how fast the world should run (by default, slowing as the threat closes
+   * in, stopped once it's ready). pin: the break-free dots go over the button.
    */
-  ask(kind, { stop = true, threat = null } = {}) {
-    this.prompt = { kind, stop, threat, t: 0, out: 0, answered: false, held: false, beat: 0 };
+  ask(kind, { stop = true, threat = null, ready = null, slow = null, pin = false } = {}) {
+    this.prompt = { kind, stop, threat, ready, slow, pin, t: 0, out: 0, answered: false, held: false, beat: 0 };
   }
 
   /** It's been pressed (or isn't needed any more): the dark lifts and the world speeds up again. */
@@ -492,11 +497,18 @@ export class Tutorial {
     return Math.hypot(z.x - p.x, z.y - p.y) - z.r <= SHOVE_REACH - 6;
   }
 
+  /** Could the press a prompt asks for land now? */
+  isReady(P) {
+    if (P.ready) return P.ready();
+    return !P.threat || !P.threat.alive || this.inReach(P.threat);
+  }
+
   /** How fast a prompt wants the world: stopped, or slowing as its threat closes in. */
   wantScale(P) {
     if (!P.stop) return 1;
+    if (P.slow) return P.slow();
     const z = P.threat;
-    if (!z || !z.alive || this.inReach(z)) return 0;
+    if (!z || !z.alive || this.isReady(P)) return 0;
     const p = this.game.player;
     const d = Math.hypot(z.x - p.x, z.y - p.y) - z.r;
     return clamp((d - SHOVE_REACH) / (SLOW_FROM - SHOVE_REACH), 0.12, 1);
@@ -533,7 +545,7 @@ export class Tutorial {
   events(list) {
     const P = this.prompt;
     if (!P || P.answered || !P.stop) return list;
-    const ready = !P.threat || !P.threat.alive || this.inReach(P.threat);
+    const ready = this.isReady(P);
     let go = false;
     for (const e of list) {
       if (e !== P.kind) continue;

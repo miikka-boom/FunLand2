@@ -115,8 +115,8 @@ function walker(map, open) {
 // --- The course ---------------------------------------------------------------------------
 
 test('Day 2: a level of its own, right after Day 1 on the title card and in the panel, hand-built, the same on every seed', () => {
-  assert.deepEqual(TUTORIAL_LEVELS, ['tutorial', 'tutorial2']);
-  assert.deepEqual(LEVELS.slice(0, 2).map((l) => l.id), TUTORIAL_LEVELS);
+  assert.deepEqual(TUTORIAL_LEVELS.slice(0, 2), ['tutorial', 'tutorial2']);
+  assert.deepEqual(LEVELS.slice(0, TUTORIAL_LEVELS.length).map((l) => l.id), TUTORIAL_LEVELS);
   assert.equal(GENERATORS.tutorial2, generateTutorial2);
   assert.equal(COURSES[1], DAY1);
   assert.equal(COURSES[2], DAY2_STEPS);
