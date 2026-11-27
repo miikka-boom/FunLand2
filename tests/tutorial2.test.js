@@ -353,22 +353,33 @@ test('the crates: stand on one and it opens (armor, then hot rounds); the yard c
   assert.notEqual(T.gates.g1.state, 'shut');
 });
 
-test('breaking in: three shoves (counted on the card), the three inside wake, and the noise brings three more from out of sight', () => {
+test('breaking in: SHOVE comes in lit at the boards, the world waits for the first shove, three of them (counted), the three inside wake, and the noise brings three more from out of sight', () => {
   const game = make();
   const T = game.tutorial;
   const p = game.player;
   skipTo(game, 'boards');
   const b = T.L.boards;
-  assert.equal(T.view('touch').count, '0/3');
-  assert.equal(T.view('touch').text, 'Shove the boards in.');
+  assert.deepEqual(T.hud(), { shove: 0, reload: 0, all: 0 }, 'the sticks alone on the way (the HUD a part at a time, as on Day 1)');
+  assert.equal(T.view('touch').text, null, 'no words on the way: the arrow and the ring say it');
+  assert.equal(T.view('touch').count, null);
   assert.equal(T.prompt, null, 'nothing lit while you walk up');
-  // Stand in front of the door, facing it: SHOVE lit (but the world doesn't stop: nothing is coming yet), and shove.
-  Object.assign(p, { x: b.x + b.w / 2, y: b.y + b.h + 16, vx: 0, vy: 0 });
+  // A step off and facing away: SHOVE lit, the world going on (a shove from here would miss; right up against them, any way you face lands).
+  Object.assign(p, { x: b.x + b.w / 2, y: b.y + b.h + 34, vx: 0, vy: 0 });
+  p.facing = p.aimAngle = p.fireAngle = Math.PI / 2;
+  run(game, PROMPT_IN + 0.05, () => ({ ...idle(), aimActive: true, aimX: 0, aimY: 1, aimRaw: 0.3 }));
+  assert.ok(T.prompt && T.prompt.kind === 'shove' && !T.prompt.stop, 'SHOVE lit');
+  assert.equal(T.timeScale(), 1, 'the world goes on while a shove would miss');
+  assert.ok(T.hud().shove > 0 && T.hud().reload === 0 && T.hud().all === 0, 'SHOVE alone comes in');
+  assert.equal(T.view('touch').text, 'Tap SHOVE to break in.');
+  assert.equal(T.view('mouse').text, 'Press Space to break in.');
+  assert.equal(T.view('touch').count, '0/3');
+  // Facing them: a shove would land, and the world stops for it (only a shove gets through).
   p.facing = p.aimAngle = p.fireAngle = -Math.PI / 2;
   run(game, PROMPT_IN + 0.05);
-  assert.ok(T.prompt && T.prompt.kind === 'shove' && !T.prompt.stop, 'SHOVE lit');
-  assert.equal(T.timeScale(), 1, 'the world goes on');
-  p.facing = p.aimAngle = p.fireAngle = -Math.PI / 2;
+  assert.equal(T.prompt.stop, true);
+  assert.equal(T.timeScale(), 0, 'the world waits');
+  game.update(1 / 60, idle(['reload', 'swap']));
+  assert.equal(b.hp, b.maxHp);
   const born = [];
   const spawnAt = game.director.spawnAt.bind(game.director);
   game.director.spawnAt = (x, y, aware) => {
@@ -380,7 +391,9 @@ test('breaking in: three shoves (counted on the card), the three inside wake, an
     game.update(1 / 60, idle(['shove']));
     p.facing = p.aimAngle = p.fireAngle = -Math.PI / 2;
     if (k < 3) assert.equal(T.view('touch').count, `${k}/3`);
+    if (k === 1) assert.equal(T.prompt.stop, false, 'hit once: the world goes on, SHOVE still lit');
     run(game, 0.7, () => ({ ...idle(), move: { x: 0, y: 0 } }));
+    if (k === 1) assert.equal(T.timeScale(), 1);
   }
   assert.equal(b.broken, true, 'three shoves');
   assert.ok(T.sleepers.every((z) => z.state !== 'idle'), 'what was shut in is coming out');
@@ -390,6 +403,7 @@ test('breaking in: three shoves (counted on the card), the three inside wake, an
   assert.ok(born.every((q) => !q.seen), 'from out of sight');
   assert.equal(T.group.length, 6);
   assert.match(T.view('touch').count, /^\d\/6$/);
+  assert.deepEqual(T.hud(), { shove: 1, reload: 1, all: 1 }, 'and for the fight, all of the HUD');
   // Not done until they're all down and the crate inside is searched.
   for (const z of T.group) z.alive = false;
   run(game, 0.2);
@@ -428,7 +442,7 @@ test('the secret: a glint down a dead end (the arrow says GLINT, no ring), the b
   assert.equal(T.step.id, 'saferoom');
 });
 
-test('doing Day 2 wrong: lost on the chalk, shoving the boards from too far off, lost on the secret: each gets a nudge', () => {
+test('doing Day 2 wrong: lost on the chalk, shoving the boards from too far off, never tapping SHOVE when the world waits for it, lost on the secret: each gets a nudge', () => {
   const touch = (o = {}) => ({ ...idle(), source: 'touch', thumbs: { left: false, right: false }, ...o });
   let game = make();
   skipTo(game, 'chalk');
@@ -444,6 +458,15 @@ test('doing Day 2 wrong: lost on the chalk, shoving the boards from too far off,
   game.update(1 / 60, touch({ events: ['shove'] }));
   assert.equal(game.tutorial.nudge && game.tutorial.nudge.key, 'boards.too-far');
   assert.equal(game.tutorial.view('touch').text, 'Get right up to them.');
+  // Stopped at the boards for SHOVE, and never tapping it.
+  game = make();
+  skipTo(game, 'boards');
+  const b = game.tutorial.L.boards;
+  Object.assign(game.player, { x: b.x + b.w / 2, y: b.y + b.h + 16, vx: 0, vy: 0 });
+  run(game, 5.5, touch());
+  assert.equal(game.tutorial.timeScale(), 0);
+  assert.equal(game.tutorial.nudge && game.tutorial.nudge.key, 'boards.no-shove');
+  assert.equal(game.tutorial.view('touch').text, 'Tap the SHOVE button.');
   game = make();
   skipTo(game, 'secret');
   run(game, 10.5, touch());
@@ -452,19 +475,25 @@ test('doing Day 2 wrong: lost on the chalk, shoving the boards from too far off,
 });
 
 test('the words: one short line or none (touch, mouse, pad), and the coaching draws at every Day 2 lesson without a bad number, words only at the top', () => {
+  // (The lines that go with how far a lesson has got: the fight, then the crate; the boards on the way, then lit.)
+  const at = (o) => ({ spawned: () => true, cleared: () => true, group: [], prompt: null, ...o });
+  const states = [at({}), at({ spawned: () => false, cleared: () => false }), at({ prompt: { kind: 'shove' } }), at({ prompt: null })];
   for (const s of DAY2_STEPS) {
     for (const src of ['touch', 'mouse', 'gamepad']) {
-      const line = stepText(s, src, { spawned: () => true, cleared: () => true, group: [] }, null);
-      if (line !== null) assert.ok(line.length <= 28, `${s.id} (${src}): "${line}" (${line.length})`);
+      for (const t of states) {
+        const line = stepText(s, src, t, null);
+        if (line !== null) assert.ok(line.length <= 28, `${s.id} (${src}): "${line}" (${line.length})`);
+      }
       for (const n of s.nudges || []) assert.ok(stepText(n, src).length <= 28, `${s.id}.${n.id} (${src})`);
     }
     assert.ok(s.title && s.title === s.title.toUpperCase());
   }
-  // No words where the arrow says it all: the gates.
+  // No words where the arrow says it all: the gates, and the walk to the boards.
   for (const id of ['gate1', 'gate2']) assert.equal(stepText(DAY2_STEPS.find((q) => q.id === id), 'touch'), null);
-  // The boards: Space with a mouse, RB with a pad (the lit SHOVE button shows a phone where).
   const boards = DAY2_STEPS.find((q) => q.id === 'boards');
-  assert.ok(/space/i.test(stepText(boards, 'mouse')) && /RB/.test(stepText(boards, 'gamepad')));
+  assert.equal(stepText(boards, 'touch', states[3]), null);
+  // Up at them, lit: tap SHOVE on a phone, Space with a mouse, RB with a pad.
+  assert.ok(/tap SHOVE/i.test(stepText(boards, 'touch', states[2])) && /space/i.test(stepText(boards, 'mouse', states[2])) && /RB/.test(stepText(boards, 'gamepad', states[2])));
   const ctx = mockCtx();
   for (const [w, h] of [[844, 390], [640, 360], [568, 320]]) {
     const game = make();
@@ -553,6 +582,7 @@ test('a bot gets through Day 2 to the safe room through the real game loop: find
   };
   const order = [];
   let evT = 0;
+  let stops = 0;
   for (let i = 0; i < 60 * 300 && !game.won; i++) {
     const s = T.step.id;
     if (order[order.length - 1] !== s) order.push(s);
@@ -579,7 +609,14 @@ test('a bot gets through Day 2 to the safe room through the real game loop: find
     else if (s === 'boards') {
       const b = T.L.boards;
       const at = { x: b.x + b.w / 2, y: b.y + b.h + 16 };
-      if (Math.hypot(at.x - p.x, at.y - p.y) > 14) f.move = walkTo(at.x, at.y, 4);
+      if (T.prompt && T.prompt.stop && T.timeScale() === 0) {
+        // The world has stopped for SHOVE: tap it.
+        stops++;
+        if (evT <= 0) {
+          f.events.push('shove');
+          evT = 0.65;
+        }
+      } else if (Math.hypot(at.x - p.x, at.y - p.y) > 14) f.move = walkTo(at.x, at.y, 4);
       else {
         f.move = screen(0, -1); // lean on the door: facing it
         if (evT <= 0) {
@@ -605,5 +642,6 @@ test('a bot gets through Day 2 to the safe room through the real game loop: find
   assert.equal(game.stats.boards, 1);
   assert.ok(game.stats.kills >= 6, `${game.stats.kills} kills`);
   assert.equal(game.stats.secrets, 1, 'and the secret');
+  assert.ok(stops > 0, 'the world stopped for the first shove at the boards');
   assert.deepEqual(T.nudges, {}, 'played right: never told off');
 });

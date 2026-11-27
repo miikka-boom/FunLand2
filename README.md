@@ -373,9 +373,9 @@ and no dependencies.
   order of what it's worth:
   - **Supplies**: a crate right outside the door (stand on it: armor), then
     **chalk arrows** to a second one round a corner in a yard (hot rounds).
-  - **Break in**: a room on the next street has its door nailed shut. Shove
-    the boards three times (SHOVE lights up once you're at them; or shoot
-    them); it's loud. What was shut in
+  - **Break in**: a room on the next street has its door nailed shut. Up
+    at it, SHOVE comes in, lit, and the world waits for the first shove;
+    two more (or shoot them) and it breaks, loudly. What was shut in
     comes out, the noise brings three more down the street, and **the good
     stuff** inside is extended mags.
   - **The secret**: on the last street a loose manhole down a dead end,
@@ -384,7 +384,10 @@ and no dependencies.
   - **Safe room**, and a word for tomorrow: no gates open for you, the green
     arrow shows the way.
 
-  No Witch here either. The end card says you're ready for the streets, and
+  Day 1's coaching all the way: one short line at the top or none, the
+  arrows, the photo thumbs, the HUD a part at a time (the sticks alone for
+  the crates, SHOVE at the boards, the rest for the fight). No Witch here
+  either. The end card says you're ready for the streets, and
   **Play the Streets** is next. The lessons are in
   [`src/game/tutorial-day2.js`](src/game/tutorial-day2.js) (run by the same
   `tutorial.js`), the course in

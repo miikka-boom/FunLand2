@@ -10,8 +10,14 @@
 // dying (a second wind at 0 HP), and no Witch: she won't be on by default.
 //
 // Short on purpose: six lessons on three short streets, every one walked left
-// to right, and as few words as Day 1 (one short line at the top, or none).
-// Everything the player reads is here, for editing.
+// to right, with Day 1's coaching all the way: as few words (one short line at
+// the top, or none), the HUD a part at a time (the sticks alone to start with,
+// SHOVE at the boards, the rest for the fight), and the world stopping for the
+// first shove at the boards, as it does for Day 1's buttons. Everything the
+// player reads is here, for editing.
+
+import { SHOVE_REACH, SHOVE_HALF_ANGLE } from './player.js';
+import { clamp, wrapAngle } from '../util.js';
 
 /**
  * For anyone standing about where there are no words, only the arrow (a gate;
@@ -43,11 +49,25 @@ function atBoards(t) {
 /** The room's three and the three the noise brought are down. */
 const fought = (t) => t.spawned(t.group) && t.cleared(t.group);
 
+/** Would a shove land on the boards right now (close enough, and facing them: game/loot.js shoveBoards)? */
+function shoveLands(t, g) {
+  const b = t.L.boards;
+  const p = g.player;
+  const cx = clamp(p.x, b.x, b.x + b.w);
+  const cy = clamp(p.y, b.y, b.y + b.h);
+  const d = Math.hypot(cx - p.x, cy - p.y);
+  if (d > SHOVE_REACH + p.r - 4) return false;
+  return d <= p.r + 6 || Math.abs(wrapAngle(Math.atan2(cy - p.y, cx - p.x) - p.facing)) <= SHOVE_HALF_ANGLE * 0.85;
+}
+
+const BREAK_IN = { touch: 'Tap SHOVE to break in.', mouse: 'Press Space to break in.', pad: 'Press RB to break in.' };
+
 export const DAY2_STEPS = [
   {
     id: 'supplies',
     dot: true,
     title: 'SUPPLIES',
+    hud: 'sticks', // the two sticks and nothing else, to start with (as on Day 1)
     coach: 'move',
     text: { touch: 'Stand on the crate.' },
     target: (t) => crateSpot(t, t.L.crates.door, 'CRATE', true),
@@ -72,28 +92,43 @@ export const DAY2_STEPS = [
     update: (t, g) => g.player.y < t.L.gates.g1.y - 40,
   },
   {
-    // Up at the boards, SHOVE is lit (the world doesn't stop for this one:
-    // nothing is coming yet) until they're down.
+    // On the way, no words: the arrow and the ring at the boards say it. Up at
+    // them, SHOVE comes in, lit; and the first time a shove would land (close,
+    // facing them) the world waits for it, as for Day 1's buttons. After that
+    // it stays lit, the world going on, while you break them.
     id: 'boards',
     dot: true,
     title: 'BREAK IN',
-    text: { touch: 'Shove the boards in.', mouse: 'Space: shove them in.', pad: 'RB: shove them in.' },
-    nudges: [{ id: 'too-far', when: (t) => t.watch.missed >= 2, text: { touch: 'Get right up to them.' } }],
+    text: (t) => (t && t.prompt ? BREAK_IN : null),
+    nudges: [
+      { ...LOST, when: (t) => !t.prompt && LOST.when(t) },
+      { id: 'no-shove', when: (t) => !!t.prompt && t.prompt.stop && t.scale === 0 && t.prompt.t > 4.5, text: { touch: 'Tap the SHOVE button.', mouse: 'Press Space.', pad: 'Press RB.' } },
+      { id: 'too-far', when: (t) => t.watch.missed >= 2, text: { touch: 'Get right up to them.' } },
+    ],
     target: (t) => (t.L.boards.broken ? null : { ...atBoards(t), ring: true, r: 30, label: 'BOARDS' }),
-    count: (t) => `${boardsDown(t)}/3`,
+    count: (t) => (t.prompt ? `${boardsDown(t)}/3` : null),
     update: (t, g) => {
       const b = t.L.boards;
+      if (b.broken) return true;
       const q = atBoards(t);
-      const there = !b.broken && Math.hypot(g.player.x - q.x, g.player.y - q.y) < 70;
-      if (there && !t.prompt) t.ask('shove', { stop: false });
-      else if (!there && t.prompt) t.answer();
-      return b.broken;
+      if (Math.hypot(g.player.x - q.x, g.player.y - q.y) >= 70) {
+        if (t.prompt) t.answer();
+        return false;
+      }
+      if (!t.prompt) {
+        t.reveal('shove'); // SHOVE comes in, in the light
+        t.ask('shove', { stop: false });
+      }
+      // Untouched, and a shove would land: the world stops for it (once they've been hit, it goes on).
+      if (!t.prompt.answered) t.prompt.stop = b.hp >= b.maxHp && shoveLands(t, g);
+      return false;
     },
   },
   {
     id: 'goodstuff',
     dot: true,
     title: 'THE GOOD STUFF',
+    hud: 'all', // and for the fight, all of it (health and armor, ammo and hot rounds, ⟳, the pause button, the threat arrows)
     // The fire thumb while there's a fight on; then nothing (the ring shows the crate).
     coach: (t) => (left(t.group) > 0 ? 'fire' : null),
     text: (t) => (fought(t) ? { touch: 'Stand on the crate.' } : { touch: 'Clear them out.' }),

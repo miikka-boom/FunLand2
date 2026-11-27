@@ -744,8 +744,8 @@ test('the HUD comes in a part at a time: the two sticks first, ⟳ for the reloa
   assert.deepEqual(T.hud(), { shove: 1, reload: 1, all: 1 });
   assert.deepEqual(shown(), { hp: true, gun: true, clock: false, shove: true }, 'then all of it (the top is kept for the line: no clock)');
   assert.deepEqual(pressable(), { shove: true, reload: true, pause: true, gun: true });
-  // Day 2 shows it all from the start, and with no tutorial nothing is held back.
-  assert.deepEqual(make({ level: 'tutorial2' }).tutorial.hud(), { shove: 1, reload: 1, all: 1 });
+  // Day 2 brings it in a part at a time too (the sticks alone to start with), and with no tutorial nothing is held back.
+  assert.deepEqual(make({ level: 'tutorial2' }).tutorial.hud(), { shove: 0, reload: 0, all: 0 });
   applyHudReveal(L, S, null);
   assert.ok(!L.byId.reload.hidden && !L.byId.pause.hidden && !L.byId.swap.hidden && L.byId.shove.hidden === !S.shoveButton);
 });

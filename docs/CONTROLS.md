@@ -181,8 +181,9 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
   The scale is `Tutorial.timeScale()`; the lessons' timers, the nudges, the
   HUD's fade-ins and the coaching's animation run on real seconds
   (`Tutorial.clock`), so they carry on while the world waits. Day 2 lights
-  SHOVE the same way at the boards without stopping anything
-  (`stop: false`): nothing is coming yet.
+  SHOVE the same way at the boards: the world waits for the first shove once
+  one would land (close, and facing them), then goes on with SHOVE still lit
+  for the other two (`stop` set as it goes).
 - **The gun always works.** Nothing empties it behind your back. The reload
   lesson comes straight after the shooting, with the gun part used (the
   ammo count isn't on screen yet, so it's set to 14 short of full if it's
@@ -206,14 +207,16 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
   last frame (`thumbs.landed`: a tap too quick for any frame to see it held
   still counts); the step has a `skip` for any other input, checked every
   frame, so with a mouse or a pad it goes at once.
-- **The HUD, a part at a time** (Day 1): after the first screen only the
+- **The HUD, a part at a time** (both days): after the first screen only the
   two sticks show (with the tutorial's own line, arrows and rings); ⟳ comes
   in with the reload lesson, SHOVE when the shove is asked for (in the
   light), and everything else (health, ammo, the pause button, the threat
   arrows) with "both thumbs". Each part fades in over 0.5 s. A step's `hud`
   says what comes in (`HUD_PARTS` and `Tutorial.hud()` in tutorial.js, drawn
-  by hud.js; the shove lesson calls `revealUpTo('shove')` as it asks); a
-  course that never says (Day 2) shows it all from the start. What hasn't
+  by hud.js; the shove lesson calls `revealUpTo('shove')` as it asks). Day 2
+  does the same: the sticks alone for the crates and the chalk, SHOVE alone
+  (`reveal('shove')`) when it lights up at the boards, the rest for the
+  fight; a course whose steps never say shows it all from the start. What hasn't
   come in can't be pressed either: `applyHudReveal` in layout.js marks those
   buttons hidden every frame, and the hit test skips hidden buttons (a touch
   there is just a touch on that side of the screen).
@@ -239,7 +242,7 @@ lessons are in `src/game/tutorial.js` (every word the player reads is in
   | Shove | 4.5 s stopped and no shove / 4 s without shooting it after | Tap the SHOVE button. / Push past the ring to shoot. |
   | Both thumbs | Not firing with them within 450 u / standing still with one within 110 u | Right thumb: keep shooting! / Left thumb: back off! |
   | Run for it | 5 s without getting closer to the door | Don't fight: run for it! |
-  | Day 2 | 12 s on the chalk / two shoves that miss the boards / 10 s on the secret / 8 s at an open gate | Look for white arrows. / Get right up to them. / Check the dead end. / Follow the green arrow. |
+  | Day 2 | 12 s on the chalk / two shoves that miss the boards / 4.5 s stopped at the boards and no shove / 10 s on the secret / 8 s at an open gate or on the way to the boards | Look for white arrows. / Get right up to them. / Tap the SHOVE button. / Check the dead end. / Follow the green arrow. |
 
   Mouse and pad get their own words where it matters ("Click to shoot.").
   The report (Playtest) counts them under `tutorial.nudges`, and the
@@ -316,8 +319,9 @@ helpers and frame, on a wider plan: every street is walked left to right,
 each ending in a connector up to the next, which carries on to the right
 (start room bottom left, safe room top right). The lessons are in
 `src/game/tutorial-day2.js`, run by the same `Tutorial` (map.tutorial.day
-picks the list), with Day 1's coaching: one short line at the top or none,
-the arrows, the ghost thumbs. It teaches scavenging, on by default on the
+picks the list), with Day 1's coaching all the way: one short line at the top
+or none, the arrows, the ghost thumbs, the HUD a part at a time, and the
+world stopping for a button. It teaches scavenging, on by default on the
 Streets, with the game's own crates and boarded room (game/loot.js), so they
 behave exactly as they will later. No Witch (the plan is for her to be off
 by default).
@@ -326,13 +330,16 @@ by default).
 |---|---|---|
 | Supplies | Stand on the crate outside the door | It opens (ARMOR +50) |
 | Chalk arrows | Follow the chalk to a crate round a corner in a yard | It opens (HOT ROUNDS ×60): gate 1 opens |
-| Break in | Shove the boards on a nailed door three times (SHOVE lights up once you're at them; or shoot them) | They break (loud) |
+| Break in | Walk up to a nailed door (no words: the arrow and a ring); SHOVE comes in, lit, the world waits for the first shove, then two more (or shoot them) | They break (loud) |
 | The good stuff | The three shut in come out, the noise brings three down the street; then search the crate inside | All six down and the crate open (EXTENDED MAGS): gate 2 opens |
 | The secret | A glint down a dead end: stand on the loose manhole | It opens (+25 MAX HP, FULL ARMOR, HOT ROUNDS ×150): gate 3 opens |
 | Safe room | Get in | The run is won |
 
 - **The counts:** the boards in shoves (0/3, worked out from their hit
-  points, so shots count too), the fight as six.
+  points, so shots count too; shown once SHOVE is lit), the fight as six.
+- **What a crate says** when it opens: what it gave (ARMOR +50), and
+  nothing more; the Streets' second line, how many of the map's you've
+  found, is left out in the tutorials.
 - **What the noise brings** comes down row 2 from the far end, round the
   corner before gate 2 (`Tutorial.unseen`, like Day 1's pack), so you see
   it coming across the screen; or up through gate 1 if you're already down

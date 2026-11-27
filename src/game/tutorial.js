@@ -55,10 +55,11 @@ function freshWatch() {
 
 /**
  * The HUD, a part at a time (Day 1): a step's `hud` brings in that part and
- * the ones before it. 'sticks' is the two sticks alone (and the tutorial's own
- * line, arrows and rings); then ⟳; then the SHOVE button; then all of it
- * (health, ammo, the pause button, the threat arrows). A course whose steps
- * never say shows it all from the start.
+ * the ones before it ('reveal' brings in one part alone: Day 2 lights SHOVE
+ * before ⟳). 'sticks' is the two sticks alone (and the tutorial's own line,
+ * arrows and rings); then ⟳; then the SHOVE button; then all of it (health,
+ * ammo, the pause button, the threat arrows). A course whose steps never say
+ * shows it all from the start.
  */
 export const HUD_PARTS = ['sticks', 'reload', 'shove', 'all'];
 
@@ -825,6 +826,11 @@ export class Tutorial {
   }
 
   // --- For the HUD and the report ------------------------------------------------------------
+
+  /** Bring in this one part of the HUD (HUD_PARTS), from now, whatever comes before it. */
+  reveal(part) {
+    if (this.revealT[part] === undefined) this.revealT[part] = this.clock;
+  }
 
   /** Bring in the HUD up to this part (HUD_PARTS), from now. */
   revealUpTo(part) {

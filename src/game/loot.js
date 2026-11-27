@@ -89,7 +89,8 @@ function openStash(game, s) {
     game.announce(names, '#ffe9b0', 2.6, 'small');
   } else {
     game.announce(names, LOOT[s.got[0]].color, 2.2);
-    game.announce(`${TIER_LABEL[s.tier]} ${found}/${L.totals[s.tier]}`, 'rgba(255,240,200,0.85)', 2.2, 'small');
+    // How many of the map's you've found (not in the tutorials: one thing to read at a time).
+    if (!game.tutorial) game.announce(`${TIER_LABEL[s.tier]} ${found}/${L.totals[s.tier]}`, 'rgba(255,240,200,0.85)', 2.2, 'small');
   }
   game.audio.stashOpen(s.tier);
   game.haptic(s.tier === 'stash' ? 20 : 40);
