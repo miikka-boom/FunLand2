@@ -83,8 +83,8 @@ test('nothing that matters is cut off: the safe room, the finds, the boarded roo
   }
 });
 
-test('the props as 3D models: car, newspaper box (its paint swapped per colour) and bus shelter', () => {
-  assert.deepEqual(Object.keys(PROPS).sort(), ['car', 'newsbox', 'shelter']);
+test('the props as 3D models: car, newspaper box (its paint swapped per colour), bus shelter, and the lamps and the parks\' (park-art.test.js)', () => {
+  assert.deepEqual(Object.keys(PROPS).sort(), ['bench', 'car', 'fountain', 'lamp', 'newsbox', 'shelter']);
   assert.ok(PROPS.car.paint && PROPS.newsbox.paint && !PROPS.shelter.paint);
   for (const [name, p] of Object.entries(PROPS)) {
     const m = decodeMesh(p.mesh);

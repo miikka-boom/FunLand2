@@ -22,9 +22,9 @@ import { circle, hash01 } from './draw-utils.js';
 import { ALLY } from '../game/ally.js';
 import { GUN_Z } from '../game/player.js';
 import { TAU, rectsOverlap, pointInRect, lampLit, clamp } from '../util.js';
-import { Scene, boxHides } from './scene3d.js';
+import { Scene, boxHides, billHides } from './scene3d.js';
 import { CRANE_H, drawDoorPlans } from './models.js';
-import { tone, box, boxShadow, disc, ball, line3, setTonePalette } from './prims.js';
+import { tone, box, boxShadow, groundEllipse, disc, ball, line3, setTonePalette } from './prims.js';
 import { nightLookFor } from './night-look.js';
 import { Textures } from './textures.js';
 import { GroundCache } from './ground-cache.js';
@@ -82,7 +82,7 @@ function scatterLitter(ctx, sheet, vr, map) {
 // The decor drawGround paints that never changes (so it can go into the ground cache).
 const STILL_DECOR = new Set(['puddle', 'crack', 'trash', 'manhole', 'leaves', 'papers', 'chair', 'blood', 'chalk']);
 // The texture the inside of a block of each type gets (the rest stay flat).
-const BLOCK_TEXTURE = { buildings: 'asphalt', start: 'asphalt', end: 'asphalt', parking: 'asphalt', plaza: 'sidewalk', station: 'asphalt' };
+const BLOCK_TEXTURE = { buildings: 'asphalt', start: 'asphalt', end: 'asphalt', parking: 'asphalt', plaza: 'sidewalk', station: 'asphalt', park: 'grass' };
 // A number for each map (the ground cache keys on it).
 const mapIds = new WeakMap();
 let nextMapId = 1;
@@ -578,6 +578,8 @@ export class Renderer {
           ctx.stroke();
           break;
         case 'leaves':
+          // The grass has its own few leaves in it; drawn over it these were too many.
+          if (T && T.has('grass')) break;
           ctx.fillStyle = 'rgba(90,80,40,0.35)';
           for (let k = 0; k < 6; k++) ctx.fillRect(d.x + (hash01(d.x + k) - 0.5) * 40 * d.s, d.y + (hash01(d.y + k * 3) - 0.5) * 40 * d.s, 3, 2);
           break;
@@ -852,6 +854,8 @@ export class Renderer {
       let target = 1;
       if (eye && rec.fades && !v.flat) {
         if (boxHides(v, o, 0, rec.h, eye.x, eye.y, 24) || boxHides(v, o, 0, rec.h, eye.x + ex, eye.y + ey, 24) || boxHides(v, o, 0, rec.h, eye.x - ex, eye.y - ey, 24)) target = 0.22;
+        // An upright sprite (a tree's crown) over the survivor.
+        else if (rec.bill && billHides(v, o, rec.bill, eye.x, eye.y, 24)) target = 0.38;
       }
       rec.a += (target - rec.a) * fadeK;
       if (rec.a > 0.995) rec.a = 1;
@@ -964,7 +968,8 @@ export class Renderer {
       const rec = o._r3;
       if (!rec.shadow || rec.h < 8) continue;
       const len = Math.min(rec.h * 0.5, 50);
-      boxShadow(ctx, v, o.x, o.y, o.x + o.w, o.y + o.h, dx * len, dy * len);
+      if (rec.round) groundEllipse(ctx, v, o.x + o.w / 2 + dx * len * 0.45, o.y + o.h / 2 + dy * len * 0.45, rec.round[0], rec.round[1], rec.round[2]);
+      else boxShadow(ctx, v, o.x, o.y, o.x + o.w, o.y + o.h, dx * len, dy * len);
     }
     ctx.fill();
     ctx.beginPath();
@@ -1302,8 +1307,10 @@ export class Renderer {
     }
     // Lamps that are on: a glow around the head of the post / the strip light.
     for (const q of this.lampsOn) {
-      const gx = v.px(q.gx, q.gy);
-      const gy = v.py(q.gx, q.gy, v.flat ? 0 : q.gz);
+      // Where its lantern was drawn this frame (a lamp post's model leans toward the camera), else its head.
+      const drawn = q.st === game.time;
+      const gx = drawn ? q.sx : v.px(q.gx, q.gy);
+      const gy = drawn ? q.sy : v.py(q.gx, q.gy, v.flat ? 0 : q.gz);
       const r = (q.glow || 20) * Math.max(0.8, s);
       const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, r);
       const col = q.lamp.interior ? '205,225,255' : '255,214,150';

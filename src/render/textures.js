@@ -1,5 +1,5 @@
 // Surface textures for the streets (assets/streets/*.webp, made with Scenario from crops of the
-// level's concept art): asphalt, sidewalk slabs, roofs, brick. They are used for their detail
+// level's concept art): asphalt, sidewalk slabs, roofs, brick, the parks' grass. They are used for their detail
 // only: each is tinted to whatever colour the surface has (the map's, or a night look's), so
 // every look keeps its palette. A tinted copy keeps the texture's light and dark around the
 // colour: base * (1 + (lum / mean - 1) * contrast).
@@ -17,10 +17,11 @@ const FILES = {
   sidewalk: 'assets/streets/sidewalk.webp',
   roof: 'assets/streets/roof.webp',
   brick: 'assets/streets/brick.webp',
+  grass: 'assets/streets/grass.webp',
 };
 
 /** World units one repeat of each texture spans (it is square). */
-export const TEXTURE_SPAN = { asphalt: 256, sidewalk: 120, roof: 200, brick: 96 };
+export const TEXTURE_SPAN = { asphalt: 256, sidewalk: 120, roof: 200, brick: 96, grass: 160 };
 
 /** '#rrggbb' or 'rgb(r,g,b)' -> [r, g, b] (null for anything else) */
 export function hexRgb(c) {
@@ -46,6 +47,17 @@ export function tintPixels(lum, mean, rgb, contrast, out) {
     out[o + 3] = 255;
   }
   return out;
+}
+
+/** Darken what is drawn on canvas c (its context x) by style: its fill, then its warm glaze, over its own pixels. */
+function shade(x, c, style) {
+  x.globalCompositeOperation = 'source-atop';
+  for (const f of [style.fill, style.warm]) {
+    if (!f) continue;
+    x.fillStyle = f;
+    x.fillRect(0, 0, c.width, c.height);
+  }
+  x.globalCompositeOperation = 'source-over';
 }
 
 export class Textures {
@@ -102,14 +114,32 @@ export class Textures {
     c.height = img.naturalHeight;
     const x = c.getContext('2d');
     x.drawImage(img, 0, 0);
-    x.globalCompositeOperation = 'source-atop';
-    for (const f of [style.fill, style.warm]) {
-      if (!f) continue;
-      x.fillStyle = f;
-      x.fillRect(0, 0, c.width, c.height);
-    }
+    shade(x, c, style);
     this.shaded.set(k, c);
     return c;
+  }
+
+  /**
+   * One sprite of sheet name (q: its rect, { x, y, w, h }; id names it) darkened as sheet() does,
+   * on a canvas of its own, made once: a big sheet's pieces are each wanted at only a few lights.
+   * Returns { img, x, y } (where the sprite is in img), or null while the sheet hasn't loaded.
+   */
+  piece(name, id, q, key = '', style = null) {
+    const img = this.sheets[name];
+    if (!img) return null;
+    if (!style || (!style.fill && !style.warm)) return { img, x: q.x, y: q.y };
+    const k = `${name}|${id}|${key}`;
+    let c = this.shaded.get(k);
+    if (!c) {
+      c = document.createElement('canvas');
+      c.width = q.w;
+      c.height = q.h;
+      const x = c.getContext('2d');
+      x.drawImage(img, q.x, q.y, q.w, q.h, 0, 0, q.w, q.h);
+      shade(x, c, style);
+      this.shaded.set(k, c);
+    }
+    return { img: c, x: 0, y: 0 };
   }
 
   _read(name, img) {

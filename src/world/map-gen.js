@@ -198,11 +198,11 @@ export function generateCity(seed) {
     if (free(booth, 10)) obstacles.push(booth);
   }
 
-  function fenceRing(rect, gapMid = 150, gapCorner = 50) {
+  function fenceRing(rect, gapMid = 150, gapCorner = 50, extra = {}) {
     const t = 6;
     const seg = (x, y, w, h) => {
-      if (w > 12 && h > 0) obstacles.push(ob('fence', x, y, w, h));
-      else if (h > 12 && w > 0) obstacles.push(ob('fence', x, y, w, h));
+      if (w > 12 && h > 0) obstacles.push(ob('fence', x, y, w, h, extra));
+      else if (h > 12 && w > 0) obstacles.push(ob('fence', x, y, w, h, extra));
     };
     const sideH = (x0, x1, y) => {
       const mid = (x0 + x1) / 2;
@@ -234,7 +234,7 @@ export function generateCity(seed) {
   }
 
   function park(rect) {
-    fenceRing(rect, 150, 54);
+    fenceRing(rect, 150, 54, { iron: true }); // a park's railing: wrought iron (a building site's: chain link)
     const inner = { x: rect.x + 30, y: rect.y + 30, w: rect.w - 60, h: rect.h - 60 };
     if (inner.w > 260 && inner.h > 260) {
       const s = 96;

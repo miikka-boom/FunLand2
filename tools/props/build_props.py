@@ -6,13 +6,19 @@ src/render/zombie-bake.js can render it into sprites for the camera.
     python3 tools/props/build_props.py car tools/props/source/car.glb
     python3 tools/props/build_props.py newsbox tools/props/source/newsbox.glb --axis short --size 110
     python3 tools/props/build_props.py shelter tools/props/source/shelter.glb --axis short --size 640
+    python3 tools/props/build_props.py lamp tools/props/source/lamp.glb --front x+ --pivot base --height 960
+    python3 tools/props/build_props.py bench tools/props/source/bench.glb --axis short --size 500 --specks 100
+    python3 tools/props/build_props.py fountain tools/props/source/fountain.glb --height 560
 
 Writes assets/props/<name>.js (the mesh, base64) and assets/props/<name>.webp (its texture).
 
 Axes as the zombies have them: a forward (the prop's front), c to its right, h up; model units
 are a tenth of a world unit (zombie-art.js SCALE). Its forward axis is its longer side (a car)
-or, with --axis short, its shorter one (a bus shelter faces across its length). It is scaled so
-its longer side is --size model units (LENGTH by default), centred on the ground under its middle.
+or, with --axis short, its shorter one (a bus shelter faces across its length), or the GLB's
+own axis given by --front (x+, x-, z+, z-: a street lamp's arm). It is scaled so its longer side
+is --size model units (LENGTH by default), or so it is --height tall, and centred on the ground
+under its middle, or with --pivot base under the middle of its foot (a lamp's pole). --specks N
+drops loose pieces of fewer than N triangles (strays image-to-3D can leave).
 
 Every triangle gets an outline shell: the same surface pushed out along its normals by SHELL
 model units, wound inward and coloured from a black band added along the top of the texture.
@@ -151,14 +157,40 @@ def smooth_normals(pos, tri):
     return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
 
 
+def drop_specks(pos, tri, smaller_than):
+    """The triangles less any loose piece of fewer than smaller_than of them (image-to-3D strays)."""
+    _, weld = np.unique(np.round(pos * 1e4).astype(np.int64), axis=0, return_inverse=True)
+    weld = weld.ravel()
+    parent = np.arange(weld.max() + 1)
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for t in tri:
+        r0, r1, r2 = (find(weld[i]) for i in t)
+        parent[r1] = r0
+        parent[find(r2)] = r0
+    roots = np.array([find(weld[t[0]]) for t in tri])
+    ids, counts = np.unique(roots, return_counts=True)
+    keep = np.isin(roots, ids[counts >= smaller_than])
+    if not keep.all():
+        print(f"dropped {int((~keep).sum())} triangles of loose specks")
+    return tri[keep]
+
+
 def b64(arr):
     return base64.b64encode(np.ascontiguousarray(arr).tobytes()).decode("ascii")
 
 
-def build(name, src, flip=False, axis="long", size=LENGTH):
+def build(name, src, flip=False, axis="long", size=LENGTH, front=None, pivot="middle", height=None, specks=0):
     gltf, binary = read_glb(src)
     pos, nrm, uv, tri, tex = gather(gltf, binary)
     assert tex is not None, "the GLB has no base colour texture"
+    if specks:
+        tri = drop_specks(pos, tri, specks)
     if not np.any(np.linalg.norm(nrm, axis=1) > 0.5):
         nrm = smooth_normals(pos, tri)
     nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9)
@@ -168,23 +200,33 @@ def build(name, src, flip=False, axis="long", size=LENGTH):
     along = 0 if ext[0] >= ext[2] else 2
     if axis == "short":
         along = 2 if along == 0 else 0
+    if front:
+        along = 0 if front[0] == "x" else 2
     across = 2 if along == 0 else 0
     h = pos[:, 1] - pos[:, 1].min()
     mid = (pos.max(axis=0) + pos.min(axis=0)) / 2
+    if pivot == "base":
+        # The middle of its foot (the lowest twelfth of it): a lamp's pole, not halfway out its arm.
+        foot = h < h.max() / 12
+        mid = (pos[foot].max(axis=0) + pos[foot].min(axis=0)) / 2
     a = pos[:, along] - mid[along]
     c = pos[:, across] - mid[across]
     na, nc, nh = nrm[:, along], nrm[:, across], nrm[:, 1]
-    # The front: away from the cabin (the top fifth of the prop).
-    top = h > h.max() * 0.8
-    if np.mean(a[top]) > 0:
-        a, na = -a, -na
+    if front:
+        if front[1] == "-":  # turned round (not mirrored)
+            a, na, c, nc = -a, -na, -c, -nc
+    else:
+        # The front: away from the cabin (the top fifth of the prop).
+        top = h > h.max() * 0.8
+        if np.mean(a[top]) > 0:
+            a, na = -a, -na
     if flip:
         a, na = -a, -na
     # c to the prop's right as it faces +a, h up: (a, c, h) must be right-handed like (x, z, y)
     # flipped... keep the winding: if the axis swap mirrored the mesh, mirror c back.
     M = np.array([[1 if along == 0 else 0, 0, 1 if along == 2 else 0], [1 if across == 0 else 0, 0, 1 if across == 2 else 0], [0, 1, 0]])
     mirrored = np.linalg.det(M) > 0  # (x, y, z) -> (a, c, h) with det +1 swaps handedness here
-    s = size / max(a.max() - a.min(), c.max() - c.min())
+    s = height / h.max() if height else size / max(a.max() - a.min(), c.max() - c.min())
     P = np.c_[a, c, h] * s
     Nn = np.c_[na, nc, nh]
     if mirrored:
@@ -249,5 +291,17 @@ def build(name, src, flip=False, axis="long", size=LENGTH):
 if __name__ == "__main__":
     argv = sys.argv[1:]
     opt = lambda k, d: argv[argv.index(k) + 1] if k in argv else d
-    args = [a for i, a in enumerate(argv) if not a.startswith("--") and (i == 0 or argv[i - 1] not in ("--axis", "--size"))]
-    build(args[0], args[1], flip="--flip" in argv, axis=opt("--axis", "long"), size=float(opt("--size", LENGTH)))
+    valued = ("--axis", "--size", "--front", "--pivot", "--height", "--specks")
+    args = [a for i, a in enumerate(argv) if not a.startswith("--") and (i == 0 or argv[i - 1] not in valued)]
+    height = opt("--height", None)
+    build(
+        args[0],
+        args[1],
+        flip="--flip" in argv,
+        axis=opt("--axis", "long"),
+        size=float(opt("--size", LENGTH)),
+        front=opt("--front", None),
+        pivot=opt("--pivot", "middle"),
+        height=float(height) if height else None,
+        specks=int(opt("--specks", 0)),
+    )

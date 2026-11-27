@@ -21,7 +21,8 @@ import { buildDecorProps } from './decor3d.js';
 import { RoofCache } from './roof-cache.js';
 import { darkenStyles } from './zombie-art.js';
 import { ROOFTOP } from '../../assets/streets/rooftop.js';
-import { TREES } from '../../assets/streets/trees.js';
+import { BARE_TREES, PARK_TREES } from '../../assets/streets/trees.js';
+import { PROPS as PROP_MODELS, propSize, propPitch } from './prop-art.js';
 
 const pts = new Float64Array(16);
 const samp = new Float32Array(12);
@@ -1189,6 +1190,10 @@ function drawDumpster(R, o) {
 }
 
 function drawFence(R, o) {
+  if (o.iron) {
+    drawIronFence(R, o);
+    return;
+  }
   const { ctx, v } = R;
   const b = Math.max(R.L.lit(o.x + o.w / 2, o.y + o.h / 2), 0);
   if (b < 0.032) return;
@@ -1221,6 +1226,56 @@ function drawFence(R, o) {
   ctx.lineCap = 'round';
 }
 
+const IRON_H = 27; // a park railing's top rail
+const PICKET = 5.5; // between its bars
+
+/**
+ * A park's wrought-iron railing: bars between a top and a bottom rail, their tips standing proud
+ * of the top one, and a post with a cap now and then. See-through iron, as the fire escapes are:
+ * each line dark under a lighter one, lit by the light along it.
+ */
+function drawIronFence(R, o) {
+  const { ctx, v } = R;
+  const b = Math.max(R.L.lit(o.x + o.w / 2, o.y + o.h / 2), 0);
+  if (b < 0.032) return;
+  const horiz = o.w > o.h;
+  const xm = o.x + o.w / 2;
+  const ym = o.y + o.h / 2;
+  if (v.flat) {
+    topFill(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, tone('#2c2f35', b * 0.8));
+    return;
+  }
+  const len = horiz ? o.w : o.h;
+  const at = (t) => (horiz ? [o.x + t, ym] : [xm, o.y + t]);
+  const n = Math.max(1, Math.round(len / PICKET));
+  const posts = Math.max(1, Math.round(len / 64));
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.strokeStyle = pass ? tone('#6b707a', b) : 'rgba(8,8,12,0.88)';
+    ctx.lineWidth = pass ? Math.max(0.7, 0.75 * v.scale) : Math.max(1.6, 1.9 * v.scale);
+    ctx.lineCap = 'butt';
+    ctx.beginPath();
+    for (let k = 0; k <= n; k++) {
+      const [x, y] = at((k * len) / n);
+      line3(ctx, v, x, y, 0, x, y, IRON_H + 3.5);
+    }
+    const [x0, y0] = at(0);
+    const [x1, y1] = at(len);
+    line3(ctx, v, x0, y0, IRON_H, x1, y1, IRON_H);
+    line3(ctx, v, x0, y0, 5, x1, y1, 5);
+    ctx.stroke();
+  }
+  ctx.lineCap = 'round';
+  // Posts at the ends and between, with round caps.
+  for (let k = 0; k <= posts; k++) {
+    const [x, y] = at((k * len) / posts);
+    pbox(R, x - 1.6, y - 1.6, x + 1.6, y + 1.6, 0, IRON_H + 5, '#2c2f35', b);
+    ctx.fillStyle = tone('#4b5059', b);
+    ctx.beginPath();
+    ball(ctx, v, x, y, IRON_H + 6.5, 2.2);
+    ctx.fill();
+  }
+}
+
 function drawPlanter(R, o) {
   const b = propLight(R, o);
   if (b < 0.032) return;
@@ -1240,9 +1295,27 @@ function drawPlanter(R, o) {
   ctx.fill();
 }
 
-function drawBench(R, o) {
+/**
+ * A park bench facing into its block (the park's or the plaza's middle), set at a slant of 20 to
+ * 30 degrees to it, either way, so the steep camera sees its seat and its back, not a strip.
+ */
+function benchModel(o, map) {
+  const cx = o.x + o.w / 2;
+  const cy = o.y + o.h / 2;
+  const blk = (map.blocks || []).find((q) => cx >= q.x && cx <= q.x + q.w && cy >= q.y && cy <= q.y + q.h);
+  const mx = blk ? blk.x + blk.w / 2 : cx;
+  const my = blk ? blk.y + blk.h / 2 : cy + 1;
+  const heading = o.w >= o.h ? (my >= cy ? Math.PI / 2 : -Math.PI / 2) : mx >= cx ? 0 : Math.PI;
+  const k = hash01(o.x * 0.37 + o.y * 0.71 + 3);
+  const turn = (k < 0.5 ? -1 : 1) * (0.35 + 0.17 * ((k * 2) % 1));
+  return { h: 25, draw: drawBench, data: { heading, turn }, round: [23, 9, heading + turn + Math.PI / 2] };
+}
+
+function drawBench(R, o, rec) {
   const b = propLight(R, o);
   if (b < 0.032) return;
+  const d = rec && rec.data;
+  if (d && R.props && R.props.drawProp(R, 'bench', o, b, d.heading, null, d.turn)) return;
   const horiz = o.w >= o.h;
   const c = '#5a4632';
   if (horiz) {
@@ -1258,6 +1331,7 @@ function drawBench(R, o) {
   }
 }
 
+/** A park tree: one of the leafy sprites (now and then an autumn one or a pine), standing up. */
 function drawTree(R, o) {
   const { ctx, v } = R;
   const b = propLight(R, o);
@@ -1265,7 +1339,14 @@ function drawTree(R, o) {
   const cx = o.x + o.w / 2;
   const cy = o.y + o.h / 2;
   const s = o.w / 36;
-  const sway = Math.sin(R.t * 0.8 + (o.seed || 1)) * 1.2;
+  const seed = o.seed || 1;
+  const pick = hash01(seed * 0.013 + 5);
+  const id = pick < 0.14 ? 'autumn' : pick < 0.3 ? 'pine' : PARK_LEAFY[Math.floor(hash01(seed * 0.029) * PARK_LEAFY.length)];
+  const q = PARK_TREES[id];
+  const H = q.height * s * (0.9 + 0.2 * hash01(seed * 0.7));
+  const sway = Math.sin(R.t * 0.7 + seed) * 0.012;
+  if (standingTree(R, id, q, cx, cy, 0, H, b, sway, true)) return;
+  const swayOld = Math.sin(R.t * 0.8 + (o.seed || 1)) * 1.2;
   cylinder(ctx, v, cx, cy, 5 * s, 0, 34 * s, tone('#3b2c20', b), tone('#33261c', b * 0.9));
   // The crown: dark underside, the mass of it, a lighter cap.
   ctx.fillStyle = tone('#16241a', b);
@@ -1274,14 +1355,45 @@ function drawTree(R, o) {
   ctx.fill();
   ctx.fillStyle = tone('#23402a', b);
   ctx.beginPath();
-  ball(ctx, v, cx + sway * 0.5, cy, 52 * s, 26 * s);
-  ball(ctx, v, cx - 12 * s + sway, cy + 6 * s, 47 * s, 16 * s);
-  ball(ctx, v, cx + 13 * s + sway, cy - 4 * s, 49 * s, 15 * s);
+  ball(ctx, v, cx + swayOld * 0.5, cy, 52 * s, 26 * s);
+  ball(ctx, v, cx - 12 * s + swayOld, cy + 6 * s, 47 * s, 16 * s);
+  ball(ctx, v, cx + 13 * s + swayOld, cy - 4 * s, 49 * s, 15 * s);
   ctx.fill();
   ctx.fillStyle = tone('#2d5234', b);
   ctx.beginPath();
-  ball(ctx, v, cx - 5 * s + sway, cy - 6 * s, 62 * s, 15 * s);
+  ball(ctx, v, cx - 5 * s + swayOld, cy - 6 * s, 62 * s, 15 * s);
   ctx.fill();
+}
+const PARK_LEAFY = ['oak', 'elm', 'maple', 'linden'];
+
+/** How tall something drawn standing up (a tree) shows, as a share of its height: a little shorter from a steeper camera. */
+export function standScale(v) {
+  if (v.flat) return 0.72;
+  return Math.max(0.72, Math.min(1, Math.cos(v.pitch - Math.PI / 4) / Math.cos(Math.PI / 12)));
+}
+
+/**
+ * A tree standing at (cx, cy, z): sprite q of the trees sheet (named id) drawn upright from its
+ * trunk's foot, H world units tall, at brightness b, its crown swaying (sway: how far its top
+ * leans, a share of its height). Leaves its size on screen on the static being drawn (R.cur.bill,
+ * for fading it when it hides the survivor: solid, a crown that hides what's behind it). Returns
+ * false while the sheet hasn't loaded.
+ */
+function standingTree(R, id, q, cx, cy, z, H, b, sway, solid) {
+  // Five lights a tree is darkened to (each a copy of its sprite: twelve sprites, kept small).
+  const lv = Math.max(1, Math.round(b * 5));
+  const pc = R.tex && R.tex.piece('trees', id, q, `${lv}|${R.look ? R.look.id : '-'}`, levelStyle(R.look, lv / 5));
+  if (!pc) return false;
+  const v = R.v;
+  const dpr = R.dpr;
+  const up = standScale(v);
+  const k = (H / q.h) * v.scale * dpr; // device pixels per sprite pixel, across
+  const ctx = R.ctx;
+  ctx.setTransform(k, 0, -sway * k * up, k * up, v.px(cx, cy) * dpr, v.py(cx, cy, z) * dpr);
+  ctx.drawImage(pc.img, pc.x, pc.y, q.w, q.h, -q.ax, -q.h, q.w, q.h);
+  R.reset();
+  if (R.cur) R.cur.bill = { w: (q.w * H) / q.h, h: H * up, z, crown: 0.72, solid };
+  return true;
 }
 
 // --- Street furniture (world/street-furniture.js) --------------------------------------------
@@ -1294,10 +1406,10 @@ function levelStyle(look, b) {
   return st[Math.max(1, Math.min(10, Math.round(b * 10)))];
 }
 
-const TREE_CROWNS = Object.keys(TREES);
-const CROWN_Z = 46; // how high a street tree spreads
+const BARE = Object.keys(BARE_TREES);
+const CROWN_Z = 46; // how high a street tree spreads (its stand-in until the sheet is in)
 
-/** A bare street tree in a stone planter: its trunk, and its crown (a sprite seen from above). */
+/** A bare street tree in a stone planter, standing up from it (a sprite, as the concept draws them). */
 function drawBareTree(R, o) {
   const { ctx, v } = R;
   const b = propLight(R, o);
@@ -1306,29 +1418,21 @@ function drawBareTree(R, o) {
   const cy = o.y + o.h / 2;
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 7, '#5f5a58', b);
   topFill(R, o.x + 2.5, o.y + 2.5, o.x + o.w - 2.5, o.y + o.h - 2.5, 7, tone('#2b2320', b));
-  cylinder(ctx, v, cx, cy, 2.6, 7, CROWN_Z - 4, tone('#3a2a20', b), tone('#2e2119', b * 0.85));
   const seed = o.seed || 1;
-  const sheet = R.tex && R.tex.sheet('trees', `${Math.round(b * 10)}|${R.look ? R.look.id : '-'}`, levelStyle(R.look, b));
-  if (!sheet) {
-    // Until the crowns have loaded: a few bare boughs.
-    ctx.strokeStyle = tone('#3a2a20', b);
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    for (let k = 0; k < 6; k++) {
-      const a = hash01(seed + k) * Math.PI * 2;
-      line3(ctx, v, cx, cy, CROWN_Z - 6, cx + Math.cos(a) * 24, cy + Math.sin(a) * 24, CROWN_Z + 4);
-    }
-    ctx.stroke();
-    return;
+  const id = BARE[seed % BARE.length];
+  const q = BARE_TREES[id];
+  const H = q.height * (0.9 + 0.2 * hash01(seed * 0.7));
+  if (standingTree(R, id, q, cx, cy, 6, H, b, Math.sin(R.t * 0.9 + seed) * 0.008, false)) return;
+  // Until the sheet has loaded: a trunk and a few bare boughs.
+  cylinder(ctx, v, cx, cy, 2.6, 7, CROWN_Z - 4, tone('#3a2a20', b), tone('#2e2119', b * 0.85));
+  ctx.strokeStyle = tone('#3a2a20', b);
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  for (let k = 0; k < 6; k++) {
+    const a = hash01(seed + k) * Math.PI * 2;
+    line3(ctx, v, cx, cy, CROWN_Z - 6, cx + Math.cos(a) * 24, cy + Math.sin(a) * 24, CROWN_Z + 4);
   }
-  const q = TREES[TREE_CROWNS[seed % TREE_CROWNS.length]];
-  const w = q.size * (0.9 + hash01(seed * 0.7) * 0.25);
-  const h = (w * q.h) / q.w;
-  R.ground(CROWN_Z);
-  ctx.translate(cx, cy);
-  ctx.rotate(hash01(seed * 1.3) * Math.PI * 2);
-  ctx.drawImage(sheet, q.x, q.y, q.w, q.h, -w / 2, -h / 2, w, h);
-  R.reset();
+  ctx.stroke();
 }
 
 /** A newspaper box: the 3D model (prop-art.js) in its colour, its window to the street. */
@@ -1350,6 +1454,14 @@ function drawShelter(R, o) {
   pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 30, 34, '#454956', b);
 }
 
+const BASIN_Z = 13; // the basin's rim
+const WATER_Z = 10;
+
+/**
+ * A park fountain: a round stone basin, inked, its water rippling out from the middle, and the
+ * centre piece standing in it (the 3D model, prop-art.js, leaning toward the camera so its bowls
+ * show; a plain pedestal until it is in).
+ */
 function drawFountain(R, o) {
   const b = propLight(R, o);
   if (b < 0.032) return;
@@ -1357,13 +1469,47 @@ function drawFountain(R, o) {
   const cx = o.x + o.w / 2;
   const cy = o.y + o.h / 2;
   const r = o.w / 2;
-  cylinder(ctx, v, cx, cy, r, 0, 13, tone('#5d686e', b), tone('#4f5a60', b * 0.75));
-  ctx.fillStyle = tone('#25414f', b);
+  const s = v.scale;
+  cylinder(ctx, v, cx, cy, r, 0, BASIN_Z, tone('#9a9488', b), tone('#77726a', b * 0.8));
+  // The inner wall, the water, rings spreading from the middle.
+  ctx.fillStyle = tone('#4e4a44', b);
   ctx.beginPath();
-  disc(ctx, v, cx, cy, r - 8, 11);
+  disc(ctx, v, cx, cy, r - 6, BASIN_Z);
   ctx.fill();
-  cylinder(ctx, v, cx, cy, 9, 11, 28, tone('#687379', b), tone('#56616a', b * 0.8));
-  cylinder(ctx, v, cx, cy, 15, 28, 31, tone('#687379', b), tone('#56616a', b * 0.8));
+  ctx.fillStyle = tone('#1f3a44', b);
+  ctx.beginPath();
+  disc(ctx, v, cx, cy, r - 7.5, WATER_Z);
+  ctx.fill();
+  const sx = v.px(cx, cy);
+  const sy = v.py(cx, cy, WATER_Z);
+  ctx.lineWidth = Math.max(0.8, 1.1 * s);
+  for (let k = 0; k < 3; k++) {
+    const f = (R.t * 0.35 + k / 3) % 1;
+    const rr = (14 + f * (r - 24)) * s;
+    ctx.strokeStyle = `rgba(190,215,225,${(0.28 * (1 - f) * b).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, rr, rr * v.sp, 0, 0, TAU);
+    ctx.stroke();
+  }
+  // Ink round the rim and the foot.
+  ctx.strokeStyle = 'rgba(12,10,14,0.85)';
+  ctx.lineWidth = Math.max(1, 1.3 * s);
+  ctx.beginPath();
+  ctx.ellipse(sx, v.py(cx, cy, BASIN_Z), r * s, r * s * v.sp, 0, 0, TAU);
+  ctx.moveTo(sx + (r - 6) * s, v.py(cx, cy, BASIN_Z));
+  ctx.ellipse(sx, v.py(cx, cy, BASIN_Z), (r - 6) * s, (r - 6) * s * v.sp, 0, 0, TAU);
+  ctx.moveTo(sx + r * s, v.py(cx, cy, 0));
+  ctx.ellipse(sx, v.py(cx, cy, 0), r * s, r * s * v.sp, 0, 0, Math.PI);
+  ctx.stroke();
+  // The centre piece, half as wide as the basin.
+  const k = Math.round(((o.w * 0.5) / propSize('fountain')[1]) * 100) / 100;
+  if (R.props && R.props.drawAt(R, 'fountain', cx, cy, WATER_Z, 0, b, k)) {
+    const hgt = (PROP_MODELS.fountain.mesh.box[1][2] / 10) * k;
+    if (R.cur) R.cur.bill = { w: o.w * 0.5, h: hgt * Math.cos(propPitch('fountain', v.pitch)) + 10, z: WATER_Z, crown: 0.9, solid: true };
+    return;
+  }
+  cylinder(ctx, v, cx, cy, 9, WATER_Z, 28, tone('#8a8478', b), tone('#6d685f', b * 0.8));
+  cylinder(ctx, v, cx, cy, 15, 28, 31, tone('#8a8478', b), tone('#6d685f', b * 0.8));
 }
 
 function drawStatue(R, o) {
@@ -1780,11 +1926,17 @@ const MODELS = {
   dumpster: simple(33, drawDumpster),
   fence: simple(42, drawFence, { fades: false }),
   planter: simple(30, drawPlanter),
-  bench: simple(25, drawBench),
-  tree: (o) => (o.bare ? { h: 62, draw: drawBareTree } : { h: 78 * (o.w / 36), draw: drawTree }),
+  bench: benchModel,
+  // Trees stand up on screen (sprites drawn upright, as the level's concept has them): taller and
+  // wider there than their footprints, so they're culled and ordered by that (cullH, wide), and
+  // cast a round shadow.
+  tree: (o) =>
+    o.bare
+      ? { h: 62, draw: drawBareTree, cullH: 260, wide: 38, shadow: false } // bare boughs cast next to nothing
+      : { h: 78 * (o.w / 36), draw: drawTree, cullH: 340, wide: 30, round: [24 * (o.w / 36), 24 * (o.w / 36), 0] },
   newsbox: simple(26, drawNewsbox),
   shelter: simple(38, drawShelter),
-  fountain: simple(31, drawFountain),
+  fountain: (o) => ({ h: 31, draw: drawFountain, cullH: 150, round: [o.w / 2, o.h / 2, 0] }),
   statue: simple(76, drawStatue),
   barrel: simple(30, drawBarrel),
   bollard: simple(17, drawBollard),
@@ -1861,11 +2013,33 @@ export function modelFor(o, map) {
 // Lamp posts, gate posts and the like. Each is {x, y, r, h, draw(R, p)}; the
 // scene gives it its slot in the painter's order once (it never moves).
 
+const LANTERN = [0, 0];
+
+/**
+ * A street lamp: the 3D model (prop-art.js), its arm out over the street, leaning toward the
+ * camera; where its lantern is drawn is kept on the post (sx, sy, CSS pixels; st: when) for its
+ * glow. A plain post and arm until the model is in.
+ */
 function drawLampPost(R, p) {
   const { ctx, v } = R;
   const b = R.struct(R.L.lit(p.x, p.y)) * 0.9;
   const on = lampLit(p.lamp, R.t);
   const H = p.h;
+  const heading = Math.atan2(p.ay, p.ax);
+  if (!v.flat && R.props && R.props.drawAt(R, 'lamp', p.x, p.y, 0, heading, b)) {
+    R.props.offsetOf(v, 'lamp', heading, 1, PROP_MODELS.lamp.light, LANTERN);
+    p.sx = v.px(p.x, p.y) + LANTERN[0];
+    p.sy = v.py(p.x, p.y, 0) + LANTERN[1];
+    p.st = R.t;
+    if (on) {
+      // The glass alight.
+      ctx.fillStyle = 'rgba(255,226,160,0.9)';
+      ctx.beginPath();
+      ctx.ellipse(p.sx, p.sy, 2.6 * v.scale, 3.4 * v.scale, 0, 0, TAU);
+      ctx.fill();
+    }
+    return;
+  }
   if (v.flat) {
     ctx.fillStyle = tone('#55585d', b);
     ctx.beginPath();
@@ -1993,7 +2167,8 @@ export function buildProps(scene, view) {
       bd = d;
       if (s.dir === 'v') { ax = l.x < s.x + s.w / 2 ? 1 : -1; ay = 0; } else { ax = 0; ay = l.y < s.y + s.h / 2 ? 1 : -1; }
     }
-    out.push({ x: l.x, y: l.y, r: 4, h: 96, lamp: l, ax, ay, draw: drawLampPost, gx: l.x + ax * 20, gy: l.y + ay * 20, gz: 96, glow: 24 });
+    // (Culled by cullH: the post leans toward the camera, so it reaches higher up the screen than it stands.)
+    out.push({ x: l.x, y: l.y, r: 4, h: 96, cullH: 200, lamp: l, ax, ay, draw: drawLampPost, gx: l.x + ax * 20, gy: l.y + ay * 20, gz: 96, glow: 24 });
   }
   for (const c of map.checkpoints || []) {
     const h = c.h || c.w || 120;

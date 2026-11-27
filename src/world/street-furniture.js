@@ -88,9 +88,10 @@ export function placeStreetFurniture(map, seed, ob, sw) {
       }
       // Newspaper boxes near a corner, at the back of the sidewalk.
       if (rnd() < 0.3) newsPair(side, rnd() < 0.5 ? r(70, 120) : side.len - r(70, 120));
-      // Trees along the curb.
-      for (let t = r(90, 170); t < side.len - 90; t += r(190, 280)) {
-        if (rnd() < 0.25) continue;
+      // Trees along the curb, now and then (a few to a block: they stand up on screen, and more
+      // read as clutter).
+      for (let t = r(100, 200); t < side.len - 90; t += r(280, 400)) {
+        if (rnd() < 0.4) continue;
         put('tree', at(side, t, TREE_PLANTER, TREE_PLANTER, 10), { bare: true, planter: true, seed: Math.floor(rnd() * 1e6) });
       }
     }

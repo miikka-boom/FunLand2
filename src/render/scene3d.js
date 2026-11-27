@@ -51,7 +51,10 @@ export class Scene {
       if (!o._r3) {
         const m = modelFor(o, this.map);
         // a: how solid it is drawn (fades when it hides the survivor); stamp: seen this frame.
-        o._r3 = { h: m.h, draw: m.draw, tall: m.h >= 30, fades: m.fades !== false && m.h >= 30, shadow: m.shadow !== false, rank: 0, a: 1, hide: 0, stamp: 0, u0: 0, u1: 0, data: m.data || null, posters: null, art: null };
+        // cullH, wide: how high and how far to the sides it shows on screen past its box (a tree
+        // drawn standing up); round: a round shadow [rx, ry, angle] instead of its box's; bill:
+        // left by its draw, its upright sprite's size on screen (billHides).
+        o._r3 = { h: m.h, draw: m.draw, tall: m.h >= 30, fades: m.fades !== false && m.h >= 30, shadow: m.shadow !== false, round: m.round || null, cullH: m.cullH || 0, wide: m.wide || 0, bill: null, rank: 0, a: 1, hide: 0, stamp: 0, u0: 0, u1: 0, data: m.data || null, posters: null, art: null };
       }
       // What hangs on it (posters, rooftop words) is put back by buildProps.
       o._r3.posters = null;
@@ -63,8 +66,8 @@ export class Scene {
       const r = st[i]._r3;
       r.rank = rank[i];
       spanU(view, st[i], span);
-      r.u0 = span[0];
-      r.u1 = span[1];
+      r.u0 = span[0] - r.wide;
+      r.u1 = span[1] + r.wide;
     }
     this._grid();
     // Things that are drawn but aren't obstacles (lamp posts, gate posts, small decor...).
@@ -146,7 +149,7 @@ export class Scene {
           const vb = view.bx * xb;
           const vc = view.by * ya;
           const vd = view.by * yb;
-          const top = view.oy + (va < vb ? va : vb) + (vc < vd ? vc : vd) + view.bz * (r.h + 40);
+          const top = view.oy + (va < vb ? va : vb) + (vc < vd ? vc : vd) + view.bz * ((r.cullH || r.h) + 40);
           const bot = view.oy + (va > vb ? va : vb) + (vc > vd ? vc : vd);
           if (bot < -24 || top > H + 24) continue;
           out.push(o);
@@ -167,7 +170,7 @@ export class Scene {
       for (let cx = x0; cx <= x1; cx++) {
         const list = this.pgrid[cy * this.gw + cx];
         if (!list) continue;
-        for (let i = 0; i < list.length; i++) if (view.onScreen(list[i].x, list[i].y, 60, list[i].h || 0)) out.push(list[i]);
+        for (let i = 0; i < list.length; i++) if (view.onScreen(list[i].x, list[i].y, 60, list[i].cullH || list[i].h || 0)) out.push(list[i]);
       }
     }
     return out;
@@ -207,10 +210,27 @@ export class Scene {
       const rec = o._r3;
       if (rec.h <= z || u <= rec.u0 || u >= rec.u1) continue;
       if (solidOnly && rec.a < 0.6) continue;
-      if (boxHides(view, o, 0, rec.h, x, y, z)) return o;
+      if (boxHides(view, o, 0, rec.h, x, y, z) || (rec.bill && rec.bill.solid && billHides(view, o, rec.bill, x, y, z))) return o;
     }
     return null;
   }
+}
+
+/**
+ * Does the upright sprite of static o (bill: { w, h, z, crown }: its width and its height on
+ * screen in world units, the height its foot stands at, the share of it from the top that hides,
+ * a tree's crown) hide the point (x, y, z)? Only what stands behind its foot can be.
+ */
+export function billHides(view, o, bill, x, y, z) {
+  if (view.flat) return false;
+  const cx = o.x + o.w / 2;
+  const cy = o.y + o.h / 2;
+  if (view.depth(x, y) >= view.depth(cx, cy)) return false;
+  const s = view.scale;
+  if (Math.abs(view.px(x, y) - view.px(cx, cy)) > (bill.w * s) / 2) return false;
+  const foot = view.py(cx, cy, bill.z);
+  const py = view.py(x, y, z);
+  return py > foot - bill.h * s && py < foot - bill.h * s * (1 - bill.crown);
 }
 
 /**

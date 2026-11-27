@@ -210,6 +210,22 @@ export function cylinder(ctx, v, cx, cy, r, z0, z1, cTop, cSide) {
 }
 
 /** A circle lying flat at height z (subpath only). */
+/** An ellipse lying on the ground (subpath): radii rx along angle ang, ry across it. */
+export function groundEllipse(ctx, v, cx, cy, rx, ry, ang = 0, z = 0) {
+  const ca = Math.cos(ang);
+  const sa = Math.sin(ang);
+  for (let k = 0; k < 16; k++) {
+    const t = (k / 16) * TAU;
+    const u = Math.cos(t) * rx;
+    const w = Math.sin(t) * ry;
+    const x = cx + u * ca - w * sa;
+    const y = cy + u * sa + w * ca;
+    if (k) ctx.lineTo(v.px(x, y), v.py(x, y, z));
+    else ctx.moveTo(v.px(x, y), v.py(x, y, z));
+  }
+  ctx.closePath();
+}
+
 export function disc(ctx, v, cx, cy, r, z = 0) {
   const sx = v.px(cx, cy);
   const sy = v.py(cx, cy, z);

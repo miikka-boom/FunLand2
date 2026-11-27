@@ -642,8 +642,11 @@ and no dependencies.
   an amber centre line. The ground, roofs and brick facades are textured, the
   roofs carry AC units, condensers, vents, skylights, chimneys and water tanks,
   taller buildings have fire escapes, papers and trash are strewn about, bare
-  trees in planters line the curbs, and the parked cars, newspaper boxes and
-  bus shelters are real 3D models baked for the camera. The art was made with Scenario and the ground and
+  trees stand in planters along the curbs, and the parked cars, newspaper boxes,
+  bus shelters and cast-iron lamp posts are real 3D models baked for the camera.
+  Parks have grass, wrought-iron railings, leafy trees, slanted benches and
+  fountains; tall things (trees, lamps, the fountains' centre pieces) lean
+  toward the steep camera as the zombies do, so they read. The art was made with Scenario and the ground and
   roofs are painted once into caches, so it costs no more per frame than the
   flat streets did: see [docs/STREETS-ART.md](docs/STREETS-ART.md).
   **Night look (this map)** under Presentation switches the look per map type:
