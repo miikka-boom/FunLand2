@@ -23,6 +23,7 @@ import { initLoot, spawnSleepers, updateLoot } from './loot.js';
 import { initWorldEvents, updateWorldEvents, spawnNest, openBreach, takeAmmo } from './world-events.js';
 import { addLore } from '../world/lore-gen.js';
 import { addBen } from '../world/ben-gen.js';
+import { furnishStreets } from '../world/street-furniture.js';
 import { loadBenMemory, initBen, updateBen } from './ben.js';
 import { DEG, dampFactor, pointInRect, rand } from '../util.js';
 import { todayKey, dailySeed } from '../playtest.js';
@@ -45,6 +46,20 @@ export const GENERATORS = {
   suburbia: generateSuburbia,
   junkyard: generateJunkyard,
 };
+
+/**
+ * From the start, can you still walk to the safe room, to every find not shut in a boarded room,
+ * and up to every boarded room's door? (The streets' furniture is taken out again if not.)
+ */
+function reachesAll(world, map) {
+  const f = world.flow;
+  f.compute(map.start.x, map.start.y);
+  const er = map.endRoom.interior;
+  if (!Number.isFinite(f.pathDist(er.x + er.w / 2, er.y + er.h / 2))) return false;
+  for (const s of map.stashes || []) if (s.tier !== 'room' && !Number.isFinite(f.pathDist(s.x, s.y))) return false;
+  for (const rm of map.sealed || []) if (!Number.isFinite(f.pathDist(rm.outside.x, rm.outside.y))) return false;
+  return true;
+}
 
 export class Game {
   constructor(settings, audio, haptics) {
@@ -91,7 +106,15 @@ export class Game {
     if (S.lore) addLore(map, map.seed); // graffiti, posters, dens: visual only
     this.benMemory = loadBenMemory();
     if (S.ben) addBen(map, map.seed, { memory: this.benMemory, level: this.level }); // signs of Ben: visual only
+    // Last, the streets' furniture (trees, newspaper boxes, bus shelters); taken out again if it
+    // cut anything that matters off from the start.
+    const furniture = furnishStreets(map, map.seed);
     if (map.obstacles.length !== base.length || map.obstacles.some((o, i) => o !== base[i])) world = new World(map);
+    if (furniture.length && !reachesAll(world, map)) {
+      const gone = new Set(furniture);
+      map.obstacles = map.obstacles.filter((o) => !gone.has(o));
+      world = new World(map);
+    }
     this.world = world;
     // Static field toward the goal: route progress (places the Tank) and the
     // walking distance shown on the safe-room arrow.

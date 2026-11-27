@@ -27,6 +27,7 @@ references, and is painted into caches so it costs no more per frame than the fl
 | `asphalt.webp`, `sidewalk.webp`, `roof.webp`, `brick.webp` | Seamless 1024 px surfaces | Scenario Texture (GPT Image, seam erased), a concept crop as reference |
 | `rooftop.webp` + `rooftop.js` | AC unit, vent, skylight, hatch, mushroom vent, condenser, chimney, water tank | GPT Image 2.5, one transparent sheet, cut by alpha |
 | `litter.webp` + `litter.js` | Newspapers, a page, loose papers, trash bags, manhole and drain covers, cardboard, cans | the same |
+| `trees.webp` + `trees.js` | Four bare tree crowns seen from above | the same |
 
 `textures.js` loads them. A surface's texture is used for its detail only: it is tinted to the
 surface's colour (`tintPixels`: the colour times the texture's luminance over its mean), so each
@@ -66,6 +67,30 @@ baking a frame at most), the paint swapped for each car's colour by hue (`recolo
 as bright as the light where the car stands from darkened copies. Box trucks and wrecks are drawn
 as before.
 
+## Street furniture (world/street-furniture.js)
+
+Bare trees in stone planters along the curbs, pairs of newspaper boxes near the corners and bus
+shelters on the longer stretches, each facing the street (`heading`). They are the very last
+thing done to a map (`game.js` newRun, after the features, the finds, the Witch, the lore and
+Ben), from a random stream of their own, so nothing else moves; they keep off the crossings, the
+lamps, medkits, doorways, boarded rooms' fronts, stashes and anything written on the ground,
+and stand clear of everything already there. You walk round them; shots and sight pass. If they
+ever cut the safe room, a find or a boarded room's door off from the start, newRun takes them all
+out again.
+
+- Newspaper boxes and bus shelters are 3D models like the car (`prop-art.js` holds all three:
+  `PROPS`), each fitted to its footprint and turned to its heading; a newspaper box's green paint
+  is swapped for its own colour.
+- A bare tree: its planter and trunk drawn as boxes and a cylinder, its crown a sprite from the
+  sheet, flat at crown height and turned by its seed, darkened to the tree's light.
+
+## Fire escapes (models.js fireEscape)
+
+On the wall that faces the camera of most buildings of three floors or more (from their seed):
+an iron platform under each upper floor's windows with its railing, ladders zigzagging up between
+them, a drop ladder from the lowest. Drawn as see-through iron (frames, grating bars, rails and
+rungs, each a dark line under a lighter one), lit as that wall is, as part of the building.
+
 ## Making more
 
 - A new surface: Scenario Texture with a concept crop as `referenceImages`, `eraseSeam: true`;
@@ -73,5 +98,8 @@ as before.
 - New sprites: GPT Image with `background: "transparent"`, a grid of pieces with space between
   them, a concept crop as reference; cut by alpha and pack (pieces in reading order, each with a
   size in world units), as `rooftop.js` and `litter.js` are.
-- A new 3D prop: a concept image on a plain background (three-quarter view), image-to-3D with a
-  low face limit and no PBR, then `tools/props/build_props.py <name> <glb>`.
+- A new 3D prop: a concept image on a plain background (three-quarter view; paint it green if
+  its colour is to vary), image-to-3D with a low face limit and no PBR, then
+  `tools/props/build_props.py <name> <glb>` (`--axis short` if it faces across its length,
+  `--size` for its longer side in model units, `--flip` if its front comes out behind: bake it
+  from the four sides to check), and an entry in `PROPS`.

@@ -1,23 +1,36 @@
-// Props as baked 3D models: the streets' parked cars.
+// Props as baked 3D models: the streets' parked cars, newspaper boxes and bus shelters.
 //
-// The car is a real mesh (made with Scenario: a concept image after the level's concept art,
-// then image-to-3D; tools/props/build_props.py turns it into the zombies' mesh format), rendered
-// into sprites by the zombies' baker (zombie-bake.js) through the game's own camera, so it is
-// right from every side and at every tilt: one sprite per colour, heading and camera, baked when
-// first wanted (a few a frame at most). Its texture is painted green, a colour nothing else on
-// a car is, so each car's colour is the texture with its paint swapped (recolorPaint).
+// Each is a real mesh (made with Scenario: a concept image after the level's concept art, then
+// image-to-3D; tools/props/build_props.py turns it into the zombies' mesh format), rendered into
+// sprites by the zombies' baker (zombie-bake.js) through the game's own camera, so it is right
+// from every side and at every tilt: one sprite per prop, colour, heading and camera, baked when
+// first wanted (a few ms of it a frame at most). The car and the newspaper box are painted
+// green, a colour nothing else on them is, so each one's colour is its texture with the paint
+// swapped (recolorPaint).
 //
-// Light: a car is drawn as bright as the light where it stands, from a copy of its sprite
+// Light: a prop is drawn as bright as the light where it stands, from a copy of its sprite
 // darkened to one of ten levels (and the night look's shade, as the zombies are).
 
 import { decodeMesh, Texture, bake } from './zombie-bake.js';
 import { darkenStyles, SCALE } from './zombie-art.js';
 import { CAR, CAR_TEXTURE } from '../../assets/props/car.js';
+import { NEWSBOX, NEWSBOX_TEXTURE } from '../../assets/props/newsbox.js';
+import { SHELTER, SHELTER_TEXTURE } from '../../assets/props/shelter.js';
 
 const LEVELS = 10;
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
-const CAR_LEN = (CAR.box[1][0] - CAR.box[0][0]) * SCALE; // world units nose to tail
-const CAR_WID = (CAR.box[1][1] - CAR.box[0][1]) * SCALE;
+
+/** The props: each one's mesh and texture, and whether its paint is swapped for each one's colour. */
+export const PROPS = {
+  car: { mesh: CAR, texture: CAR_TEXTURE, paint: true },
+  newsbox: { mesh: NEWSBOX, texture: NEWSBOX_TEXTURE, paint: true },
+  shelter: { mesh: SHELTER, texture: SHELTER_TEXTURE, paint: false },
+};
+/** How long (forward, along a) and how wide (c) a prop is as built, world units. */
+export const propSize = (name) => {
+  const b = PROPS[name].mesh.box;
+  return [(b[1][0] - b[0][0]) * SCALE, (b[1][1] - b[0][1]) * SCALE];
+};
 
 /** Is texel (r, g, b) the car's green paint? */
 export const isPaint = (r, g, b) => g > r * 1.15 && g > b * 1.15 && g - Math.min(r, b) > 0.3 * g;
@@ -75,34 +88,40 @@ export class PropArt {
     this.makeCanvas = opts.makeCanvas || (() => document.createElement('canvas'));
     this.loadPixels = opts.loadPixels || defaultLoad;
     this.budget = opts.budget ?? 6;
-    this.state = 'idle';
-    this.mesh = null;
-    this.base = null; // { w, h, data }
-    this.textures = new Map(); // colour -> Texture
+    this.models = {}; // name -> { state, mesh, base: { w, h, data }, textures: colour -> Texture }
     this.sprites = new Map(); // key -> { canvas, ox, oy, w, h, lit: [] }
     this.key = '';
     this.spent = 0;
     this.styles = darkenStyles(null);
   }
 
-  load() {
-    if (this.state !== 'idle') return;
-    this.state = 'loading';
-    this.loadPixels(CAR_TEXTURE).then(
+  /** Prop name's model, its texture loading the first time it's asked for. */
+  _model(name) {
+    let m = this.models[name];
+    if (m) return m;
+    const def = PROPS[name];
+    m = this.models[name] = { state: 'loading', mesh: null, base: null, textures: new Map(), paint: def.paint };
+    this.loadPixels(def.texture).then(
       (px) => {
-        this.base = px;
-        this.mesh = decodeMesh(CAR);
-        this.state = 'ready';
+        m.base = px;
+        m.mesh = decodeMesh(def.mesh);
+        m.state = 'ready';
       },
       () => {
-        this.state = 'failed';
+        m.state = 'failed';
       },
     );
+    return m;
   }
 
-  /** Each frame: what the sprites depend on besides the car (camera tilt and zoom, the look). */
+  /** Start loading every prop's texture. */
+  load() {
+    for (const name of Object.keys(PROPS)) this._model(name);
+  }
+
+  /** Each frame: what the sprites depend on besides the prop (camera tilt and zoom, the look). */
   begin(v, dpr, look) {
-    if (this.state === 'idle') this.load();
+    this.load();
     const key = `${v.pitch.toFixed(4)}|${v.scale.toFixed(4)}|${dpr}|${look ? look.id : '-'}`;
     if (key !== this.key) {
       this.key = key;
@@ -112,28 +131,33 @@ export class PropArt {
     this.spent = 0;
   }
 
-  ready() {
-    return this.state === 'ready';
+  /** Is prop name's model in (default: the car)? */
+  ready(name = 'car') {
+    const m = this.models[name];
+    return !!m && m.state === 'ready';
   }
 
-  _texture(color) {
-    let t = this.textures.get(color);
+  _texture(m, color) {
+    const key = m.paint ? color : '-';
+    let t = m.textures.get(key);
     if (!t) {
-      const { w, h, data } = this.base;
-      t = new Texture(w, h, recolorPaint(data, hexRgb(color)));
-      this.textures.set(color, t);
+      const { w, h, data } = m.base;
+      t = new Texture(w, h, m.paint ? recolorPaint(data, hexRgb(color)) : data);
+      m.textures.set(key, t);
     }
     return t;
   }
 
-  /** The car's sprite for colour, heading (relative to the camera) and scale, baked now if the budget allows. */
-  sprite(R, color, phi, s) {
-    const k = `${color}|${phi.toFixed(3)}|${s.toFixed(3)}`;
+  /** Prop name's sprite for colour, heading (relative to the camera) and scale, baked now if the budget allows. */
+  sprite(R, name, color, phi, s) {
+    const m = this._model(name);
+    if (m.state !== 'ready') return null;
+    const k = `${name}|${m.paint ? color : '-'}|${phi.toFixed(3)}|${s.toFixed(3)}`;
     let sp = this.sprites.get(k);
     if (sp || (this.spent > 0 && this.spent >= this.budget)) return sp || null;
     const t0 = now();
     const v = R.v;
-    const b = bake([{ mesh: this.mesh }], this._texture(color), { phi, sp: v.sp, cp: v.cp, ppu: SCALE * v.scale * R.dpr * s, ss: 2, shade: { rim: 0 } });
+    const b = bake([{ mesh: m.mesh }], this._texture(m, color), { phi, sp: v.sp, cp: v.cp, ppu: SCALE * v.scale * R.dpr * s, ss: 2, shade: { rim: 0 } });
     const canvas = this.makeCanvas();
     canvas.width = Math.max(1, b.w);
     canvas.height = Math.max(1, b.h);
@@ -168,19 +192,25 @@ export class PropArt {
     return c;
   }
 
-  /**
-   * Draw parked car o (a footprint, its colour, which end is its front) at brightness b. Returns
-   * false if it can't yet (the caller draws it its old way meanwhile).
-   */
+  /** Draw parked car o (a footprint, its colour, which end is its front) at brightness b. */
   drawCar(R, o, b) {
-    if (this.state !== 'ready') return false;
+    return this.drawProp(R, 'car', o, b, carHeading(o), o.color || '#6b6b6b');
+  }
+
+  /**
+   * Draw prop name on footprint o, facing heading (radians, 0: +x; a multiple of a right angle),
+   * in colour (if its paint is swapped), at brightness b: fitted to the footprint, standing on
+   * its middle. Returns false if it can't yet (the caller draws it its old way meanwhile).
+   */
+  drawProp(R, name, o, b, heading, color) {
     const v = R.v;
-    const vert = o.h > o.w;
-    const len = vert ? o.h : o.w;
-    const wid = vert ? o.w : o.h;
-    const s = Math.round(Math.min((len * 0.96) / CAR_LEN, (wid * 0.96) / CAR_WID) * 100) / 100;
-    const phi = carHeading(o) - v.yaw;
-    const sp = this.sprite(R, o.color || '#6b6b6b', Math.atan2(Math.sin(phi), Math.cos(phi)), s);
+    const along = Math.abs(Math.cos(heading)) > 0.5; // its forward axis runs along x
+    const len = along ? o.w : o.h;
+    const wid = along ? o.h : o.w;
+    const [pl, pw] = propSize(name);
+    const s = Math.round(Math.min((len * 0.96) / pl, (wid * 0.96) / pw) * 100) / 100;
+    const phi = heading - v.yaw;
+    const sp = this.sprite(R, name, color, Math.atan2(Math.sin(phi), Math.cos(phi)), s);
     if (!sp) return false;
     const lv = Math.max(1, Math.min(LEVELS, Math.round(b * LEVELS)));
     const img = this._lit(sp, lv);

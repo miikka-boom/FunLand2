@@ -21,6 +21,7 @@ import { buildDecorProps } from './decor3d.js';
 import { RoofCache } from './roof-cache.js';
 import { darkenStyles } from './zombie-art.js';
 import { ROOFTOP } from '../../assets/streets/rooftop.js';
+import { TREES } from '../../assets/streets/trees.js';
 
 const pts = new Float64Array(16);
 const samp = new Float32Array(12);
@@ -284,12 +285,72 @@ function drawBuilding(R, o, rec) {
     onFaceX(R, x0, y0, x1, y1, (c, len) => face(c, len, 1));
     onFaceY(R, x0, y0, x1, y1, (c, len) => face(c, len, 2));
     wallPosters(R, o, rec);
+    if (!o.ware && !d.kiosk) fireEscape(R, o, d, H);
   }
   // Roof. A flat one (no lettering on it, which can change) is drawn from a picture of it,
   // painted once, where the camera allows (roof-cache.js).
   if (R.roofs && !d.gable && !rec.art && RoofCache.fits(v)) {
     R.roofs.draw(R, o, x0, y0, x1, y1, H - 6, H + 2, (R2) => drawRoof(R2, o, rec));
   } else drawRoof(R, o, rec);
+}
+
+/**
+ * A fire escape on the wall that faces the camera (most buildings of three floors or more, from
+ * their seed): an iron platform under each upper floor's windows with its railing, stairs
+ * zigzagging between them, a drop ladder from the lowest. Lit as that wall is.
+ */
+function fireEscape(R, o, d, H) {
+  const { ctx, v } = R;
+  if (v.flat || !v.faceY || d.floors < 3 || o.w < 120) return;
+  const seed = o.seed || 1;
+  if (hash01(seed * 0.031 + 7) > 0.6) return;
+  const W = 46;
+  const D = 9;
+  const dir = v.faceY > 0 ? 1 : -1; // out of the wall, toward the camera
+  const yw = dir > 0 ? o.y + o.h : o.y;
+  const yo = yw + dir * D;
+  const x0 = o.x + 16 + hash01(seed * 0.17 + 3) * (o.w - 32 - W);
+  const x1 = x0 + W;
+  const levels = [];
+  for (let f = 1; f < d.floors; f++) {
+    const z = 25 + 34 * f;
+    if (z > H - 12) break;
+    levels.push(z);
+  }
+  if (!levels.length) return;
+  const b = R.struct(R.L.lit((x0 + x1) / 2, yw + dir * 12)) * R.fY;
+  const ym = yw + dir * D * 0.5;
+  // Iron, seen through: every platform an open frame with grating across it, its railing, a
+  // ladder up from the one below (the other way each floor), a drop ladder from the lowest.
+  ctx.lineCap = 'butt';
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.strokeStyle = pass ? tone('#6a6c76', b) : 'rgba(8,8,10,0.9)';
+    ctx.lineWidth = pass ? 0.9 : 2.4;
+    ctx.beginPath();
+    for (let i = 0; i < levels.length; i++) {
+      const z = levels[i];
+      // The platform: its frame and the bars across it.
+      line3(ctx, v, x0, yw, z, x0, yo, z);
+      line3(ctx, v, x1, yw, z, x1, yo, z);
+      line3(ctx, v, x0, yo, z, x1, yo, z);
+      for (let k = 1; k < 4; k++) line3(ctx, v, x0, yw + (dir * D * k) / 4, z, x1, yw + (dir * D * k) / 4, z);
+      // Its railing.
+      line3(ctx, v, x0, yo, z + 8, x1, yo, z + 8);
+      line3(ctx, v, x0, yw, z + 8, x0, yo, z + 8);
+      line3(ctx, v, x1, yw, z + 8, x1, yo, z + 8);
+      for (let k = 0; k <= 4; k++) line3(ctx, v, x0 + (W * k) / 4, yo, z, x0 + (W * k) / 4, yo, z + 8);
+      // A ladder: two rails and its rungs.
+      const lad = (xa, za, xb, zb) => {
+        for (const dy of [-2.2, 2.2]) line3(ctx, v, xa, ym + dy, za, xb, ym + dy, zb);
+        for (let t = 0.12; t < 1; t += 0.16) line3(ctx, v, xa + (xb - xa) * t, ym - 2.2, za + (zb - za) * t, xa + (xb - xa) * t, ym + 2.2, za + (zb - za) * t);
+      };
+      if (i === 0) lad(x1 - 6, z - 18, x1 - 6, z);
+      else if (i % 2 === 1) lad(x0 + 6, levels[i - 1], x1 - 14, z);
+      else lad(x1 - 6, levels[i - 1], x0 + 14, z);
+    }
+    ctx.stroke();
+  }
+  ctx.lineCap = 'round';
 }
 
 /** A building's roof (its parapet, the roof inside it, what stands on it). */
@@ -1223,6 +1284,72 @@ function drawTree(R, o) {
   ctx.fill();
 }
 
+// --- Street furniture (world/street-furniture.js) --------------------------------------------
+
+/** The fill that darkens a sprite sheet to brightness b (one of ten levels, and the night look's shade). */
+function levelStyle(look, b) {
+  const key = look ? look.id : '-';
+  let st = styleCache.get(key);
+  if (!st) styleCache.set(key, (st = darkenStyles(look)));
+  return st[Math.max(1, Math.min(10, Math.round(b * 10)))];
+}
+
+const TREE_CROWNS = Object.keys(TREES);
+const CROWN_Z = 46; // how high a street tree spreads
+
+/** A bare street tree in a stone planter: its trunk, and its crown (a sprite seen from above). */
+function drawBareTree(R, o) {
+  const { ctx, v } = R;
+  const b = propLight(R, o);
+  if (b < 0.032) return;
+  const cx = o.x + o.w / 2;
+  const cy = o.y + o.h / 2;
+  pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 7, '#5f5a58', b);
+  topFill(R, o.x + 2.5, o.y + 2.5, o.x + o.w - 2.5, o.y + o.h - 2.5, 7, tone('#2b2320', b));
+  cylinder(ctx, v, cx, cy, 2.6, 7, CROWN_Z - 4, tone('#3a2a20', b), tone('#2e2119', b * 0.85));
+  const seed = o.seed || 1;
+  const sheet = R.tex && R.tex.sheet('trees', `${Math.round(b * 10)}|${R.look ? R.look.id : '-'}`, levelStyle(R.look, b));
+  if (!sheet) {
+    // Until the crowns have loaded: a few bare boughs.
+    ctx.strokeStyle = tone('#3a2a20', b);
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    for (let k = 0; k < 6; k++) {
+      const a = hash01(seed + k) * Math.PI * 2;
+      line3(ctx, v, cx, cy, CROWN_Z - 6, cx + Math.cos(a) * 24, cy + Math.sin(a) * 24, CROWN_Z + 4);
+    }
+    ctx.stroke();
+    return;
+  }
+  const q = TREES[TREE_CROWNS[seed % TREE_CROWNS.length]];
+  const w = q.size * (0.9 + hash01(seed * 0.7) * 0.25);
+  const h = (w * q.h) / q.w;
+  R.ground(CROWN_Z);
+  ctx.translate(cx, cy);
+  ctx.rotate(hash01(seed * 1.3) * Math.PI * 2);
+  ctx.drawImage(sheet, q.x, q.y, q.w, q.h, -w / 2, -h / 2, w, h);
+  R.reset();
+}
+
+/** A newspaper box: the 3D model (prop-art.js) in its colour, its window to the street. */
+function drawNewsbox(R, o) {
+  const b = propLight(R, o);
+  if (b < 0.032) return;
+  if (R.props && R.props.drawProp(R, 'newsbox', o, b, o.heading || 0, o.color || NEWS_FALLBACK)) return;
+  pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 0, 22, o.color || NEWS_FALLBACK, b);
+}
+const NEWS_FALLBACK = '#2d5aa8';
+
+/** A bus shelter: the 3D model (prop-art.js), open to the street. */
+function drawShelter(R, o) {
+  const b = propLight(R, o);
+  if (b < 0.032) return;
+  if (R.props && R.props.drawProp(R, 'shelter', o, b, o.heading || 0, null)) return;
+  const posts = [[o.x + 1, o.y + 1], [o.x + o.w - 4, o.y + 1], [o.x + 1, o.y + o.h - 4], [o.x + o.w - 4, o.y + o.h - 4]];
+  for (const [x, y] of posts) pbox(R, x, y, x + 3, y + 3, 0, 30, '#2b2d33', b);
+  pbox(R, o.x, o.y, o.x + o.w, o.y + o.h, 30, 34, '#454956', b);
+}
+
 function drawFountain(R, o) {
   const b = propLight(R, o);
   if (b < 0.032) return;
@@ -1654,7 +1781,9 @@ const MODELS = {
   fence: simple(42, drawFence, { fades: false }),
   planter: simple(30, drawPlanter),
   bench: simple(25, drawBench),
-  tree: (o) => ({ h: 78 * (o.w / 36), draw: drawTree }),
+  tree: (o) => (o.bare ? { h: 62, draw: drawBareTree } : { h: 78 * (o.w / 36), draw: drawTree }),
+  newsbox: simple(26, drawNewsbox),
+  shelter: simple(38, drawShelter),
   fountain: simple(31, drawFountain),
   statue: simple(76, drawStatue),
   barrel: simple(30, drawBarrel),

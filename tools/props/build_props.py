@@ -4,12 +4,15 @@ format, the same one the zombie models use (assets/zombies/meshes.js), so the ba
 src/render/zombie-bake.js can render it into sprites for the camera.
 
     python3 tools/props/build_props.py car tools/props/source/car.glb
+    python3 tools/props/build_props.py newsbox tools/props/source/newsbox.glb --axis short --size 110
+    python3 tools/props/build_props.py shelter tools/props/source/shelter.glb --axis short --size 640
 
 Writes assets/props/<name>.js (the mesh, base64) and assets/props/<name>.webp (its texture).
 
 Axes as the zombies have them: a forward (the prop's front), c to its right, h up; model units
-are a tenth of a world unit (zombie-art.js SCALE). The mesh is scaled so its length along a is
-LENGTH model units, centred on the ground under its middle.
+are a tenth of a world unit (zombie-art.js SCALE). Its forward axis is its longer side (a car)
+or, with --axis short, its shorter one (a bus shelter faces across its length). It is scaled so
+its longer side is --size model units (LENGTH by default), centred on the ground under its middle.
 
 Every triangle gets an outline shell: the same surface pushed out along its normals by SHELL
 model units, wound inward and coloured from a black band added along the top of the texture.
@@ -17,7 +20,8 @@ The baker draws only what turns its winding toward the camera, so a shell's near
 and its far side shows as a black rim round the prop: the hand-inked edge the zombies have.
 
 Which end is the front: a car's cabin (its highest part) sits back from its middle, behind a
-long hood, so the front is the end away from the cabin. --flip turns it round if a model needs.
+long hood, so the front is the end away from the cabin (a newspaper box's coin hood sits back the
+same way). --flip turns it round if a model needs (check with a bake: tests/prop-art.test.js).
 """
 
 import base64
@@ -151,7 +155,7 @@ def b64(arr):
     return base64.b64encode(np.ascontiguousarray(arr).tobytes()).decode("ascii")
 
 
-def build(name, src, flip=False):
+def build(name, src, flip=False, axis="long", size=LENGTH):
     gltf, binary = read_glb(src)
     pos, nrm, uv, tri, tex = gather(gltf, binary)
     assert tex is not None, "the GLB has no base colour texture"
@@ -162,6 +166,8 @@ def build(name, src, flip=False):
     # glTF: y up. The long ground axis is the prop's length.
     ext = pos.max(axis=0) - pos.min(axis=0)
     along = 0 if ext[0] >= ext[2] else 2
+    if axis == "short":
+        along = 2 if along == 0 else 0
     across = 2 if along == 0 else 0
     h = pos[:, 1] - pos[:, 1].min()
     mid = (pos.max(axis=0) + pos.min(axis=0)) / 2
@@ -178,7 +184,7 @@ def build(name, src, flip=False):
     # flipped... keep the winding: if the axis swap mirrored the mesh, mirror c back.
     M = np.array([[1 if along == 0 else 0, 0, 1 if along == 2 else 0], [1 if across == 0 else 0, 0, 1 if across == 2 else 0], [0, 1, 0]])
     mirrored = np.linalg.det(M) > 0  # (x, y, z) -> (a, c, h) with det +1 swaps handedness here
-    s = LENGTH / (a.max() - a.min())
+    s = size / max(a.max() - a.min(), c.max() - c.min())
     P = np.c_[a, c, h] * s
     Nn = np.c_[na, nc, nh]
     if mirrored:
@@ -241,5 +247,7 @@ def build(name, src, flip=False):
 
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    build(args[0], args[1], flip="--flip" in sys.argv)
+    argv = sys.argv[1:]
+    opt = lambda k, d: argv[argv.index(k) + 1] if k in argv else d
+    args = [a for i, a in enumerate(argv) if not a.startswith("--") and (i == 0 or argv[i - 1] not in ("--axis", "--size"))]
+    build(args[0], args[1], flip="--flip" in argv, axis=opt("--axis", "long"), size=float(opt("--size", LENGTH)))

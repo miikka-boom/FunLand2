@@ -10,6 +10,7 @@
 
 import { ROOFTOP_IMAGE } from '../../assets/streets/rooftop.js';
 import { LITTER_IMAGE } from '../../assets/streets/litter.js';
+import { TREES_IMAGE } from '../../assets/streets/trees.js';
 
 const FILES = {
   asphalt: 'assets/streets/asphalt.webp',
@@ -74,7 +75,7 @@ export class Textures {
       };
       img.src = base + file;
     }
-    for (const [name, file] of [['rooftop', ROOFTOP_IMAGE], ['litter', LITTER_IMAGE]]) {
+    for (const [name, file] of [['rooftop', ROOFTOP_IMAGE], ['litter', LITTER_IMAGE], ['trees', TREES_IMAGE]]) {
       const sheet = new Image();
       sheet.decoding = 'async';
       sheet.onload = () => {

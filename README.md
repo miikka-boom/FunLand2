@@ -641,8 +641,9 @@ and no dependencies.
   look's floor), warm amber lamp pools and flashlight with faint warm shafts,
   an amber centre line. The ground, roofs and brick facades are textured, the
   roofs carry AC units, condensers, vents, skylights, chimneys and water tanks,
-  papers and trash are strewn about, and the parked cars are a real 3D model
-  baked for the camera. The art was made with Scenario and the ground and
+  taller buildings have fire escapes, papers and trash are strewn about, bare
+  trees in planters line the curbs, and the parked cars, newspaper boxes and
+  bus shelters are real 3D models baked for the camera. The art was made with Scenario and the ground and
   roofs are painted once into caches, so it costs no more per frame than the
   flat streets did: see [docs/STREETS-ART.md](docs/STREETS-ART.md).
   **Night look (this map)** under Presentation switches the look per map type:

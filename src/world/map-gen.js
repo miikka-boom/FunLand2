@@ -24,6 +24,8 @@ const KINDS = {
   fence: { move: true, shot: false, sight: false },
   planter: { move: true, shot: false, sight: false },
   bench: { move: true, shot: false, sight: false },
+  newsbox: { move: true, shot: false, sight: false },
+  shelter: { move: true, shot: false, sight: false },
   tree: { move: true, shot: false, sight: false },
   fountain: { move: true, shot: false, sight: false },
 };
