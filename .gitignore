@@ -2,3 +2,5 @@
 AudioPacks/
 # The original files the game uses, by pack (tools/sfx/build_sfx.py --export): purchased too, never in git.
 AudioPicks/
+# Python's bytecode caches (tools/).
+__pycache__/

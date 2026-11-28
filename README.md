@@ -859,6 +859,7 @@ src/sfx-bank.js            loads the SFX files (assets/sfx), lines them up again
 src/game/soundscape.js     what the soundscape is this frame: surfaces under foot, impact materials, level ambience, fires/generators/flare/ferry loops, the horde (pure, tested)
 src/music-player.js, src/game/music-director.js   the dynamic score (docs/MUSIC.md)
 assets/sfx/                the sound effects (3 MB of MP3 + bank.js), built from the purchased libraries in AudioPacks/ (not in git) by tools/sfx/build_sfx.py (docs/SFX.md)
+tools/specials/            the Tank and the Hunter as 3D models in the zombies' style: FBX, texture and GLB in tools/specials/models, built from code by build_specials.py (docs/SPECIAL-MODELS.md)
 battle/                    WOBBLE WAR card battler (separate page; code map above)
 haul/                      Long Haul metagame prototype: No Man's Land × Clash Royale (separate page; map in docs/LONG-HAUL.md)
 thrill/                    Thrill Hill metagame prototype (separate page; map in docs/THRILL-HILL.md)
@@ -867,7 +868,7 @@ hope/                      Hope Street metagame prototype (separate page; map in
 evac/                      Road to Evac metagame prototype (separate page; map in docs/METAGAME.md)
 safehouse/                 Safehouse metagame prototype (separate page; map in docs/SAFEHOUSE.md)
 camp/                      v1 camp metagame prototype (separate page; map in docs/METAGAME-CAMP.md)
-tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, the music director, the sound effects (the bank ships every sound the engine plays, surfaces and materials, the soundscape), Wobble War)
+tests/                     node --test unit tests (stick math, touch controller rules, the camera + painter's order, a smoke test that draws every map type under every camera on a mock canvas, the three newer maps (connected, seeded, their own invariants), settings saves and the per-map camera, horde scaling, scavenging, world-feature and world-flavor placement, Pier 9 map + finale, the Night Terror's light, the Witch (her seat on every map type, her patience, the fight), Ben's traces + memory, playtest reports + daily seed, the metagames incl. Last Stop's iso engine and town rules and Long Haul's rules, art and sheets, the music director, the sound effects (the bank ships every sound the engine plays, surfaces and materials, the soundscape), the special infected's model files, Wobble War)
 ```
 
 `window.__p0` exposes the game, settings and input in the browser console.
